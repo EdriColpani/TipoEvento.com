@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Estilos para o scanner HTML5 QR Code */
+#qr-reader {
+  width: 100%;
+  min-height: 300px;
+}
+
+#qr-reader__dashboard {
+  display: none !important;
+}
+
+#qr-reader__scan_region {
+  border: 4px solid #eab308 !important;
+  border-radius: 8px;
+}
+
+#qr-reader__scan_region video {
+  border-radius: 8px;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

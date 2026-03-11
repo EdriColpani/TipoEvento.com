@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Percent, FileText } from 'lucide-react';
+import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Percent, FileText, Key, Database } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +25,7 @@ const ManagerLayout: React.FC = () => {
     const isAdminSettingsPath = useMemo(() => {
         return location.pathname.startsWith('/admin/settings') ||
                location.pathname.startsWith('/manager/settings/advanced') ||
+               location.pathname.startsWith('/manager/settings/backup-database') ||
                location.pathname.startsWith('/manager/settings/history');
     }, [location.pathname]);
 
@@ -113,6 +114,7 @@ const ManagerLayout: React.FC = () => {
         { path: '/manager/events/create', label: 'Criar Novo Evento', icon: <Plus className="mr-2 h-4 w-4" /> },
         { path: '/manager/events/banners/create', label: 'Criar Banner de Evento', icon: <Image className="mr-2 h-4 w-4" /> },
         { path: '/manager/wristbands', label: 'Pulseiras', icon: <QrCode className="mr-2 h-4 w-4" /> },
+        { path: '/manager/validation-keys', label: 'Chaves de Validação', icon: <Key className="mr-2 h-4 w-4" /> },
         { path: '/manager/reports', label: 'Relatórios', icon: <BarChart3 className="mr-2 h-4 w-4" /> },
         { path: '/manager/settings', label: 'Configurações', icon: <Settings className="mr-2 h-4 w-4" /> },
     ];
@@ -254,6 +256,13 @@ const ManagerLayout: React.FC = () => {
                                                             Avançadas
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem 
+                                                            onClick={() => navigate('/manager/settings/backup-database')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/manager/settings/backup-database' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Database className="mr-2 h-4 w-4" />
+                                                            Backup do Banco
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem 
                                                             onClick={() => navigate('/manager/settings/history')}
                                                             className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/manager/settings/history' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
                                                         >
@@ -368,6 +377,13 @@ const ManagerLayout: React.FC = () => {
                                                             >
                                                                 <Settings className="mr-2 h-4 w-4" />
                                                                 Avançadas
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => navigate('/manager/settings/backup-database')}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Database className="mr-2 h-4 w-4" />
+                                                                Backup do Banco
                                                             </button>
                                                             <button 
                                                                 onClick={() => navigate('/manager/settings/history')}

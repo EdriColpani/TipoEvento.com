@@ -6,6 +6,9 @@ import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign } from 'l
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
+import { useSalesChartData } from '@/hooks/use-sales-chart-data';
+import SalesLineChart from '@/components/SalesLineChart';
+import { format } from 'date-fns';
 
 const ReportCard: React.FC<{ icon: React.ReactNode, title: string, description: string, onClick: () => void }> = ({ icon, title, description, onClick }) => (
     <Card 
@@ -39,6 +42,7 @@ const ManagerReports: React.FC = () => {
     }, []);
 
     const { profile } = useProfile(userId);
+    const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData();
     const isAdminMaster = profile?.tipo_usuario_id === 1;
     const isManagerPro = profile?.tipo_usuario_id === 2;
     const canAccessFinancialReport = isAdminMaster || isManagerPro;
@@ -78,19 +82,19 @@ const ManagerReports: React.FC = () => {
                     icon={<TrendingUp className="h-6 w-6 text-yellow-500" />}
                     title="Relatório de Vendas"
                     description="Análise detalhada de receita, ingressos vendidos e performance por evento."
-                    onClick={() => handleReportClick('Vendas')}
+                    onClick={() => navigate('/manager/reports/sales')}
                 />
                 <ReportCard
                     icon={<FileText className="h-6 w-6 text-yellow-500" />}
                     title="Relatório de Eventos"
                     description="Status, ocupação e dados cadastrais de todos os eventos ativos e passados."
-                    onClick={() => handleReportClick('Eventos')}
+                    onClick={() => navigate('/manager/reports/events')}
                 />
                 <ReportCard
                     icon={<Users className="h-6 w-6 text-yellow-500" />}
                     title="Relatório de Público"
                     description="Dados demográficos e comportamento dos clientes que compraram ingressos."
-                    onClick={() => handleReportClick('Público')}
+                    onClick={() => navigate('/manager/reports/audience')}
                 />
             </div>
             
@@ -105,10 +109,21 @@ const ManagerReports: React.FC = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0 h-64 bg-black/40 rounded-xl flex items-center justify-center">
-                    <div className="text-center">
-                        <i className="fas fa-chart-bar text-yellow-500 text-4xl mb-4"></i>
-                        <p className="text-gray-400">Gráficos de Analytics em breve</p>
-                    </div>
+                    {(isLoadingSalesData) ? (
+                        <div className="text-center">
+                            <BarChart3 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-2" />
+                            <p className="text-gray-400">Carregando dados do gráfico...</p>
+                        </div>
+                    ) : (salesData && salesData.length > 0) ? (
+                        <div className="relative w-full h-full p-4">
+                            <SalesLineChart data={salesData} />
+                        </div>
+                    ) : (
+                        <div className="text-center">
+                            <BarChart3 className="h-8 w-8 text-gray-500 mx-auto mb-2" />
+                            <p className="text-gray-400">Nenhum dado de vendas encontrado para os últimos 30 dias.</p>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

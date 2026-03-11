@@ -18,13 +18,15 @@ import ManagerEditEvent from "./pages/ManagerEditEvent";
 import ManagerSettings from "./pages/ManagerSettings";
 import ManagerCompanyProfile from "./pages/ManagerCompanyProfile";
 import ManagerNotifications from "./pages/ManagerNotifications";
-import ManagerAdvancedSettings from "./pages/ManagerAdvancedSettings"; 
+import ManagerAdvancedSettings from "./pages/ManagerAdvancedSettings";
+import ManagerDatabaseBackup from "./pages/ManagerDatabaseBackup"; 
 import ManagerPaymentSettings from "./pages/ManagerPaymentSettings"; 
 import ManagerCreateWristband from "./pages/ManagerCreateWristband"; 
 import ManagerWristbandsList from "./pages/ManagerWristbandsList"; 
 import ManagerManageWristband from "./pages/ManagerManageWristband";
 import ManagerReports from "./pages/ManagerReports";
 import FinancialReports from "./pages/FinancialReports";
+import EventTicketDetailsPage from "./pages/EventTicketDetailsPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminRouteGuard from "./components/AdminRouteGuard";
 import AdminMasterRouteGuard from "./components/AdminMasterRouteGuard";
@@ -42,6 +44,11 @@ import ManagerCreateEventBanner from "./pages/ManagerCreateEventBanner";
 import ManagerSettingsHistory from "./pages/ManagerSettingsHistory"; 
 import AdminCommissionTiers from "./pages/AdminCommissionTiers"; 
 import AdminEventContracts from "./pages/AdminEventContracts"; // NOVO
+import SalesReports from "./pages/SalesReports"; // NOVO
+import EventReports from "./pages/EventsReports"; // NOVO
+import AudienceReports from "./pages/AudienceReports"; // NOVO
+import ManagerValidationKeys from "./pages/ManagerValidationKeys"; // NOVO
+import TicketValidator from "./pages/TicketValidator"; // NOVO
 
 const queryClient = new QueryClient();
 
@@ -62,6 +69,10 @@ const App = () => (
             <Route path="profile" element={<Profile />} />
             <Route path="tickets" element={<MyTickets />} />
           </Route>
+
+          {/* Public Validator Route - Não requer autenticação */}
+          <Route path="/validator" element={<TicketValidator />} />
+          <Route path="/validador" element={<TicketValidator />} />
           
           {/* Manager Login (outside layout for specific styling) */}
           <Route path="/manager/login" element={<ManagerLogin />} />
@@ -83,6 +94,11 @@ const App = () => (
             <Route path="/manager/wristbands/manage/:id" element={<ManagerManageWristband />} />
             <Route path="/manager/reports" element={<ManagerReports />} />
             <Route path="/manager/reports/financial" element={<FinancialReports />} />
+            <Route path="/manager/reports/financial/:eventId/:eventName" element={<EventTicketDetailsPage />} />
+            <Route path="/manager/reports/sales" element={<SalesReports />} />
+            <Route path="/manager/reports/events" element={<EventReports />} />
+            <Route path="/manager/reports/audience" element={<AudienceReports />} />
+            <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />
             <Route path="/manager/settings/company-profile" element={<ManagerCompanyProfile />} />
             <Route path="/manager/settings/individual-profile" element={<ManagerIndividualProfile />} />
@@ -102,6 +118,7 @@ const App = () => (
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 
                 <Route path="/manager/settings/advanced" element={<ManagerAdvancedSettings />} />
+                <Route path="/manager/settings/backup-database" element={<ManagerDatabaseBackup />} />
             </Route>
           </Route>
 

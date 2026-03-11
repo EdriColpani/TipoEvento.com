@@ -1,0 +1,41 @@
+{
+  "name": "Validador de Ingressos",
+  "short_name": "Validador",
+  "description": "Aplicativo para validação de ingressos via QR Code",
+  "start_url": "/validator",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#eab308",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "business"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Validador",
+      "short_name": "Validar",
+      "description": "Abrir validador de ingressos",
+      "url": "/validator",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
+

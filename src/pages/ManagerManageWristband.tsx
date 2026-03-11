@@ -317,6 +317,17 @@ const ManagerManageWristband: React.FC = () => {
     const hasChanges = newStatus !== details.status || priceNumeric !== details.price;
 
 
+    const translateStatus = (status: string) => {
+        switch (status) {
+            case 'used': return 'Vendido';
+            case 'active': return 'Ativo';
+            case 'lost': return 'Perdido';
+            case 'cancelled': return 'Cancelado';
+            case 'pending': return 'Pendente';
+            default: return status.charAt(0).toUpperCase() + status.slice(1);
+        }
+    };
+
     return (
         <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-8">
@@ -508,7 +519,7 @@ const ManagerManageWristband: React.FC = () => {
                                                     </TableCell>
                                                     <TableCell className="text-center py-3">
                                                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusClasses}`}>
-                                                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                                                            {translateStatus(status)}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="py-3 text-right text-gray-500 text-xs">

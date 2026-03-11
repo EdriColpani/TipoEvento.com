@@ -3,78 +3,84 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface WristbandDetailsForAnalytics {
     id: string;
-    code: string;
-    status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending';
-    price: number;
-    access_type: string;
-    created_at: string;
-    
-    analytics?: {
-        client_user_id?: string;
-        event_data?: {
-            purchase_date?: string;
-            client_id?: string;
-            transaction_id?: string;
-        };
-        profiles?: {
-            full_name: string;
-            email: string;
-        } | null;
+    wristband_id: string;
+    event_id: string;
+    wristband_code: string;
+    wristband_price: number;
+    wristband_access_type: string;
+    event_type: string;
+    event_data?: {
+        purchase_date?: string;
+        client_id?: string;
+        transaction_id?: string;
     };
+    created_at: string;
+    client_user_id?: string;
+    code_wristbands?: string;
+    analytics_status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending';
+    sequential_number?: number;
+    first_name?: string;
+    last_name?: string;
+    client_email?: string;
 }
 
-const fetchEventTicketAnalytics = async (eventId: string): Promise<WristbandDetailsForAnalytics[]> => {
+export interface EventTicketAnalyticsFilters {
+    eventId: string;
+    page?: number;
+    pageSize?: number;
+    searchQuery?: string;
+}
+
+export interface PaginatedEventTicketAnalytics {
+    data: WristbandDetailsForAnalytics[];
+    count: number;
+}
+
+const fetchEventTicketAnalytics = async (filters: EventTicketAnalyticsFilters): Promise<PaginatedEventTicketAnalytics> => {
+    const { eventId, page = 1, pageSize = 10, searchQuery } = filters;
+
     if (!eventId) {
-        return [];
+        return { data: [], count: 0 };
     }
 
-    const { data: wristbands, error: wristbandsError } = await supabase
-        .from('wristbands')
-        .select(`
-            id,
-            code,
-            status,
-            price,
-            access_type,
-            created_at,
-            wristband_analytics!left (
-                client_user_id,
-                event_data,
-            profiles(full_name, email)
-            )
-        `)
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+        .from('wristband_analytics_with_profile_details')
+        .select('*', { count: 'exact' })
         .eq('event_id', eventId)
         .order('created_at', { ascending: true });
 
-    if (wristbandsError) {
-        console.error("Error fetching wristband analytics:", wristbandsError);
-        console.error("Full Supabase error object:", JSON.stringify(wristbandsError, null, 2));
-        throw wristbandsError;
+    if (searchQuery) {
+        const searchPattern = `%${searchQuery.toLowerCase()}%`;
+        query = query.or(
+            `wristband_code.ilike.${searchPattern},
+            first_name.ilike.${searchPattern},
+            last_name.ilike.${searchPattern},
+            client_email.ilike.${searchPattern}`
+        );
     }
 
-    // Flatten the data structure for easier consumption
-    return wristbands.map((w: any) => ({
-        id: w.id,
-        code: w.code,
-        status: w.status,
-        price: w.price,
-        access_type: w.access_type,
-        created_at: w.created_at,
-        analytics: w.wristband_analytics && w.wristband_analytics.length > 0 
-            ? {
-                client_user_id: w.wristband_analytics[0].client_user_id,
-                event_data: w.wristband_analytics[0].event_data,
-                profiles: w.wristband_analytics[0].profiles,
-            }
-            : undefined,
-    }));
+    const { data: analyticsWithProfiles, error: analyticsError, count } = await query.range(from, to);
+
+    if (analyticsError) {
+        console.error("Error fetching wristband analytics:", analyticsError);
+        console.error("Full Supabase error object:", JSON.stringify(analyticsError, null, 2));
+        throw analyticsError;
+    }
+
+    return {
+        data: analyticsWithProfiles || [],
+        count: count || 0,
+    };
 };
 
-export const useEventTicketAnalytics = (eventId: string) => {
-    return useQuery<WristbandDetailsForAnalytics[], Error>({
-        queryKey: ['event-ticket-analytics', eventId],
-        queryFn: () => fetchEventTicketAnalytics(eventId),
-        enabled: !!eventId,
+export const useEventTicketAnalytics = (filters: EventTicketAnalyticsFilters) => {
+    return useQuery<PaginatedEventTicketAnalytics, Error>({
+        queryKey: ['event-ticket-analytics', filters],
+        queryFn: () => fetchEventTicketAnalytics(filters),
+        enabled: !!filters.eventId,
     });
 };
 

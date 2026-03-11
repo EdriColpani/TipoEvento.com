@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, DollarSign, TrendingUp, Users, Loader2, AlertCircle, Download } from 'lucide-react';
-import EventTicketsAnalyticsModal from '@/components/EventTicketsAnalyticsModal';
+import { ArrowLeft, DollarSign, TrendingUp, Users, Loader2, AlertCircle, Download, Eye } from 'lucide-react';
 import { useFinancialReports, FinancialReportData } from '@/hooks/use-financial-reports';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useProfile } from '@/hooks/use-profile';
@@ -22,8 +21,6 @@ const FinancialReports: React.FC = () => {
     const [selectedEventId, setSelectedEventId] = useState<string>('all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
-    const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
-    const [selectedEventForAnalytics, setSelectedEventForAnalytics] = useState<{ id: string; name: string } | null>(null);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -310,11 +307,11 @@ const FinancialReports: React.FC = () => {
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => {
-                                                        setSelectedEventForAnalytics({ id: item.event_id, name: item.event_title });
-                                                        setIsAnalyticsModalOpen(true);
+                                                        navigate(`/manager/reports/financial/${item.event_id}/${encodeURIComponent(item.event_title)}`);
                                                     }}
                                                     className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
                                                 >
+                                                    <Eye className="mr-2 h-4 w-4" />
                                                     Ver Detalhes
                                                 </Button>
                                             </TableCell>
@@ -326,15 +323,6 @@ const FinancialReports: React.FC = () => {
                     )}
                 </CardContent>
             </Card>
-
-            {selectedEventForAnalytics && (
-                <EventTicketsAnalyticsModal
-                    isOpen={isAnalyticsModalOpen}
-                    onClose={() => setIsAnalyticsModalOpen(false)}
-                    eventId={selectedEventForAnalytics.id}
-                    eventName={selectedEventForAnalytics.name}
-                />
-            )}
         </div>
     );
 };

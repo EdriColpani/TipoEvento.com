@@ -465,7 +465,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                     .select('id')
                     .single();
 
-                if (error) throw error;
+                if (error) {
+                    dismissToast(toastId);
+                    throw error;
+                }
                 newEventId = data.id;
                 showSuccess("Evento criado com sucesso e enviado para aprovação!");
             }
@@ -503,7 +506,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
 
                     // Só mostra sucesso se a tabela existir e a operação for concluída
                     if (!deleteError && !batchesError) {
-                        showSuccess("Lotes do evento salvos com sucesso!");
+                        // Não damos dismiss aqui, pois o principal já faz
+                        // showSuccess("Lotes do evento salvos com sucesso!");
                     }
                 } catch (batchError) {
                     console.error("Erro ao salvar lotes do evento:", batchError);
@@ -516,6 +520,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
             navigate('/manager/events');
 
         } catch (error: any) {
+            dismissToast(toastId);
             console.error("Erro ao salvar evento:", error);
             showError(`Falha ao salvar evento: ${error.message || 'Erro desconhecido'}`);
         } finally {
