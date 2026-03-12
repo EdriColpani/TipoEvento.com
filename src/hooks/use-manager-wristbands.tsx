@@ -13,6 +13,7 @@ export interface WristbandData {
     // Dados do evento associado (join)
     events: {
         title: string;
+        date: string; // Adicionado: data do evento
     } | null;
 }
 
@@ -31,7 +32,7 @@ const fetchManagerWristbands = async (userId: string, isAdminMaster: boolean): P
             status,
             created_at,
             event_id,
-            events (title)
+            events!event_id (title, date) -- Adicionado: data do evento para o QR Code. Especificando relacionamento explícito via event_id para evitar erro PGRST201
         `)
         .order('created_at', { ascending: false });
 

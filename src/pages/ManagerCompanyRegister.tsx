@@ -151,8 +151,20 @@ const ManagerCompanyRegister: React.FC = () => {
                 console.error("Warning: Failed to create user_company association:", associationError);
             }
 
+            // 4. NOVO: Atualizar o status dos eventos da nova empresa para 'approved'
+            const { error: eventUpdateError } = await supabase
+                .from('events')
+                .update({ status: 'approved' })
+                .eq('company_id', companyId)
+                .eq('status', 'pending'); // Apenas eventos pendentes
+            
+            if (eventUpdateError) {
+                console.error("Warning: Failed to update event statuses to approved:", eventUpdateError);
+            }
+
             // NOVO: Invalida o cache da empresa do gestor para forçar a re-busca
             queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardData'] }); // Invalida cache do dashboard para refletir eventos ativos
 
             dismissToast(toastId);
             showSuccess("Registro de Gestor (Empresa) concluído com sucesso!");

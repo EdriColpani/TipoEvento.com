@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import mercadopago from 'https://esm.sh/mercadopago@2.0.8';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,7 +47,8 @@ serve(async (req) => {
     const body = await req.json();
     const { eventId, purchaseItems } = body; // purchaseItems: [{ ticketTypeId, quantity, price, name }]
     
-    console.log(`[DEBUG] Received request for Event ID: ${eventId}`);
+    const SITE_URL = Deno.env.get('SITE_URL') ?? '';
+    console.log(`[DEBUG] Received request for Event ID: ${eventId}. Site URL: ${SITE_URL}`);
 
     if (!eventId || !purchaseItems || purchaseItems.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing event details or purchase items' }), { 
@@ -60,10 +60,10 @@ serve(async (req) => {
     // Calculate total value
     const totalValue = purchaseItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
     
-    // 2. Fetch Event Details to get Manager ID
+    // 2. Fetch Event Details to get Manager ID (corrigido: usar created_by em vez de user_id)
     const { data: eventData, error: eventError } = await supabaseService
         .from('events')
-        .select('user_id')
+        .select('created_by')
         .eq('id', eventId)
         .single();
 
@@ -75,47 +75,30 @@ serve(async (req) => {
         });
     }
     
-    const managerUserId = eventData.user_id;
-    console.log(`[DEBUG] Event found. Manager ID: ${managerUserId}`);
+    const managerUserId = eventData.created_by;
     
-    // 3. Fetch Manager Payment Settings directly using managerUserId - Using .limit(1) instead of .single()
-    console.log(`[DEBUG BREAKPOINT] Attempting to fetch payment settings for manager: ${managerUserId}`);
-    
-    const { data: paymentSettingsArray, error: settingsError } = await supabaseService
-        .from('payment_settings')
-        .select('api_token')
-        .eq('user_id', managerUserId)
-        .limit(1); // Changed from .single() to .limit(1)
-
-    let paymentSettingsData = null;
-    if (paymentSettingsArray && paymentSettingsArray.length > 0) {
-        paymentSettingsData = paymentSettingsArray[0];
-    }
-
-    // Se houver erro na busca (incluindo PGRST116 - No rows found) ou se o token estiver ausente
-    if (settingsError || !paymentSettingsData?.api_token) {
-        console.error(`[DEBUG ERROR] Payment settings fetch failed for manager ${managerUserId}. Error: ${settingsError?.message || 'Token missing'}`);
-        
-        // Se o erro for PGRST116 (No rows found), significa que o gestor não configurou nada.
-        if (settingsError?.code === 'PGRST116') {
-             return new Response(JSON.stringify({ error: 'Payment gateway access token is not configured by the event manager. Please ask the manager to configure it in PRO Settings.' }), { 
-                status: 403, 
-                headers: corsHeaders 
-            });
-        }
-        
-        // Outros erros de busca
-        if (settingsError) throw settingsError;
-        
-        // Se o token estiver ausente (null/undefined)
-        return new Response(JSON.stringify({ error: 'Payment gateway access token is not configured by the event manager. Please ask the manager to configure it in PRO Settings.' }), { 
-            status: 403, 
+    if (!managerUserId) {
+        console.error(`[DEBUG] Event ID ${eventId} has no created_by (manager) associated.`);
+        return new Response(JSON.stringify({ error: 'Evento não possui um gestor associado. Contate o suporte.' }), { 
+            status: 400, 
             headers: corsHeaders 
         });
     }
+    console.log(`[DEBUG] Event found. Manager ID: ${managerUserId}`);
     
-    const mpAccessToken = paymentSettingsData.api_token; 
+    // 3. Mercado Pago Access Token (mesmo formato do outro projeto: via variável de ambiente)
+    // IMPORTANTE: para este teste, não buscamos mais em payment_settings
+    const mpAccessTokenRaw = Deno.env.get('PAYMENT_API_KEY_SECRET');
+    if (!mpAccessTokenRaw || mpAccessTokenRaw.trim() === '') {
+        console.error('[DEBUG ERROR] PAYMENT_API_KEY_SECRET not set or empty.');
+        return new Response(JSON.stringify({ error: 'Payment service not configured (missing PAYMENT_API_KEY_SECRET).' }), {
+            status: 500,
+            headers: corsHeaders
+        });
+    }
+    const mpAccessToken = mpAccessTokenRaw.trim();
     console.log(`[DEBUG] Access Token found (masked length: ${mpAccessToken.length})`);
+    console.log(`[DEBUG] Access Token starts with: ${mpAccessToken.substring(0, 10)}...`);
     
     // 4. Reserve/Identify available wristband analytics records
     const analyticsIdsToReserve: string[] = [];
@@ -161,34 +144,46 @@ serve(async (req) => {
     if (insertTransactionError) throw insertTransactionError;
     const transactionId = transactionData.id;
     
-    // 6. Configure Mercado Pago SDK
-    mercadopago.configure({
-        access_token: mpAccessToken,
-    });
-
-    // 7. Prepare MP Preference Items
+    // 6. Prepare MP Preference Items
+    // IMPORTANTE: unit_price deve ser número, não string
     const mpItems = purchaseItems.map((item: any) => ({
         title: item.name || 'Ingresso Evento',
-        unit_price: item.price,
-        quantity: item.quantity,
+        unit_price: Number(item.price) || 0, // Garante que é número
+        quantity: Number(item.quantity) || 0, // Garante que é número
         currency_id: 'BRL',
-    }));
+    })).filter(item => item.unit_price > 0 && item.quantity > 0); // Remove itens inválidos
     
-    // 8. Create MP Preference
+    // 7. Obtém a URL base do projeto Supabase para construir as URLs de retorno e notificação
+    // IMPORTANTE: Mercado Pago exige URLs públicas válidas (não localhost)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     
-    // Obtém a URL base do projeto Supabase para construir as URLs de retorno e notificação
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    // Para notification_url, usa a URL completa da Edge Function
     const notificationUrl = `${supabaseUrl}/functions/v1/mercadopago-webhook`;
-    const successUrl = `${supabaseUrl}/tickets?status=success&transaction_id=${transactionId}`;
-    const pendingUrl = `${supabaseUrl}/tickets?status=pending&transaction_id=${transactionId}`;
-    const failureUrl = `${supabaseUrl}/tickets?status=failure&transaction_id=${transactionId}`;
     
+    // Para back_urls, usa URLs do próprio Supabase (o Mercado Pago redireciona para lá)
+    // NOTA: Se sua aplicação frontend estiver em outro domínio, substitua aqui
+    const successUrl = `${SITE_URL}/tickets?status=success&transaction_id=${transactionId}`;
+    const pendingUrl = `${SITE_URL}/tickets?status=pending&transaction_id=${transactionId}`;
+    const failureUrl = `${SITE_URL}/tickets?status=failure&transaction_id=${transactionId}`;
+     
     console.log(`[DEBUG] Notification URL: ${notificationUrl}`);
     console.log(`[DEBUG] Success URL: ${successUrl}`);
+    console.log(`[DEBUG] Supabase URL: ${supabaseUrl}`);
+    console.log(`[DEBUG] SITE_URL: ${SITE_URL}`);
 
-    const preference = {
+    // 8. Create MP Preference usando API REST diretamente (mais confiável que SDK)
+    // Validação: Preferência deve ter pelo menos um item com preço válido
+    if (!mpItems || mpItems.length === 0 || mpItems.some((item: any) => !item.unit_price || item.unit_price <= 0)) {
+        await supabaseService.from('receivables').delete().eq('id', transactionId);
+        return new Response(JSON.stringify({ error: 'Itens de pagamento inválidos. Verifique os preços.' }), { 
+            status: 400, 
+            headers: corsHeaders 
+        });
+    }
+
+    const preferenceData = {
         items: mpItems,
-        external_reference: transactionId, // Usamos o ID da transação como referência externa
+        external_reference: transactionId,
         notification_url: notificationUrl, 
         back_urls: {
             success: successUrl,
@@ -198,12 +193,64 @@ serve(async (req) => {
         auto_return: "approved",
     };
 
-    const mpResponse = await mercadopago.preferences.create(preference);
+    console.log(`[DEBUG] Creating MP preference with access token length: ${mpAccessToken.length}`);
+    console.log(`[DEBUG] Preference data:`, JSON.stringify(preferenceData, null, 2));
     
-    if (!mpResponse.body.init_point) {
+    // Formato correto do header Authorization para Mercado Pago
+    // IMPORTANTE: Token deve estar limpo (sem espaços) e no formato Bearer
+    const cleanToken = mpAccessToken.trim();
+    const authorizationHeader = `Bearer ${cleanToken}`;
+    
+    console.log(`[DEBUG] Authorization header length: ${authorizationHeader.length}`);
+    console.log(`[DEBUG] Token prefix: ${cleanToken.substring(0, 15)}...`);
+    
+    const mpApiResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authorizationHeader,
+        },
+        body: JSON.stringify(preferenceData),
+    });
+
+    if (!mpApiResponse.ok) {
+        const errorText = await mpApiResponse.text();
+        let errorMessage = 'Falha ao criar preferência de pagamento no Mercado Pago.';
+        
+        try {
+            const errorJson = JSON.parse(errorText);
+            console.error(`[DEBUG] MP API Error (${mpApiResponse.status}):`, JSON.stringify(errorJson, null, 2));
+            
+            if (errorJson.message) {
+                errorMessage = errorJson.message;
+            } else if (errorJson.cause && Array.isArray(errorJson.cause)) {
+                errorMessage = errorJson.cause.map((c: any) => c.description || c.message).join(', ');
+            } else if (typeof errorJson === 'string') {
+                errorMessage = errorJson;
+            }
+        } catch (e) {
+            console.error(`[DEBUG] MP API Error (${mpApiResponse.status}):`, errorText);
+        }
+        
         // Se falhar, reverter a transação pendente
         await supabaseService.from('receivables').delete().eq('id', transactionId);
-        return new Response(JSON.stringify({ error: 'Failed to create Mercado Pago preference. Check MP configuration details.' }), { 
+        return new Response(JSON.stringify({ 
+            error: errorMessage,
+            details: errorText,
+            statusCode: mpApiResponse.status
+        }), { 
+            status: 500, 
+            headers: corsHeaders 
+        });
+    }
+
+    const mpResponse = await mpApiResponse.json();
+    console.log(`[DEBUG] MP response received. ID: ${mpResponse.id}, Init point: ${mpResponse.init_point}`);
+    
+    if (!mpResponse.init_point) {
+        // Se falhar, reverter a transação pendente
+        await supabaseService.from('receivables').delete().eq('id', transactionId);
+        return new Response(JSON.stringify({ error: 'URL de pagamento não foi gerada pelo Mercado Pago. Verifique as configurações.' }), { 
             status: 500, 
             headers: corsHeaders 
         });
@@ -212,13 +259,13 @@ serve(async (req) => {
     // 9. Update receivables with payment gateway ID (MP preference ID)
     await supabaseService
         .from('receivables')
-        .update({ payment_gateway_id: mpResponse.body.id })
+        .update({ payment_gateway_id: mpResponse.id })
         .eq('id', transactionId);
 
-    // 10. Return checkout URL
+    // 11. Return checkout URL
     return new Response(JSON.stringify({ 
         message: 'Payment preference created successfully.',
-        checkoutUrl: mpResponse.body.init_point,
+        checkoutUrl: mpResponse.init_point,
         transactionId: transactionId,
     }), { 
         status: 200, 

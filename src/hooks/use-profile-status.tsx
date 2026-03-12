@@ -53,10 +53,10 @@ export const useProfileStatus = (
                 } 
                 // Para Gestores (tipo 1 ou 2): verifica notificações de sistema
                 else if (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2) {
-                    // Busca eventos com baixo estoque (menos de 10% dos ingressos disponíveis)
+                    // Busca eventos ativos do gestor
                     const { data: events, error } = await supabase
                         .from('events')
-                        .select('id, capacity, tickets_sold')
+                        .select('id, capacity')
                         .eq('created_by', userId)
                         .eq('status', 'active');
 
@@ -64,13 +64,37 @@ export const useProfileStatus = (
                         console.error('Erro ao buscar eventos:', error);
                         setHasPendingNotifications(false);
                     } else if (events && events.length > 0) {
-                        // Verifica se algum evento tem menos de 10% de ingressos disponíveis
-                        const hasLowStock = events.some(event => {
-                            const available = event.capacity - (event.tickets_sold || 0);
-                            const percentage = (available / event.capacity) * 100;
-                            return percentage < 10 && percentage > 0;
-                        });
-                        setHasPendingNotifications(hasLowStock);
+                        // Busca todos os ingressos vendidos de uma vez (mais eficiente)
+                        const eventIds = events.map(e => e.id);
+                        const { data: soldTickets, error: ticketsError } = await supabase
+                            .from('wristband_analytics')
+                            .select('event_id')
+                            .in('event_id', eventIds)
+                            .eq('status', 'used')
+                            .eq('event_type', 'purchase');
+
+                        if (ticketsError) {
+                            console.error('Erro ao buscar ingressos vendidos:', ticketsError);
+                            setHasPendingNotifications(false);
+                        } else {
+                            // Conta ingressos vendidos por evento
+                            const ticketsSoldByEvent = new Map<string, number>();
+                            soldTickets?.forEach(ticket => {
+                                const count = ticketsSoldByEvent.get(ticket.event_id) || 0;
+                                ticketsSoldByEvent.set(ticket.event_id, count + 1);
+                            });
+
+                            // Verifica se algum evento tem menos de 10% dos ingressos disponíveis
+                            const hasLowStock = events.some(event => {
+                                if (!event.capacity || event.capacity === 0) return false;
+                                const ticketsSold = ticketsSoldByEvent.get(event.id) || 0;
+                                const available = event.capacity - ticketsSold;
+                                const percentage = (available / event.capacity) * 100;
+                                return percentage < 10 && percentage > 0;
+                            });
+                            
+                            setHasPendingNotifications(hasLowStock);
+                        }
                     } else {
                         setHasPendingNotifications(false);
                     }

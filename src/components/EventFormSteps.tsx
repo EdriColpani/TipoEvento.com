@@ -46,7 +46,9 @@ const eventFormSchema = z.object({
     title: z.string().min(3, "O título deve ter pelo menos 3 caracteres.").max(100, "O título não pode exceder 100 caracteres."),
     description: z.string().min(10, "A descrição deve ter pelo menos 10 caracteres.").max(1000, "A descrição não pode exceder 1000 caracteres."),
     date: z.date({ required_error: "A data do evento é obrigatória." }),
-    time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Formato de hora inválido (HH:MM)."),
+    // Deixamos o <input type=\"time\" garantir o formato HH:MM
+    // Aqui só exigimos que o campo não esteja vazio
+    time: z.string().min(1, "A hora do evento é obrigatória."),
     location: z.string().min(3, "O local deve ter pelo menos 3 caracteres.").max(100, "O local não pode exceder 100 caracteres."),
     address: z.string().min(5, "O endereço deve ter pelo menos 5 caracteres.").max(200, "O endereço não pode exceder 200 caracteres."),
     card_image_url: z.string().url("URL da imagem do card inválida."),
@@ -61,26 +63,40 @@ const eventFormSchema = z.object({
         if (val === undefined || val === '') return true; // Permite vazio se não for pago
         return /^[0-9]+([,.][0-9]{1,2})?$/.test(val.replace('.', '').replace(',', '.'));
     }, "Preço do ingresso inválido."),
-    // Novo campo para o número de lotes
+    // Novo campo para o número de lotes (só validado quando evento for pago)
     num_batches: z.string().optional().refine(val => {
         if (val === undefined || val === '') return true; // Permite vazio
         return /^[1-9]\d*$/.test(val); // Deve ser um número inteiro positivo
     }, "Número de lotes deve ser um número inteiro positivo."),
-    // Novo campo para os detalhes de cada lote
+    // Detalhes de cada lote: campos opcionais no schema; validação condicional em superRefine (só quando is_paid)
     batches: z.array(z.object({
-        name: z.string().min(1, "Nome do lote é obrigatório."),
-        quantity: z.string().regex(/^[1-9]\d*$/, "Quantidade deve ser um número inteiro positivo."),
-        price: z.string().refine(val => /^[0-9]+([,.][0-9]{1,2})?$/.test(val.replace('.', '').replace(',', '.')), "Preço inválido."),
-        start_date: z.date({ required_error: "Data de início é obrigatória." }),
-        end_date: z.date({ required_error: "Data de término é obrigatória." }),
+        name: z.string().optional(),
+        quantity: z.string().optional(),
+        price: z.string().optional(),
+        start_date: z.date().optional().nullable(),
+        end_date: z.date().optional().nullable(),
     })).optional(),
     contractAccepted: z.boolean().default(false),
     contract_id: z.string().optional(), // Para armazenar o ID do contrato aceito
 }).refine((data) => {
     // Validação condicional: só exige contrato se o evento for pago
-    // A validação do contrato será feita no onSubmit quando soubermos se há contrato ativo
     return true;
-}, { message: "Validação de contrato" });
+}, { message: "Validação de contrato" }).superRefine((data, ctx) => {
+    // Só valida lotes quando o evento é pago; evento gratuito ignora batches
+    if (!data.is_paid) return;
+    if (!data.batches || data.batches.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'Para eventos pagos, cadastre pelo menos um lote de ingressos.', path: ['batches'] });
+        return;
+    }
+    data.batches.forEach((batch, i) => {
+        if (!batch.name || !String(batch.name).trim()) ctx.addIssue({ code: 'custom', message: 'Nome do lote é obrigatório.', path: ['batches', i, 'name'] });
+        if (!batch.quantity || !/^[1-9]\d*$/.test(String(batch.quantity))) ctx.addIssue({ code: 'custom', message: 'Quantidade deve ser um número inteiro positivo.', path: ['batches', i, 'quantity'] });
+        const priceStr = batch.price ? String(batch.price).replace(/\./g, '').replace(',', '.') : '';
+        if (!batch.price || !/^[0-9]+(\.[0-9]{1,2})?$/.test(priceStr)) ctx.addIssue({ code: 'custom', message: 'Preço inválido.', path: ['batches', i, 'price'] });
+        if (!batch.start_date) ctx.addIssue({ code: 'custom', message: 'Data de início é obrigatória.', path: ['batches', i, 'start_date'] });
+        if (!batch.end_date) ctx.addIssue({ code: 'custom', message: 'Data de término é obrigatória.', path: ['batches', i, 'end_date'] });
+    });
+});
 
 type EventFormData = z.infer<typeof eventFormSchema>;
 
@@ -410,13 +426,32 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
 
         try {
             const validCompany = company; // Asserção de tipo implícita
+
+            // Quantidade total de ingressos: pago = soma dos lotes; gratuito = capacidade (exigido pelo banco como valor positivo)
+            const totalTicketsQuantity = values.batches && values.batches.length > 0
+                ? values.batches.reduce((sum, batch) => sum + Number(batch.quantity || 0), 0)
+                : 0;
+            const totalTickets = values.is_paid ? totalTicketsQuantity : Number(values.capacity);
+
+            // Preço mínimo para exibição no card: lotes têm prioridade; senão usa o campo único ticket_price
+            const minPriceFromBatches = values.is_paid && values.batches?.length
+                ? Math.min(...values.batches.map(b => parseFloat(String(b.price || '0').replace(',', '.')) || 0))
+                : null;
+            const ticketPriceForEvent = values.is_paid
+                ? (minPriceFromBatches ?? (values.ticket_price ? parseFloat(values.ticket_price.replace(',', '.')) : null))
+                : null;
+
+            console.log("activeContract no onSubmit:", activeContract);
+            console.log("values.contractAccepted no onSubmit:", values.contractAccepted);
+
             const eventData = {
                 title: values.title,
                 description: values.description,
-                event_date: format(values.date!, 'yyyy-MM-dd'),
-                event_time: values.time,
+                date: format(values.date!, 'yyyy-MM-dd'),
+                time: values.time ? values.time.slice(0, 5) : null,
                 location: values.location,
                 address: values.address,
+                image_url: values.card_image_url || '',
                 card_image_url: values.card_image_url,
                 exposure_card_image_url: values.exposure_card_image_url,
                 banner_image_url: values.banner_image_url,
@@ -425,11 +460,13 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                 capacity: Number(values.capacity),
                 duration: values.duration,
                 is_paid: values.is_paid,
-                ticket_price: values.is_paid && values.ticket_price ? parseFloat(values.ticket_price.replace(',', '.')) : null,
+                total_tickets: totalTickets,
+                ticket_price: ticketPriceForEvent,
                 created_by: userId,
-                company_id: company ? (company as CompanyData).id : null, // Permite null para gerentes PF (Pessoa Física)
-                status: 'pending', // Eventos são criados como pendentes e aprovados por um admin
-                contract_id: activeContract?.id || null, // Adiciona o ID do contrato
+                company_id: company ? (company as CompanyData).id : null,
+                status: 'pending',
+                contract_id: activeContract?.id || null,
+                contract_version: activeContract?.version ?? null,
             };
 
             let newEventId = eventId;
@@ -441,6 +478,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                     .eq('id', eventId);
 
                 if (error) throw error;
+                dismissToast(toastId);
                 showSuccess("Evento atualizado com sucesso!");
             } else {
                 // Insert novo
@@ -450,31 +488,55 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                     .select('id')
                     .single();
 
-                if (error) throw error;
+                if (error) {
+                    dismissToast(toastId);
+                    throw error;
+                }
                 newEventId = data.id;
+                dismissToast(toastId);
                 showSuccess("Evento criado com sucesso e enviado para aprovação!");
             }
 
             // Lógica para lotes (se for pago)
             if (values.is_paid && newEventId && values.batches) {
-                // Exclui lotes antigos para recriar (simples para este exemplo, considerar updates mais complexos para produção)
-                await supabase.from('event_batches').delete().eq('event_id', newEventId);
+                try {
+                    // Exclui lotes antigos para recriar (simples para este exemplo, considerar updates mais complexos para produção)
+                    const { error: deleteError } = await supabase
+                        .from('event_batches')
+                        .delete()
+                        .eq('event_id', newEventId);
 
-                const batchesToInsert = values.batches.map(batch => ({
-                    event_id: newEventId,
-                    name: batch.name,
-                    quantity: Number(batch.quantity),
-                    price: parseFloat(batch.price.replace(',', '.')),
-                    start_date: format(batch.start_date!, 'yyyy-MM-dd'),
-                    end_date: format(batch.end_date!, 'yyyy-MM-dd'),
-                }));
+                    // Se a tabela não existir neste ambiente, apenas registra log e segue sem quebrar o fluxo
+                    if (deleteError && deleteError.code !== 'PGRST205') {
+                        throw deleteError;
+                    }
 
-                const { error: batchesError } = await supabase
-                    .from('event_batches')
-                    .insert(batchesToInsert);
-                
-                if (batchesError) throw batchesError;
-                showSuccess("Lotes do evento salvos com sucesso!");
+                    const batchesToInsert = values.batches.map(batch => ({
+                        event_id: newEventId,
+                        name: batch.name,
+                        quantity: Number(batch.quantity),
+                        price: parseFloat(batch.price.replace(',', '.')),
+                        start_date: format(batch.start_date!, 'yyyy-MM-dd'),
+                        end_date: format(batch.end_date!, 'yyyy-MM-dd'),
+                    }));
+
+                    const { error: batchesError } = await supabase
+                        .from('event_batches')
+                        .insert(batchesToInsert);
+                    
+                    if (batchesError && batchesError.code !== 'PGRST205') {
+                        throw batchesError;
+                    }
+
+                    // Só mostra sucesso se a tabela existir e a operação for concluída
+                    if (!deleteError && !batchesError) {
+                        // Não damos dismiss aqui, pois o principal já faz
+                        // showSuccess("Lotes do evento salvos com sucesso!");
+                    }
+                } catch (batchError) {
+                    console.error("Erro ao salvar lotes do evento:", batchError);
+                    // Não derruba o fluxo de criação do evento se só os lotes falharem
+                }
             }
 
             queryClient.invalidateQueries({ queryKey: ['managerEvents', userId] });
@@ -482,6 +544,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
             navigate('/manager/events');
 
         } catch (error: any) {
+            dismissToast(toastId);
             console.error("Erro ao salvar evento:", error);
             showError(`Falha ao salvar evento: ${error.message || 'Erro desconhecido'}`);
         } finally {

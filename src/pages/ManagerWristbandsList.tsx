@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, AlertTriangle, Tag, Settings, QrCode } from 'lucide-react'; // Adicionado QrCode
+import { Plus, Search, Loader2, AlertTriangle, Tag, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerWristbands, WristbandData } from '@/hooks/use-manager-wristbands';
 import { useProfile } from '@/hooks/use-profile'; // Importando o hook de perfil
@@ -87,10 +87,11 @@ const ManagerWristbandsList: React.FC = () => {
     }
 
     return (
-        <div className="max-w-7xl mx-auto">
+        <>
+            <div className="max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0 flex items-center">
-                    <QrCode className="h-7 w-7 mr-3" />
+                    {/* <QrCodeIcon className="h-7 w-7 mr-3" /> Removido o ícone de QR Code aqui */}
                     {isAdminMaster ? `Todas as Pulseiras (${wristbands.length})` : `Gestão de Pulseiras (${wristbands.length})`}
                 </h1>
                 {/* Este botão permanece no cabeçalho */}
@@ -144,7 +145,7 @@ const ManagerWristbandsList: React.FC = () => {
                                     <TableHead className="text-left text-gray-400 font-semibold py-3">Evento</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3">Tipo de Acesso</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3">Status</TableHead>
-                                    <TableHead className="text-right text-gray-400 font-semibold py-3 w-[150px]">Ações</TableHead>
+                                    <TableHead className="text-right text-gray-400 font-semibold py-3 w-[220px]">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -168,7 +169,7 @@ const ManagerWristbandsList: React.FC = () => {
                                                     {getStatusText(wristband.status)}
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-right py-4">
+                                            <TableCell className="text-right py-4 flex items-center justify-end space-x-2">
                                                 <Button 
                                                     variant="outline" 
                                                     size="sm"
@@ -190,6 +191,7 @@ const ManagerWristbandsList: React.FC = () => {
             
             {/* O botão duplicado na parte inferior foi removido */}
         </div>
+        </>
     );
 };
 

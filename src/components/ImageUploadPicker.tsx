@@ -91,6 +91,7 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
     };
 
     const handleButtonClick = () => {
+        if (disabled || uploading) return;
         if (fileInputRef.current) {
             fileInputRef.current.click();
         }
@@ -105,7 +106,7 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
                     isInvalid ? "border-red-500" : "border-yellow-500/30" // Aplica borda vermelha se inválido
                 )}
                 style={{ height: `${height}px` }}
-                onClick={disabled || uploading ? undefined : handleButtonClick}
+                onClick={handleButtonClick}
             >
                 {currentImageUrl ? (
                     <img 

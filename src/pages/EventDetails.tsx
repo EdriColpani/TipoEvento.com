@@ -122,21 +122,41 @@ const EventDetails: React.FC = () => {
             let errorMessage = "Falha ao iniciar o pagamento. Tente novamente.";
 
             if (response.error) {
+                console.error("Edge Function error:", response.error);
+                
                 // Se for um FunctionsHttpError, tenta obter o erro específico do corpo da resposta
                 if (response.data && typeof response.data === 'object' && 'error' in response.data) {
                     errorMessage = (response.data as { error: string }).error;
+                } else if (response.error.message) {
+                    // Verifica se a mensagem de erro contém informações úteis
+                    if (response.error.message.includes('404') || response.error.message.includes('not found')) {
+                        errorMessage = "Serviço de pagamento não encontrado. Por favor, tente novamente mais tarde ou contate o suporte.";
+                    } else if (response.error.message.includes('401') || response.error.message.includes('Unauthorized')) {
+                        errorMessage = "Sessão expirada. Por favor, faça login novamente.";
+                    } else if (response.error.message.includes('500') || response.error.message.includes('Internal')) {
+                        errorMessage = "Erro interno do servidor. Por favor, tente novamente mais tarde.";
+                    } else {
+                        errorMessage = response.error.message;
+                    }
                 } else {
-                    // Fallback para a mensagem genérica do FunctionsHttpError
-                    errorMessage = response.error.message;
+                    errorMessage = "Erro ao conectar com o serviço de pagamento. Verifique sua conexão e tente novamente.";
                 }
-                throw new Error(errorMessage); // Lança o erro com a mensagem mais específica
+                throw new Error(errorMessage);
             }
             
             const edgeData = response.data;
 
+            if (!edgeData) {
+                throw new Error("Resposta vazia do servidor de pagamento. Tente novamente.");
+            }
+
             if (edgeData.error) {
                 // Este caso lida se a Edge Function retornar um status 2xx, mas com um erro no corpo
                 throw new Error(edgeData.error);
+            }
+            
+            if (!edgeData.checkoutUrl) {
+                throw new Error("URL de pagamento não foi gerada. Por favor, tente novamente ou contate o suporte.");
             }
             
             const checkoutUrl = edgeData.checkoutUrl;
@@ -148,7 +168,9 @@ const EventDetails: React.FC = () => {
             window.location.href = checkoutUrl;
 
         } catch (error: any) {
-            dismissToast(toastId);
+            if (toastId) {
+                dismissToast(toastId);
+            }
             console.error("Erro ao criar preferência de pagamento:", error);
             // Exibe a mensagem de erro detalhada (seja do Edge Function ou do Mercado Pago)
             showError(error.message || "Ocorreu um erro inesperado. Tente novamente.");

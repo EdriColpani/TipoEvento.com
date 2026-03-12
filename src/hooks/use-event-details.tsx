@@ -45,40 +45,74 @@ export interface EventDetailsData {
 const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | null> => {
     if (!eventId) return null;
 
-    // 1. Buscar detalhes do Evento, incluindo capacidade, duração, nome da empresa e novos campos de imagem
+    // 1. Buscar detalhes do Evento (sem o JOIN de companies primeiro para evitar erro PGRST201)
+    // Vamos buscar a empresa separadamente se necessário
     const { data: eventDataRaw, error: eventError } = await supabase
         .from('events')
         .select(`
-            id, title, description, date, time, location, address, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration,
-            companies (corporate_name)
+            id, title, description, date, time, location, address, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id
         `)
         .eq('id', eventId)
-        .single();
+        .maybeSingle();
 
     if (eventError) {
         if (eventError.code === 'PGRST116') { // No rows found
+            console.warn(`Event not found: ${eventId}`);
             return null;
         }
-        console.error("Error fetching event details:", eventError);
-        throw new Error(eventError.message);
+        console.error("Error fetching event details:", {
+            code: eventError.code,
+            message: eventError.message,
+            details: eventError.details,
+            hint: eventError.hint,
+            eventId
+        });
+        // Retorna null em vez de lançar erro para mostrar página 404 amigável
+        return null;
     }
     
-    // 2. Buscar Tipos de Pulseira (Wristbands) associados a este evento
+    if (!eventDataRaw) {
+        console.warn(`Event data is null for ID: ${eventId}`);
+        return null;
+    }
+
+    // 2. Buscar dados da empresa separadamente usando o company_id
+    let corporateName: string | null = null;
+    if (eventDataRaw.company_id) {
+        const { data: companyData, error: companyError } = await supabase
+            .from('companies')
+            .select('corporate_name')
+            .eq('id', eventDataRaw.company_id)
+            .maybeSingle();
+
+        if (!companyError && companyData) {
+            corporateName = companyData.corporate_name;
+        }
+    }
+    
+    // 3. Buscar Tipos de Pulseira (Wristbands) associados a este evento
     const { data: wristbandsData, error: wristbandsError } = await supabase
         .from('wristbands')
         .select('id, access_type, price, status')
         .eq('event_id', eventId);
 
     if (wristbandsError) {
-        console.error("Error fetching wristbands for event:", wristbandsError);
-        throw new Error(wristbandsError.message);
+        console.error("Error fetching wristbands for event:", {
+            code: wristbandsError.code,
+            message: wristbandsError.message,
+            eventId
+        });
+        // Continua com array vazio de wristbands em vez de falhar completamente
     }
     
-    // 3. Agrupar, formatar e calcular preço mínimo/disponibilidade
+    // Usa array vazio se não houver dados de wristbands
+    const wristbands = wristbandsData || [];
+    
+    // 4. Agrupar, formatar e calcular preço mínimo/disponibilidade
     let minPrice: number | null = null;
     let minPriceWristbandId: string | null = null;
     
-    const groupedTickets = wristbandsData.reduce((acc, wristband) => {
+    const groupedTickets = wristbands.reduce((acc, wristband) => {
         const price = parseFloat(wristband.price as unknown as string) || 0;
         
         // APENAS consideramos pulseiras ativas para venda e preço mínimo
@@ -107,13 +141,14 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
 
     const ticketTypes = Object.values(groupedTickets).sort((a, b) => a.price - b.price);
     
-    // 4. Combinar dados
+    // 5. Combinar dados
     const event: EventData = {
         ...eventDataRaw,
         min_price: minPrice,
         min_price_wristband_id: minPriceWristbandId,
         exposure_card_image_url: eventDataRaw.exposure_card_image_url || null, // Mapeando o novo campo
-        banner_image_url: eventDataRaw.banner_image_url || null, 
+        banner_image_url: eventDataRaw.banner_image_url || null,
+        companies: corporateName ? { corporate_name: corporateName } : null,
     } as EventData;
 
 

@@ -123,7 +123,7 @@ const ManagerEventsList: React.FC = () => {
                                                 <Button 
                                                     variant="outline" 
                                                     size="sm"
-                                                    className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 h-8 px-3"
+                                                    className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-black h-8 px-3"
                                                     onClick={() => handleRowClick(event.id)}
                                                 >
                                                     <FileEdit className="h-4 w-4 mr-2" />

@@ -9,6 +9,7 @@ import { ArrowLeft, Loader2, QrCode, Tag, Clock, AlertTriangle, CheckCircle, XCi
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import QrCodeModal from '@/components/QrCodeModal';
 
 // Tipos de dados para a pulseira e analytics
 interface WristbandDetails {
@@ -18,7 +19,7 @@ interface WristbandDetails {
     status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending'; // NOVO: Adicionado 'pending'
     created_at: string;
     manager_user_id: string;
-    events: { title: string } | null;
+    events: { title: string; date: string } | null;
     company_id: string;
     event_id: string; // Adicionando event_id para uso na lógica de atualização em massa
     price: number; // NOVO: Preço da pulseira
@@ -45,11 +46,12 @@ const STATUS_OPTIONS = [
 // Hook para buscar detalhes da pulseira e analytics
 const fetchWristbandData = async (id: string): Promise<{ details: WristbandDetails, analytics: AnalyticsEntry[] }> => {
     // 1. Buscar detalhes da pulseira
+    // Especificando relacionamento explícito via event_id para evitar erro PGRST201
     const { data: detailsData, error: detailsError } = await supabase
         .from('wristbands')
         .select(`
             id, code, access_type, status, created_at, manager_user_id, company_id, event_id, price,
-            events (title)
+            events!event_id (title, date)
         `)
         .eq('id', id)
         .single();
@@ -68,23 +70,28 @@ const fetchWristbandData = async (id: string): Promise<{ details: WristbandDetai
 
     if (analyticsError) throw analyticsError;
 
+    // Normalizar eventos: garantir que seja um objeto único ou null, não array
+    const normalizedDetails: WristbandDetails = {
+        ...detailsData,
+        events: Array.isArray(detailsData.events) 
+            ? (detailsData.events[0] || null) 
+            : (detailsData.events || null),
+    } as WristbandDetails;
+
     return {
-        details: detailsData as WristbandDetails,
+        details: normalizedDetails,
         analytics: analyticsData as AnalyticsEntry[],
     };
 };
 
 const useWristbandManagement = (id: string | undefined) => {
     const queryClient = useQueryClient();
-    const query = useQuery({
+    const query = useQuery<{ details: WristbandDetails, analytics: AnalyticsEntry[] }>({
         queryKey: ['wristbandManagement', id],
         queryFn: () => fetchWristbandData(id!),
         enabled: !!id,
         staleTime: 1000 * 10, // Manter dados frescos por 10 segundos
-        onError: (error) => {
-            console.error("Query Error:", error);
-            showError("Erro ao carregar dados da pulseira.");
-        }
+        // Removido onError - usar try/catch no queryFn ou tratar erro no componente
     });
 
     return {
@@ -124,7 +131,9 @@ const ManagerManageWristband: React.FC = () => {
     const [newStatus, setNewStatus] = useState<WristbandDetails['status'] | string>('');
     const [newPrice, setNewPrice] = useState<string>(''); 
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-    const [searchTerm, setSearchTerm] = useState(''); 
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isQrCodeModalOpen, setIsQrCodeModalOpen] = useState(false);
+    const [selectedAnalyticsEntry, setSelectedAnalyticsEntry] = useState<AnalyticsEntry | null>(null); 
 
     useEffect(() => {
         if (data?.details) {
@@ -233,14 +242,14 @@ const ManagerManageWristband: React.FC = () => {
                 }
             }
 
-            dismissToast(toastId);
+            dismissToast(String(toastId));
             showSuccess(`Status e/ou Preço atualizados com sucesso! ${isMassOperation ? `(${updateCount} pulseiras do evento foram desativadas)` : ''}`);
             
             // Força a re-busca dos dados para refletir a mudança na grade de analytics e nos detalhes
             refetch(); 
 
         } catch (e: any) {
-            dismissToast(toastId);
+            dismissToast(String(toastId));
             console.error("Update error:", e);
             showError(`Falha ao gravar alterações: ${e.message || 'Erro desconhecido'}`);
         } finally {
@@ -307,6 +316,17 @@ const ManagerManageWristband: React.FC = () => {
     const priceNumeric = parseFloat(newPrice.replace(',', '.') || '0');
     const hasChanges = newStatus !== details.status || priceNumeric !== details.price;
 
+
+    const translateStatus = (status: string) => {
+        switch (status) {
+            case 'used': return 'Vendido';
+            case 'active': return 'Ativo';
+            case 'lost': return 'Perdido';
+            case 'cancelled': return 'Cancelado';
+            case 'pending': return 'Pendente';
+            default: return status.charAt(0).toUpperCase() + status.slice(1);
+        }
+    };
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -471,12 +491,14 @@ const ManagerManageWristband: React.FC = () => {
                                             <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Nº Pulseira</TableHead>
                                             <TableHead className="text-left text-gray-400 font-semibold py-3 w-[20%]">Código Pulseira</TableHead>
                                             <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Status</TableHead>
-                                            <TableHead className="text-right text-gray-400 font-semibold py-3 w-[25%]">Data/Hora</TableHead>
+                                            <TableHead className="text-right text-gray-400 font-semibold py-3 w-[20%]">Data/Hora</TableHead>
+                                            <TableHead className="text-right text-gray-400 font-semibold py-3 w-[15%]">Ações</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filteredAnalytics.map((entry) => {
                                             const eventTitle = details.events?.title || 'N/A';
+                                            const eventDate = details.events?.date || '';
                                             const wristbandCode = entry.code_wristbands || details.code;
                                             const status = getAnalyticsStatus(entry);
                                             const statusClasses = getStatusClasses(status);
@@ -497,11 +519,24 @@ const ManagerManageWristband: React.FC = () => {
                                                     </TableCell>
                                                     <TableCell className="text-center py-3">
                                                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusClasses}`}>
-                                                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                                                            {translateStatus(status)}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="py-3 text-right text-gray-500 text-xs">
                                                         {new Date(entry.created_at).toLocaleString('pt-BR')}
+                                                    </TableCell>
+                                                    <TableCell className="text-right py-3">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 h-8 px-3"
+                                                            onClick={() => {
+                                                                setSelectedAnalyticsEntry(entry);
+                                                                setIsQrCodeModalOpen(true);
+                                                            }}
+                                                        >
+                                                            <QrCode className="h-4 w-4" />
+                                                        </Button>
                                                     </TableCell>
                                                 </TableRow>
                                             );
@@ -513,6 +548,15 @@ const ManagerManageWristband: React.FC = () => {
                     </Card>
                 </div>
             </div>
+            {isQrCodeModalOpen && selectedAnalyticsEntry && (
+                <QrCodeModal
+                    isOpen={isQrCodeModalOpen}
+                    onClose={() => setIsQrCodeModalOpen(false)}
+                    eventName={details.events?.title || 'Evento Desconhecido'}
+                    eventDate={details.events?.date || ''}
+                    wristbandCode={selectedAnalyticsEntry.code_wristbands || details.code}
+                />
+            )}
         </div>
     );
 };

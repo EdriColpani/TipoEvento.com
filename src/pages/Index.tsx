@@ -15,9 +15,10 @@ import { showSuccess, showError } from '@/utils/toast'; // Importando toast
 
 const EVENTS_PER_PAGE = 12;
 
-const getMinPriceDisplay = (price: number | null): string => {
-    if (price === null || price === 0) return 'Sem ingressos ativos';
-    return `R$ ${price.toFixed(2).replace('.', ',')}`;
+const getMinPriceDisplay = (price: number | null, isPaid: boolean): string => {
+    if (isPaid && (price === null || price === 0)) return 'R$ 0,00';
+    if (!isPaid) return 'Gratuito';
+    return `R$ ${(price ?? 0).toFixed(2).replace('.', ',')}`;
 };
 
 const Index: React.FC = () => {
@@ -36,7 +37,11 @@ const Index: React.FC = () => {
     }, []);
 
     const handleEventClick = (event: PublicEvent) => {
-        navigate(`/events/${event.id}`); // Navega para a página de detalhes do evento
+        if (event.is_paid) {
+            navigate(`/events/${event.id}`);
+        } else {
+            navigate(`/events/${event.id}/inscricao`);
+        }
     };
     
     const handleApplyFilters = () => {
@@ -265,15 +270,17 @@ const Index: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center justify-between pt-4 border-t border-yellow-500/20">
                                                         <div className="flex flex-col">
-                                                            <span className="text-sm text-gray-400">A partir de</span>
+                                                            <span className="text-sm text-gray-400">
+                                                                {event.is_paid ? 'A partir de' : 'Entrada'}
+                                                            </span>
                                                             <span className="text-xl font-bold text-yellow-500 whitespace-nowrap">
-                                                                {getMinPriceDisplay(event.min_price)}
+                                                                {getMinPriceDisplay(event.min_price, event.is_paid)}
                                                             </span>
                                                         </div>
                                                         <Button
                                                             className="bg-yellow-500 text-black hover:bg-yellow-600 transition-all duration-300 cursor-pointer px-4 sm:px-6"
                                                         >
-                                                            Ver Detalhes
+                                                            {event.is_paid ? 'Ver Detalhes' : 'Faça sua inscrição'}
                                                         </Button>
                                                     </div>
                                                 </div>

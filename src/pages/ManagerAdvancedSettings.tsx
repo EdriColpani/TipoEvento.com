@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Settings, ArrowLeft, Loader2, Zap, Key } from 'lucide-react';
+import { Settings, ArrowLeft, Loader2, Zap, Key, Database } from 'lucide-react';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 
 interface AdvancedSettingsState {
@@ -23,6 +23,7 @@ const DEFAULT_ADVANCED_SETTINGS: AdvancedSettingsState = {
 
 const ManagerAdvancedSettings: React.FC = () => {
     const navigate = useNavigate();
+    // Página já está sob AdminMasterRouteGuard: apenas Administrador Global acessa
     const [settings, setSettings] = useState<AdvancedSettingsState>(DEFAULT_ADVANCED_SETTINGS);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -167,6 +168,24 @@ const ManagerAdvancedSettings: React.FC = () => {
                                 disabled={isSaving || !settings.apiIntegrationEnabled}
                             />
                             <p className="text-xs text-gray-500 mt-1">Mantenha esta chave segura. Clique para gerar uma nova.</p>
+                        </div>
+                    </div>
+
+                    {/* Backup do Banco (somente Administrador Global - página já protegida) */}
+                    <div className="space-y-4 pt-4 border-t border-yellow-500/10">
+                        <h3 className="text-lg font-semibold text-white flex items-center">
+                            <Database className="mr-2 h-5 w-5 text-yellow-500" />
+                            Backup do Banco
+                        </h3>
+                        <div
+                            onClick={() => navigate('/manager/settings/backup-database')}
+                            className="flex items-center justify-between p-4 bg-black/70 rounded-xl border border-yellow-500/20 cursor-pointer hover:bg-yellow-500/10 transition-colors"
+                        >
+                            <div>
+                                <p className="text-white font-medium">Realizar backup via SQL</p>
+                                <p className="text-gray-400 text-xs">Gera arquivo SQL com data/hora contendo esquema e dados do banco. Apenas Administrador Global.</p>
+                            </div>
+                            <span className="text-yellow-500">Ir →</span>
                         </div>
                     </div>
 

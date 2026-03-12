@@ -13,11 +13,12 @@ const fetchCompanyId = async (userId: string): Promise<CompanyData | null> => {
 
     // Busca a empresa associada ao usuário logado através da tabela user_companies
     // Assumimos que o gestor PRO (tipo 2) está associado a uma empresa principal (is_primary = true)
+    // Especificando o relacionamento explícito via company_id para evitar erro PGRST201
     const { data, error } = await supabase
         .from('user_companies')
         .select(`
             company_id,
-            companies (id, cnpj, corporate_name)
+            companies!company_id (id, cnpj, corporate_name)
         `)
         .eq('user_id', userId)
         .eq('is_primary', true) // Foca na empresa principal do gestor

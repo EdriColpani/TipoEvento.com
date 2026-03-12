@@ -31,6 +31,7 @@ const fetchMyTickets = async (userId: string): Promise<TicketData[]> => {
     if (!userId) return [];
 
     // Busca todos os registros de analytics associados ao usuário logado
+    // Especificando relacionamentos explícitos para evitar erros PGRST201
     const { data, error } = await supabase
         .from('wristband_analytics')
         .select(`
@@ -39,10 +40,10 @@ const fetchMyTickets = async (userId: string): Promise<TicketData[]> => {
             created_at,
             event_type,
             event_data,
-            wristbands (
+            wristbands!wristband_id (
                 access_type,
                 price,
-                events (
+                events!event_id (
                     id,
                     title,
                     location,
