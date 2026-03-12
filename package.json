@@ -79,6 +79,7 @@
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@vitejs/plugin-react-swc": "^3.9.0",
     "autoprefixer": "^10.4.20",
+    "baseline-browser-mapping": "^2.10.0",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.9",

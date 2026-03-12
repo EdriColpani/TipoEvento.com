@@ -27,6 +27,7 @@ import ManagerManageWristband from "./pages/ManagerManageWristband";
 import ManagerReports from "./pages/ManagerReports";
 import FinancialReports from "./pages/FinancialReports";
 import EventTicketDetailsPage from "./pages/EventTicketDetailsPage";
+import EventInscriptionPage from "./pages/EventInscriptionPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminRouteGuard from "./components/AdminRouteGuard";
 import AdminMasterRouteGuard from "./components/AdminMasterRouteGuard";
@@ -63,6 +64,7 @@ const App = () => (
           <Route path="/" element={<ClientLayout />}> {/* Wrap client routes with ClientLayout */}
             <Route index element={<Index />} />
             <Route path="events/:id" element={<EventDetails />} />
+            <Route path="events/:eventId/inscricao" element={<EventInscriptionPage />} />
             <Route path="register" element={<Register />} />
             <Route path="login" element={<Login />} />
             <Route path="forgot-password" element={<ForgotPassword />} />
