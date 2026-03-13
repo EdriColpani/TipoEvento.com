@@ -45,6 +45,28 @@ const validateCPF = (cpf: string): boolean => {
     return digit === parseInt(clean.charAt(10));
 };
 
+/** Gera um UUID v4 compatível com qualquer ambiente (evita crypto.randomUUID não disponível) */
+const generateQrCode = (): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    const hex = '0123456789abcdef';
+    let str = '';
+    const bytes = new Uint8Array(16);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        crypto.getRandomValues(bytes);
+    } else {
+        for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+    bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+    for (let i = 0; i < 16; i++) {
+        str += hex[bytes[i]! >> 4] + hex[bytes[i]! & 0x0f];
+        if ([3, 5, 7, 9].includes(i)) str += '-';
+    }
+    return str;
+};
+
 /** Máscara (XX) XXXXX-XXXX ou (XX) XXXX-XXXX conforme dígitos */
 const formatPhone = (value: string): string => {
     const clean = value.replace(/\D/g, '').slice(0, 11);
@@ -60,7 +82,6 @@ const EventInscriptionPage: React.FC = () => {
     const [event, setEvent] = useState<EventInfo | null>(null);
     const [loadingEvent, setLoadingEvent] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [form, setForm] = useState({
         full_name: '',
@@ -131,6 +152,8 @@ const EventInscriptionPage: React.FC = () => {
         if (!validate() || !eventId || !event) return;
         setSubmitting(true);
         const cpfClean = form.cpf.replace(/\D/g, '');
+        // Código único para este ingresso gratuito (será usado no QR Code e validação futura)
+        const qrCode = generateQrCode();
         try {
             const { error } = await supabase.from('event_registrations').insert({
                 event_id: eventId,
@@ -145,6 +168,7 @@ const EventInscriptionPage: React.FC = () => {
                 state: form.state.trim(),
                 phone: form.phone.replace(/\D/g, ''),
                 email: form.email.trim().toLowerCase(),
+                qr_code: qrCode,
             });
             if (error) {
                 if (error.code === '23505') {
@@ -155,8 +179,18 @@ const EventInscriptionPage: React.FC = () => {
                 setSubmitting(false);
                 return;
             }
-            setSuccess(true);
             showSuccess('Inscrição realizada com sucesso!');
+            // Redireciona para página de agradecimento com os dados necessários para exibir o QR Code
+            navigate(`/events/${eventId}/inscricao/sucesso`, {
+                state: {
+                    qrCode,
+                    eventTitle: event.title,
+                    eventDate: event.date,
+                    eventTime: event.time,
+                    eventLocation: event.location,
+                    email: form.email.trim().toLowerCase(),
+                },
+            });
         } catch {
             showError('Erro inesperado. Tente novamente.');
         } finally {
@@ -190,25 +224,6 @@ const EventInscriptionPage: React.FC = () => {
                 <Button onClick={() => navigate(`/events/${eventId}`)} className="bg-yellow-500 text-black hover:bg-yellow-600">
                     Ver detalhes do evento
                 </Button>
-            </div>
-        );
-    }
-
-    if (success) {
-        return (
-            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-4">
-                <div className="bg-black/80 border border-yellow-500/30 rounded-2xl p-8 max-w-md text-center">
-                    <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i className="fas fa-check text-green-500 text-2xl" />
-                    </div>
-                    <h2 className="text-xl font-semibold text-white mb-2">Inscrição realizada!</h2>
-                    <p className="text-gray-400 text-sm mb-6">
-                        Sua inscrição no evento <strong className="text-yellow-500">{event.title}</strong> foi registrada.
-                    </p>
-                    <Button onClick={() => navigate('/')} className="bg-yellow-500 text-black hover:bg-yellow-600">
-                        Voltar à Home
-                    </Button>
-                </div>
             </div>
         );
     }
