@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -95,6 +95,12 @@ const ManagerReports: React.FC = () => {
                     title="Relatório de Público"
                     description="Dados demográficos e comportamento dos clientes que compraram ingressos."
                     onClick={() => navigate('/manager/reports/audience')}
+                />
+                <ReportCard
+                    icon={<ClipboardList className="h-6 w-6 text-yellow-500" />}
+                    title="Relatório de Inscrições"
+                    description="Lista de inscritos por evento, com coluna de confirmação para impressão e controle de presença."
+                    onClick={() => navigate('/manager/reports/registrations')}
                 />
             </div>
             

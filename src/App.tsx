@@ -28,6 +28,7 @@ import ManagerReports from "./pages/ManagerReports";
 import FinancialReports from "./pages/FinancialReports";
 import EventTicketDetailsPage from "./pages/EventTicketDetailsPage";
 import EventInscriptionPage from "./pages/EventInscriptionPage";
+import EventInscriptionSuccessPage from "./pages/EventInscriptionSuccessPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminRouteGuard from "./components/AdminRouteGuard";
 import AdminMasterRouteGuard from "./components/AdminMasterRouteGuard";
@@ -50,6 +51,7 @@ import EventReports from "./pages/EventsReports"; // NOVO
 import AudienceReports from "./pages/AudienceReports"; // NOVO
 import ManagerValidationKeys from "./pages/ManagerValidationKeys"; // NOVO
 import TicketValidator from "./pages/TicketValidator"; // NOVO
+import RegistrationsReports from "./pages/RegistrationsReports";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +67,7 @@ const App = () => (
             <Route index element={<Index />} />
             <Route path="events/:id" element={<EventDetails />} />
             <Route path="events/:eventId/inscricao" element={<EventInscriptionPage />} />
+            <Route path="events/:eventId/inscricao/sucesso" element={<EventInscriptionSuccessPage />} />
             <Route path="register" element={<Register />} />
             <Route path="login" element={<Login />} />
             <Route path="forgot-password" element={<ForgotPassword />} />
@@ -100,6 +103,7 @@ const App = () => (
             <Route path="/manager/reports/sales" element={<SalesReports />} />
             <Route path="/manager/reports/events" element={<EventReports />} />
             <Route path="/manager/reports/audience" element={<AudienceReports />} />
+            <Route path="/manager/reports/registrations" element={<RegistrationsReports />} />
             <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />
             <Route path="/manager/settings/company-profile" element={<ManagerCompanyProfile />} />
