@@ -1,0 +1,3 @@
+# Desliga verificação JWT nesta função = inscrição pública pode chamar sem login (evita 401 no browser)
+[functions.send-free-registration-email]
+verify_jwt = false

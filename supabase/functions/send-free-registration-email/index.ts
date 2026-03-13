@@ -127,8 +127,7 @@ serve(async (req) => {
         Authorization: `Bearer ${resendKey}`,
       },
       body: JSON.stringify({
-        from: Deno.env.get("FREE_EVENTS_FROM_EMAIL") ??
-          "Ingressos Mazoy <no-reply@mazoy.app>",
+        from: Deno.env.get("FREE_EVENTS_FROM_EMAIL") ?? "onboarding@resend.dev",
         to: [email],
         subject,
         html,
