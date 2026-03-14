@@ -1,11 +1,15 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
+
+/** Remetente fixo: domínio eventofest.com.br (verificado na Resend). Sem secret de e-mail. */
+const RESEND_FROM = "EventoFest <noreply@eventofest.com.br>";
 
 const json200 = (obj: Record<string, unknown>) =>
   new Response(JSON.stringify(obj), {
@@ -39,7 +43,8 @@ serve(async (req) => {
       return json200({ success: false, error: "invalid_json" });
     }
 
-    const { qrCode, email, eventTitle, eventDate, eventTime, eventLocation } = body;
+    const { qrCode, email, eventTitle, eventDate, eventTime, eventLocation } =
+      body;
     if (!qrCode || !email) {
       return json200({ success: false, error: "missing_qr_or_email" });
     }
@@ -47,17 +52,22 @@ serve(async (req) => {
     const url = Deno.env.get("SUPABASE_URL") ?? "";
     const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     if (!url || !key) {
-      console.error("[send-free-registration-email] SUPABASE_URL ou SERVICE_ROLE ausente");
+      console.error(
+        "[send-free-registration-email] SUPABASE_URL ou SERVICE_ROLE ausente",
+      );
       return json200({ success: false, error: "server_misconfigured" });
     }
 
-    const supabaseService = createClient(url, key);
+    const supabaseService = createClient(url, key, {
+      auth: { persistSession: false },
+    });
 
-    const { data: registration, error: registrationError } = await supabaseService
-      .from("event_registrations")
-      .select("id, email_sent_at")
-      .eq("qr_code", qrCode)
-      .maybeSingle();
+    const { data: registration, error: registrationError } =
+      await supabaseService
+        .from("event_registrations")
+        .select("id, email_sent_at")
+        .eq("qr_code", qrCode)
+        .maybeSingle();
 
     if (registrationError) {
       console.error("[send-free-registration-email] db:", registrationError);
@@ -82,41 +92,28 @@ serve(async (req) => {
       return json200({ success: false, error: "no_resend_key" });
     }
 
-    // Remetente: domínio DEVE estar verificado na MESMA conta da RESEND_API_KEY.
-    // Secret com aspas ou espaço quebra e gera 403 ("from" / domain).
-    let fromRaw = (Deno.env.get("FREE_EVENTS_FROM_EMAIL") ?? "").trim();
-    if (
-      (fromRaw.startsWith('"') && fromRaw.endsWith('"')) ||
-      (fromRaw.startsWith("'") && fromRaw.endsWith("'"))
-    ) {
-      fromRaw = fromRaw.slice(1, -1).trim();
-    }
-    const fromAddress =
-      fromRaw.length > 0 ? fromRaw : "onboarding@resend.dev";
-    console.info(
-      "[send-free-registration-email] from suffix:",
-      fromAddress.includes("@")
-        ? "@" + fromAddress.split("@").pop()
-        : "(invalid)",
-    );
-
+    const toEmail = email.trim();
     const subject = `Ingresso — ${eventTitle ?? "Evento"}`.trim();
     const dateLine = eventDate ? `Data: <strong>${eventDate}</strong>` : "";
-    const timeLine = eventTime ? ` · Horário: <strong>${eventTime}</strong>` : "";
+    const timeLine = eventTime
+      ? ` · Horário: <strong>${eventTime}</strong>`
+      : "";
     const locationLine = eventLocation
       ? `<br />Local: <strong>${eventLocation}</strong>`
       : "";
 
-    const html = `<div style="font-family:system-ui,sans-serif;color:#111">
-      <h1 style="font-size:18px">Inscrição confirmada</h1>
-      <p><strong>${eventTitle ?? "Evento"}</strong></p>
-      <p style="color:#555;font-size:14px">${dateLine}${timeLine}${locationLine}</p>
-      <p style="font-size:14px">Apresente este QR no dia do evento.</p>
-      <p><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}" width="200" height="200" alt="QR" /></p>
-    </div>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+<div style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:0 auto;padding:20px">
+  <h1 style="font-size:18px">Inscrição confirmada</h1>
+  <p><strong>${eventTitle ?? "Evento"}</strong></p>
+  <p style="color:#555;font-size:14px">${dateLine}${timeLine}${locationLine}</p>
+  <p style="font-size:14px">Apresente este QR no dia do evento.</p>
+  <p><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}" width="200" height="200" alt="QR" /></p>
+  <p style="font-size:12px;color:#666">EventoFest · eventofest.com.br</p>
+</div></body></html>`;
 
     const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 15000);
+    const t = setTimeout(() => controller.abort(), 20000);
 
     let emailResponse: Response;
     try {
@@ -124,12 +121,12 @@ serve(async (req) => {
         method: "POST",
         signal: controller.signal,
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: fromAddress,
-          to: [email.trim().toLowerCase()],
+          from: RESEND_FROM,
+          to: toEmail,
           subject,
           html,
         }),
@@ -141,14 +138,19 @@ serve(async (req) => {
     }
     clearTimeout(t);
 
+    const resendData = await emailResponse.json().catch(() => ({}));
+
     if (!emailResponse.ok) {
-      const errorText = await emailResponse.text();
-      console.error("[send-free-registration-email] Resend:", emailResponse.status, errorText);
+      console.error(
+        "[send-free-registration-email] Resend:",
+        emailResponse.status,
+        resendData,
+      );
       return json200({
         success: false,
         error: "resend_rejected",
         status: emailResponse.status,
-        detail: errorText.slice(0, 500),
+        detail: JSON.stringify(resendData).slice(0, 500),
       });
     }
 
@@ -161,6 +163,7 @@ serve(async (req) => {
       console.error("[send-free-registration-email] update:", updateError);
     }
 
+    console.info("[send-free-registration-email] ok →", toEmail);
     return json200({ success: true });
   } catch (err) {
     console.error("[send-free-registration-email] catch:", err);
