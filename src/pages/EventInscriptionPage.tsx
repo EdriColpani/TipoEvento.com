@@ -45,28 +45,6 @@ const validateCPF = (cpf: string): boolean => {
     return digit === parseInt(clean.charAt(10));
 };
 
-/** Gera um UUID v4 compatível com qualquer ambiente (evita crypto.randomUUID não disponível) */
-const generateQrCode = (): string => {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-    }
-    const hex = '0123456789abcdef';
-    let str = '';
-    const bytes = new Uint8Array(16);
-    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-        crypto.getRandomValues(bytes);
-    } else {
-        for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-    }
-    bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-    bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-    for (let i = 0; i < 16; i++) {
-        str += hex[bytes[i]! >> 4] + hex[bytes[i]! & 0x0f];
-        if ([3, 5, 7, 9].includes(i)) str += '-';
-    }
-    return str;
-};
-
 /** Máscara (XX) XXXXX-XXXX ou (XX) XXXX-XXXX conforme dígitos */
 const formatPhone = (value: string): string => {
     const clean = value.replace(/\D/g, '').slice(0, 11);
@@ -147,17 +125,6 @@ const EventInscriptionPage: React.FC = () => {
         return Object.keys(e).length === 0;
     };
 
-    /** 23505 pode ser CPF duplicado OU colisão em qr_code (raro). Só mensagem de CPF se for o caso. */
-    const isCpfUniqueViolation = (err: { message?: string; details?: string }): boolean => {
-        const t = `${err.message || ''} ${err.details || ''}`.toLowerCase();
-        if (t.includes('qr_code')) return false;
-        return (
-            t.includes('event_cpf') ||
-            t.includes('cpf_digits') ||
-            t.includes('event_id') && t.includes('cpf')
-        );
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!validate() || !eventId || !event || submitting) return;
@@ -165,68 +132,53 @@ const EventInscriptionPage: React.FC = () => {
         const cpfClean = form.cpf.replace(/\D/g, '');
 
         try {
-            const { data: cpfTaken, error: rpcError } = await supabase.rpc('event_registration_cpf_taken', {
+            const { data: rpcData, error: rpcError } = await supabase.rpc('register_free_event_with_wristband', {
                 p_event_id: eventId,
+                p_full_name: form.full_name.trim(),
                 p_cpf: cpfClean,
+                p_age: Number(form.age),
+                p_street: form.street.trim(),
+                p_number: form.number.trim(),
+                p_neighborhood: form.neighborhood.trim(),
+                p_complement: form.complement.trim() || '',
+                p_city: form.city.trim(),
+                p_state: form.state.trim(),
+                p_phone: form.phone.replace(/\D/g, ''),
+                p_email: form.email.trim().toLowerCase(),
             });
+
             if (rpcError) {
-                console.warn('event_registration_cpf_taken:', rpcError);
-            } else if (cpfTaken === true) {
-                showError('Já existe uma inscrição para este CPF neste evento.');
+                console.warn('register_free_event_with_wristband:', rpcError);
+                showError(rpcError.message || 'Erro ao inscrever.');
                 setSubmitting(false);
                 return;
             }
 
-            let qrCode = generateQrCode();
-            const payload = {
-                event_id: eventId,
-                full_name: form.full_name.trim(),
-                cpf: cpfClean,
-                age: Number(form.age),
-                street: form.street.trim(),
-                number: form.number.trim(),
-                neighborhood: form.neighborhood.trim(),
-                complement: form.complement.trim() || null,
-                city: form.city.trim(),
-                state: form.state.trim(),
-                phone: form.phone.replace(/\D/g, ''),
-                email: form.email.trim().toLowerCase(),
-                qr_code: qrCode,
-            };
-
-            let lastError: { code?: string; message?: string; details?: string } | null = null;
-            for (let attempt = 0; attempt < 6; attempt++) {
-                const { error } = await supabase.from('event_registrations').insert({ ...payload, qr_code: qrCode });
-                if (!error) {
-                    showSuccess('Inscrição realizada com sucesso!');
-                    navigate(`/events/${eventId}/inscricao/sucesso`, {
-                        state: {
-                            qrCode,
-                            eventTitle: event.title,
-                            eventDate: event.date,
-                            eventTime: event.time,
-                            eventLocation: event.location,
-                            email: form.email.trim().toLowerCase(),
-                        },
-                    });
-                    setSubmitting(false);
-                    return;
-                }
-                lastError = error;
-                if (error.code === '23505' && !isCpfUniqueViolation(error)) {
-                    qrCode = generateQrCode();
-                    continue;
-                }
-                break;
+            const row = rpcData as { ok?: boolean; error?: string; qr_code?: string } | null;
+            if (!row?.ok) {
+                const msg: Record<string, string> = {
+                    cpf_taken: 'Já existe uma inscrição para este CPF neste evento.',
+                    no_free_wristbands:
+                        'Não há vagas com pulseira gratuita neste evento. Cadastre um lote com preço R$ 0,00 ou entre em contato com o organizador.',
+                    event_not_free: 'Este evento não é gratuito.',
+                    invalid_cpf: 'CPF inválido.',
+                };
+                showError(msg[row?.error || ''] || 'Não foi possível concluir a inscrição.');
+                setSubmitting(false);
+                return;
             }
 
-            if (lastError?.code === '23505' && isCpfUniqueViolation(lastError)) {
-                showError('Já existe uma inscrição para este CPF neste evento.');
-            } else if (lastError?.code === '23505') {
-                showError('Não foi possível concluir a inscrição. Tente novamente em instantes.');
-            } else {
-                showError(lastError?.message || 'Erro ao realizar inscrição.');
-            }
+            showSuccess('Inscrição realizada com sucesso!');
+            navigate(`/events/${eventId}/inscricao/sucesso`, {
+                state: {
+                    qrCode: row.qr_code,
+                    eventTitle: event.title,
+                    eventDate: event.date,
+                    eventTime: event.time,
+                    eventLocation: event.location,
+                    email: form.email.trim().toLowerCase(),
+                },
+            });
         } catch {
             showError('Erro inesperado. Tente novamente.');
         } finally {
