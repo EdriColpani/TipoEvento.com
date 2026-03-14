@@ -35,6 +35,7 @@ import AdminMasterRouteGuard from "./components/AdminMasterRouteGuard";
 import ManagerLayout from "./components/layouts/ManagerLayout";
 import ClientLayout from "./components/layouts/ClientLayout"; // Import ClientLayout
 import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import ManagerRegister from "./pages/ManagerRegister"; 
 import ManagerIndividualProfile from "./pages/ManagerIndividualProfile";
 import ManagerCompanyRegister from "./pages/ManagerCompanyRegister"; 
@@ -71,6 +72,7 @@ const App = () => (
             <Route path="register" element={<Register />} />
             <Route path="login" element={<Login />} />
             <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password" element={<ResetPassword />} />
             <Route path="profile" element={<Profile />} />
             <Route path="tickets" element={<MyTickets />} />
           </Route>
