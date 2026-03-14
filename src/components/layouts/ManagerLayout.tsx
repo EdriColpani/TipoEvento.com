@@ -150,7 +150,7 @@ const ManagerLayout: React.FC = () => {
                             className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold flex items-center cursor-pointer"
                             onClick={() => navigate('/')}
                         >
-                            Mazoy
+                            EventoFest
                             <span className="ml-2 sm:ml-3 bg-gradient-to-r from-yellow-500 to-yellow-600 text-black px-2 sm:px-3 py-0.5 rounded-lg text-xs sm:text-sm font-bold">{dashboardTitle}</span>
                         </div>
                     </div>
@@ -309,7 +309,7 @@ const ManagerLayout: React.FC = () => {
                             </SheetTrigger>
                             <SheetContent side="right" className="w-[250px] bg-black/95 border-l border-yellow-500/30 text-white p-0">
                                 <SheetHeader className="p-4 border-b border-yellow-500/20">
-                                    <SheetTitle className="text-2xl font-serif text-yellow-500">Mazoy {dashboardTitle}</SheetTitle>
+                                    <SheetTitle className="text-2xl font-serif text-yellow-500">EventoFest {dashboardTitle}</SheetTitle>
                                 </SheetHeader>
                                 <div className="p-4 space-y-4">
                                     <div className="flex items-center space-x-3 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20">

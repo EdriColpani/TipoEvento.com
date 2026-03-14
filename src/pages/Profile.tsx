@@ -362,7 +362,7 @@ const Profile: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center space-x-8">
                         <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer" onClick={() => navigate('/')}>
-                            Mazoy
+                            EventoFest
                         </div>
                         <nav className="hidden md:flex items-center space-x-8">
                             <a href="/#home" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Home</a>

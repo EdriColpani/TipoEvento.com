@@ -92,7 +92,7 @@ const MobileMenu: React.FC = () => {
             </SheetTrigger>
             <SheetContent side="right" className="w-[300px] sm:w-[400px] bg-black/95 border-l border-yellow-500/30 text-white p-0">
                 <SheetHeader className="p-6 border-b border-yellow-500/20">
-                    <SheetTitle className="text-3xl font-serif text-yellow-500">Mazoy</SheetTitle>
+                    <SheetTitle className="text-3xl font-serif text-yellow-500">EventoFest</SheetTitle>
                 </SheetHeader>
                 
                 <div className="p-6 space-y-6">

@@ -170,7 +170,7 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
                     id="title"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ex: Termos de Uso da Plataforma Mazoy"
+                    placeholder="Ex: Termos de Uso da Plataforma EventoFest"
                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                     disabled={isSaving}
                 />

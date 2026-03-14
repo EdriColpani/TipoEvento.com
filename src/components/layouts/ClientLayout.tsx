@@ -17,7 +17,7 @@ const ClientLayout: React.FC = () => {
                             className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer" 
                             onClick={() => navigate('/')}
                         >
-                            Mazoy
+                            EventoFest
                         </div>
                         <nav className="hidden md:flex items-center space-x-8">
                             <a href="/#home" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Home</a>
