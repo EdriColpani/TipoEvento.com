@@ -206,53 +206,62 @@ const TicketValidator: React.FC = () => {
         validateTicket(wristbandCode);
     };
 
+    const QR_READER_ID = 'validator-qr-reader';
+
     const handleScanQRCode = async () => {
         if (!apiKey.trim()) {
             showError('Por favor, informe a chave de acesso antes de escanear.');
             return;
         }
 
-        if (!scannerContainerRef.current) {
-            showError('Erro ao inicializar scanner.');
-            return;
+        if (qrCodeScannerRef.current) {
+            await stopScanning();
         }
 
         setIsScanning(true);
+        // Container precisa existir no DOM antes do Html5Qrcode (não montar o div só após isScanning)
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        const el = document.getElementById(QR_READER_ID);
+        if (!el) {
+            showError('Erro ao inicializar scanner. Atualize a página e tente de novo.');
+            setIsScanning(false);
+            return;
+        }
 
         try {
-            const html5QrCode = new Html5Qrcode(scannerContainerRef.current.id);
+            const html5QrCode = new Html5Qrcode(QR_READER_ID);
             qrCodeScannerRef.current = html5QrCode;
 
-            await html5QrCode.start(
-                { facingMode: 'environment' },
-                {
-                    fps: 10,
-                    qrbox: { width: 250, height: 250 },
-                },
-                (decodedText) => {
-                    // QR Code detectado!
-                    html5QrCode.stop().then(() => {
-                        setIsScanning(false);
-                        setWristbandCode(decodedText.toUpperCase());
-                        // Valida automaticamente após 300ms
-                        setTimeout(() => {
-                            validateTicket(decodedText.toUpperCase());
-                        }, 300);
-                    }).catch(() => {
-                        setIsScanning(false);
-                    });
-                },
-                (errorMessage) => {
-                    // Ignora erros de leitura (continua tentando)
-                }
-            );
-        } catch (error: any) {
-            console.error('Erro ao iniciar scanner:', error);
-            showError('Erro ao acessar a câmera. Verifique as permissões.');
-            setIsScanning(false);
-            if (qrCodeScannerRef.current) {
-                qrCodeScannerRef.current = null;
+            const onDecode = (decodedText: string) => {
+                const code = decodedText.trim();
+                html5QrCode.stop().then(() => {
+                    setIsScanning(false);
+                    qrCodeScannerRef.current = null;
+                    const normalized = /^[0-9a-f-]{36}$/i.test(code) ? code : code.toUpperCase();
+                    setWristbandCode(normalized);
+                    setTimeout(() => validateTicket(normalized), 300);
+                }).catch(() => setIsScanning(false));
+            };
+
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } as { width: number; height: number } };
+
+            try {
+                await html5QrCode.start({ facingMode: 'environment' }, config, onDecode, () => {});
+            } catch {
+                await html5QrCode.start({ facingMode: 'user' }, config, onDecode, () => {});
             }
+        } catch (error: unknown) {
+            console.error('Erro ao iniciar scanner:', error);
+            const msg =
+                error instanceof Error ? error.message : String(error);
+            showError(
+                msg.includes('Permission') || msg.includes('NotAllowed')
+                    ? 'Permissão da câmera negada. Permita o acesso nas configurações do navegador.'
+                    : 'Não foi possível abrir a câmera. Use HTTPS, permita a câmera ou digite o código manualmente.',
+            );
+            setIsScanning(false);
+            qrCodeScannerRef.current = null;
         }
     };
 
@@ -462,19 +471,19 @@ const TicketValidator: React.FC = () => {
                             </div>
                         </form>
 
-                        {/* Área de Scanner (quando ativo) */}
-                        {isScanning && (
-                            <div className="mt-4">
-                                <div 
-                                    id="qr-reader"
-                                    ref={scannerContainerRef}
-                                    className="relative bg-black rounded-lg overflow-hidden"
-                                />
+                        {/* Sempre no DOM: Html5Qrcode falha se o elemento for montado no mesmo clique */}
+                        <div className={isScanning ? 'mt-4' : 'sr-only'} aria-hidden={!isScanning}>
+                            <div
+                                id="validator-qr-reader"
+                                ref={scannerContainerRef}
+                                className="relative min-h-[260px] w-full bg-black rounded-lg overflow-hidden"
+                            />
+                            {isScanning && (
                                 <p className="text-center text-gray-400 text-sm mt-2">
                                     Aponte a câmera para o QR Code do ingresso
                                 </p>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
 

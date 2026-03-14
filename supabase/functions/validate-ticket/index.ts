@@ -167,6 +167,18 @@ serve(async (req) => {
         user_agent: req.headers.get('user-agent') || null,
       });
 
+      // Inscrição gratuita: mesmo QR está em event_registrations.qr_code → marcar presença confirmada na entrada
+      if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
+        const { error: regErr } = await supabaseService
+          .from('event_registrations')
+          .update({ confirmed: true })
+          .eq('qr_code', codeTrim)
+          .eq('event_id', wristbandData.event_id);
+        if (regErr) {
+          console.error('[validate-ticket] event_registrations.confirmed:', regErr);
+        }
+      }
+
       return new Response(JSON.stringify({
         success: ok,
         message: validationMessage,
@@ -177,6 +189,7 @@ serve(async (req) => {
         event_id: wristbandData.event_id,
         validated_at: new Date().toISOString(),
         validated_by: apiKeyData.name,
+        inscription_confirmed: ok && validation_type === 'entry' && wa.event_type === 'free_registration',
       }), { status: ok ? 200 : 400, headers: corsHeaders });
     }
 
