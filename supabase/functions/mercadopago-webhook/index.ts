@@ -335,10 +335,11 @@ serve(async (req) => {
                     .eq('id', finalTransactionId);
                 throw new Error(`Failed to record financial splits: ${insertSplitError.message}`);
             }
-        
-        console.log(`[MP Webhook] Successfully inserted 2 financial split records for transaction ${finalTransactionId}:`);
-        console.log(`  - Manager Net Amount Record: R$ ${managerAmount.toFixed(2)}`);
-        console.log(`  - Platform Commission Record: R$ ${platformAmount.toFixed(2)}`);
+
+            console.log(`[MP Webhook] Successfully inserted 2 financial split records for transaction ${finalTransactionId}:`);
+            console.log(`  - Manager Net Amount Record: R$ ${managerAmount.toFixed(2)}`);
+            console.log(`  - Platform Commission Record: R$ ${platformAmount.toFixed(2)}`);
+        }
 
         // 7. Atualizar wristband analytics: associar cliente e marcar como 'used'/'purchase'
         // IMPORTANTE: Buscar TODOS os campos obrigatórios para evitar erro de NOT NULL constraint
