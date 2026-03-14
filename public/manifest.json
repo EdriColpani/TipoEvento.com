@@ -1,7 +1,7 @@
 {
-  "name": "Validador de Ingressos",
-  "short_name": "Validador",
-  "description": "Aplicativo para validação de ingressos via QR Code",
+  "name": "EventoFest",
+  "short_name": "EventoFest",
+  "description": "EventoFest — eventos, ingressos e validação",
   "start_url": "/validator",
   "display": "standalone",
   "background_color": "#000000",
