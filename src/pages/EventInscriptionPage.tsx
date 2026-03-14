@@ -147,15 +147,38 @@ const EventInscriptionPage: React.FC = () => {
         return Object.keys(e).length === 0;
     };
 
+    /** 23505 pode ser CPF duplicado OU colisão em qr_code (raro). Só mensagem de CPF se for o caso. */
+    const isCpfUniqueViolation = (err: { message?: string; details?: string }): boolean => {
+        const t = `${err.message || ''} ${err.details || ''}`.toLowerCase();
+        if (t.includes('qr_code')) return false;
+        return (
+            t.includes('event_cpf') ||
+            t.includes('cpf_digits') ||
+            t.includes('event_id') && t.includes('cpf')
+        );
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!validate() || !eventId || !event) return;
+        if (!validate() || !eventId || !event || submitting) return;
         setSubmitting(true);
         const cpfClean = form.cpf.replace(/\D/g, '');
-        // Código único para este ingresso gratuito (será usado no QR Code e validação futura)
-        const qrCode = generateQrCode();
+
         try {
-            const { error } = await supabase.from('event_registrations').insert({
+            const { data: cpfTaken, error: rpcError } = await supabase.rpc('event_registration_cpf_taken', {
+                p_event_id: eventId,
+                p_cpf: cpfClean,
+            });
+            if (rpcError) {
+                console.warn('event_registration_cpf_taken:', rpcError);
+            } else if (cpfTaken === true) {
+                showError('Já existe uma inscrição para este CPF neste evento.');
+                setSubmitting(false);
+                return;
+            }
+
+            let qrCode = generateQrCode();
+            const payload = {
                 event_id: eventId,
                 full_name: form.full_name.trim(),
                 cpf: cpfClean,
@@ -169,28 +192,41 @@ const EventInscriptionPage: React.FC = () => {
                 phone: form.phone.replace(/\D/g, ''),
                 email: form.email.trim().toLowerCase(),
                 qr_code: qrCode,
-            });
-            if (error) {
-                if (error.code === '23505') {
-                    showError('Já existe uma inscrição para este CPF neste evento.');
-                } else {
-                    showError(error.message || 'Erro ao realizar inscrição.');
+            };
+
+            let lastError: { code?: string; message?: string; details?: string } | null = null;
+            for (let attempt = 0; attempt < 6; attempt++) {
+                const { error } = await supabase.from('event_registrations').insert({ ...payload, qr_code: qrCode });
+                if (!error) {
+                    showSuccess('Inscrição realizada com sucesso!');
+                    navigate(`/events/${eventId}/inscricao/sucesso`, {
+                        state: {
+                            qrCode,
+                            eventTitle: event.title,
+                            eventDate: event.date,
+                            eventTime: event.time,
+                            eventLocation: event.location,
+                            email: form.email.trim().toLowerCase(),
+                        },
+                    });
+                    setSubmitting(false);
+                    return;
                 }
-                setSubmitting(false);
-                return;
+                lastError = error;
+                if (error.code === '23505' && !isCpfUniqueViolation(error)) {
+                    qrCode = generateQrCode();
+                    continue;
+                }
+                break;
             }
-            showSuccess('Inscrição realizada com sucesso!');
-            // Redireciona para página de agradecimento com os dados necessários para exibir o QR Code
-            navigate(`/events/${eventId}/inscricao/sucesso`, {
-                state: {
-                    qrCode,
-                    eventTitle: event.title,
-                    eventDate: event.date,
-                    eventTime: event.time,
-                    eventLocation: event.location,
-                    email: form.email.trim().toLowerCase(),
-                },
-            });
+
+            if (lastError?.code === '23505' && isCpfUniqueViolation(lastError)) {
+                showError('Já existe uma inscrição para este CPF neste evento.');
+            } else if (lastError?.code === '23505') {
+                showError('Não foi possível concluir a inscrição. Tente novamente em instantes.');
+            } else {
+                showError(lastError?.message || 'Erro ao realizar inscrição.');
+            }
         } catch {
             showError('Erro inesperado. Tente novamente.');
         } finally {
