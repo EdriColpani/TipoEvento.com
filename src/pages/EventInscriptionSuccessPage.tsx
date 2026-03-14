@@ -32,7 +32,7 @@ const EventInscriptionSuccessPage: React.FC = () => {
     const sendEmail = async () => {
       if (!qrCode || !email) return;
       try {
-        const { error } = await supabase.functions.invoke('send-free-registration-email', {
+        const { data, error } = await supabase.functions.invoke('send-free-registration-email', {
           body: {
             qrCode,
             email,
@@ -43,10 +43,15 @@ const EventInscriptionSuccessPage: React.FC = () => {
           },
         });
         if (error) {
-          console.error('Erro ao chamar send-free-registration-email:', error);
+          console.warn('send-free-registration-email:', error);
+          return;
         }
-      } catch (err) {
-        console.error('Erro inesperado ao enviar e-mail de ingresso gratuito:', err);
+        const r = data as { success?: boolean; error?: string } | null;
+        if (r && r.success === false) {
+          console.warn('E-mail não enviado:', r.error, r);
+        }
+      } catch {
+        /* silencioso: inscrição já está ok na tela */
       }
     };
     sendEmail();

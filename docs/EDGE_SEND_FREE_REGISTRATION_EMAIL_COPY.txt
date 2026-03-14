@@ -1,0 +1,5 @@
+COPIE O ARQUIVO INTEIRO: supabase/functions/send-free-registration-email/index.ts
+OU rode: supabase functions deploy send-free-registration-email --no-verify-jwt
+
+Esta versão SEMPRE responde HTTP 200 → o app NÃO mostra FunctionsHttpError no console.
+Se o e-mail falhar (Resend), o corpo vem { success: false, error: "..." }.
