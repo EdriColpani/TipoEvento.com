@@ -143,10 +143,19 @@ const TicketValidator: React.FC = () => {
 
         try {
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+            if (!supabaseUrl || !anonKey) {
+                showError('Configuração do app incompleta (URL/anon).');
+                setIsValidating(false);
+                return;
+            }
+            // Gateway Supabase exige Authorization Bearer (anon); x-api-key é a chave do operador (validação).
             const response = await fetch(`${supabaseUrl}/functions/v1/validate-ticket`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    Authorization: `Bearer ${anonKey}`,
+                    apikey: anonKey,
                     'x-api-key': apiKey.trim(),
                 },
                 body: JSON.stringify({
@@ -155,7 +164,19 @@ const TicketValidator: React.FC = () => {
                 }),
             });
 
-            const result: ValidationResult = await response.json();
+            const raw = await response.json();
+            const result: ValidationResult = {
+                ...(typeof raw === 'object' && raw !== null ? raw : {}),
+                message:
+                    (raw as { message?: string })?.message ||
+                    (raw as { error?: string })?.error ||
+                    (response.ok ? 'OK' : 'Falha na validação'),
+                success: Boolean((raw as { success?: boolean }).success),
+                wristband_code: (raw as { wristband_code?: string }).wristband_code ?? code.trim(),
+                validation_type: (raw as { validation_type?: string }).validation_type ?? validationType,
+                validated_at: (raw as { validated_at?: string }).validated_at,
+                validated_by: (raw as { validated_by?: string }).validated_by,
+            } as ValidationResult;
 
             // Adiciona ID e timestamp se não vier do servidor
             const fullResult: ValidationResult = {
