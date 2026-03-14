@@ -76,11 +76,29 @@ serve(async (req) => {
       return json200({ success: true, alreadySent: true });
     }
 
-    const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
+    const resendKey = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
     if (!resendKey) {
       console.error("[send-free-registration-email] RESEND_API_KEY ausente");
       return json200({ success: false, error: "no_resend_key" });
     }
+
+    // Remetente: domínio DEVE estar verificado na MESMA conta da RESEND_API_KEY.
+    // Secret com aspas ou espaço quebra e gera 403 ("from" / domain).
+    let fromRaw = (Deno.env.get("FREE_EVENTS_FROM_EMAIL") ?? "").trim();
+    if (
+      (fromRaw.startsWith('"') && fromRaw.endsWith('"')) ||
+      (fromRaw.startsWith("'") && fromRaw.endsWith("'"))
+    ) {
+      fromRaw = fromRaw.slice(1, -1).trim();
+    }
+    const fromAddress =
+      fromRaw.length > 0 ? fromRaw : "onboarding@resend.dev";
+    console.info(
+      "[send-free-registration-email] from suffix:",
+      fromAddress.includes("@")
+        ? "@" + fromAddress.split("@").pop()
+        : "(invalid)",
+    );
 
     const subject = `Ingresso — ${eventTitle ?? "Evento"}`.trim();
     const dateLine = eventDate ? `Data: <strong>${eventDate}</strong>` : "";
@@ -110,8 +128,8 @@ serve(async (req) => {
           Authorization: `Bearer ${resendKey}`,
         },
         body: JSON.stringify({
-          from: Deno.env.get("FREE_EVENTS_FROM_EMAIL") ?? "onboarding@resend.dev",
-          to: [email],
+          from: fromAddress,
+          to: [email.trim().toLowerCase()],
           subject,
           html,
         }),
