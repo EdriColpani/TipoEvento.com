@@ -1,14 +1,18 @@
-COPIE O ARQUIVO INTEIRO: supabase/functions/send-free-registration-email/index.ts
-OU rode: supabase functions deploy send-free-registration-email --no-verify-jwt
+FROM fixo no código: EventoFest <noreply@eventofest.com.br>
+Não existe secret de e-mail.
 
-Esta versão SEMPRE responde HTTP 200 → o app NÃO mostra FunctionsHttpError no console.
-Se o e-mail falhar (Resend), o corpo vem { success: false, error: "..." }.
+Do zero — o que precisa:
 
---- Verificação 403 resend_rejected (from / domínio) ---
-- Invocations 200 = função rodou OK; NÃO significa e-mail enviado.
-- 403 validation_error no "from": o e-mail do remetente tem que ser @domínio VERIFICADO na Resend (mesma conta da API key).
-- Supabase Secrets:
-  - FREE_EVENTS_FROM_EMAIL = só o endereço, SEM aspas no valor. Ex: ingressos@seudominio.com
-  - Ou deixe VAZIO para usar onboarding@resend.dev (só teste; destinatário às vezes restrito).
-- Deploy de novo após mudar secret não é obrigatório; secrets são lidos a cada invoke.
-- Logs da função: linha "from suffix: @seudominio.com" confirma qual domínio está indo na API.
+1) Resend (resend.com)
+   - Domínio eventofest.com.br = Verified (DNS ok).
+   - API Keys → criar/copiar uma chave (re_...).
+
+2) Supabase → Edge Functions → Secrets (só estes)
+   - RESEND_API_KEY = essa chave re_...
+   - SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY o Supabase já injeta nas funções; se faltar SERVICE_ROLE, coloque manualmente (Settings → API → service_role).
+
+3) Deploy
+   supabase functions deploy send-free-registration-email --no-verify-jwt
+
+Regra: a RESEND_API_KEY tem que ser da MESMA conta Resend onde eventofest.com.br está verificado.
+Se a chave for de outra conta, 403 no from.
