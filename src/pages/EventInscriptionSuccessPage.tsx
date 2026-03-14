@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
 
 interface SuccessLocationState {
   qrCode?: string;
@@ -31,27 +30,47 @@ const EventInscriptionSuccessPage: React.FC = () => {
   useEffect(() => {
     const sendEmail = async () => {
       if (!qrCode || !email) return;
+      const url = import.meta.env.VITE_SUPABASE_URL;
+      const anon =
+        import.meta.env.VITE_SUPABASE_ANON_KEY ||
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      if (!url || !anon) {
+        console.warn('send-free-registration-email: URL/anon ausentes no build');
+        return;
+      }
       try {
-        const { data, error } = await supabase.functions.invoke('send-free-registration-email', {
-          body: {
+        // fetch + anon no header evita 401 do gateway (invoke sem sessão falha em muitos deploys)
+        const res = await fetch(`${url}/functions/v1/send-free-registration-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${anon}`,
+            apikey: anon,
+          },
+          body: JSON.stringify({
             qrCode,
             email,
             eventTitle,
             eventDate,
             eventTime,
             eventLocation,
-          },
+          }),
         });
-        if (error) {
-          console.warn('send-free-registration-email:', error);
+        const r = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+        if (!res.ok && res.status === 401) {
+          console.warn(
+            'send-free-registration-email 401: no Dashboard desligue Verify JWT nesta função e faça deploy --no-verify-jwt',
+          );
           return;
         }
-        const r = data as { success?: boolean; error?: string } | null;
-        if (r && r.success === false) {
+        if (r.success === false) {
           console.warn('E-mail não enviado:', r.error, r);
         }
       } catch {
-        /* silencioso: inscrição já está ok na tela */
+        /* inscrição já ok na tela */
       }
     };
     sendEmail();
