@@ -250,28 +250,52 @@ const ManagerValidationKeys: React.FC = () => {
         const toastId = showLoading('Criando chave de acesso...');
 
         try {
-            // Chamar Edge Function para gerar a chave e fazer o hash no backend
-            const { data: edgeData, error: edgeError } = await supabase.functions.invoke('create-validation-key', {
-                body: {
-                    name: newKeyName.trim(),
-                    event_id: newKeyEventId,
-                    expires_at: newKeyExpiresAt,
-                    created_by: userId,
+            const { data: sess } = await supabase.auth.getSession();
+            if (!sess.session) {
+                dismissToast(toastId);
+                showError('Sessão expirada. Entre de novo no gestor.');
+                return;
+            }
+            await supabase.auth.refreshSession();
+            const { data: sess2 } = await supabase.auth.getSession();
+            const token = sess2.session?.access_token;
+            if (!token) {
+                dismissToast(toastId);
+                showError('Não foi possível obter o token de sessão. Entre de novo.');
+                return;
+            }
+            const { data: edgeData, error: edgeError } = await supabase.functions.invoke(
+                'create-validation-key',
+                {
+                    body: {
+                        name: newKeyName.trim(),
+                        event_id: newKeyEventId,
+                        expires_at: newKeyExpiresAt,
+                        created_by: userId,
+                    },
+                    headers: { Authorization: `Bearer ${token}` },
                 },
-            });
+            );
 
             if (edgeError) {
                 dismissToast(toastId);
                 console.error('Erro ao chamar Edge Function:', edgeError);
-                throw new Error(edgeError.message || 'Erro ao criar chave de acesso. Tente novamente.');
+                throw new Error(
+                    edgeError.message ||
+                        'Erro ao criar chave. No Supabase: Edge Functions → create-validation-key → desligar Verify JWT.',
+                );
             }
 
-            if (!edgeData || !edgeData.success) {
+            const payload = edgeData as { success?: boolean; error?: string; hint?: string } | null;
+            if (!payload?.success) {
                 dismissToast(toastId);
-                throw new Error(edgeData?.error || 'Erro ao criar chave de acesso. Tente novamente.');
+                const msg =
+                    payload?.error ||
+                    'Erro ao criar chave. Se persistir: Dashboard → Edge Functions → create-validation-key → Details → Verify JWT = OFF.';
+                throw new Error(msg);
             }
 
-            const insertedData = edgeData.key;
+            const insertedData = (edgeData as { key?: { id: string; api_key?: string } }).key;
 
             if (!insertedData) {
                 dismissToast(toastId);
