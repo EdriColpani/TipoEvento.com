@@ -15,4 +15,9 @@ Do zero — o que precisa:
    supabase functions deploy send-free-registration-email --no-verify-jwt
 
 Regra: a RESEND_API_KEY tem que ser da MESMA conta Resend onde eventofest.com.br está verificado.
+
+401 no POST (Invocations): gateway bloqueou. Obrigatório:
+- Edge Functions → send-free-registration-email → Verify JWT = OFF
+- Deploy: supabase functions deploy send-free-registration-email --no-verify-jwt
+- Front chama com Authorization + apikey (anon); build deve ter VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY do MESMO projeto.
 Se a chave for de outra conta, 403 no from.

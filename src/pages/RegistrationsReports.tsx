@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ClipboardList, Search, Download } from 'lucide-react';
+import { ArrowLeft, ClipboardList, Search, Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -151,6 +151,57 @@ const RegistrationsReports: React.FC = () => {
     showSuccess('CSV exportado com sucesso.');
   };
 
+  const handleExportPdf = async () => {
+    if (!registrations || registrations.length === 0) {
+      showError('Nenhum dado para exportar.');
+      return;
+    }
+    try {
+      const { default: jsPDF } = await import('jspdf');
+      const autoTable = (await import('jspdf-autotable')).default;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const title = 'Relatorio de Inscricoes';
+      doc.setFontSize(14);
+      doc.text(title, 14, 12);
+      doc.setFontSize(9);
+      const evs = events || [];
+      const eventLabel =
+        selectedEventId === 'all'
+          ? 'Todos os eventos'
+          : evs.find((e) => e.id === selectedEventId)?.title ?? 'Evento';
+      doc.text(`Evento: ${eventLabel}`, 14, 18);
+      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 24);
+      const head = [
+        ['Evento', 'Nome', 'CPF', 'Cidade', 'UF', 'Telefone', 'E-mail', 'Confirmado', 'Data inscricao'],
+      ];
+      const body = registrations.map((r) => [
+        r.event_title.slice(0, 28),
+        r.full_name.slice(0, 32),
+        r.cpf,
+        r.city.slice(0, 18),
+        r.state,
+        r.phone,
+        r.email.slice(0, 36),
+        r.confirmed ? 'Sim' : 'Nao',
+        new Date(r.created_at).toLocaleString('pt-BR'),
+      ]);
+      autoTable(doc, {
+        startY: 28,
+        head,
+        body,
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: [180, 140, 20], textColor: 20 },
+        margin: { left: 10, right: 10 },
+        tableWidth: 'auto',
+      });
+      doc.save(`relatorio_inscricoes_${new Date().toISOString().slice(0, 10)}.pdf`);
+      showSuccess('PDF exportado com sucesso.');
+    } catch (e) {
+      console.error(e);
+      showError('Falha ao gerar PDF. Rode: npm install jspdf jspdf-autotable');
+    }
+  };
+
   const filteredEvents = events || [];
 
   return (
@@ -217,7 +268,7 @@ const RegistrationsReports: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
               className="border-yellow-500/40 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/15 text-sm"
@@ -225,6 +276,14 @@ const RegistrationsReports: React.FC = () => {
             >
               <Download className="h-4 w-4 mr-2" />
               Exportar CSV
+            </Button>
+            <Button
+              variant="outline"
+              className="border-yellow-500/40 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/15 text-sm"
+              onClick={handleExportPdf}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Exportar PDF
             </Button>
           </div>
         </CardContent>

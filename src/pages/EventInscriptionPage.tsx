@@ -61,6 +61,8 @@ const EventInscriptionPage: React.FC = () => {
     const [loadingEvent, setLoadingEvent] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [cities, setCities] = useState<{ id: number; nome: string }[]>([]);
+    const [loadingCities, setLoadingCities] = useState(false);
     const [form, setForm] = useState({
         full_name: '',
         cpf: '',
@@ -96,12 +98,53 @@ const EventInscriptionPage: React.FC = () => {
         fetchEvent();
     }, [eventId]);
 
+    useEffect(() => {
+        if (!form.state) {
+            setCities([]);
+            return;
+        }
+        let cancelled = false;
+        setLoadingCities(true);
+        setCities([]);
+        fetch(
+            `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${form.state}/municipios`,
+        )
+            .then((res) => res.json())
+            .then((data: { id: number; nome: string }[]) => {
+                if (!cancelled && Array.isArray(data)) {
+                    setCities(
+                        [...data].sort((a, b) =>
+                            a.nome.localeCompare(b.nome, 'pt-BR'),
+                        ),
+                    );
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setCities([]);
+                    showError('Não foi possível carregar as cidades. Tente outro estado ou digite a cidade manualmente abaixo.');
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingCities(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [form.state]);
+
     const handleChange = (field: string, value: string) => {
         if (field === 'cpf') value = formatCPF(value);
         if (field === 'phone') value = formatPhone(value);
         if (field === 'age' && value !== '' && !/^\d*$/.test(value)) return;
-        setForm(prev => ({ ...prev, [field]: value }));
-        if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+        if (field === 'state') {
+            setForm((prev) => ({ ...prev, state: value, city: '' }));
+            if (errors.state) setErrors((prev) => ({ ...prev, state: '' }));
+            if (errors.city) setErrors((prev) => ({ ...prev, city: '' }));
+            return;
+        }
+        setForm((prev) => ({ ...prev, [field]: value }));
+        if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
     };
 
     const validate = (): boolean => {
@@ -315,29 +358,67 @@ const EventInscriptionPage: React.FC = () => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
                             <div>
-                                <label className={labelClass}>Cidade *</label>
-                                <Input
-                                    value={form.city}
-                                    onChange={e => handleChange('city', e.target.value)}
-                                    className={inputClass}
-                                    placeholder="Cidade"
-                                    autoComplete="address-level2"
-                                />
-                                {errors.city && <p className="text-red-400 text-xs mt-1">{errors.city}</p>}
-                            </div>
-                            <div>
                                 <label className={labelClass}>Estado (UF) *</label>
                                 <select
                                     value={form.state}
-                                    onChange={e => handleChange('state', e.target.value)}
+                                    onChange={(e) => handleChange('state', e.target.value)}
                                     className={`w-full rounded-md border ${inputClass} px-3 focus:outline-none focus:ring-2 focus:ring-yellow-500`}
                                 >
-                                    <option value="">Selecione</option>
-                                    {UF_LIST.map(uf => (
-                                        <option key={uf} value={uf}>{uf}</option>
+                                    <option value="">Selecione o estado</option>
+                                    {UF_LIST.map((uf) => (
+                                        <option key={uf} value={uf}>
+                                            {uf}
+                                        </option>
                                     ))}
                                 </select>
-                                {errors.state && <p className="text-red-400 text-xs mt-1">{errors.state}</p>}
+                                {errors.state && (
+                                    <p className="text-red-400 text-xs mt-1">{errors.state}</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className={labelClass}>Cidade *</label>
+                                {!form.state ? (
+                                    <p className={`${inputClass} flex items-center px-3 text-gray-500 text-sm border rounded-md`}>
+                                        Selecione o estado para listar as cidades
+                                    </p>
+                                ) : loadingCities ? (
+                                    <p className={`${inputClass} flex items-center gap-2 px-3 text-gray-400 text-sm border rounded-md`}>
+                                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                                        Carregando cidades…
+                                    </p>
+                                ) : cities.length > 0 ? (
+                                    <select
+                                        value={
+                                            cities.some((c) => c.nome === form.city)
+                                                ? form.city
+                                                : ''
+                                        }
+                                        onChange={(e) =>
+                                            handleChange('city', e.target.value)
+                                        }
+                                        className={`w-full rounded-md border ${inputClass} px-3 focus:outline-none focus:ring-2 focus:ring-yellow-500`}
+                                    >
+                                        <option value="">Selecione a cidade</option>
+                                        {cities.map((c) => (
+                                            <option key={c.id} value={c.nome}>
+                                                {c.nome}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <Input
+                                        value={form.city}
+                                        onChange={(e) =>
+                                            handleChange('city', e.target.value)
+                                        }
+                                        className={inputClass}
+                                        placeholder="Digite a cidade"
+                                        autoComplete="address-level2"
+                                    />
+                                )}
+                                {errors.city && (
+                                    <p className="text-red-400 text-xs mt-1">{errors.city}</p>
+                                )}
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
