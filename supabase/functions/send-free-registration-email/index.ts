@@ -7,9 +7,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const json200 = (obj: Record<string, unknown>) =>
+  new Response(JSON.stringify(obj), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 type RequestBody = {
-  qrCode: string;
-  email: string;
+  qrCode?: string;
+  email?: string;
   eventTitle?: string;
   eventDate?: string;
   eventTime?: string;
@@ -22,29 +28,31 @@ serve(async (req) => {
   }
 
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ success: false, error: "Method not allowed" }),
-      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json200({ success: false, error: "method_not_allowed" });
   }
 
   try {
-    const body = (await req.json()) as RequestBody;
-    const { qrCode, email, eventTitle, eventDate, eventTime, eventLocation } = body;
-
-    if (!qrCode || !email) {
-      return new Response(
-        JSON.stringify({ success: false, error: "qrCode e email são obrigatórios." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    let body: RequestBody = {};
+    try {
+      body = (await req.json()) as RequestBody;
+    } catch {
+      return json200({ success: false, error: "invalid_json" });
     }
 
-    const supabaseService = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+    const { qrCode, email, eventTitle, eventDate, eventTime, eventLocation } = body;
+    if (!qrCode || !email) {
+      return json200({ success: false, error: "missing_qr_or_email" });
+    }
 
-    // Verifica se a inscrição existe e lê email_sent_at
+    const url = Deno.env.get("SUPABASE_URL") ?? "";
+    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!url || !key) {
+      console.error("[send-free-registration-email] SUPABASE_URL ou SERVICE_ROLE ausente");
+      return json200({ success: false, error: "server_misconfigured" });
+    }
+
+    const supabaseService = createClient(url, key);
+
     const { data: registration, error: registrationError } = await supabaseService
       .from("event_registrations")
       .select("id, email_sent_at")
@@ -52,117 +60,92 @@ serve(async (req) => {
       .maybeSingle();
 
     if (registrationError) {
-      console.error("[send-free-registration-email] registrationError:", registrationError);
-      return new Response(
-        JSON.stringify({ success: false, error: "Falha ao buscar inscrição." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.error("[send-free-registration-email] db:", registrationError);
+      return json200({
+        success: false,
+        error: "db_read",
+        detail: registrationError.message,
+      });
     }
 
     if (!registration) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Inscrição não encontrada para este QR Code." }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json200({ success: false, error: "registration_not_found" });
     }
 
-    // Se já foi enviado antes, não reenviar; apenas retorna sucesso idempotente
     if (registration.email_sent_at) {
-      return new Response(
-        JSON.stringify({ success: true, alreadySent: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json200({ success: true, alreadySent: true });
     }
 
     const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
     if (!resendKey) {
-      console.error("[send-free-registration-email] RESEND_API_KEY não configurada.");
-      // Não falha a experiência do usuário na tela; apenas registra erro
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Serviço de e-mail não configurado (RESEND_API_KEY ausente).",
-        }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.error("[send-free-registration-email] RESEND_API_KEY ausente");
+      return json200({ success: false, error: "no_resend_key" });
     }
 
-    const subject = `Ingresso para o evento ${eventTitle ?? ""}`.trim();
+    const subject = `Ingresso — ${eventTitle ?? "Evento"}`.trim();
     const dateLine = eventDate ? `Data: <strong>${eventDate}</strong>` : "";
     const timeLine = eventTime ? ` · Horário: <strong>${eventTime}</strong>` : "";
     const locationLine = eventLocation
       ? `<br />Local: <strong>${eventLocation}</strong>`
       : "";
 
-    const html = `
-      <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827;">
-        <h1 style="font-size: 20px; margin-bottom: 8px;">Inscrição confirmada!</h1>
-        <p style="margin: 0 0 12px 0;">
-          Sua inscrição no evento <strong>${eventTitle ?? "Evento"}</strong> foi registrada com sucesso.
-        </p>
-        <p style="margin: 0 0 16px 0; font-size: 14px; color: #4b5563;">
-          ${dateLine}${timeLine}${locationLine}
-        </p>
-        <p style="margin: 0 0 12px 0; font-size: 14px; color: #4b5563;">
-          Abaixo está o seu <strong>ingresso digital</strong>. Apresente este QR Code no dia do evento.
-        </p>
-        <div style="margin: 16px 0; padding: 12px; display: inline-block; background: #ffffff; border-radius: 12px;">
-          <img
-            src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrCode)}"
-            alt="QR Code do ingresso"
-            width="240"
-            height="240"
-          />
-        </div>
-        <p style="margin: 0; font-size: 12px; color: #6b7280;">
-          Guarde este e-mail. Este mesmo QR Code será usado para validar sua entrada.
-        </p>
-      </div>
-    `;
+    const html = `<div style="font-family:system-ui,sans-serif;color:#111">
+      <h1 style="font-size:18px">Inscrição confirmada</h1>
+      <p><strong>${eventTitle ?? "Evento"}</strong></p>
+      <p style="color:#555;font-size:14px">${dateLine}${timeLine}${locationLine}</p>
+      <p style="font-size:14px">Apresente este QR no dia do evento.</p>
+      <p><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}" width="200" height="200" alt="QR" /></p>
+    </div>`;
 
-    const emailResponse = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resendKey}`,
-      },
-      body: JSON.stringify({
-        from: Deno.env.get("FREE_EVENTS_FROM_EMAIL") ?? "onboarding@resend.dev",
-        to: [email],
-        subject,
-        html,
-      }),
-    });
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 15000);
+
+    let emailResponse: Response;
+    try {
+      emailResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${resendKey}`,
+        },
+        body: JSON.stringify({
+          from: Deno.env.get("FREE_EVENTS_FROM_EMAIL") ?? "onboarding@resend.dev",
+          to: [email],
+          subject,
+          html,
+        }),
+      });
+    } catch (e) {
+      clearTimeout(t);
+      console.error("[send-free-registration-email] fetch Resend:", e);
+      return json200({ success: false, error: "resend_timeout_or_network" });
+    }
+    clearTimeout(t);
 
     if (!emailResponse.ok) {
       const errorText = await emailResponse.text();
-      console.error("[send-free-registration-email] Resend error:", emailResponse.status, errorText);
-      return new Response(
-        JSON.stringify({ success: false, error: "Falha ao enviar e-mail de ingresso." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.error("[send-free-registration-email] Resend:", emailResponse.status, errorText);
+      return json200({
+        success: false,
+        error: "resend_rejected",
+        status: emailResponse.status,
+        detail: errorText.slice(0, 500),
+      });
     }
 
-    // Marca email_sent_at
     const { error: updateError } = await supabaseService
       .from("event_registrations")
       .update({ email_sent_at: new Date().toISOString() })
       .eq("qr_code", qrCode);
 
     if (updateError) {
-      console.error("[send-free-registration-email] updateError:", updateError);
+      console.error("[send-free-registration-email] update:", updateError);
     }
 
-    return new Response(
-      JSON.stringify({ success: true }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json200({ success: true });
   } catch (err) {
-    console.error("[send-free-registration-email] Unexpected error:", err);
-    return new Response(
-      JSON.stringify({ success: false, error: "Erro inesperado ao enviar e-mail." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    console.error("[send-free-registration-email] catch:", err);
+    return json200({ success: false, error: "unexpected" });
   }
 });
-
