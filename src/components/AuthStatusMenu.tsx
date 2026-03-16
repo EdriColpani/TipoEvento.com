@@ -46,13 +46,10 @@ const AuthStatusMenu: React.FC = () => {
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            showError("Erro ao sair: " + error.message);
-        } else {
-            showSuccess("Sessão encerrada com sucesso.");
-            navigate('/');
-        }
+        await supabase.auth.signOut({ scope: 'local' });
+        showSuccess('Sessão encerrada.');
+        setSession(null);
+        navigate('/', { replace: true });
     };
 
     if (loadingSession || isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany)) {

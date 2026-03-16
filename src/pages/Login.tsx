@@ -61,7 +61,7 @@ const Login: React.FC = () => {
                     redirectPath = '/manager/dashboard';
                 } else if (userType === 3) {
                     successMessage = "Login de Cliente realizado com sucesso!";
-                    redirectPath = '/';
+                    redirectPath = '/profile';
                 } else {
                     showError("Tipo de usuário desconhecido. Acesso negado.");
                     await supabase.auth.signOut();
@@ -70,8 +70,7 @@ const Login: React.FC = () => {
                 }
                 
                 showSuccess(successMessage);
-                // 4. Roteamento para a rota específica
-                navigate(redirectPath);
+                navigate(redirectPath, { replace: true });
             } else {
                 // Isso pode acontecer se o e-mail não estiver confirmado, dependendo da configuração do Supabase
                 showError("Login falhou. Verifique seu e-mail e senha.");

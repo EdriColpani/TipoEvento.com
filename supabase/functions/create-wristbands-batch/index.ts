@@ -102,21 +102,23 @@ serve(async (req) => {
         const currentBatchSize = Math.min(BATCH_SIZE, quantity - i);
 
         for (let j = 0; j < currentBatchSize; j++) {
+            const seq = i + j + 1;
+            const uniqueCode = `${wristbandCode}-${String(seq).padStart(3, '0')}`;
             batchToInsert.push({
                 wristband_id: wristbandId,
                 event_type: 'creation',
-                client_user_id: null, 
-                code_wristbands: wristbandCode,
+                client_user_id: null,
+                code_wristbands: uniqueCode,
                 status: 'active',
-                sequential_number: i + j + 1, // Sequential number for each analytic record
+                sequential_number: seq,
                 event_data: {
-                    code: wristbandCode,
+                    code: uniqueCode,
                     access_type: access_type,
                     price: price,
                     manager_id: manager_user_id,
                     event_id: event_id,
                     initial_status: 'active',
-                    sequential_entry: i + j + 1,
+                    sequential_entry: seq,
                 },
             });
         }

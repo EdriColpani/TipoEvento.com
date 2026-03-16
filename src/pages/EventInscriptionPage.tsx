@@ -197,7 +197,7 @@ const EventInscriptionPage: React.FC = () => {
                 return;
             }
 
-            const row = rpcData as { ok?: boolean; error?: string; qr_code?: string } | null;
+            const row = rpcData as { ok?: boolean; error?: string; qr_code?: string; wristband_code?: string } | null;
             if (!row?.ok) {
                 const msg: Record<string, string> = {
                     cpf_taken: 'Já existe uma inscrição para este CPF neste evento.',
@@ -215,6 +215,7 @@ const EventInscriptionPage: React.FC = () => {
             navigate(`/events/${eventId}/inscricao/sucesso`, {
                 state: {
                     qrCode: row.qr_code,
+                    wristbandCode: row.wristband_code || '',
                     eventTitle: event.title,
                     eventDate: event.date,
                     eventTime: event.time,

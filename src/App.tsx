@@ -72,10 +72,12 @@ const App = () => (
             <Route path="register" element={<Register />} />
             <Route path="login" element={<Login />} />
             <Route path="forgot-password" element={<ForgotPassword />} />
-            <Route path="reset-password" element={<ResetPassword />} />
             <Route path="profile" element={<Profile />} />
             <Route path="tickets" element={<MyTickets />} />
           </Route>
+
+          {/* Reset fora do ClientLayout: evita header “já logado” na sessão de recovery */}
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Public Validator Route - Não requer autenticação */}
           <Route path="/validator" element={<TicketValidator />} />

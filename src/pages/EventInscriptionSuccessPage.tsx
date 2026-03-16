@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 
 interface SuccessLocationState {
   qrCode?: string;
+  wristbandCode?: string;
   eventTitle?: string;
   eventDate?: string;
   eventTime?: string;
@@ -19,6 +20,7 @@ const EventInscriptionSuccessPage: React.FC = () => {
   const state = (location.state || {}) as SuccessLocationState;
 
   const qrCode = state.qrCode;
+  const wristbandCode = state.wristbandCode || '';
   const eventTitle = state.eventTitle || 'Evento';
   const eventDate = state.eventDate || '';
   const eventTime = state.eventTime || '';
@@ -49,6 +51,7 @@ const EventInscriptionSuccessPage: React.FC = () => {
           },
           body: JSON.stringify({
             qrCode,
+            wristbandCode: wristbandCode || undefined,
             email,
             eventTitle,
             eventDate,
@@ -74,7 +77,7 @@ const EventInscriptionSuccessPage: React.FC = () => {
       }
     };
     sendEmail();
-  }, [qrCode, email, eventTitle, eventDate, eventTime, eventLocation]);
+  }, [qrCode, wristbandCode, email, eventTitle, eventDate, eventTime, eventLocation]);
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-8 flex items-center justify-center">
@@ -116,6 +119,15 @@ const EventInscriptionSuccessPage: React.FC = () => {
                   Este é o seu <span className="text-yellow-400 font-semibold">ingresso digital</span>.
                   Apresente este QR Code no dia do evento para entrar.
                 </p>
+                {wristbandCode && (
+                  <div className="mt-4 p-3 bg-black/60 border border-yellow-500/30 rounded-xl w-full max-w-xs text-left">
+                    <p className="text-yellow-400 text-xs font-semibold mb-1">Código da pulseira</p>
+                    <p className="text-white font-mono text-sm break-all">{wristbandCode}</p>
+                    <p className="text-gray-500 text-xs mt-2">
+                      Se o QR code não funcionar na entrada, informe este código ao organizador.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <p className="text-gray-400 text-xs sm:text-sm mb-6">

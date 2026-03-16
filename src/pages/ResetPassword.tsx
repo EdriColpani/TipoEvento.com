@@ -54,8 +54,14 @@ const ResetPassword = () => {
       showError(error.message || 'Não foi possível atualizar a senha.');
       return;
     }
-    showSuccess('Senha atualizada. Faça login com a nova senha.');
-    await supabase.auth.signOut();
+    showSuccess('Senha atualizada. Entre de novo com a nova senha.');
+    // scope local evita erro de revoke no servidor (comum após recovery)
+    await supabase.auth.signOut({ scope: 'local' });
+    try {
+      window.history.replaceState(null, '', `${window.location.origin}/login`);
+    } catch {
+      /* ignore */
+    }
     navigate('/login', { replace: true });
   };
 
@@ -92,7 +98,9 @@ const ResetPassword = () => {
         <div className="text-center mb-6">
           <div className="text-3xl font-serif text-yellow-500 font-bold mb-2">EventoFest</div>
           <h1 className="text-2xl font-semibold">Nova senha</h1>
-          <p className="text-gray-400 text-sm mt-1">Defina uma senha nova para sua conta.</p>
+          <p className="text-gray-400 text-sm mt-1">
+            Link de recuperação ativo — não é login normal. Defina a nova senha e depois entre de novo.
+          </p>
         </div>
         <form
           onSubmit={handleSubmit}

@@ -193,11 +193,75 @@ serve(async (req) => {
       }), { status: ok ? 200 : 400, headers: corsHeaders });
     }
 
-    // 6. Buscar o ingresso/pulseira (código base do lote)
+    // 5c. Código no formato BASE-NNN (ex: CHAVA-001) = code_wristbands em wristband_analytics
+    if (codeTrim.includes('-')) {
+      const codeUpper = codeTrim.toUpperCase();
+      const { data: wa, error: waErr } = await supabaseService
+        .from('wristband_analytics')
+        .select('id, status, event_type, wristband_id, code_wristbands')
+        .eq('code_wristbands', codeUpper)
+        .single();
+
+      if (!waErr && wa) {
+        const { data: wristbandData, error: wbErr } = await supabaseService
+          .from('wristbands')
+          .select('id, code, status, event_id, access_type')
+          .eq('id', wa.wristband_id)
+          .single();
+
+        if (!wbErr && wristbandData) {
+          if (apiKeyData.event_id && apiKeyData.event_id !== wristbandData.event_id) {
+            return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada para este evento.' }), { status: 403, headers: corsHeaders });
+          }
+          const paidOrFree = wa.event_type === 'purchase' || wa.event_type === 'free_registration';
+          const ok = wa.status === 'used' && paidOrFree;
+          const validationStatus = ok ? 'success' : 'not_paid';
+          const validationMessage = ok
+            ? (validation_type === 'entry' ? 'Entrada validada.' : 'Saída registrada.')
+            : 'Ingresso ainda não liberado ou inválido.';
+
+          await supabaseService.from('validation_logs').insert({
+            api_key_id: apiKeyData.id,
+            event_id: wristbandData.event_id,
+            wristband_id: wristbandData.id,
+            wristband_code: wa.code_wristbands,
+            validation_type,
+            validation_status: validationStatus,
+            validation_message: validationMessage,
+            validated_by_name: apiKeyData.name,
+            ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+            user_agent: req.headers.get('user-agent') || null,
+          });
+
+          if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
+            await supabaseService
+              .from('event_registrations')
+              .update({ confirmed: true })
+              .eq('qr_code', wa.id)
+              .eq('event_id', wristbandData.event_id);
+          }
+
+          return new Response(JSON.stringify({
+            success: ok,
+            message: validationMessage,
+            wristband_code: wa.code_wristbands,
+            analytics_id: wa.id,
+            validation_type,
+            wristband_status: wristbandData.status,
+            event_id: wristbandData.event_id,
+            validated_at: new Date().toISOString(),
+            validated_by: apiKeyData.name,
+            inscription_confirmed: ok && validation_type === 'entry' && wa.event_type === 'free_registration',
+          }), { status: ok ? 200 : 400, headers: corsHeaders });
+        }
+      }
+    }
+
+    // 6. Buscar o ingresso/pulseira (código base do lote, ex: CHAVA sem sufixo)
     const { data: wristbandData, error: wristbandError } = await supabaseService
       .from('wristbands')
       .select('id, code, status, event_id, access_type')
-      .eq('code', wristband_code)
+      .eq('code', codeTrim)
       .single();
 
     if (wristbandError || !wristbandData) {
