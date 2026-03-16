@@ -167,11 +167,11 @@ serve(async (req) => {
         user_agent: req.headers.get('user-agent') || null,
       });
 
-      // Inscrição gratuita: mesmo QR está em event_registrations.qr_code → marcar presença confirmada na entrada
+      // Inscrição gratuita: marcar presença e data/hora da confirmação na entrada
       if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
         const { error: regErr } = await supabaseService
           .from('event_registrations')
-          .update({ confirmed: true })
+          .update({ confirmed: true, confirmed_at: new Date().toISOString() })
           .eq('qr_code', codeTrim)
           .eq('event_id', wristbandData.event_id);
         if (regErr) {
@@ -236,7 +236,7 @@ serve(async (req) => {
           if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
             await supabaseService
               .from('event_registrations')
-              .update({ confirmed: true })
+              .update({ confirmed: true, confirmed_at: new Date().toISOString() })
               .eq('qr_code', wa.id)
               .eq('event_id', wristbandData.event_id);
           }
