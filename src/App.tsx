@@ -25,6 +25,7 @@ import ManagerCreateWristband from "./pages/ManagerCreateWristband";
 import ManagerWristbandsList from "./pages/ManagerWristbandsList"; 
 import ManagerManageWristband from "./pages/ManagerManageWristband";
 import ManagerReports from "./pages/ManagerReports";
+import WristbandMovementsReports from "./pages/WristbandMovementsReports";
 import FinancialReports from "./pages/FinancialReports";
 import EventTicketDetailsPage from "./pages/EventTicketDetailsPage";
 import EventInscriptionPage from "./pages/EventInscriptionPage";
@@ -108,6 +109,7 @@ const App = () => (
             <Route path="/manager/reports/events" element={<EventReports />} />
             <Route path="/manager/reports/audience" element={<AudienceReports />} />
             <Route path="/manager/reports/registrations" element={<RegistrationsReports />} />
+            <Route path="/manager/reports/wristband-movements" element={<WristbandMovementsReports />} />
             <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />
             <Route path="/manager/settings/company-profile" element={<ManagerCompanyProfile />} />
