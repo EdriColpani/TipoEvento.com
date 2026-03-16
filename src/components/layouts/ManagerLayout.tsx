@@ -22,6 +22,7 @@ const ManagerLayout: React.FC = () => {
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const [loadingSession, setLoadingSession] = useState(true);
     const [isSettingsDropdownOpen, setIsSettingsDropdownOpen] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { isMobile, isTablet } = useDevice();
 
     const isAdminSettingsPath = useMemo(() => {
@@ -303,7 +304,7 @@ const ManagerLayout: React.FC = () => {
                         </DropdownMenu>
 
                         {/* Mobile Menu Trigger */}
-                        <Sheet>
+                        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
                             <SheetTrigger asChild>
                                 <Button variant="ghost" size="icon" className="md:hidden text-yellow-500 hover:bg-yellow-500/10">
                                     <Menu className="h-6 w-6" />
@@ -339,56 +340,56 @@ const ManagerLayout: React.FC = () => {
                                                         </button>
                                                         <div className="pl-6 space-y-1 border-l border-yellow-500/20 ml-3">
                                                             <button 
-                                                                onClick={() => navigate('/admin/settings/carousel')}
+                                                                onClick={() => { navigate('/admin/settings/carousel'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <SlidersHorizontal className="mr-2 h-4 w-4" />
                                                                 Config. Carrossel
                                                             </button>
                                                             <button 
-                                                                onClick={() => navigate('/admin/settings/commission-tiers')}
+                                                                onClick={() => { navigate('/admin/settings/commission-tiers'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <Percent className="mr-2 h-4 w-4" />
                                                                 Faixas de Comissão
                                                             </button>
                                                             <button 
-                                                                onClick={() => navigate('/admin/settings/contracts')}
+                                                                onClick={() => { navigate('/admin/settings/contracts'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <FileText className="mr-2 h-4 w-4" />
                                                                 Contratos
                                                             </button>
                                                             <button 
-                                                                onClick={() => navigate('/admin/banners')}
+                                                                onClick={() => { navigate('/admin/banners'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <ListOrdered className="mr-2 h-4 w-4" />
                                                                 Listar Banners
                                                             </button>
                                                             <button 
-                                                                onClick={() => navigate('/admin/banners/create')}
+                                                                onClick={() => { navigate('/admin/banners/create'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <Image className="mr-2 h-4 w-4" />
                                                                 Criar Banner Promo
                                                             </button>
                                                             <button 
-                                                                onClick={() => navigate('/manager/settings/advanced')}
+                                                                onClick={() => { navigate('/manager/settings/advanced'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <Settings className="mr-2 h-4 w-4" />
                                                                 Avançadas
                                                             </button>
                                                             <button 
-                                                                onClick={() => navigate('/manager/settings/backup-database')}
+                                                                onClick={() => { navigate('/manager/settings/backup-database'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <Database className="mr-2 h-4 w-4" />
                                                                 Backup do Banco
                                                             </button>
                                                             <button 
-                                                                onClick={() => navigate('/manager/settings/history')}
+                                                                onClick={() => { navigate('/manager/settings/history'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
                                                                 <History className="mr-2 h-4 w-4" />
@@ -403,7 +404,7 @@ const ManagerLayout: React.FC = () => {
                                             return (
                                                 <button 
                                                     key={item.path}
-                                                    onClick={() => navigate(item.path)} 
+                                                    onClick={() => { navigate(item.path); setIsMobileMenuOpen(false); }} 
                                                     className="flex items-center p-3 rounded-xl text-white hover:bg-yellow-500/10 transition-colors duration-200 text-lg w-full justify-start"
                                                 >
                                                     {item.icon}
