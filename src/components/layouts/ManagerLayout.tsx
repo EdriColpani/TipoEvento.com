@@ -9,6 +9,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useUserType } from '@/hooks/use-user-type';
 import { showError } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useDevice } from '@/hooks/use-device';
 
 const ADMIN_USER_TYPE_ID = 1;
 const MANAGER_USER_TYPE_ID = 2;
@@ -21,6 +22,7 @@ const ManagerLayout: React.FC = () => {
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const [loadingSession, setLoadingSession] = useState(true);
     const [isSettingsDropdownOpen, setIsSettingsDropdownOpen] = useState(false);
+    const { isMobile, isTablet } = useDevice();
 
     const isAdminSettingsPath = useMemo(() => {
         return location.pathname.startsWith('/admin/settings') ||
@@ -144,7 +146,7 @@ const ManagerLayout: React.FC = () => {
     return (
         <div className="min-h-screen bg-black text-white">
             <header ref={headerRef} className="fixed top-0 left-0 right-0 z-[110] bg-black/90 backdrop-blur-md border-b border-yellow-500/20">
-                <div className="flex items-center justify-between max-w-7xl px-4 sm:px-6 py-4 mx-auto">
+                <div className={`flex items-center justify-between max-w-7xl mx-auto ${isMobile ? 'px-3 py-3' : isTablet ? 'px-4 py-4' : 'px-6 py-4'}`}>
                     <div className="flex items-center space-x-4 sm:space-x-6">
                         <div 
                             className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold flex items-center cursor-pointer"
@@ -425,7 +427,10 @@ const ManagerLayout: React.FC = () => {
                     </div>
                 </div>
             </header>
-            <main style={{ paddingTop: `${Math.max(headerHeight, 80)}px` }} className="p-4 sm:p-6">
+            <main
+                style={{ paddingTop: `${Math.max(headerHeight, 80)}px` }}
+                className={isMobile ? 'p-3' : isTablet ? 'p-4' : 'p-6'}
+            >
                 <Outlet />
             </main>
         </div>
