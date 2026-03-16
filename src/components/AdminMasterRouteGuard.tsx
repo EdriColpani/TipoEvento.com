@@ -34,8 +34,8 @@ const AdminMasterRouteGuard: React.FC = () => {
         return <Navigate to="/manager/login" replace />;
     }
 
-    // 2. Check if user is Admin Master (tipo_usuario_id = 1)
-    if (profile.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID) {
+    // 2. Check if user is Admin Master (tipo_usuario_id = 1); Number() evita falha se vier como string do DB
+    if (Number(profile.tipo_usuario_id) !== ADMIN_MASTER_USER_TYPE_ID) {
         showError("Acesso negado. Você não tem permissão de Administrador Master.");
         
         // Redirect non-admin masters to the manager dashboard

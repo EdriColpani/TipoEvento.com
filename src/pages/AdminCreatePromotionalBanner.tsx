@@ -64,7 +64,7 @@ const AdminCreatePromotionalBanner: React.FC = () => {
     };
 
     const onSubmit = async (values: PromotionalBannerFormData) => {
-        if (!userId || profile?.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID) {
+        if (!userId || Number(profile?.tipo_usuario_id) !== ADMIN_MASTER_USER_TYPE_ID) {
             showError("Acesso negado. Apenas Administradores Master podem criar banners.");
             return;
         }
@@ -109,7 +109,8 @@ const AdminCreatePromotionalBanner: React.FC = () => {
         }
     };
     
-    if (isLoadingProfile) {
+    // Aguardar userId (definido de forma assíncrona) e carregamento do perfil antes de checar permissão
+    if (!userId || isLoadingProfile) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -118,7 +119,8 @@ const AdminCreatePromotionalBanner: React.FC = () => {
         );
     }
 
-    if (profile?.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID) {
+    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
+    if (!isAdminMaster) {
         showError("Acesso negado. Você não tem permissão de Administrador Master.");
         navigate('/manager/dashboard');
         return null;

@@ -88,7 +88,7 @@ const ManagerCarouselSettings: React.FC = () => {
     };
 
     const handleSave = async () => {
-        if (!userId || !profile || profile.tipo_usuario_id !== 1 || !settings) {
+        if (!userId || !profile || Number(profile.tipo_usuario_id) !== 1 || !settings) {
             showError("Você não tem permissão para salvar estas configurações.");
             return;
         }
@@ -125,7 +125,7 @@ const ManagerCarouselSettings: React.FC = () => {
         }
     };
 
-    if (isLoading || isLoadingProfile || !settings) {
+    if (isLoading || isLoadingProfile || !userId || !settings) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -133,11 +133,10 @@ const ManagerCarouselSettings: React.FC = () => {
             </div>
         );
     }
-    
-    // Verifica se o usuário é Admin Master
-    if (profile?.tipo_usuario_id !== 1) {
+
+    if (Number(profile?.tipo_usuario_id) !== 1) {
         showError("Acesso negado. Você não tem permissão de Administrador Master para esta página.");
-        navigate('/manager/dashboard'); // Redireciona para o dashboard do gestor
+        navigate('/manager/dashboard');
         return null;
     }
 
