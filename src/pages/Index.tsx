@@ -16,6 +16,61 @@ import { showSuccess, showError } from '@/utils/toast'; // Importando toast
 
 const EVENTS_PER_PAGE = 12;
 
+export interface AdvancedFiltersState {
+    price: { gratuito: boolean; ate100: boolean; range100_300: boolean; acima300: boolean };
+    time: { manha: boolean; tarde: boolean; noite: boolean };
+    status: { vendasAbertas: boolean; ultimosIngressos: boolean };
+}
+
+const defaultFilters: AdvancedFiltersState = {
+    price: { gratuito: false, ate100: false, range100_300: false, acima300: false },
+    time: { manha: false, tarde: false, noite: false },
+    status: { vendasAbertas: false, ultimosIngressos: false },
+};
+
+function parseTimeHour(timeStr: string): number {
+    if (!timeStr) return 0;
+    const part = String(timeStr).trim().split(':')[0];
+    const h = parseInt(part, 10);
+    return isNaN(h) ? 0 : h % 24;
+}
+
+function applyAdvancedFilters(events: PublicEvent[], filters: AdvancedFiltersState): PublicEvent[] {
+    const { price, time, status } = filters;
+    const anyPrice = price.gratuito || price.ate100 || price.range100_300 || price.acima300;
+    const anyTime = time.manha || time.tarde || time.noite;
+    const anyStatus = status.vendasAbertas || status.ultimosIngressos;
+
+    return events.filter((event) => {
+        if (anyPrice) {
+            const min = event.min_price ?? 0;
+            const isFree = !event.is_paid || min === 0;
+            const matchGratuito = price.gratuito && isFree;
+            const matchAte100 = price.ate100 && min > 0 && min <= 100;
+            const match100_300 = price.range100_300 && min > 100 && min <= 300;
+            const matchAcima300 = price.acima300 && min > 300;
+            if (!matchGratuito && !matchAte100 && !match100_300 && !matchAcima300) return false;
+        }
+        if (anyTime) {
+            const hour = parseTimeHour(event.time);
+            const matchManha = time.manha && hour >= 6 && hour < 12;
+            const matchTarde = time.tarde && hour >= 12 && hour < 18;
+            const matchNoite = time.noite && (hour >= 18 || hour < 6);
+            if (!matchManha && !matchTarde && !matchNoite) return false;
+        }
+        if (anyStatus) {
+            const disponiveis = event.total_available_tickets ?? 0;
+            const cap = event.capacity ?? 0;
+            const vendasAbertas = disponiveis > 0;
+            const ultimosIngressos = cap > 0 && disponiveis > 0 && disponiveis <= Math.max(1, Math.ceil(cap * 0.1));
+            const matchVendas = status.vendasAbertas && vendasAbertas;
+            const matchUltimos = status.ultimosIngressos && ultimosIngressos;
+            if (!matchVendas && !matchUltimos) return false;
+        }
+        return true;
+    });
+}
+
 const getMinPriceDisplay = (price: number | null, isPaid: boolean): string => {
     if (isPaid && (price === null || price === 0)) return 'R$ 0,00';
     if (!isPaid) return 'Gratuito';
@@ -28,9 +83,60 @@ const Index: React.FC = () => {
     const { isMobile, isTablet } = useDevice();
     
     const { events: allEvents, isLoading: isLoadingEvents, isError: isErrorEvents } = usePublicEvents();
-    
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
+    const [cityFilter, setCityFilter] = useState('');
+    const [dateFilter, setDateFilter] = useState('');
+    const [filters, setFilters] = useState<AdvancedFiltersState>(defaultFilters);
+
+    const filteredEvents = React.useMemo(() => {
+        let list = allEvents;
+        const term = searchTerm.trim().toLowerCase();
+        if (term) {
+            list = list.filter((e) =>
+                e.title.toLowerCase().includes(term) ||
+                (e.description || '').toLowerCase().includes(term) ||
+                (e.location || '').toLowerCase().includes(term) ||
+                (e.category || '').toLowerCase().includes(term),
+            );
+        }
+        if (categoryFilter) {
+            list = list.filter((e) => (e.category || '').toLowerCase() === categoryFilter.toLowerCase());
+        }
+        if (cityFilter) {
+            list = list.filter((e) => (e.location || '').toLowerCase().includes(cityFilter.toLowerCase()));
+        }
+        if (dateFilter) {
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            list = list.filter((e) => {
+                const d = e.raw_date;
+                if (!d) return false;
+                const day = new Date(d);
+                day.setHours(0, 0, 0, 0);
+                if (dateFilter === 'hoje') return day.getTime() === now.getTime();
+                if (dateFilter === 'semana') {
+                    const end = new Date(now);
+                    end.setDate(end.getDate() + 7);
+                    return day >= now && day < end;
+                }
+                if (dateFilter === 'mes') {
+                    return day.getMonth() === now.getMonth() && day.getFullYear() === now.getFullYear();
+                }
+                if (dateFilter === 'proximo-mes') {
+                    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                    const endNext = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+                    return day >= next && day <= endNext;
+                }
+                return true;
+            });
+        }
+        return applyAdvancedFilters(list, filters);
+    }, [allEvents, searchTerm, categoryFilter, cityFilter, dateFilter, filters]);
+
     const [currentPage, setCurrentPage] = useState(1);
-    const totalPages = Math.ceil(allEvents.length / EVENTS_PER_PAGE);
+    const totalPages = Math.max(1, Math.ceil(filteredEvents.length / EVENTS_PER_PAGE));
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -50,7 +156,19 @@ const Index: React.FC = () => {
         if (userId) {
             trackAdvancedFilterUse(userId);
         }
-        console.log("Aplicando filtros avançados...");
+        setCurrentPage(1);
+    };
+
+    const togglePrice = (key: keyof AdvancedFiltersState['price']) => {
+        setFilters((prev) => ({ ...prev, price: { ...prev.price, [key]: !prev.price[key] } }));
+        setCurrentPage(1);
+    };
+    const toggleTime = (key: keyof AdvancedFiltersState['time']) => {
+        setFilters((prev) => ({ ...prev, time: { ...prev.time, [key]: !prev.time[key] } }));
+        setCurrentPage(1);
+    };
+    const toggleStatus = (key: keyof AdvancedFiltersState['status']) => {
+        setFilters((prev) => ({ ...prev, status: { ...prev.status, [key]: !prev.status[key] } }));
         setCurrentPage(1);
     };
     
@@ -75,7 +193,7 @@ const Index: React.FC = () => {
 
     const startIndex = (currentPage - 1) * EVENTS_PER_PAGE;
     const endIndex = startIndex + EVENTS_PER_PAGE;
-    const displayedEvents = allEvents.slice(startIndex, endIndex);
+    const displayedEvents = filteredEvents.slice(startIndex, endIndex);
     
     const getPageNumbers = () => {
         const maxPagesToShow = 5;
@@ -114,13 +232,19 @@ const Index: React.FC = () => {
                                     <input
                                         type="text"
                                         placeholder="Buscar eventos..."
+                                        value={searchTerm}
+                                        onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                                         className="w-full bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white placeholder-gray-400 text-base sm:text-lg focus:border-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/20 transition-all duration-300"
                                     />
                                     <i className="fas fa-search absolute right-4 sm:right-6 top-1/2 transform -translate-y-1/2 text-yellow-500 text-lg"></i>
                                 </div>
                             </div>
                             <div className="flex flex-wrap gap-4">
-                                <select className="bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white focus:border-yellow-500 focus:outline-none cursor-pointer text-sm sm:text-base">
+                                <select
+                                    value={categoryFilter}
+                                    onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
+                                    className="bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white focus:border-yellow-500 focus:outline-none cursor-pointer text-sm sm:text-base"
+                                >
                                     <option value="">Todas as Categorias</option>
                                     <option value="musica">Música</option>
                                     <option value="negocios">Negócios</option>
@@ -128,14 +252,22 @@ const Index: React.FC = () => {
                                     <option value="gastronomia">Gastronomia</option>
                                     <option value="tecnologia">Tecnologia</option>
                                 </select>
-                                <select className="bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white focus:border-yellow-500 focus:outline-none cursor-pointer text-sm sm:text-base">
+                                <select
+                                    value={cityFilter}
+                                    onChange={(e) => { setCityFilter(e.target.value); setCurrentPage(1); }}
+                                    className="bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white focus:border-yellow-500 focus:outline-none cursor-pointer text-sm sm:text-base"
+                                >
                                     <option value="">Todas as Cidades</option>
-                                    <option value="sao-paulo">São Paulo</option>
-                                    <option value="rio-janeiro">Rio de Janeiro</option>
-                                    <option value="belo-horizonte">Belo Horizonte</option>
-                                    <option value="brasilia">Brasília</option>
+                                    <option value="São Paulo">São Paulo</option>
+                                    <option value="Rio de Janeiro">Rio de Janeiro</option>
+                                    <option value="Belo Horizonte">Belo Horizonte</option>
+                                    <option value="Brasília">Brasília</option>
                                 </select>
-                                <select className="bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white focus:border-yellow-500 focus:outline-none cursor-pointer text-sm sm:text-base">
+                                <select
+                                    value={dateFilter}
+                                    onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); }}
+                                    className="bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white focus:border-yellow-500 focus:outline-none cursor-pointer text-sm sm:text-base"
+                                >
                                     <option value="">Todas as Datas</option>
                                     <option value="hoje">Hoje</option>
                                     <option value="semana">Esta Semana</option>
@@ -155,19 +287,19 @@ const Index: React.FC = () => {
                                         <h4 className="text-white font-medium mb-3">Faixa de Preço</h4>
                                         <div className="space-y-3">
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.price.gratuito} onChange={() => togglePrice('gratuito')} />
                                                 <span className="text-gray-300">Gratuito</span>
                                             </label>
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.price.ate100} onChange={() => togglePrice('ate100')} />
                                                 <span className="text-gray-300">Até R$ 100</span>
                                             </label>
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.price.range100_300} onChange={() => togglePrice('range100_300')} />
                                                 <span className="text-gray-300">R$ 100 - R$ 300</span>
                                             </label>
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.price.acima300} onChange={() => togglePrice('acima300')} />
                                                 <span className="text-gray-300">Acima de R$ 300</span>
                                             </label>
                                         </div>
@@ -176,15 +308,15 @@ const Index: React.FC = () => {
                                         <h4 className="text-white font-medium mb-3">Horário</h4>
                                         <div className="space-y-3">
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.time.manha} onChange={() => toggleTime('manha')} />
                                                 <span className="text-gray-300">Manhã (06:00 - 12:00)</span>
                                             </label>
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.time.tarde} onChange={() => toggleTime('tarde')} />
                                                 <span className="text-gray-300">Tarde (12:00 - 18:00)</span>
                                             </label>
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.time.noite} onChange={() => toggleTime('noite')} />
                                                 <span className="text-gray-300">Noite (18:00 - 00:00)</span>
                                             </label>
                                         </div>
@@ -193,11 +325,11 @@ const Index: React.FC = () => {
                                         <h4 className="text-white font-medium mb-3">Status</h4>
                                         <div className="space-y-3">
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" defaultChecked />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.status.vendasAbertas} onChange={() => toggleStatus('vendasAbertas')} />
                                                 <span className="text-gray-300">Vendas Abertas</span>
                                             </label>
                                             <label className="flex items-center cursor-pointer">
-                                                <input type="checkbox" className="mr-3 accent-yellow-500" />
+                                                <input type="checkbox" className="mr-3 accent-yellow-500" checked={filters.status.ultimosIngressos} onChange={() => toggleStatus('ultimosIngressos')} />
                                                 <span className="text-gray-300">Últimos Ingressos</span>
                                             </label>
                                         </div>
@@ -221,6 +353,14 @@ const Index: React.FC = () => {
                                         <div className="col-span-full text-center py-10">
                                             <AlertTriangle className="h-10 w-10 text-red-500 mx-auto mb-4" />
                                             <p className="text-gray-400">Nenhum evento encontrado.</p>
+                                        </div>
+                                    </div>
+                                ) : filteredEvents.length === 0 ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
+                                        <div className="col-span-full text-center py-10">
+                                            <AlertTriangle className="h-10 w-10 text-yellow-500 mx-auto mb-4" />
+                                            <p className="text-gray-400">Nenhum evento corresponde aos filtros selecionados.</p>
+                                            <p className="text-gray-500 text-sm mt-2">Tente alterar busca, categoria, data ou os filtros avançados.</p>
                                         </div>
                                     </div>
                                 ) : (
@@ -291,7 +431,7 @@ const Index: React.FC = () => {
                                     </div>
                                 )}
                                 
-                                {allEvents.length > EVENTS_PER_PAGE && (
+                                {filteredEvents.length > EVENTS_PER_PAGE && (
                                     <div className="flex items-center justify-center mt-12 space-x-2">
                                         <button 
                                             onClick={() => handlePageChange(currentPage - 1)}
@@ -325,7 +465,7 @@ const Index: React.FC = () => {
                                 )}
                                 <div className="text-center mt-8">
                                     <p className="text-gray-400 text-sm sm:text-base">
-                                        Mostrando <span className="text-yellow-500 font-semibold">{startIndex + 1}-{Math.min(endIndex, allEvents.length)}</span> de <span className="text-yellow-500 font-semibold">{allEvents.length}</span> eventos
+                                        Mostrando <span className="text-yellow-500 font-semibold">{filteredEvents.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filteredEvents.length)}</span> de <span className="text-yellow-500 font-semibold">{filteredEvents.length}</span> eventos
                                     </p>
                                 </div>
                             </div>

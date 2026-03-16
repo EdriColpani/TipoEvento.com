@@ -202,7 +202,7 @@ const AdminCommissionTiers: React.FC = () => {
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const [renderError, setRenderError] = useState<string | null>(null);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
     const { ranges, isLoading, isError, invalidateRanges } = useCommissionRanges(isAdminMaster);
     
     const [isModalOpen, setIsModalOpen] = useState(false);

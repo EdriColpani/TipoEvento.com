@@ -144,7 +144,7 @@ const AdminPromotionalBannersList: React.FC = () => {
         );
     }
     
-    if (profile?.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID) {
+    if (Number(profile?.tipo_usuario_id) !== ADMIN_MASTER_USER_TYPE_ID) {
         showError("Acesso negado. Você não tem permissão de Administrador Master.");
         navigate('/manager/dashboard');
         return null;

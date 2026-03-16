@@ -448,8 +448,9 @@ const AdminEventContracts: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const { contracts, isLoading, isError, invalidateContracts } = useEventContracts(profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID);
-    
+    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
+    const { contracts, isLoading, isError, invalidateContracts } = useEventContracts(isAdminMaster);
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingContract, setEditingContract] = useState<EventContract | undefined>(undefined);
     const [viewingContract, setViewingContract] = useState<EventContract | undefined>(undefined);
@@ -459,8 +460,6 @@ const AdminEventContracts: React.FC = () => {
             setUserId(user?.id);
         });
     }, []);
-    
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
 
     const handleOpenCreate = () => {
         setEditingContract(undefined);
