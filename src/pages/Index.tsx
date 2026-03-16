@@ -9,6 +9,7 @@ import MobileMenu from '@/components/MobileMenu';
 import { supabase } from '@/integrations/supabase/client';
 import { trackAdvancedFilterUse } from '@/utils/metrics';
 import { usePublicEvents, PublicEvent } from '@/hooks/use-public-events';
+import { useDevice } from '@/hooks/use-device';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import Carousel3D from '@/components/Carousel3D'; // Importando o novo carrossel
 import { showSuccess, showError } from '@/utils/toast'; // Importando toast
@@ -24,6 +25,7 @@ const getMinPriceDisplay = (price: number | null, isPaid: boolean): string => {
 const Index: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { isMobile, isTablet } = useDevice();
     
     const { events: allEvents, isLoading: isLoadingEvents, isError: isErrorEvents } = usePublicEvents();
     
@@ -98,10 +100,10 @@ const Index: React.FC = () => {
                 <Carousel3D />
             </section>
             
-            <section id="eventos" className="py-12 sm:py-20 px-4 sm:px-6 bg-black">
+            <section id="eventos" className={`bg-black ${isMobile ? 'py-8 px-3' : isTablet ? 'py-12 px-4' : 'py-12 sm:py-20 px-4 sm:px-6'}`}>
                 <div className="max-w-7xl mx-auto">
-                    <div className="text-center mb-10 sm:mb-16">
-                        <h2 className="text-3xl sm:text-5xl font-serif text-yellow-500 mb-4">Lista de Eventos</h2>
+                    <div className={`text-center ${isMobile ? 'mb-6' : 'mb-10 sm:mb-16'}`}>
+                        <h2 className={`font-serif text-yellow-500 mb-4 ${isMobile ? 'text-2xl' : 'text-3xl sm:text-5xl'}`}>Lista de Eventos</h2>
                         <div className="w-16 sm:w-24 h-px bg-yellow-500 mx-auto"></div>
                     </div>
                     
@@ -222,7 +224,7 @@ const Index: React.FC = () => {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
+                                    <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 ${isMobile ? 'gap-4' : 'gap-8'}`}>
                                         {displayedEvents.map((event) => (
                                             <Card
                                                 key={event.id}
@@ -331,10 +333,10 @@ const Index: React.FC = () => {
                     </div>
                 </div>
             </section>
-            <section id="categorias" className="py-12 sm:py-20 px-4 sm:px-6 bg-black/50">
+            <section id="categorias" className={`bg-black/50 ${isMobile ? 'py-8 px-3' : isTablet ? 'py-12 px-4' : 'py-12 sm:py-20 px-4 sm:px-6'}`}>
                 <div className="max-w-7xl mx-auto">
-                    <div className="text-center mb-10 sm:mb-16">
-                        <h2 className="text-3xl sm:text-5xl font-serif text-yellow-500 mb-4">Categorias</h2>
+                    <div className={`text-center ${isMobile ? 'mb-6' : 'mb-10 sm:mb-16'}`}>
+                        <h2 className={`font-serif text-yellow-500 mb-4 ${isMobile ? 'text-2xl' : 'text-3xl sm:text-5xl'}`}>Categorias</h2>
                         <div className="w-16 sm:w-24 h-px bg-yellow-500 mx-auto"></div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6">
@@ -347,15 +349,15 @@ const Index: React.FC = () => {
                                     <i className={category.icon}></i>
                                 </div>
                                 <h3 className="text-white font-semibold text-sm sm:text-base mb-1">{category.name}</h3>
-                                <span className="text-gray-400 text-xs sm:text-text-sm">{category.count} eventos</span>
+                                <span className="text-gray-400 text-xs sm:text-sm">{category.count} eventos</span>
                             </div>
                         ))}
                     </div>
                 </div>
             </section>
-            <section className="py-12 sm:py-20 px-4 sm:px-6">
+            <section className={isMobile ? 'py-8 px-3' : 'py-12 sm:py-20 px-4 sm:px-6'}>
                 <div className="max-w-4xl mx-auto text-center">
-                    <h2 className="text-3xl sm:text-5xl font-serif text-yellow-500 mb-4 sm:mb-6">Seja um Promotor</h2>
+                    <h2 className={`font-serif text-yellow-500 mb-4 sm:mb-6 ${isMobile ? 'text-2xl' : 'text-3xl sm:text-5xl'}`}>Seja um Promotor</h2>
                     <p className="text-base sm:text-xl text-gray-300 mb-6 sm:mb-8 leading-relaxed">
                         Transforme suas ideias em eventos extraordinários. Junte-se à nossa plataforma premium
                         e crie experiências inesquecíveis para seu público.
@@ -367,7 +369,7 @@ const Index: React.FC = () => {
                     </Button>
                 </div>
             </section>
-            <footer id="contato" className="bg-black border-t border-yellow-500/20 py-12 sm:py-16 px-4 sm:px-6">
+            <footer id="contato" className={`bg-black border-t border-yellow-500/20 ${isMobile ? 'py-8 px-3' : 'py-12 sm:py-16 px-4 sm:px-6'}`}>
                 <div className="max-w-7xl mx-auto">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
                         <div className="col-span-2 md:col-span-1">

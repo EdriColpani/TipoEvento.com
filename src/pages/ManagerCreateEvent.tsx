@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowLeft, Loader2 } from 'lucide-react';
+import { Plus, ArrowLeft, Loader2, QrCode } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import EventFormSteps from '@/components/EventFormSteps';
@@ -38,6 +38,11 @@ const ManagerCreateEvent: React.FC = () => {
     const handleNaoEmitir = () => {
         setShowWristbandModal(false);
         navigate('/manager/events');
+    };
+
+    const handleIrParaPulseiras = () => {
+        setShowWristbandModal(false);
+        navigate('/manager/wristbands', { state: { eventId: newEventId } });
     };
 
     const handleAutoFill = () => {
@@ -94,16 +99,25 @@ const ManagerCreateEvent: React.FC = () => {
                             O evento foi criado com sucesso! Você deseja cadastrar as pulseiras de acesso agora?
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel 
+                    <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+                        <AlertDialogCancel
                             onClick={handleNaoEmitir}
-                            className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 order-3 sm:order-1"
                         >
                             Não, Voltar para Eventos
                         </AlertDialogCancel>
-                        <AlertDialogAction 
-                            onClick={handleEmitirPulseiras} 
-                            className="bg-yellow-500 text-black hover:bg-yellow-600"
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleIrParaPulseiras}
+                            className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 order-2"
+                        >
+                            <QrCode className="h-4 w-4 mr-2" />
+                            Ir para Pulseiras
+                        </Button>
+                        <AlertDialogAction
+                            onClick={handleEmitirPulseiras}
+                            className="bg-yellow-500 text-black hover:bg-yellow-600 order-1 sm:order-3"
                         >
                             <Plus className="h-4 w-4 mr-2" />
                             Emitir Pulseiras

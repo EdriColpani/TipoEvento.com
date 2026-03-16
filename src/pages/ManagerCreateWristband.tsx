@@ -109,7 +109,7 @@ const ManagerCreateWristband: React.FC = () => {
         
         if (!formData.eventId) errors.push("Selecione o evento.");
         if (!formData.baseCode.trim()) errors.push("O Código Base é obrigatório.");
-        if (formData.quantity < 1 || formData.quantity > 100) errors.push("A quantidade deve ser entre 1 e 100.");
+        if (formData.quantity < 1 || formData.quantity > 500) errors.push("A quantidade deve ser entre 1 e 500.");
         if (!formData.accessType) errors.push("O Tipo de Acesso é obrigatório.");
         if (!company?.id) errors.push("O Perfil da Empresa não está cadastrado. Cadastre-o em Configurações.");
         
@@ -160,20 +160,21 @@ const ManagerCreateWristband: React.FC = () => {
             
             const wristbandId = insertedWristband.id;
             
-            // 2. Inserir N registros de analytics (baseado na quantidade)
+            // 2. Inserir N registros de analytics (baseado na quantidade) — código único BASE-NNN
             const analyticsToInsert = [];
             for (let i = 0; i < formData.quantity; i++) {
+                const uniqueCode = `${insertedWristband.code}-${String(i + 1).padStart(3, '0')}`;
                 analyticsToInsert.push({
                     wristband_id: wristbandId,
                     event_type: 'creation',
-                    client_user_id: null, 
-                    code_wristbands: insertedWristband.code, // Gravando o Código Base aqui
+                    client_user_id: null,
+                    code_wristbands: uniqueCode,
                     status: 'active',
-                    sequential_number: i + 1, // Adicionando o número sequencial
+                    sequential_number: i + 1,
                     event_data: {
-                        code: insertedWristband.code, // Mantendo no event_data para histórico
+                        code: uniqueCode,
                         access_type: formData.accessType,
-                        price: priceNumeric, // Incluindo o preço no histórico
+                        price: priceNumeric,
                         manager_id: userId,
                         event_id: formData.eventId,
                         initial_status: 'active',
@@ -319,10 +320,10 @@ const ManagerCreateWristband: React.FC = () => {
                                     placeholder="1"
                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                     min={1}
-                                    max={100}
+                                    max={500}
                                     required
                                 />
-                                <p className="text-xs text-gray-500 mt-1">O número de registros de 'criação' no histórico será igual a esta quantidade (máx. 100).</p>
+                                <p className="text-xs text-gray-500 mt-1">O número de registros de 'criação' no histórico será igual a esta quantidade (máx. 500).</p>
                             </div>
                             <div>
                                 <label htmlFor="accessType" className="block text-sm font-medium text-white mb-2 flex items-center">

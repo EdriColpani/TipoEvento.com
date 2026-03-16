@@ -1,20 +1,25 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Input } from "@/components/ui/input";
 import AuthStatusMenu from '@/components/AuthStatusMenu';
 import MobileMenu from '@/components/MobileMenu';
-import ScrollToTop from '@/components/ScrollToTop'; // Import ScrollToTop
+import ScrollToTop from '@/components/ScrollToTop';
+import { useDevice } from '@/hooks/use-device';
 
 const ClientLayout: React.FC = () => {
     const navigate = useNavigate();
+    const { device, isMobile } = useDevice();
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-device', device);
+    }, [device]);
 
     return (
-        <div className="min-h-screen bg-black text-white">
+        <div className={`min-h-screen bg-black text-white ${isMobile ? 'device-mobile' : `device-${device}`}`} data-device={device}>
             <header className="fixed top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md border-b border-yellow-500/20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+                <div className={`max-w-7xl mx-auto flex items-center justify-between ${isMobile ? 'px-3 py-3' : 'px-4 sm:px-6 py-4'}`}>
                     <div className="flex items-center space-x-4 sm:space-x-8">
                         <div 
-                            className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer" 
+                            className={`font-serif text-yellow-500 font-bold cursor-pointer ${isMobile ? 'text-lg' : 'text-xl sm:text-2xl'}`}
                             onClick={() => navigate('/')}
                         >
                             EventoFest
@@ -35,7 +40,7 @@ const ClientLayout: React.FC = () => {
                     </div>
                 </div>
             </header>
-            <main className="pt-[45px]"> {/* Ajustado o padding-top para 45px */}
+            <main className={isMobile ? 'pt-[44px]' : 'pt-[45px]'}>
                 <ScrollToTop />
                 <Outlet />
             </main>

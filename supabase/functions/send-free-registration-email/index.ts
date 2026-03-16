@@ -19,6 +19,7 @@ const json200 = (obj: Record<string, unknown>) =>
 
 type RequestBody = {
   qrCode?: string;
+  wristbandCode?: string;
   email?: string;
   eventTitle?: string;
   eventDate?: string;
@@ -43,7 +44,7 @@ serve(async (req) => {
       return json200({ success: false, error: "invalid_json" });
     }
 
-    const { qrCode, email, eventTitle, eventDate, eventTime, eventLocation } =
+    const { qrCode, wristbandCode, email, eventTitle, eventDate, eventTime, eventLocation } =
       body;
     if (!qrCode || !email) {
       return json200({ success: false, error: "missing_qr_or_email" });
@@ -102,6 +103,11 @@ serve(async (req) => {
       ? `<br />Local: <strong>${eventLocation}</strong>`
       : "";
 
+    const codeFallbackBlock = wristbandCode?.trim()
+      ? `<p style="font-size:14px;margin-top:16px;padding:12px;background:#f5f5f5;border-radius:8px"><strong>Código da pulseira:</strong> <span style="font-family:monospace;font-size:16px">${wristbandCode}</span></p>
+  <p style="font-size:13px;color:#555">Se o QR code não funcionar na entrada, informe este código ao organizador.</p>`
+      : "";
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
 <div style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:0 auto;padding:20px">
   <h1 style="font-size:18px">Inscrição confirmada</h1>
@@ -109,7 +115,8 @@ serve(async (req) => {
   <p style="color:#555;font-size:14px">${dateLine}${timeLine}${locationLine}</p>
   <p style="font-size:14px"><strong>É obrigatório apresentar este QR Code na entrada</strong> para confirmar sua presença no evento. Sem o QR, a entrada pode ser recusada.</p>
   <p><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}" width="200" height="200" alt="QR" /></p>
-  <p style="font-size:12px;color:#666">EventoFest · eventofest.com.br</p>
+  ${codeFallbackBlock}
+  <p style="font-size:12px;color:#666;margin-top:20px">EventoFest · eventofest.com.br</p>
 </div></body></html>`;
 
     const controller = new AbortController();

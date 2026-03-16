@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, AlertTriangle, FileEdit } from 'lucide-react';
+import { Plus, Search, Loader2, AlertTriangle, FileEdit, QrCode } from 'lucide-react';
 import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
 import { supabase } from '@/integrations/supabase/client';
 import DeleteEventDialog from '@/components/DeleteEventDialog'; 
@@ -57,13 +57,23 @@ const ManagerEventsList: React.FC = () => {
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0">
                     {isAdminMaster ? `Todos os Eventos (${events.length})` : `Meus Eventos (${events.length})`}
                 </h1>
-                <Button 
-                    onClick={() => navigate('/manager/events/create')}
-                    className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
-                >
-                    <Plus className="mr-2 h-5 w-5" />
-                    Cadastrar Novo Evento
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                    <Button
+                        onClick={() => navigate('/manager/wristbands')}
+                        variant="outline"
+                        className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-black py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
+                    >
+                        <QrCode className="mr-2 h-5 w-5" />
+                        Pulseiras
+                    </Button>
+                    <Button
+                        onClick={() => navigate('/manager/events/create')}
+                        className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
+                    >
+                        <Plus className="mr-2 h-5 w-5" />
+                        Cadastrar Novo Evento
+                    </Button>
+                </div>
             </div>
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
