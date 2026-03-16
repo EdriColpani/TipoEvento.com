@@ -59,7 +59,7 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { wristband_code, validation_type = 'entry' } = body;
+    const { wristband_code, validation_type = 'entry' } = body; // 'entry' ou 'exit'
 
     if (!wristband_code) {
       return new Response(JSON.stringify({ success: false, error: 'Código do ingresso não fornecido.' }), { status: 400, headers: corsHeaders });
@@ -72,6 +72,7 @@ serve(async (req) => {
     const codeTrim = String(wristband_code).trim();
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+    // 5b. QR de inscrição gratuita = id de wristband_analytics (UUID)
     if (uuidRe.test(codeTrim)) {
       const { data: wa, error: waErr } = await supabaseService
         .from('wristband_analytics')
@@ -114,7 +115,7 @@ serve(async (req) => {
         ? (validation_type === 'entry' ? 'Entrada validada (inscrição gratuita).' : 'Saída registrada.')
         : 'Ingresso ainda não liberado ou inválido.';
 
-      await supabaseService.from('validation_logs').insert({
+      const { data: validationLog, error: validationLogError } = await supabaseService.from('validation_logs').insert({
         api_key_id: apiKeyData.id,
         event_id: wristbandData.event_id,
         wristband_id: wristbandData.id,
@@ -125,15 +126,40 @@ serve(async (req) => {
         validated_by_name: apiKeyData.name,
         ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
         user_agent: req.headers.get('user-agent') || null,
-      });
+      }).select('id').single();
 
+      if (validationLogError) {
+        console.error('[validate-ticket] erro ao registrar validation_log (UUID):', validationLogError);
+      }
+
+      // Registrar movimento analítico por pulseira somente quando a validação é bem-sucedida
+      if (ok && validationLog && validationLog.id) {
+        const movementInsert = await supabaseService
+          .from('wristband_movements')
+          .insert({
+            event_id: wristbandData.event_id,
+            wristband_id: wristbandData.id,
+            api_key_id: apiKeyData.id,
+            validation_log_id: validationLog.id,
+            movement_type: validation_type,
+            validated_at: new Date().toISOString(),
+          });
+
+        if (movementInsert.error) {
+          console.error('[validate-ticket] erro ao registrar wristband_movement (UUID):', movementInsert.error);
+        }
+      }
+
+      // Inscrição gratuita: marcar presença e data/hora da confirmação na entrada
       if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
         const { error: regErr } = await supabaseService
           .from('event_registrations')
           .update({ confirmed: true, confirmed_at: new Date().toISOString() })
           .eq('qr_code', codeTrim)
           .eq('event_id', wristbandData.event_id);
-        if (regErr) console.error('[validate-ticket] event_registrations.confirmed:', regErr);
+        if (regErr) {
+          console.error('[validate-ticket] event_registrations.confirmed:', regErr);
+        }
       }
 
       return new Response(JSON.stringify({
@@ -150,6 +176,7 @@ serve(async (req) => {
       }), { status: ok ? 200 : 400, headers: corsHeaders });
     }
 
+    // 5c. Código no formato BASE-NNN (ex: CHAVA-001) = code_wristbands em wristband_analytics
     if (codeTrim.includes('-')) {
       const codeUpper = codeTrim.toUpperCase();
       const { data: wa, error: waErr } = await supabaseService
@@ -176,7 +203,7 @@ serve(async (req) => {
             ? (validation_type === 'entry' ? 'Entrada validada.' : 'Saída registrada.')
             : 'Ingresso ainda não liberado ou inválido.';
 
-          await supabaseService.from('validation_logs').insert({
+          const { data: validationLog, error: validationLogError } = await supabaseService.from('validation_logs').insert({
             api_key_id: apiKeyData.id,
             event_id: wristbandData.event_id,
             wristband_id: wristbandData.id,
@@ -187,7 +214,28 @@ serve(async (req) => {
             validated_by_name: apiKeyData.name,
             ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
             user_agent: req.headers.get('user-agent') || null,
-          });
+          }).select('id').single();
+
+          if (validationLogError) {
+            console.error('[validate-ticket] erro ao registrar validation_log (BASE-NNN):', validationLogError);
+          }
+
+          if (ok && validationLog && validationLog.id) {
+            const movementInsert = await supabaseService
+              .from('wristband_movements')
+              .insert({
+                event_id: wristbandData.event_id,
+                wristband_id: wristbandData.id,
+                api_key_id: apiKeyData.id,
+                validation_log_id: validationLog.id,
+                movement_type: validation_type,
+                validated_at: new Date().toISOString(),
+              });
+
+            if (movementInsert.error) {
+              console.error('[validate-ticket] erro ao registrar wristband_movement (BASE-NNN):', movementInsert.error);
+            }
+          }
 
           if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
             await supabaseService
@@ -213,6 +261,7 @@ serve(async (req) => {
       }
     }
 
+    // 6. Buscar o ingresso/pulseira (código base do lote, ex: CHAVA sem sufixo)
     const { data: wristbandData, error: wristbandError } = await supabaseService
       .from('wristbands')
       .select('id, code, status, event_id, access_type')
@@ -220,19 +269,31 @@ serve(async (req) => {
       .single();
 
     if (wristbandError || !wristbandData) {
-      await supabaseService.from('validation_logs').insert({
-        api_key_id: apiKeyData.id,
-        wristband_code: wristband_code,
-        validation_type: validation_type,
-        validation_status: 'invalid',
-        validation_message: 'Ingresso não encontrado.',
-        validated_by_name: apiKeyData.name,
-        ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
-        user_agent: req.headers.get('user-agent') || null,
+      // Registrar log de erro
+      await supabaseService
+        .from('validation_logs')
+        .insert({
+          api_key_id: apiKeyData.id,
+          wristband_code: wristband_code,
+          validation_type: validation_type,
+          validation_status: 'invalid',
+          validation_message: 'Ingresso não encontrado.',
+          validated_by_name: apiKeyData.name,
+          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        });
+
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'Ingresso não encontrado.',
+        wristband_code: wristband_code
+      }), { 
+        status: 404, 
+        headers: corsHeaders 
       });
-      return new Response(JSON.stringify({ success: false, error: 'Ingresso não encontrado.', wristband_code: wristband_code }), { status: 404, headers: corsHeaders });
     }
 
+    // 6.1. Buscar dados do evento da chave para verificar company_id
     const { data: keyEventData, error: keyEventError } = await supabaseService
       .from('events')
       .select('id, company_id')
@@ -240,21 +301,32 @@ serve(async (req) => {
       .single();
 
     if (keyEventError || !keyEventData) {
-      await supabaseService.from('validation_logs').insert({
-        api_key_id: apiKeyData.id,
-        event_id: wristbandData.event_id,
-        wristband_id: wristbandData.id,
-        wristband_code: wristband_code,
-        validation_type: validation_type,
-        validation_status: 'invalid',
-        validation_message: 'Evento da chave não encontrado.',
-        validated_by_name: apiKeyData.name,
-        ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
-        user_agent: req.headers.get('user-agent') || null,
+      await supabaseService
+        .from('validation_logs')
+        .insert({
+          api_key_id: apiKeyData.id,
+          event_id: wristbandData.event_id,
+          wristband_id: wristbandData.id,
+          wristband_code: wristband_code,
+          validation_type: validation_type,
+          validation_status: 'invalid',
+          validation_message: 'Evento da chave não encontrado.',
+          validated_by_name: apiKeyData.name,
+          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        });
+
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'Evento da chave não encontrado.',
+        wristband_code: wristband_code
+      }), { 
+        status: 404, 
+        headers: corsHeaders 
       });
-      return new Response(JSON.stringify({ success: false, error: 'Evento da chave não encontrado.', wristband_code: wristband_code }), { status: 404, headers: corsHeaders });
     }
 
+    // 6.2. Buscar dados do evento do ingresso para verificar company_id
     const { data: wristbandEventData, error: wristbandEventError } = await supabaseService
       .from('events')
       .select('id, company_id')
@@ -262,53 +334,86 @@ serve(async (req) => {
       .single();
 
     if (wristbandEventError || !wristbandEventData) {
-      await supabaseService.from('validation_logs').insert({
-        api_key_id: apiKeyData.id,
-        event_id: wristbandData.event_id,
-        wristband_id: wristbandData.id,
-        wristband_code: wristband_code,
-        validation_type: validation_type,
-        validation_status: 'invalid',
-        validation_message: 'Evento do ingresso não encontrado.',
-        validated_by_name: apiKeyData.name,
-        ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
-        user_agent: req.headers.get('user-agent') || null,
+      await supabaseService
+        .from('validation_logs')
+        .insert({
+          api_key_id: apiKeyData.id,
+          event_id: wristbandData.event_id,
+          wristband_id: wristbandData.id,
+          wristband_code: wristband_code,
+          validation_type: validation_type,
+          validation_status: 'invalid',
+          validation_message: 'Evento do ingresso não encontrado.',
+          validated_by_name: apiKeyData.name,
+          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        });
+
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'Evento do ingresso não encontrado.',
+        wristband_code: wristband_code
+      }), { 
+        status: 404, 
+        headers: corsHeaders 
       });
-      return new Response(JSON.stringify({ success: false, error: 'Evento do ingresso não encontrado.', wristband_code: wristband_code }), { status: 404, headers: corsHeaders });
     }
 
+    // 6.3. Verificar se os eventos pertencem à mesma empresa
     if (keyEventData.company_id !== wristbandEventData.company_id) {
-      await supabaseService.from('validation_logs').insert({
-        api_key_id: apiKeyData.id,
-        event_id: wristbandData.event_id,
-        wristband_id: wristbandData.id,
-        wristband_code: wristband_code,
-        validation_type: validation_type,
-        validation_status: 'invalid',
-        validation_message: 'API Key não autorizada: eventos de empresas diferentes.',
-        validated_by_name: apiKeyData.name,
-        ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
-        user_agent: req.headers.get('user-agent') || null,
+      await supabaseService
+        .from('validation_logs')
+        .insert({
+          api_key_id: apiKeyData.id,
+          event_id: wristbandData.event_id,
+          wristband_id: wristbandData.id,
+          wristband_code: wristband_code,
+          validation_type: validation_type,
+          validation_status: 'invalid',
+          validation_message: 'API Key não autorizada: eventos de empresas diferentes.',
+          validated_by_name: apiKeyData.name,
+          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        });
+
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'API Key não autorizada: eventos de empresas diferentes.',
+        wristband_code: wristband_code
+      }), { 
+        status: 403, 
+        headers: corsHeaders 
       });
-      return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada: eventos de empresas diferentes.', wristband_code: wristband_code }), { status: 403, headers: corsHeaders });
     }
 
+    // 7. Verificar se o evento está permitido para esta API key
     if (apiKeyData.event_id && apiKeyData.event_id !== wristbandData.event_id) {
-      await supabaseService.from('validation_logs').insert({
-        api_key_id: apiKeyData.id,
-        event_id: wristbandData.event_id,
-        wristband_id: wristbandData.id,
-        wristband_code: wristband_code,
-        validation_type: validation_type,
-        validation_status: 'invalid',
-        validation_message: 'API Key não autorizada para este evento.',
-        validated_by_name: apiKeyData.name,
-        ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
-        user_agent: req.headers.get('user-agent') || null,
+      await supabaseService
+        .from('validation_logs')
+        .insert({
+          api_key_id: apiKeyData.id,
+          event_id: wristbandData.event_id,
+          wristband_id: wristbandData.id,
+          wristband_code: wristband_code,
+          validation_type: validation_type,
+          validation_status: 'invalid',
+          validation_message: 'API Key não autorizada para este evento.',
+          validated_by_name: apiKeyData.name,
+          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        });
+
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: 'API Key não autorizada para este evento.',
+        wristband_code: wristband_code
+      }), { 
+        status: 403, 
+        headers: corsHeaders 
       });
-      return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada para este evento.', wristband_code: wristband_code }), { status: 403, headers: corsHeaders });
     }
 
+    // 8. Buscar analytics do ingresso para verificar status de pagamento
     const { data: analyticsData, error: analyticsError } = await supabaseService
       .from('wristband_analytics')
       .select('id, status, client_user_id, event_type, event_data')
@@ -318,10 +423,12 @@ serve(async (req) => {
       .limit(1)
       .single();
 
+    // 9. Validar status do ingresso
     let validationStatus = 'success';
     let validationMessage = validation_type === 'entry' ? 'Entrada validada com sucesso.' : 'Saída validada com sucesso.';
     let httpStatus = 200;
 
+    // Verificar se o ingresso foi pago
     if (!analyticsData || analyticsData.status !== 'used') {
       validationStatus = 'not_paid';
       validationMessage = 'Ingresso não foi pago ou não está associado a uma compra.';
@@ -336,24 +443,57 @@ serve(async (req) => {
       httpStatus = 400;
     }
 
-    await supabaseService.from('validation_logs').insert({
-      api_key_id: apiKeyData.id,
-      event_id: wristbandData.event_id,
-      wristband_id: wristbandData.id,
-      wristband_code: wristband_code,
-      validation_type: validation_type,
-      validation_status: validationStatus,
-      validation_message: validationMessage,
-      validated_by_name: apiKeyData.name,
-      client_user_id: analyticsData?.client_user_id || null,
-      ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
-      user_agent: req.headers.get('user-agent') || null,
-    });
+    // 10. Registrar log de validação
+    const { data: validationLog, error: logError } = await supabaseService
+      .from('validation_logs')
+      .insert({
+        api_key_id: apiKeyData.id,
+        event_id: wristbandData.event_id,
+        wristband_id: wristbandData.id,
+        wristband_code: wristband_code,
+        validation_type: validation_type,
+        validation_status: validationStatus,
+        validation_message: validationMessage,
+        validated_by_name: apiKeyData.name,
+        client_user_id: analyticsData?.client_user_id || null,
+        ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+        user_agent: req.headers.get('user-agent') || null,
+      }).select('id').single();
 
-    if (validationStatus === 'success' && validation_type === 'entry' && wristbandData.status === 'active') {
-      await supabaseService.from('wristbands').update({ status: 'used' }).eq('id', wristbandData.id);
+    if (logError) {
+      console.error('Erro ao registrar log de validação:', logError);
     }
 
+    // 11.1 Registrar movimento analítico por pulseira quando a validação é bem-sucedida
+    if (validationStatus === 'success' && validationLog && validationLog.id) {
+      const movementInsert = await supabaseService
+        .from('wristband_movements')
+        .insert({
+          event_id: wristbandData.event_id,
+          wristband_id: wristbandData.id,
+          api_key_id: apiKeyData.id,
+          validation_log_id: validationLog.id,
+          movement_type: validation_type,
+          validated_at: new Date().toISOString(),
+        });
+
+      if (movementInsert.error) {
+        console.error('[validate-ticket] erro ao registrar wristband_movement (default):', movementInsert.error);
+      }
+    }
+
+    // 11. Se a validação foi bem-sucedida e for entrada, podemos atualizar o status
+    if (validationStatus === 'success' && validation_type === 'entry') {
+      // Opcional: Atualizar status do wristband para 'used' se ainda estiver 'active'
+      if (wristbandData.status === 'active') {
+        await supabaseService
+          .from('wristbands')
+          .update({ status: 'used' })
+          .eq('id', wristbandData.id);
+      }
+    }
+
+    // 12. Retornar resposta
     return new Response(JSON.stringify({
       success: validationStatus === 'success',
       message: validationMessage,

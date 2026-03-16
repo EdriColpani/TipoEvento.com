@@ -154,7 +154,7 @@ serve(async (req) => {
         ? (validation_type === 'entry' ? 'Entrada validada (inscrição gratuita).' : 'Saída registrada.')
         : 'Ingresso ainda não liberado ou inválido.';
 
-      await supabaseService.from('validation_logs').insert({
+      const { data: validationLog, error: validationLogError } = await supabaseService.from('validation_logs').insert({
         api_key_id: apiKeyData.id,
         event_id: wristbandData.event_id,
         wristband_id: wristbandData.id,
@@ -165,7 +165,29 @@ serve(async (req) => {
         validated_by_name: apiKeyData.name,
         ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
         user_agent: req.headers.get('user-agent') || null,
-      });
+      }).select('id').single();
+
+      if (validationLogError) {
+        console.error('[validate-ticket] erro ao registrar validation_log (UUID):', validationLogError);
+      }
+
+      // Registrar movimento analítico por pulseira somente quando a validação é bem-sucedida
+      if (ok && validationLog && validationLog.id) {
+        const movementInsert = await supabaseService
+          .from('wristband_movements')
+          .insert({
+            event_id: wristbandData.event_id,
+            wristband_id: wristbandData.id,
+            api_key_id: apiKeyData.id,
+            validation_log_id: validationLog.id,
+            movement_type: validation_type,
+            validated_at: new Date().toISOString(),
+          });
+
+        if (movementInsert.error) {
+          console.error('[validate-ticket] erro ao registrar wristband_movement (UUID):', movementInsert.error);
+        }
+      }
 
       // Inscrição gratuita: marcar presença e data/hora da confirmação na entrada
       if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
@@ -220,7 +242,7 @@ serve(async (req) => {
             ? (validation_type === 'entry' ? 'Entrada validada.' : 'Saída registrada.')
             : 'Ingresso ainda não liberado ou inválido.';
 
-          await supabaseService.from('validation_logs').insert({
+          const { data: validationLog, error: validationLogError } = await supabaseService.from('validation_logs').insert({
             api_key_id: apiKeyData.id,
             event_id: wristbandData.event_id,
             wristband_id: wristbandData.id,
@@ -231,7 +253,28 @@ serve(async (req) => {
             validated_by_name: apiKeyData.name,
             ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
             user_agent: req.headers.get('user-agent') || null,
-          });
+          }).select('id').single();
+
+          if (validationLogError) {
+            console.error('[validate-ticket] erro ao registrar validation_log (BASE-NNN):', validationLogError);
+          }
+
+          if (ok && validationLog && validationLog.id) {
+            const movementInsert = await supabaseService
+              .from('wristband_movements')
+              .insert({
+                event_id: wristbandData.event_id,
+                wristband_id: wristbandData.id,
+                api_key_id: apiKeyData.id,
+                validation_log_id: validationLog.id,
+                movement_type: validation_type,
+                validated_at: new Date().toISOString(),
+              });
+
+            if (movementInsert.error) {
+              console.error('[validate-ticket] erro ao registrar wristband_movement (BASE-NNN):', movementInsert.error);
+            }
+          }
 
           if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
             await supabaseService
@@ -440,7 +483,7 @@ serve(async (req) => {
     }
 
     // 10. Registrar log de validação
-    const { error: logError } = await supabaseService
+    const { data: validationLog, error: logError } = await supabaseService
       .from('validation_logs')
       .insert({
         api_key_id: apiKeyData.id,
@@ -454,10 +497,28 @@ serve(async (req) => {
         client_user_id: analyticsData?.client_user_id || null,
         ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
         user_agent: req.headers.get('user-agent') || null,
-      });
+      }).select('id').single();
 
     if (logError) {
       console.error('Erro ao registrar log de validação:', logError);
+    }
+
+    // 11.1 Registrar movimento analítico por pulseira quando a validação é bem-sucedida
+    if (validationStatus === 'success' && validationLog && validationLog.id) {
+      const movementInsert = await supabaseService
+        .from('wristband_movements')
+        .insert({
+          event_id: wristbandData.event_id,
+          wristband_id: wristbandData.id,
+          api_key_id: apiKeyData.id,
+          validation_log_id: validationLog.id,
+          movement_type: validation_type,
+          validated_at: new Date().toISOString(),
+        });
+
+      if (movementInsert.error) {
+        console.error('[validate-ticket] erro ao registrar wristband_movement (default):', movementInsert.error);
+      }
     }
 
     // 11. Se a validação foi bem-sucedida e for entrada, podemos atualizar o status
