@@ -27,6 +27,7 @@ interface RegistrationRow {
   phone: string;
   email: string;
   confirmed: boolean;
+  confirmed_at: string | null;
   created_at: string;
 }
 
@@ -42,7 +43,7 @@ const fetchEventsForFilter = async (): Promise<EventForFilter[]> => {
 const fetchRegistrations = async (eventId: string | null, search: string): Promise<RegistrationRow[]> => {
   let query = supabase
     .from('event_registrations')
-    .select('id, event_id, full_name, cpf, city, state, phone, email, confirmed, created_at, events(title)')
+    .select('id, event_id, full_name, cpf, city, state, phone, email, confirmed, confirmed_at, created_at, events(title)')
     .order('created_at', { ascending: false });
 
   if (eventId) {
@@ -63,6 +64,7 @@ const fetchRegistrations = async (eventId: string | null, search: string): Promi
     phone: row.phone,
     email: row.email,
     confirmed: row.confirmed ?? false,
+    confirmed_at: row.confirmed_at ?? null,
     created_at: row.created_at,
   })) as RegistrationRow[];
 
@@ -125,6 +127,7 @@ const RegistrationsReports: React.FC = () => {
       'E-mail',
       'Confirmado',
       'Data Inscrição',
+      'Data/Hora Confirmação',
     ];
 
     const rows = registrations.map((r) => [
@@ -137,6 +140,7 @@ const RegistrationsReports: React.FC = () => {
       `"${r.email}"`,
       r.confirmed ? 'Sim' : 'Não',
       `"${new Date(r.created_at).toLocaleString('pt-BR')}"`,
+      r.confirmed_at ? `"${new Date(r.confirmed_at).toLocaleString('pt-BR')}"` : '',
     ]);
 
     const csvContent = [header, ...rows].map((r) => r.join(';')).join('\n');
@@ -172,7 +176,7 @@ const RegistrationsReports: React.FC = () => {
       doc.text(`Evento: ${eventLabel}`, 14, 18);
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 24);
       const head = [
-        ['Evento', 'Nome', 'CPF', 'Cidade', 'UF', 'Telefone', 'E-mail', 'Confirmado', 'Data inscricao'],
+        ['Evento', 'Nome', 'CPF', 'Cidade', 'UF', 'Telefone', 'E-mail', 'Confirmado', 'Data inscricao', 'Data/hora confirmacao'],
       ];
       const body = registrations.map((r) => [
         r.event_title.slice(0, 28),
@@ -184,6 +188,7 @@ const RegistrationsReports: React.FC = () => {
         r.email.slice(0, 36),
         r.confirmed ? 'Sim' : 'Nao',
         new Date(r.created_at).toLocaleString('pt-BR'),
+        r.confirmed_at ? new Date(r.confirmed_at).toLocaleString('pt-BR') : '-',
       ]);
       autoTable(doc, {
         startY: 28,
@@ -309,12 +314,13 @@ const RegistrationsReports: React.FC = () => {
                   <TableHead className="text-yellow-500">E-mail</TableHead>
                   <TableHead className="text-yellow-500 text-center">Confirmado</TableHead>
                   <TableHead className="text-yellow-500">Data inscrição</TableHead>
+                  <TableHead className="text-yellow-500">Data/hora confirmação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoadingRegistrations ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-6 text-gray-400">
+                    <TableCell colSpan={9} className="text-center py-6 text-gray-400">
                       Carregando inscrições...
                     </TableCell>
                   </TableRow>
@@ -343,11 +349,14 @@ const RegistrationsReports: React.FC = () => {
                       <TableCell className="text-gray-300">
                         {new Date(r.created_at).toLocaleString('pt-BR')}
                       </TableCell>
+                      <TableCell className="text-gray-300">
+                        {r.confirmed_at ? new Date(r.confirmed_at).toLocaleString('pt-BR') : '—'}
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-6 text-gray-400">
+                    <TableCell colSpan={9} className="text-center py-6 text-gray-400">
                       Nenhuma inscrição encontrada para os filtros selecionados.
                     </TableCell>
                   </TableRow>
