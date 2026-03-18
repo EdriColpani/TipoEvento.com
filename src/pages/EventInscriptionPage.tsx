@@ -18,6 +18,7 @@ interface EventInfo {
     time: string;
     location: string;
     is_paid: boolean;
+    banner_image_url?: string | null;
 }
 
 const formatCPF = (value: string) => {
@@ -85,7 +86,7 @@ const EventInscriptionPage: React.FC = () => {
         const fetchEvent = async () => {
             const { data, error } = await supabase
                 .from('events')
-                .select('id, title, date, time, location, is_paid')
+                .select('id, title, date, time, location, is_paid, banner_image_url')
                 .eq('id', eventId)
                 .single();
             if (error || !data) {
@@ -264,16 +265,43 @@ const EventInscriptionPage: React.FC = () => {
     const labelClass = 'block text-sm font-medium text-white mb-2';
 
     return (
-        <div className="min-h-screen bg-black text-white px-4 py-6 pb-10 md:py-10">
-            <div className="max-w-md md:max-w-2xl mx-auto">
-                <div className="text-center mb-6 md:mb-8">
-                    <h1 className="text-xl md:text-2xl font-serif text-yellow-500 font-bold mb-1">Inscrição</h1>
-                    <p className="text-gray-400 text-sm md:text-base font-medium line-clamp-2">{event.title}</p>
-                    <p className="text-gray-500 text-xs md:text-sm mt-1">{event.date} · {event.time}{event.location ? ` · ${event.location}` : ''}</p>
+        <div className="min-h-screen bg-black text-white">
+            <div className="px-4 pt-6 md:pt-10">
+                <div className="max-w-md md:max-w-2xl mx-auto">
+                    {/* Banner do evento (não corta a imagem) */}
+                    <div className="bg-black/60 border border-yellow-500/30 rounded-2xl overflow-hidden">
+                        <div className="relative w-full bg-black">
+                            {event.banner_image_url ? (
+                                <img
+                                    src={event.banner_image_url}
+                                    alt={`Banner do evento ${event.title}`}
+                                    className="w-full h-[140px] sm:h-[160px] md:h-[190px] object-contain"
+                                    loading="eager"
+                                />
+                            ) : (
+                                <div className="w-full h-[120px] sm:h-[140px] md:h-[160px]" />
+                            )}
+                            {/* faixa de informações */}
+                            <div className="absolute left-0 right-0 bottom-0 bg-black/75 backdrop-blur-md border-t border-yellow-500/20 px-4 py-3">
+                                <p className="text-xs text-yellow-500/90 font-semibold tracking-wide">Inscrição</p>
+                                <h1 className="text-base sm:text-lg md:text-xl font-serif text-white font-bold leading-tight line-clamp-2">
+                                    {event.title}
+                                </h1>
+                                <p className="text-gray-300 text-xs mt-1 line-clamp-2">
+                                    {event.date} · {event.time}
+                                    {event.location ? ` · ${event.location}` : ''}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <Card className="bg-black/60 border border-yellow-500/30 rounded-2xl p-5 md:p-8">
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        <div>
+            </div>
+
+            <div className="px-4 py-6 pb-10 md:py-10">
+                <div className="max-w-md md:max-w-2xl mx-auto">
+                    <Card className="bg-black/60 border border-yellow-500/30 rounded-2xl p-5 md:p-8">
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            <div>
                             <label className={labelClass}>Nome completo *</label>
                             <Input
                                 value={form.full_name}
@@ -284,7 +312,7 @@ const EventInscriptionPage: React.FC = () => {
                                 autoComplete="name"
                             />
                             {errors.full_name && <p className="text-red-400 text-xs mt-1">{errors.full_name}</p>}
-                        </div>
+                            </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
                             <div>
                                 <label className={labelClass}>CPF *</label>
@@ -474,8 +502,9 @@ const EventInscriptionPage: React.FC = () => {
                                 Cancelar
                             </Button>
                         </div>
-                    </form>
-                </Card>
+                        </form>
+                    </Card>
+                </div>
             </div>
         </div>
     );
