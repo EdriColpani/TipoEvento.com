@@ -64,6 +64,10 @@ const EventInscriptionPage: React.FC = () => {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [cities, setCities] = useState<{ id: number; nome: string }[]>([]);
     const [loadingCities, setLoadingCities] = useState(false);
+    const [turmas, setTurmas] = useState<Array<{ id: string; nome: string; capacity: number; remaining: number }>>([]);
+    const [loadingTurmas, setLoadingTurmas] = useState(false);
+    const [selectedTurmaId, setSelectedTurmaId] = useState<string>('');
+    const [turmasError, setTurmasError] = useState<string | null>(null);
     const [form, setForm] = useState({
         full_name: '',
         cpf: '',
@@ -98,6 +102,48 @@ const EventInscriptionPage: React.FC = () => {
         };
         fetchEvent();
     }, [eventId]);
+
+    // Carrega turmas (só faz sentido para eventos gratuitos)
+    useEffect(() => {
+        const loadTurmas = async () => {
+            if (!eventId || !event || event.is_paid) return;
+            setLoadingTurmas(true);
+            setTurmas([]);
+            setSelectedTurmaId('');
+            setTurmasError(null);
+
+            try {
+                const { data, error } = await supabase.rpc('get_event_turmas_availability', {
+                    p_event_id: eventId,
+                });
+
+                if (error) throw error;
+
+                const rows = (Array.isArray(data) ? data : []) as Array<{
+                    id: string;
+                    nome: string;
+                    capacity: number;
+                    remaining: number;
+                }>;
+
+                setTurmas(rows);
+
+                const firstAvailable = rows.find((t) => t.remaining > 0) || rows[0];
+                if (firstAvailable) setSelectedTurmaId(firstAvailable.id);
+            } catch (e: any) {
+                console.error('Erro ao carregar turmas:', e);
+                setTurmas([]);
+                setSelectedTurmaId('');
+                const message = e?.message || e?.error_description || e?.error || 'Não foi possível carregar as turmas deste evento.';
+                // Mostramos a mensagem para facilitar debug em ambiente de produção.
+                setTurmasError(`${message} Tente novamente mais tarde.`);
+            } finally {
+                setLoadingTurmas(false);
+            }
+        };
+
+        loadTurmas();
+    }, [eventId, event]);
 
     useEffect(() => {
         if (!form.state) {
@@ -160,6 +206,9 @@ const EventInscriptionPage: React.FC = () => {
         if (!form.neighborhood.trim()) e.neighborhood = 'Bairro é obrigatório';
         if (!form.city.trim()) e.city = 'Cidade é obrigatória';
         if (!form.state.trim()) e.state = 'Estado é obrigatório';
+        if (event && !event.is_paid) {
+            if (!selectedTurmaId) e.turma = 'Selecione uma turma para continuar';
+        }
         const phoneDigits = form.phone.replace(/\D/g, '');
         if (!phoneDigits) e.phone = 'Telefone é obrigatório';
         else if (phoneDigits.length < 10) e.phone = 'Telefone inválido (mín. 10 dígitos)';
@@ -178,6 +227,7 @@ const EventInscriptionPage: React.FC = () => {
         try {
             const { data: rpcData, error: rpcError } = await supabase.rpc('register_free_event_with_wristband', {
                 p_event_id: eventId,
+                p_turma_id: selectedTurmaId,
                 p_full_name: form.full_name.trim(),
                 p_cpf: cpfClean,
                 p_age: Number(form.age),
@@ -202,6 +252,8 @@ const EventInscriptionPage: React.FC = () => {
             if (!row?.ok) {
                 const msg: Record<string, string> = {
                     cpf_taken: 'Já existe uma inscrição para este CPF neste evento.',
+                    turma_full: 'A turma selecionada já atingiu a capacidade. Escolha outra turma para continuar.',
+                    invalid_turma: 'Turma inválida. Recarregue a página e tente novamente.',
                     no_free_wristbands:
                         'Não há vagas com pulseira gratuita neste evento. Cadastre um lote com preço R$ 0,00 ou entre em contato com o organizador.',
                     event_not_free: 'Este evento não é gratuito.',
@@ -450,6 +502,36 @@ const EventInscriptionPage: React.FC = () => {
                                 )}
                             </div>
                         </div>
+
+                        {/* Turma (apenas para eventos gratuitos) */}
+                        {event && !event.is_paid && (
+                            <div>
+                                <label className={labelClass}>Turma *</label>
+                                {loadingTurmas ? (
+                                    <div className="w-full bg-black/60 border border-yellow-500/30 rounded-xl px-4 py-3 text-gray-400 text-sm">
+                                        Carregando turmas…
+                                    </div>
+                                ) : turmas.length === 0 ? (
+                                    <div className="w-full bg-black/60 border border-yellow-500/30 rounded-xl px-4 py-3 text-gray-400 text-sm">
+                                        {turmasError || 'Nenhuma turma configurada para este evento.'}
+                                    </div>
+                                ) : (
+                                    <select
+                                        value={selectedTurmaId}
+                                        onChange={(e) => setSelectedTurmaId(e.target.value)}
+                                        className="w-full rounded-md border bg-black/60 border-yellow-500/30 text-white px-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 min-h-[48px]"
+                                    >
+                                        {turmas.map((t) => (
+                                            <option key={t.id} value={t.id} disabled={t.remaining <= 0}>
+                                                {t.nome} (vagas: {t.remaining}/{t.capacity})
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                                {errors.turma && <p className="text-red-400 text-xs mt-1">{errors.turma}</p>}
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
                             <div>
                                 <label className={labelClass}>Telefone *</label>

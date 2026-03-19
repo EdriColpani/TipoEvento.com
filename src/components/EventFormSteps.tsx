@@ -113,6 +113,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
     const [isSaving, setIsSaving] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
+    const [useTurmas, setUseTurmas] = useState(false);
+    const [turmasDraft, setTurmasDraft] = useState<Array<{ id?: string; nome: string; capacity: string }>>([
+        { nome: 'Turma 1', capacity: '50' },
+        { nome: 'Turma 2', capacity: '50' },
+    ]);
+    const [originalTurmas, setOriginalTurmas] = useState<Array<{ id: string; nome: string; capacity: number }>>([]);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId);
@@ -342,6 +348,55 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
         return formattedContent.replace("X%", rangesHtml);
     }, [activeContract, commissionRanges]);
 
+    // Se estiver editando um evento gratuito já existente, carrega turmas salvas
+    useEffect(() => {
+        const loadTurmas = async () => {
+            if (!eventId) return;
+            // Reseta estado ao trocar o evento (evita comparar com turmas de outro event).
+            setUseTurmas(false);
+            setOriginalTurmas([]);
+            try {
+                const { data, error } = await supabase
+                    .from('event_turmas')
+                    .select('id, nome, capacity')
+                    .eq('event_id', eventId)
+                    .order('created_at', { ascending: true });
+
+                if (error) {
+                    console.error('Erro ao carregar turmas do evento:', error);
+                    return;
+                }
+
+                if (data && data.length > 0) {
+                    setUseTurmas(true);
+                    const normalized = data.map((t: any, idx: number) => ({
+                        id: t.id,
+                        nome: (t.nome || `Turma ${idx + 1}`).toString(),
+                        capacity: Number(t.capacity ?? 0),
+                    }));
+                    setOriginalTurmas(normalized);
+                    setTurmasDraft(
+                        normalized.map((t) => ({
+                            id: t.id,
+                            nome: t.nome,
+                            capacity: String(t.capacity),
+                        })),
+                    );
+                } else {
+                    setOriginalTurmas([]);
+                    setTurmasDraft([
+                        { nome: 'Turma 1', capacity: '50' },
+                        { nome: 'Turma 2', capacity: '50' },
+                    ]);
+                }
+            } catch (e) {
+                console.error('Falha ao carregar turmas:', e);
+            }
+        };
+
+        loadTurmas();
+    }, [eventId]);
+
     // AGORA PODEMOS FAZER OS RETURNS CONDICIONAIS
     // Garante que o userId esteja disponível para ImageUploadPicker
     if (isLoadingProfile || isLoadingCompany || isLoadingContract || isLoadingCommissionRanges) {
@@ -536,6 +591,80 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                 } catch (batchError) {
                     console.error("Erro ao salvar lotes do evento:", batchError);
                     // Não derruba o fluxo de criação do evento se só os lotes falharem
+                }
+            }
+
+            // Lógica para turmas (somente eventos gratuitos)
+            if (!values.is_paid && newEventId) {
+                try {
+                    // Normaliza draft para comparar e persistir.
+                    const normalizedDraft = turmasDraft
+                        .map((t, idx) => ({
+                            nome: (t.nome || '').trim() || `Turma ${idx + 1}`,
+                            capacity: Number(t.capacity),
+                        }))
+                        .filter((t) => t.capacity >= 0 && t.nome.length > 0);
+
+                    if (normalizedDraft.length < 1) {
+                        throw new Error('Cadastre ao menos 1 turma válida.');
+                    }
+
+                    // Se toggle estiver desligado, remove turmas existentes.
+                    if (!useTurmas) {
+                        const { error: turmaDeleteError } = await supabase
+                            .from('event_turmas')
+                            .delete()
+                            .eq('event_id', newEventId);
+
+                        if (turmaDeleteError) throw turmaDeleteError;
+
+                        setOriginalTurmas([]);
+                    } else {
+                        // Se nada mudou ao editar, não regrava para evitar duplicidade/lixo.
+                        const hasChanges =
+                            normalizedDraft.length !== originalTurmas.length ||
+                            normalizedDraft.some((t, idx) => {
+                                const o = originalTurmas[idx];
+                                if (!o) return true;
+                                return o.nome !== t.nome || o.capacity !== t.capacity;
+                            });
+
+                        if (!hasChanges) {
+                            // Mantém o que já está no banco.
+                        } else {
+                            const { error: turmaDeleteError } = await supabase
+                                .from('event_turmas')
+                                .delete()
+                                .eq('event_id', newEventId);
+
+                            if (turmaDeleteError) throw turmaDeleteError;
+
+                            const turmasToInsert = normalizedDraft.map((t) => ({
+                                event_id: newEventId,
+                                nome: t.nome,
+                                capacity: t.capacity,
+                            }));
+
+                            const { error: turmaInsertError } = await supabase
+                                .from('event_turmas')
+                                .insert(turmasToInsert);
+
+                            if (turmaInsertError) throw turmaInsertError;
+
+                            // Atualiza referência local para a próxima edição/salvamento.
+                            setOriginalTurmas(
+                                normalizedDraft.map((t, idx) => ({
+                                    id: originalTurmas[idx]?.id || 'temp',
+                                    nome: t.nome,
+                                    capacity: t.capacity,
+                                })),
+                            );
+                        }
+                    }
+                } catch (turmaError: any) {
+                    console.error('Erro ao salvar turmas:', turmaError);
+                    // Não derruba o fluxo do evento; apenas avisa.
+                    showError('Evento salvo, mas não foi possível salvar as turmas. Tente novamente.');
                 }
             }
 
@@ -973,8 +1102,103 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                         <CardContent className="space-y-4">
                             {!isPaid && (
                                 <div className="text-center py-8">
-                                    <p className="text-gray-400 mb-4">Evento Gratuito. Nenhuma configuração de preço necessária.</p>
-                                    <p className="text-gray-500 text-sm">Você pode prosseguir para salvar o evento.</p>
+                                    <p className="text-gray-400 mb-4">Evento Gratuito. Você pode limitar as inscrições por turma.</p>
+
+                                    <div className="flex flex-col items-center gap-4">
+                                        <div className="w-full max-w-2xl flex flex-row items-start space-x-3 rounded-md border border-yellow-500/30 p-4 bg-black/40">
+                                            <Checkbox
+                                                checked={useTurmas}
+                                                onCheckedChange={(val) => setUseTurmas(Boolean(val))}
+                                                className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black mt-1"
+                                            />
+                                            <div className="space-y-1 leading-none">
+                                                <div className="text-white font-semibold">Usar turmas (limitar inscrições)</div>
+                                                <div className="text-gray-400 text-xs">
+                                                    Quando uma turma atingir a capacidade, a opção dela fica desabilitada na inscrição.
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {useTurmas && (
+                                            <div className="w-full max-w-2xl text-left space-y-4">
+                                                {turmasDraft.map((t, idx) => (
+                                                    <Card key={idx} className="bg-black/70 border border-yellow-500/20 p-4">
+                                                        <div className="flex items-center justify-between mb-3 gap-3">
+                                                            <CardTitle className="text-white text-base">Turma {idx + 1}</CardTitle>
+                                                            <Button
+                                                                type="button"
+                                                                variant="destructive"
+                                                                className="h-8 px-3 rounded-lg"
+                                                                onClick={() => {
+                                                                    if (turmasDraft.length <= 1) {
+                                                                        showError('Você precisa manter pelo menos 1 turma.');
+                                                                        return;
+                                                                    }
+                                                                    const ok = window.confirm(`Remover "${t.nome || `Turma ${idx + 1}`}"?`);
+                                                                    if (!ok) return;
+                                                                    setTurmasDraft((prev) => prev.filter((_, i) => i !== idx));
+                                                                }}
+                                                            >
+                                                                Remover
+                                                            </Button>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <div>
+                                                                <FormLabel className="text-white">Nome</FormLabel>
+                                                                <Input
+                                                                    value={t.nome}
+                                                                    onChange={(e) => {
+                                                                        const v = e.target.value;
+                                                                        setTurmasDraft((prev) =>
+                                                                            prev.map((x, i) => (i === idx ? { ...x, nome: v } : x)),
+                                                                        );
+                                                                    }}
+                                                                    className="bg-black/60 border-yellow-500/30 text-white"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <FormLabel className="text-white">Capacidade</FormLabel>
+                                                                <Input
+                                                                    type="number"
+                                                                    value={t.capacity}
+                                                                    min={0}
+                                                                    onChange={(e) => {
+                                                                        const v = e.target.value;
+                                                                        setTurmasDraft((prev) =>
+                                                                            prev.map((x, i) => (i === idx ? { ...x, capacity: v } : x)),
+                                                                        );
+                                                                    }}
+                                                                    className="bg-black/60 border-yellow-500/30 text-white"
+                                                                />
+                                                                <p className="text-xs text-gray-500 mt-1">
+                                                                    Quantas pessoas a turma pode receber.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                ))}
+
+                                                <div className="flex justify-center">
+                                                    <Button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setTurmasDraft((prev) => [
+                                                                ...prev,
+                                                                { nome: `Turma ${prev.length + 1}`, capacity: '50' },
+                                                            ]);
+                                                        }}
+                                                        className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                                    >
+                                                        + Adicionar turma
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <p className="text-gray-500 text-sm">
+                                            Você pode prosseguir para salvar o evento.
+                                        </p>
+                                    </div>
                                 </div>
                             )}
 

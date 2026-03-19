@@ -22,6 +22,8 @@ interface RegistrationRow {
   event_title: string;
   full_name: string;
   cpf: string;
+  turma_id: string | null;
+  turma_nome: string | null;
   city: string;
   state: string;
   phone: string;
@@ -43,7 +45,9 @@ const fetchEventsForFilter = async (): Promise<EventForFilter[]> => {
 const fetchRegistrations = async (eventId: string | null, search: string): Promise<RegistrationRow[]> => {
   let query = supabase
     .from('event_registrations')
-    .select('id, event_id, full_name, cpf, city, state, phone, email, confirmed, confirmed_at, created_at, events(title)')
+    .select(
+      'id, event_id, full_name, cpf, turma_id, city, state, phone, email, confirmed, confirmed_at, created_at, events(title), event_turmas(nome)',
+    )
     .order('created_at', { ascending: false });
 
   if (eventId) {
@@ -59,6 +63,8 @@ const fetchRegistrations = async (eventId: string | null, search: string): Promi
     event_title: row.events?.title ?? 'Evento',
     full_name: row.full_name,
     cpf: row.cpf,
+    turma_id: row.turma_id ?? null,
+    turma_nome: row.event_turmas?.nome ?? null,
     city: row.city,
     state: row.state,
     phone: row.phone,
@@ -119,6 +125,7 @@ const RegistrationsReports: React.FC = () => {
 
     const header = [
       'Evento',
+      'Turma',
       'Nome Completo',
       'CPF',
       'Cidade',
@@ -132,6 +139,7 @@ const RegistrationsReports: React.FC = () => {
 
     const rows = registrations.map((r) => [
       `"${r.event_title.replace(/"/g, '""')}"`,
+      `"${(r.turma_nome || '-').replace(/"/g, '""')}"`,
       `"${r.full_name.replace(/"/g, '""')}"`,
       `"${r.cpf}"`,
       `"${r.city}"`,
@@ -176,10 +184,11 @@ const RegistrationsReports: React.FC = () => {
       doc.text(`Evento: ${eventLabel}`, 14, 18);
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 24);
       const head = [
-        ['Evento', 'Nome', 'CPF', 'Cidade', 'UF', 'Telefone', 'E-mail', 'Confirmado', 'Data inscricao', 'Data/hora confirmacao'],
+        ['Evento', 'Turma', 'Nome', 'CPF', 'Cidade', 'UF', 'Telefone', 'E-mail', 'Confirmado', 'Data inscricao', 'Data/hora confirmacao'],
       ];
       const body = registrations.map((r) => [
         r.event_title.slice(0, 28),
+        (r.turma_nome || '-').slice(0, 28),
         r.full_name.slice(0, 32),
         r.cpf,
         r.city.slice(0, 18),
@@ -307,6 +316,7 @@ const RegistrationsReports: React.FC = () => {
               <TableHeader className="bg-black/60">
                 <TableRow>
                   <TableHead className="text-yellow-500">Evento</TableHead>
+                  <TableHead className="text-yellow-500">Turma</TableHead>
                   <TableHead className="text-yellow-500">Nome completo</TableHead>
                   <TableHead className="text-yellow-500">CPF</TableHead>
                   <TableHead className="text-yellow-500">Cidade/UF</TableHead>
@@ -320,7 +330,7 @@ const RegistrationsReports: React.FC = () => {
               <TableBody>
                 {isLoadingRegistrations ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-6 text-gray-400">
+                    <TableCell colSpan={10} className="text-center py-6 text-gray-400">
                       Carregando inscrições...
                     </TableCell>
                   </TableRow>
@@ -328,6 +338,7 @@ const RegistrationsReports: React.FC = () => {
                   registrations.map((r) => (
                     <TableRow key={r.id} className="hover:bg-yellow-500/5">
                       <TableCell className="text-white">{r.event_title}</TableCell>
+                      <TableCell className="text-gray-300">{r.turma_nome || '—'}</TableCell>
                       <TableCell className="text-white">{r.full_name}</TableCell>
                       <TableCell className="text-gray-300">{r.cpf}</TableCell>
                       <TableCell className="text-gray-300">
@@ -356,7 +367,7 @@ const RegistrationsReports: React.FC = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-6 text-gray-400">
+                    <TableCell colSpan={10} className="text-center py-6 text-gray-400">
                       Nenhuma inscrição encontrada para os filtros selecionados.
                     </TableCell>
                   </TableRow>
