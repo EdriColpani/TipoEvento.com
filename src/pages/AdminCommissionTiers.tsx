@@ -37,29 +37,22 @@ interface CommissionRangeHistory {
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const fetchCommissionRanges = async (): Promise<CommissionRange[]> => {
-    try {
-        // A RLS garante que apenas o Admin Master possa ler
-        const { data, error } = await supabase
-            .from('commission_ranges')
-            .select('*')
-            .order('min_tickets', { ascending: true }); // Ordena pelo mínimo de ingressos
+    // RLS: apenas Admin Master (veja migration user_is_admin_master_for_rls).
+    const { data, error } = await supabase
+        .from('commission_ranges')
+        .select('*')
+        .order('min_tickets', { ascending: true });
 
-        if (error) {
-            console.error("Error fetching commission ranges:", error);
-            // Se a tabela não existir, retorna array vazio ao invés de quebrar
-            if (error.code === '42P01' || error.message.includes('does not exist')) {
-                console.warn("Tabela commission_ranges não existe. Retornando array vazio.");
-                return [];
-            }
-            throw new Error(error.message);
+    if (error) {
+        console.error("Error fetching commission ranges:", error);
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            console.warn("Tabela commission_ranges não existe.");
+            return [];
         }
-        
-        return (data || []) as CommissionRange[];
-    } catch (error: any) {
-        console.error("Erro inesperado ao buscar faixas:", error);
-        // Retorna array vazio para não quebrar a página
-        return [];
+        throw new Error(error.message);
     }
+
+    return (data || []) as CommissionRange[];
 };
 
 const fetchCommissionRangesHistory = async (): Promise<CommissionRangeHistory[]> => {

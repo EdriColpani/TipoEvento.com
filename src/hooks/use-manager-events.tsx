@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
+import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 
 export interface ManagerEvent {
     id: string;
@@ -29,25 +30,14 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
         .order('created_at', { ascending: false });
 
     if (!isAdminMaster) {
-        // Para gestores normais, primeiro precisamos do company_id
-        const { data: companyData, error: companyError } = await supabase
-            .from('user_companies')
-            .select('company_id')
-            .eq('user_id', userId)
-            .eq('is_primary', true)
-            .limit(1)
-            .single();
-
-        if (companyError && companyError.code !== 'PGRST116') {
-            console.error("Error fetching company ID for manager events:", companyError);
-            throw new Error(companyError.message);
+        const primaryCompanyId = await fetchManagerPrimaryCompanyId(supabase, userId);
+        // PJ: eventos da empresa + eventos criados pelo usuário (ex.: company_id nulo / legado).
+        // PF sem empresa: apenas eventos criados por ele (created_by).
+        if (primaryCompanyId) {
+            query = query.or(`company_id.eq.${primaryCompanyId},created_by.eq.${userId}`);
+        } else {
+            query = query.eq('created_by', userId);
         }
-
-        if (!companyData?.company_id) {
-            console.warn("Manager has no primary company associated. Returning empty event list.");
-            return [];
-        }
-        query = query.eq('company_id', companyData.company_id);
     }
     // Se for isAdminMaster, nenhum filtro de company_id é aplicado,
     // e a RLS no banco de dados já garante o acesso total.

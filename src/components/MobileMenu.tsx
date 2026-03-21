@@ -90,12 +90,12 @@ const MobileMenu: React.FC = () => {
                     )}
                 </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-[300px] sm:w-[400px] bg-black/95 border-l border-yellow-500/30 text-white p-0">
-                <SheetHeader className="p-6 border-b border-yellow-500/20">
+            <SheetContent side="right" className="flex h-full max-h-[100dvh] w-[300px] flex-col overflow-hidden border-l border-yellow-500/30 bg-black/95 p-0 text-white sm:w-[400px]">
+                <SheetHeader className="shrink-0 border-b border-yellow-500/20 p-6">
                     <SheetTitle className="text-3xl font-serif text-yellow-500">EventoFest</SheetTitle>
                 </SheetHeader>
                 
-                <div className="p-6 space-y-6">
+                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-6 [-webkit-overflow-scrolling:touch]">
                     {isUserLoading ? (
                         <div className="flex items-center space-x-4">
                             <div className="w-10 h-10 bg-yellow-500/20 rounded-full animate-pulse"></div>

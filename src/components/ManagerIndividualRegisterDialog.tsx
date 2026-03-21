@@ -22,6 +22,7 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { Loader2, User, ArrowLeft } from 'lucide-react';
 import { ProfileData } from '@/hooks/use-profile';
 import { useQueryClient } from '@tanstack/react-query';
+import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
 
 interface ManagerIndividualRegisterDialogProps {
     isOpen: boolean;
@@ -300,6 +301,28 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
 
             if (error) {
                 throw error;
+            }
+
+            // Vínculo obrigatório empresa ↔ gestor (pulseiras, eventos, relatórios usam company_id)
+            try {
+                await ensureGestorCompanyLinked(supabase, userId, {
+                    tipo_usuario_id: 2,
+                    natureza_juridica_id: 1,
+                    first_name: values.first_name,
+                    last_name: values.last_name,
+                    cpf: values.cpf.replace(/\D/g, ''),
+                    cep: values.cep.replace(/\D/g, ''),
+                    rua: values.rua,
+                    bairro: values.bairro,
+                    cidade: values.cidade,
+                    estado: values.estado,
+                    numero: values.numero,
+                    complemento: values.complemento,
+                });
+                await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
+            } catch (linkErr: unknown) {
+                const msg = linkErr instanceof Error ? linkErr.message : 'Falha ao criar vínculo com empresa.';
+                throw new Error(`${msg} Seu perfil foi atualizado; tente salvar um evento novamente ou contate o suporte.`);
             }
 
             dismissToast(toastId);

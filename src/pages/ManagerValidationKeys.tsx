@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { useProfile } from '@/hooks/use-profile';
+import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -97,24 +98,12 @@ const fetchEvents = async (userId: string, isAdminMaster: boolean): Promise<{ id
 
     // Se não for Admin Master, filtra por empresa
     if (!isAdminMaster) {
-        // Buscar company_id do usuário
-        const { data: companyData, error: companyError } = await supabase
-            .from('user_companies')
-            .select('company_id')
-            .eq('user_id', userId)
-            .eq('is_primary', true)
-            .limit(1)
-            .single();
-
-        if (companyError && companyError.code !== 'PGRST116') {
-            throw new Error(companyError.message);
+        const primaryCompanyId = await fetchManagerPrimaryCompanyId(supabase, userId);
+        if (primaryCompanyId) {
+            query = query.or(`company_id.eq.${primaryCompanyId},created_by.eq.${userId}`);
+        } else {
+            query = query.eq('created_by', userId);
         }
-
-        if (!companyData?.company_id) {
-            return []; // Retorna vazio se não tiver empresa
-        }
-
-        query = query.eq('company_id', companyData.company_id);
     }
 
     const { data, error } = await query;

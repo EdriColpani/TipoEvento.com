@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
+import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 
 interface CompanyData {
     id: string;
@@ -11,30 +11,32 @@ interface CompanyData {
 const fetchCompanyId = async (userId: string): Promise<CompanyData | null> => {
     if (!userId) return null;
 
-    // Busca a empresa associada ao usuário logado através da tabela user_companies
-    // Assumimos que o gestor PRO (tipo 2) está associado a uma empresa principal (is_primary = true)
-    // Especificando o relacionamento explícito via company_id para evitar erro PGRST201
-    const { data, error } = await supabase
-        .from('user_companies')
-        .select(`
-            company_id,
-            companies!company_id (id, cnpj, corporate_name)
-        `)
-        .eq('user_id', userId)
-        .eq('is_primary', true) // Foca na empresa principal do gestor
-        .limit(1)
-        .single();
+    const companyId = await fetchManagerPrimaryCompanyId(supabase, userId);
+    if (!companyId) {
+        return null;
+    }
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 = No rows found
-        console.error("Error fetching company ID via user_companies:", error);
-        throw new Error(error.message);
+    // Query direta em `companies` evita embed/join que em alguns ambientes retorna 406 ou objeto vazio por RLS.
+    const { data: companyRow, error: companyError } = await supabase
+        .from('companies')
+        .select('id, cnpj, corporate_name')
+        .eq('id', companyId)
+        .maybeSingle();
+
+    if (companyError && companyError.code !== 'PGRST116') {
+        console.error('Error fetching companies row for manager:', companyError);
+        throw new Error(companyError.message);
     }
-    
-    if (data && data.companies) {
-        return data.companies as CompanyData;
+
+    if (!companyRow) {
+        // Vínculo existe em user_companies mas a linha em companies não veio (RLS/embed). Ainda assim o UUID é válido para FK em events.
+        console.warn(
+            '[useManagerCompany] company_id resolvido sem leitura da linha em companies; usando id apenas.',
+        );
+        return { id: companyId, cnpj: '', corporate_name: '' };
     }
-    
-    return null;
+
+    return companyRow as CompanyData;
 };
 
 export const useManagerCompany = (userId: string | undefined) => {

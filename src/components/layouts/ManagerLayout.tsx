@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Percent, FileText, Key, Database } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserType } from '@/hooks/use-user-type';
@@ -21,7 +21,6 @@ const ManagerLayout: React.FC = () => {
     const [headerHeight, setHeaderHeight] = useState(0);
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const [loadingSession, setLoadingSession] = useState(true);
-    const [isSettingsDropdownOpen, setIsSettingsDropdownOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { isMobile, isTablet } = useDevice();
 
@@ -31,10 +30,6 @@ const ManagerLayout: React.FC = () => {
                location.pathname.startsWith('/manager/settings/backup-database') ||
                location.pathname.startsWith('/manager/settings/history');
     }, [location.pathname]);
-
-    useEffect(() => {
-        setIsSettingsDropdownOpen(isAdminSettingsPath);
-    }, [isAdminSettingsPath]);
 
     useEffect(() => {
         const measureHeaderHeight = () => {
@@ -199,20 +194,14 @@ const ManagerLayout: React.FC = () => {
                                                     {item.label}
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator className="bg-yellow-500/20" />
-                                                <DropdownMenu open={isSettingsDropdownOpen} onOpenChange={setIsSettingsDropdownOpen}>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <DropdownMenuItem 
-                                                            className={`cursor-pointer hover:bg-yellow-500/10 flex justify-between items-center ${isAdminSettingsPath ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
-                                                            onSelect={(e) => e.preventDefault()} // Previne o fechamento do menu principal
-                                                        >
-                                                            <div className="flex items-center text-yellow-500">
-                                                                <Settings className="mr-2 h-4 w-4" />
-                                                                Configurações Admin
-                                                            </div>
-                                                            <ChevronDown className="h-4 w-4 ml-auto" />
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent side="right" align="start" className="w-56 bg-black/90 border border-yellow-500/30 text-white">
+                                                <DropdownMenuSub>
+                                                    <DropdownMenuSubTrigger
+                                                        className={`cursor-pointer hover:bg-yellow-500/10 text-yellow-500 ${isAdminSettingsPath ? 'bg-yellow-500/20' : ''}`}
+                                                    >
+                                                        <Settings className="mr-2 h-4 w-4" />
+                                                        Configurações Admin
+                                                    </DropdownMenuSubTrigger>
+                                                    <DropdownMenuSubContent side="right" align="start" className="w-56 bg-black/90 border border-yellow-500/30 text-white">
                                                         <DropdownMenuLabel className="text-yellow-500">Gerenciamento Avançado</DropdownMenuLabel>
                                                         <DropdownMenuSeparator className="bg-yellow-500/20" />
                                                         <DropdownMenuItem 
@@ -272,8 +261,8 @@ const ManagerLayout: React.FC = () => {
                                                             <History className="mr-2 h-4 w-4" />
                                                             Histórico
                                                         </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+                                                    </DropdownMenuSubContent>
+                                                </DropdownMenuSub>
                                                 <DropdownMenuSeparator className="bg-yellow-500/20" />
                                             </React.Fragment>
                                         );
@@ -294,7 +283,7 @@ const ManagerLayout: React.FC = () => {
                                 
                                 <DropdownMenuSeparator className="bg-yellow-500/20" />
                                 <DropdownMenuItem 
-                                    onClick={handleLogout} 
+                                    onClick={() => void handleLogout()}
                                     className="cursor-pointer hover:bg-red-500/10 text-red-400"
                                 >
                                     <LogOut className="mr-2 h-4 w-4" />
@@ -310,11 +299,11 @@ const ManagerLayout: React.FC = () => {
                                     <Menu className="h-6 w-6" />
                                 </Button>
                             </SheetTrigger>
-                            <SheetContent side="right" className="w-[250px] bg-black/95 border-l border-yellow-500/30 text-white p-0">
-                                <SheetHeader className="p-4 border-b border-yellow-500/20">
+                            <SheetContent side="right" className="flex h-full max-h-[100dvh] w-[250px] flex-col overflow-hidden bg-black/95 border-l border-yellow-500/30 p-0 text-white">
+                                <SheetHeader className="shrink-0 border-b border-yellow-500/20 p-4">
                                     <SheetTitle className="text-2xl font-serif text-yellow-500">EventoFest {dashboardTitle}</SheetTitle>
                                 </SheetHeader>
-                                <div className="p-4 space-y-4">
+                                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 [-webkit-overflow-scrolling:touch]">
                                     <div className="flex items-center space-x-3 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
                                         <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center text-black font-bold">
                                             <Crown className="h-5 w-5" />

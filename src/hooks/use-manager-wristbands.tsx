@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
+import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 
 export interface WristbandData {
     id: string;
@@ -37,25 +38,12 @@ const fetchManagerWristbands = async (userId: string, isAdminMaster: boolean): P
         .order('created_at', { ascending: false });
 
     if (!isAdminMaster) {
-        // Para gestores normais, primeiro precisamos do company_id
-        const { data: companyData, error: companyError } = await supabase
-            .from('user_companies')
-            .select('company_id')
-            .eq('user_id', userId)
-            .eq('is_primary', true)
-            .limit(1)
-            .single();
-
-        if (companyError && companyError.code !== 'PGRST116') {
-            console.error("Error fetching company ID for manager wristbands:", companyError);
-            throw new Error(companyError.message);
+        const primaryCompanyId = await fetchManagerPrimaryCompanyId(supabase, userId);
+        if (primaryCompanyId) {
+            query = query.or(`company_id.eq.${primaryCompanyId},manager_user_id.eq.${userId}`);
+        } else {
+            query = query.eq('manager_user_id', userId);
         }
-
-        if (!companyData?.company_id) {
-            console.warn("Manager has no primary company associated. Returning empty wristband list.");
-            return [];
-        }
-        query = query.eq('company_id', companyData.company_id);
     }
     // Se for isAdminMaster, nenhum filtro de company_id é aplicado,
     // e a RLS no banco de dados já garante o acesso total.
