@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
 import { useCarouselSettings, CarouselSettings } from './use-carousel-settings'; // Importando as configurações
-import { parseISO, isAfter, isBefore, differenceInDays } from 'date-fns';
+import { isAfter, isBefore, differenceInDays } from 'date-fns';
+import { parseEventLocalDay } from '@/utils/format-event-date';
 
 export interface CarouselBanner {
     id: string;
@@ -46,7 +47,7 @@ const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
         link: item.event_id ? `/events/${item.event_id}` : null,
         display_order: item.display_order,
         type: 'event' as const,
-        event_date: item.events?.date ? parseISO(item.events.date) : undefined,
+        event_date: item.events?.date ? parseEventLocalDay(item.events.date) ?? undefined : undefined,
         is_regional: true, // SIMULAÇÃO: Todos são regionais por padrão
     }));
 };

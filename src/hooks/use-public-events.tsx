@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
+import { formatEventDateForDisplay, parseEventLocalDay } from '@/utils/format-event-date';
+import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 
 export interface PublicEvent {
     id: string;
     title: string;
     description: string;
-    date: string; // Keep as string for display
-    raw_date: Date; // New: raw Date object for comparison
+    date: string; // dd/MM/yyyy para exibição
+    raw_date: Date | null; // Dia do evento no calendário local (filtros “hoje”, etc.)
     time: string;
     location: string;
     image_url: string; // RENOMEADO: Agora é a URL da imagem do Card de Exposição (400x200)
@@ -24,16 +26,18 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
     const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select(`
-            id, title, description, date, time, location, exposure_card_image_url, category, capacity, is_paid, ticket_price
+            id, title, description, date, time, location, exposure_card_image_url, category, capacity, is_paid, ticket_price, is_active
         `)
+        .eq('is_active', true)
         .order('date', { ascending: true });
 
     if (eventsError) {
         console.error("Error fetching public events:", eventsError);
         throw new Error(eventsError.message);
     }
-    
-    const eventIds = eventsData.map(e => e.id);
+
+    const openForSales = eventsData.filter((e) => isEventOpenForNewSales(e.date, e.time));
+    const eventIds = openForSales.map((e) => e.id);
 
     // Inicializar agregados para todos os eventos (para contar pulseiras e preço de lotes)
     const eventAggregates: { [eventId: string]: { min_price: number; min_price_wristband_id: string | null; total_available_tickets: number } } = {};
@@ -80,7 +84,7 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
     }
 
     // 4. Combinar dados e formatar (min_price = menor entre lotes, pulseiras e events.ticket_price)
-    return eventsData.map(event => {
+    return openForSales.map((event) => {
         const aggregates = eventAggregates[event.id] || { min_price: Infinity, min_price_wristband_id: null, total_available_tickets: 0 };
         const fromBatchesOrWristbands = aggregates.min_price;
         const fromEvent = event.ticket_price != null ? Number(event.ticket_price) : Infinity;
@@ -91,8 +95,8 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
             id: event.id,
             title: event.title,
             description: event.description,
-            date: new Date(event.date).toLocaleDateString('pt-BR'),
-            raw_date: new Date(event.date), // Store raw date
+            date: formatEventDateForDisplay(event.date) || String(event.date ?? ''),
+            raw_date: parseEventLocalDay(event.date),
             time: event.time,
             location: event.location,
             image_url: event.exposure_card_image_url, // USANDO O NOVO CAMPO PARA O CARD DE EXPOSIÇÃO

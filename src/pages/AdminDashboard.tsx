@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { adminStats } from '@/data/admin';
 import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 const getActivityStatusClasses = (status: string) => {
     switch (status) {
@@ -119,7 +120,7 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="text-right flex-shrink-0 ml-4">
-                                    <div className="text-gray-500 text-xs">{new Date(activity.date).toLocaleDateString('pt-BR')}</div>
+                                    <div className="text-gray-500 text-xs">{formatEventDateForDisplay(activity.date) || '—'}</div>
                                 </div>
                             </div>
                         ))}

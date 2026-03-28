@@ -9,13 +9,17 @@ import { Loader2, Edit, Save, CheckSquare, XSquare, AlertTriangle } from 'lucide
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
+import { normalizeContractContentForDisplay } from '@/utils/contractContent';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface MultiLineEditorProps {
     onAgree: (agreed: boolean) => void;
     initialAgreedState?: boolean;
     showAgreementCheckbox?: boolean; // Nova prop
-    termsType?: 'general' | 'manager_registration'; // Novo: Tipo de termos a serem carregados
+    termsType?: 'general' | 'manager_registration'; // Tipo em terms_and_conditions (quando não usa external)
+    /** Quando definido, ignora a tabela terms_and_conditions e exibe este conteúdo (ex.: contrato ativo em event_contracts). */
+    externalContent?: string;
+    externalTitle?: string;
 }
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
@@ -36,12 +40,20 @@ const fetchTermsAndConditions = async (type: 'general' | 'manager_registration')
     return data;
 };
 
-const MultiLineEditor: React.FC<MultiLineEditorProps> = ({ onAgree, initialAgreedState = false, showAgreementCheckbox = true, termsType = 'general' }) => {
+const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
+    onAgree,
+    initialAgreedState = false,
+    showAgreementCheckbox = true,
+    termsType = 'general',
+    externalContent,
+    externalTitle,
+}) => {
+    const useExternal = externalContent !== undefined;
     const queryClient = useQueryClient();
     const { data: termsData, isLoading: isLoadingTerms, isError: isErrorTerms, refetch } = useQuery({
         queryKey: ['termsAndConditions', termsType], // Inclui termsType na chave de cache
         queryFn: () => fetchTermsAndConditions(termsType),
-        enabled: true, // Sempre tenta buscar os termos
+        enabled: !useExternal,
         staleTime: 1000 * 60 * 60, // Cache por 1 hora
         onError: (error) => {
             console.error(`Erro ao carregar termos e condições (${termsType}):`, error);
@@ -138,7 +150,7 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({ onAgree, initialAgree
         }
     };
 
-    if (isLoadingTerms || isLoadingProfile) {
+    if ((!useExternal && isLoadingTerms) || isLoadingProfile) {
         return (
             <div className="text-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -147,7 +159,7 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({ onAgree, initialAgree
         );
     }
 
-    if (isErrorTerms || !termsData) {
+    if (!useExternal && (isErrorTerms || !termsData)) {
         // Se não houver termos para o tipo, e for Admin Master, permite editar para criar
         if (isAdminMaster && !isEditing) {
             return (
@@ -174,7 +186,9 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({ onAgree, initialAgree
         }
     }
 
-    const editorTitle = termsType === 'general' ? 'Termos e Condições Gerais' : 'Termos de Registro de Gestor';
+    const editorTitle = useExternal
+        ? (externalTitle || 'Termos e Condições')
+        : (termsType === 'general' ? 'Termos e Condições Gerais' : 'Termos de Registro de Gestor');
 
     return (
         <div className="space-y-6">
@@ -222,7 +236,11 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({ onAgree, initialAgree
                     />
                 ) : (
                     <div className="p-4">
-                        {termsData?.content || 'Nenhum termo disponível para este tipo.'}
+                        {useExternal
+                            ? normalizeContractContentForDisplay(externalContent || 'Nenhum termo disponível.')
+                            : normalizeContractContentForDisplay(
+                                  termsData?.content || 'Nenhum termo disponível para este tipo.',
+                              )}
                     </div>
                 )}
             </div>

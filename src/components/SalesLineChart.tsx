@@ -10,6 +10,7 @@ import {
     Tooltip,
     Legend,
 } from 'chart.js';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 ChartJS.register(
     CategoryScale,
@@ -32,7 +33,7 @@ interface SalesLineChartProps {
 
 const SalesLineChart: React.FC<SalesLineChartProps> = ({ data }) => {
     const chartData = {
-        labels: data.map(point => new Date(point.date).toLocaleDateString('pt-BR')),
+        labels: data.map((point) => formatEventDateForDisplay(point.date) || point.date),
         datasets: [
             {
                 label: 'Faturamento Diário',

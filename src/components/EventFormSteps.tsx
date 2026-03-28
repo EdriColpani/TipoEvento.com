@@ -9,18 +9,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { categories } from '@/data/events';
+import { normalizeContractContentForDisplay } from '@/utils/contractContent';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, CheckSquare, FileText, XCircle, Plus, Ticket } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
+import { parseEventLocalDay } from '@/utils/format-event-date';
 import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
-import { useManagerCompany, CompanyData } from '@/hooks/use-manager-company';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
+import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { useProfile } from '@/hooks/use-profile';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQueryClient, useQuery } from '@tanstack/react-query'; // Importando useQueryClient e useQuery
+import { MANAGER_EVENT_CREATION_CONTRACT_TYPE } from '@/constants/event-contracts';
 
 interface EventContract {
     id: string;
@@ -31,6 +36,7 @@ interface EventContract {
     created_at: string;
     created_by: string | null;
     updated_at: string;
+    contract_type?: string;
 }
 
 interface CommissionRange {
@@ -124,30 +130,26 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId);
 
     const { data: activeContract, isLoading: isLoadingContract } = useQuery<EventContract | null>({ // Adicionado useQuery para buscar contrato
-        queryKey: ['activeEventContract'],
+        queryKey: ['activeEventContract', MANAGER_EVENT_CREATION_CONTRACT_TYPE],
         queryFn: async () => {
             try {
-                // Primeiro tenta buscar o contrato ativo
                 let { data, error } = await supabase
                     .from('event_contracts')
                     .select('*')
+                    .eq('contract_type', MANAGER_EVENT_CREATION_CONTRACT_TYPE)
                     .eq('is_active', true)
                     .maybeSingle();
                 
-                console.log("Query contrato ativo - data:", data, "error:", error);
-                
                 // Se não encontrou contrato ativo, busca a última versão (mais recente por created_at ou updated_at)
                 if (!data && (!error || error.code === 'PGRST116' || error.code === 'PGRST117')) {
-                    console.log("Não encontrou contrato ativo, buscando última versão...");
                     const { data: latestData, error: latestError } = await supabase
                         .from('event_contracts')
                         .select('*')
+                        .eq('contract_type', MANAGER_EVENT_CREATION_CONTRACT_TYPE)
                         .order('updated_at', { ascending: false })
                         .order('created_at', { ascending: false })
                         .limit(1)
                         .maybeSingle();
-                    
-                    console.log("Query última versão - data:", latestData, "error:", latestError);
                     
                     if (latestError) {
                         // Se for erro de permissão (RLS), mostra mensagem específica
@@ -157,8 +159,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                             return null;
                         }
                         if (latestError.code !== 'PGRST116' && latestError.code !== 'PGRST117') {
-                            console.error("Error fetching latest contract:", latestError);
-                            showError("Erro ao carregar o contrato: " + latestError.message);
+                            console.error('Error fetching latest event_terms contract:', latestError);
+                            showError('Erro ao carregar o contrato: ' + latestError.message);
                             return null;
                         }
                     }
@@ -168,7 +170,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                     
                     // Se encontrou um contrato mas não está ativo, avisa mas retorna mesmo assim
                     if (data && !data.is_active) {
-                        console.warn("Contrato encontrado mas não está marcado como ativo. Usando mesmo assim:", data);
+                        console.warn(
+                            '[EventFormSteps] Contrato event_terms inativo; usando no fluxo. Ative em Admin > Contratos.',
+                            data.id,
+                        );
                     }
                 } else if (error) {
                     // Se for erro de permissão (RLS), mostra mensagem específica
@@ -178,22 +183,18 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                         return null;
                     }
                     if (error.code !== 'PGRST116' && error.code !== 'PGRST117') {
-                        console.error("Error fetching active contract:", error);
-                        showError("Erro ao carregar o contrato ativo: " + error.message);
+                        console.error('Error fetching active event_terms contract:', error);
+                        showError('Erro ao carregar o contrato ativo: ' + error.message);
                         return null;
                     }
                 }
                 
-                if (data) {
-                    console.log("Contrato encontrado com sucesso:", { id: data.id, version: data.version, is_active: data.is_active });
-                } else {
-                    console.log("Nenhum contrato encontrado na base de dados.");
-                }
-                
                 return data as EventContract | null;
-            } catch (err: any) {
-                console.error("Erro inesperado ao buscar contrato:", err);
-                showError("Erro inesperado ao carregar contrato: " + (err.message || 'Erro desconhecido'));
+            } catch (err: unknown) {
+                console.error('Erro inesperado ao buscar contrato:', err);
+                showError(
+                    'Erro inesperado ao carregar contrato: ' + (err instanceof Error ? err.message : 'Erro desconhecido'),
+                );
                 return null;
             }
         },
@@ -229,7 +230,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
         defaultValues: {
             title: initialData?.title || '',
             description: initialData?.description || '',
-            date: initialData?.date ? parseISO(initialData.date.toISOString()) : undefined,
+            date: initialData?.date ?? undefined,
             time: initialData?.time || '',
             location: initialData?.location || '',
             address: initialData?.address || '',
@@ -243,11 +244,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
             is_paid: initialData?.is_paid || false,
             ticket_price: initialData?.ticket_price?.toString().replace('.', ',') || '',
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
-            batches: initialData?.batches?.map(batch => ({
-                ...batch, 
+            batches: initialData?.batches?.map((batch) => ({
+                ...batch,
                 price: batch.price.toString().replace('.', ','), // Formata o preço para BR
-                start_date: parseISO(batch.start_date.toString()),
-                end_date: parseISO(batch.end_date.toString())
+                start_date:
+                    batch.start_date instanceof Date
+                        ? batch.start_date
+                        : parseEventLocalDay(String(batch.start_date)) ?? undefined,
+                end_date:
+                    batch.end_date instanceof Date
+                        ? batch.end_date
+                        : parseEventLocalDay(String(batch.end_date)) ?? undefined,
             })) || [
                 { name: 'Lote 1', quantity: '', price: '', start_date: undefined, end_date: undefined } // Lote inicial
             ],
@@ -336,16 +343,22 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
         if (!activeContract) return '';
 
         const rangesHtml = formatCommissionRangesToHtml(commissionRanges || []);
-        let contentToProcess = activeContract.content;
+        let contentToProcess = normalizeContractContentForDisplay(activeContract.content);
+        const withRanges = contentToProcess.replace('X%', rangesHtml);
+        const trimmed = withRanges.trim();
 
-        // Substitui quebras de linha duplas por tags <p> para formatação básica
-        // Isso assume que parágrafos são separados por uma ou mais linhas em branco
-        const formattedContent = contentToProcess
+        // Contratos do admin costumam vir como HTML (<h2>, <p>, …). Nesse caso NÃO envolver
+        // o documento inteiro em um único <p> — isso quebra o HTML5, colapsa margens e vira "muro de texto".
+        // Só aplica o split em parágrafos para texto puro (sem tags na primeira posição).
+        const looksLikeHtml = /^</.test(trimmed);
+        if (looksLikeHtml) {
+            return trimmed;
+        }
+
+        return trimmed
             .split(/\n\s*\n/)
-            .map(paragraph => `<p>${paragraph.trim()}</p>`)
+            .map((paragraph) => `<p>${paragraph.trim()}</p>`)
             .join('');
-
-        return formattedContent.replace("X%", rangesHtml);
     }, [activeContract, commissionRanges]);
 
     // Se estiver editando um evento gratuito já existente, carrega turmas salvas
@@ -480,7 +493,68 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
         const toastId = showLoading(eventId ? "Atualizando evento..." : "Criando novo evento...");
 
         try {
-            const validCompany = company; // Asserção de tipo implícita
+            const TIPO_GESTOR_PRO = 2;
+            const isGestorPro = Number(profile.tipo_usuario_id) === TIPO_GESTOR_PRO;
+
+            let companyIdForEvent: string | null =
+                typeof company?.id === 'string' && company.id.trim() !== '' ? company.id.trim() : null;
+
+            if (isGestorPro) {
+                try {
+                    const fromDb = await fetchManagerPrimaryCompanyId(supabase, userId);
+                    if (fromDb) {
+                        companyIdForEvent = fromDb;
+                    }
+                } catch (linkReadErr: unknown) {
+                    console.error('[EventFormSteps] Falha ao ler user_companies no save:', linkReadErr);
+                }
+
+                if (!companyIdForEvent) {
+                    try {
+                        const ensured = await ensureGestorCompanyLinked(supabase, userId, {
+                            tipo_usuario_id: Number(profile.tipo_usuario_id),
+                            natureza_juridica_id: profile.natureza_juridica_id,
+                            first_name: profile.first_name,
+                            last_name: profile.last_name,
+                            cpf: profile.cpf,
+                            cep: profile.cep,
+                            rua: profile.rua,
+                            bairro: profile.bairro,
+                            cidade: profile.cidade,
+                            estado: profile.estado,
+                            numero: profile.numero,
+                            complemento: profile.complemento || null,
+                        });
+                        if (ensured) {
+                            companyIdForEvent = ensured.id;
+                            await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
+                        }
+                    } catch (ensureErr: unknown) {
+                        dismissToast(toastId);
+                        const msg =
+                            ensureErr instanceof Error
+                                ? ensureErr.message
+                                : 'Não foi possível vincular empresa ao seu perfil.';
+                        showError(msg);
+                        return;
+                    }
+                }
+
+                if (!companyIdForEvent) {
+                    dismissToast(toastId);
+                    const nj = profile.natureza_juridica_id != null ? Number(profile.natureza_juridica_id) : null;
+                    if (nj === 2) {
+                        showError(
+                            'Sua conta é Pessoa Jurídica, mas não há empresa vinculada (user_companies). Conclua o cadastro da empresa em Configurações / registro PRO; se o cadastro antigo falhou no vínculo, refaça ou peça suporte para associar seu user_id à empresa.',
+                        );
+                    } else {
+                        showError(
+                            'Não foi possível obter a empresa vinculada ao seu usuário. Verifique: (1) em user_companies existe linha com seu user_id; (2) políticas RLS de user_companies/companies permitem SELECT para authenticated; (3) se é PJ, cadastre a empresa em Configurações; (4) se é PF, CPF completo (11 dígitos) no perfil.',
+                        );
+                    }
+                    return;
+                }
+            }
 
             // Quantidade total de ingressos: pago = soma dos lotes; gratuito = capacidade (exigido pelo banco como valor positivo)
             const totalTicketsQuantity = values.batches && values.batches.length > 0
@@ -518,7 +592,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                 total_tickets: totalTickets,
                 ticket_price: ticketPriceForEvent,
                 created_by: userId,
-                company_id: company ? (company as CompanyData).id : null,
+                company_id: companyIdForEvent,
                 status: 'pending',
                 contract_id: activeContract?.id || null,
                 contract_version: activeContract?.version ?? null,
@@ -748,7 +822,13 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
                             <CardDescription className="text-gray-400">Por favor, leia e aceite os termos do contrato para prosseguir.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="prose prose-invert max-h-[400px] overflow-y-auto p-4 border border-yellow-500/20 rounded-lg text-gray-200 break-words">
+                            <div
+                                className="prose prose-invert max-w-none max-h-[400px] overflow-y-auto p-4 border border-yellow-500/20 rounded-lg text-gray-200 break-words
+                                [&_h2]:mt-8 [&_h2]:mb-4 [&_h2]:text-yellow-500/95
+                                [&_h3]:mt-6 [&_h3]:mb-3 [&_h3]:text-yellow-500/90
+                                [&_p]:my-4 [&_p]:leading-relaxed
+                                [&_ul]:my-4 [&_ol]:my-4"
+                            >
                                 <div dangerouslySetInnerHTML={{ __html: processedContractContent }} />
                             </div>
                             <FormField

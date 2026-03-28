@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +21,9 @@ interface ValidationResult {
 type HistoryFilter = 'all' | 'today' | 'week' | 'success' | 'error';
 
 const MAX_HISTORY_ITEMS = 100;
+
+/** Mesma aba: reutiliza “liberado” se a chave não mudou. Fechar aba exige validar de novo. */
+const SESSION_VERIFIED_KEY = 'validator_verified_api_key';
 
 // Funções para gerenciar histórico no localStorage
 const saveToHistory = (result: ValidationResult) => {
@@ -84,7 +86,6 @@ const playSound = (type: 'success' | 'error') => {
 };
 
 const TicketValidator: React.FC = () => {
-    const [searchParams] = useSearchParams();
     const [apiKey, setApiKey] = useState<string>('');
     const [wristbandCode, setWristbandCode] = useState<string>('');
     const [validationType, setValidationType] = useState<'entry' | 'exit'>('entry');
@@ -98,17 +99,31 @@ const TicketValidator: React.FC = () => {
         const stored = localStorage.getItem('validator_sound_enabled');
         return stored ? stored === 'true' : true;
     });
-    
+    const [keyVerified, setKeyVerified] = useState(false);
+    const [keyVerifying, setKeyVerifying] = useState(false);
+    const [verifiedEventTitle, setVerifiedEventTitle] = useState<string | null>(null);
+
     const qrCodeScannerRef = useRef<Html5Qrcode | null>(null);
     const scannerContainerRef = useRef<HTMLDivElement>(null);
 
-    // Carrega API key do localStorage (não mais da URL)
+    // Carrega API key do localStorage; restaura “liberado” na sessão se for a mesma chave
     useEffect(() => {
         const storedApiKey = localStorage.getItem('validator_api_key');
         if (storedApiKey) {
             setApiKey(storedApiKey);
         }
     }, []);
+
+    useEffect(() => {
+        const k = apiKey.trim();
+        const sessionOk = sessionStorage.getItem(SESSION_VERIFIED_KEY);
+        if (k.length === 8 && sessionOk === k) {
+            setKeyVerified(true);
+        } else {
+            setKeyVerified(false);
+            setVerifiedEventTitle(null);
+        }
+    }, [apiKey]);
 
     // Salva API key no localStorage quando mudar
     useEffect(() => {
@@ -127,7 +142,67 @@ const TicketValidator: React.FC = () => {
         localStorage.setItem('validator_sound_enabled', String(soundEnabled));
     }, [soundEnabled]);
 
+    const verifyAccessKey = async () => {
+        const k = apiKey.trim();
+        if (k.length !== 8) {
+            showError('Digite os 8 caracteres da chave.');
+            return;
+        }
+
+        setKeyVerifying(true);
+        try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+            if (!supabaseUrl || !anonKey) {
+                showError('Configuração do app incompleta (URL/anon).');
+                return;
+            }
+
+            const response = await fetch(`${supabaseUrl}/functions/v1/validate-ticket`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${anonKey}`,
+                    apikey: anonKey,
+                    'x-api-key': k,
+                },
+                body: JSON.stringify({ verify_key_only: true }),
+            });
+
+            const raw = (await response.json()) as {
+                success?: boolean;
+                message?: string;
+                error?: string;
+                event_title?: string | null;
+            };
+
+            if (response.ok && raw.success) {
+                sessionStorage.setItem(SESSION_VERIFIED_KEY, k);
+                setKeyVerified(true);
+                setVerifiedEventTitle(raw.event_title ?? null);
+                showSuccess(raw.message || 'Chave liberada. Agora você pode validar ingressos.');
+            } else {
+                sessionStorage.removeItem(SESSION_VERIFIED_KEY);
+                setKeyVerified(false);
+                setVerifiedEventTitle(null);
+                showError(raw.error || raw.message || 'Chave inválida, inativa ou expirada.');
+            }
+        } catch (e: unknown) {
+            sessionStorage.removeItem(SESSION_VERIFIED_KEY);
+            setKeyVerified(false);
+            setVerifiedEventTitle(null);
+            const msg = e instanceof Error ? e.message : 'Erro ao verificar a chave.';
+            showError(msg);
+        } finally {
+            setKeyVerifying(false);
+        }
+    };
+
     const validateTicket = async (code: string) => {
+        if (!keyVerified) {
+            showError('Toque em Validar ao lado da chave antes de validar o ingresso.');
+            return;
+        }
         if (!apiKey.trim()) {
             showError('Por favor, informe a chave de acesso.');
             return;
@@ -230,6 +305,10 @@ const TicketValidator: React.FC = () => {
     const QR_READER_ID = 'validator-qr-reader';
 
     const handleScanQRCode = async () => {
+        if (!keyVerified) {
+            showError('Toque em Validar ao lado da chave antes de escanear.');
+            return;
+        }
         if (!apiKey.trim()) {
             showError('Por favor, informe a chave de acesso antes de escanear.');
             return;
@@ -375,39 +454,84 @@ const TicketValidator: React.FC = () => {
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <Input
-                            type="text"
-                            value={apiKey}
-                            onChange={(e) => {
-                                // Aceita apenas letras maiúsculas e números, máximo 8 caracteres
-                                const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-                                setApiKey(value);
-                                
-                                // Salva automaticamente quando tiver 8 caracteres
-                                if (value.length === 8) {
-                                    localStorage.setItem('validator_api_key', value);
-                                }
-                            }}
-                            placeholder="Digite a chave de 8 caracteres (ex: A7K9M2X1)"
-                            className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 text-center text-2xl font-mono tracking-widest"
-                            maxLength={8}
-                            autoFocus
-                        />
-                        <p className="text-xs text-gray-400 mt-2 text-center">
-                            {apiKey.length < 8 
-                                ? `Digite ${8 - apiKey.length} caractere(s) restante(s)` 
-                                : '✓ Chave completa - Pronta para validar'}
+                        <div className="flex flex-col sm:flex-row gap-2 sm:items-stretch">
+                            <Input
+                                type="text"
+                                value={apiKey}
+                                onChange={(e) => {
+                                    const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+                                    setApiKey(value);
+                                    if (value.length === 8) {
+                                        localStorage.setItem('validator_api_key', value);
+                                    }
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        void verifyAccessKey();
+                                    }
+                                }}
+                                placeholder="Digite a chave de 8 caracteres (ex: A7K9M2X1)"
+                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 text-center text-2xl font-mono tracking-widest sm:flex-1"
+                                maxLength={8}
+                                autoFocus
+                                disabled={keyVerifying}
+                                aria-label="Chave de acesso"
+                            />
+                            <Button
+                                type="button"
+                                onClick={() => void verifyAccessKey()}
+                                disabled={keyVerifying || apiKey.trim().length !== 8}
+                                className="shrink-0 bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 sm:min-w-[120px]"
+                            >
+                                {keyVerifying ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Verificando
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle className="mr-2 h-4 w-4" />
+                                        Validar
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                        <p className="text-xs mt-2 text-center">
+                            {keyVerified ? (
+                                <span className="text-green-400">
+                                    ✓ Chave confirmada
+                                    {verifiedEventTitle ? ` · ${verifiedEventTitle}` : ''}. Agora valide os ingressos abaixo.
+                                </span>
+                            ) : apiKey.length < 8 ? (
+                                <span className="text-gray-400">
+                                    Digite {8 - apiKey.length} caractere(s) restante(s), depois toque em Validar.
+                                </span>
+                            ) : (
+                                <span className="text-yellow-500/90">
+                                    Toque em <strong className="text-yellow-400">Validar</strong> para liberar entrada/saída e leitura do ingresso.
+                                </span>
+                            )}
                         </p>
                     </CardContent>
                 </Card>
 
                 {/* Card de Validação */}
-                <Card className="bg-black border border-yellow-500/30 rounded-2xl mb-6">
+                <Card
+                    className={`bg-black border border-yellow-500/30 rounded-2xl mb-6 transition-opacity ${
+                        !keyVerified ? 'opacity-45' : ''
+                    }`}
+                >
                     <CardHeader>
                         <CardTitle className="text-white flex items-center">
                             <Scan className="h-5 w-5 mr-2 text-yellow-500" />
                             Validar Ingresso
                         </CardTitle>
+                        {!keyVerified && (
+                            <p className="text-xs text-gray-500 font-normal pt-1">
+                                Confirme a chave de acesso acima para habilitar esta área.
+                            </p>
+                        )}
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {/* Tipo de Validação */}
@@ -416,6 +540,7 @@ const TicketValidator: React.FC = () => {
                                 type="button"
                                 variant={validationType === 'entry' ? 'default' : 'outline'}
                                 onClick={() => setValidationType('entry')}
+                                disabled={!keyVerified}
                                 className={`flex-1 ${
                                     validationType === 'entry'
                                         ? 'bg-green-500 text-white hover:bg-green-600'
@@ -428,6 +553,7 @@ const TicketValidator: React.FC = () => {
                                 type="button"
                                 variant={validationType === 'exit' ? 'default' : 'outline'}
                                 onClick={() => setValidationType('exit')}
+                                disabled={!keyVerified}
                                 className={`flex-1 ${
                                     validationType === 'exit'
                                         ? 'bg-red-500 text-white hover:bg-red-600'
@@ -446,15 +572,22 @@ const TicketValidator: React.FC = () => {
                                 onChange={(e) => setWristbandCode(e.target.value.toUpperCase())}
                                 placeholder="Digite ou escaneie o código do ingresso"
                                 className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 text-center text-lg font-mono"
-                                autoFocus
-                                disabled={isValidating || isScanning}
+                                autoFocus={keyVerified}
+                                disabled={!keyVerified || isValidating || isScanning}
+                                aria-disabled={!keyVerified}
                             />
 
                             {/* Botões de Ação */}
                             <div className="flex space-x-4">
                                 <Button
                                     type="submit"
-                                    disabled={isValidating || !wristbandCode.trim() || !apiKey.trim() || isScanning}
+                                    disabled={
+                                        !keyVerified ||
+                                        isValidating ||
+                                        !wristbandCode.trim() ||
+                                        !apiKey.trim() ||
+                                        isScanning
+                                    }
                                     className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
                                 >
                                     {isValidating ? (
@@ -465,7 +598,7 @@ const TicketValidator: React.FC = () => {
                                     ) : (
                                         <>
                                             <CheckCircle className="mr-2 h-4 w-4" />
-                                            Validar
+                                            Validar ingresso
                                         </>
                                     )}
                                 </Button>
@@ -473,7 +606,7 @@ const TicketValidator: React.FC = () => {
                                     <Button
                                         type="button"
                                         onClick={handleScanQRCode}
-                                        disabled={!apiKey.trim() || isValidating}
+                                        disabled={!keyVerified || !apiKey.trim() || isValidating}
                                         className="bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
                                     >
                                         <QrCode className="mr-2 h-4 w-4" />
@@ -669,11 +802,10 @@ const TicketValidator: React.FC = () => {
                             <div className="text-sm text-gray-400 space-y-2">
                                 <p><strong className="text-yellow-500">Instruções:</strong></p>
                                 <ul className="list-disc list-inside space-y-1 ml-2">
-                                    <li>Cole sua chave de acesso no campo superior</li>
-                                    <li>Escolha entre "Entrada" ou "Saída"</li>
-                                    <li>Digite o código do ingresso ou escaneie o QR Code</li>
-                                    <li>O resultado aparecerá imediatamente abaixo</li>
-                                    <li>O histórico de validações é salvo localmente</li>
+                                    <li>Digite a chave de 8 caracteres e toque em <strong className="text-yellow-500">Validar</strong></li>
+                                    <li>Depois escolha &quot;Entrada&quot; ou &quot;Saída&quot;</li>
+                                    <li>Digite o código do ingresso ou use &quot;Escanear QR&quot;</li>
+                                    <li>O resultado aparece logo abaixo; o histórico fica salvo neste aparelho</li>
                                 </ul>
                             </div>
                         </div>

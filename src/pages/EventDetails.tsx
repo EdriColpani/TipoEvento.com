@@ -11,6 +11,8 @@ import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast
 import { useAuthRedirect } from '@/hooks/use-auth-redirect';
 import { supabase } from '@/integrations/supabase/client'; // Importando supabase
 import { FunctionsHttpError } from '@supabase/supabase-js'; // Importando o tipo de erro específico
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 
 // Tipos de dados para os itens de compra
 interface PurchaseItem {
@@ -60,6 +62,15 @@ const EventDetails: React.FC = () => {
     };
     
     const handleCheckout = async () => {
+        if (details && !details.event.is_active) {
+            showError('Este evento não está disponível para novas compras.');
+            return;
+        }
+        if (details && !isEventOpenForNewSales(details.event.date, details.event.time)) {
+            showError('O prazo para compra de ingressos deste evento foi encerrado.');
+            return;
+        }
+
         const totalTickets = getTotalTickets();
         
         if (totalTickets === 0) {
@@ -200,6 +211,9 @@ const EventDetails: React.FC = () => {
     }
     
     const { event, ticketTypes } = details;
+    const salesClosedInactive = !event.is_active;
+    const salesClosedByDeadline = !isEventOpenForNewSales(event.date, event.time);
+    const salesClosed = salesClosedInactive || salesClosedByDeadline;
     const minPriceDisplay = getMinPriceDisplay(event.min_price);
     
     const organizerName = event.companies?.corporate_name || 'N/A';
@@ -239,7 +253,17 @@ const EventDetails: React.FC = () => {
                     </div>
                 </div>
             </header>
-            <section className="pt-20 pb-0 flex justify-center">
+            {salesClosed && (
+                <div
+                    role="status"
+                    className="fixed top-[4.25rem] left-0 right-0 z-[95] bg-orange-950/95 border-b border-orange-500/50 px-4 py-2.5 text-center text-sm text-orange-100"
+                >
+                    {salesClosedInactive
+                        ? 'Este evento foi desativado pelo organizador e não está aceitando novas compras de ingressos.'
+                        : 'O prazo para compra de ingressos deste evento foi encerrado (início do evento).'}
+                </div>
+            )}
+            <section className={`${salesClosed ? 'pt-32' : 'pt-20'} pb-0 flex justify-center`}>
                 <div className="relative w-full max-w-5xl h-[500px] overflow-hidden rounded-xl shadow-2xl shadow-yellow-500/20 mx-4 sm:mx-6">
                     <img
                         src={bannerImageUrl}
@@ -264,7 +288,7 @@ const EventDetails: React.FC = () => {
                                         <i className="fas fa-calendar-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4"></i>
                                         <div>
                                             <div className="text-xs sm:text-sm text-gray-400">Data</div>
-                                            <div className="text-sm sm:text-lg font-semibold text-white">{new Date(event.date).toLocaleDateString('pt-BR')}</div>
+                                            <div className="text-sm sm:text-lg font-semibold text-white">{formatEventDateForDisplay(event.date) || '—'}</div>
                                         </div>
                                     </div>
                                     <div className="flex items-center">
@@ -288,7 +312,7 @@ const EventDetails: React.FC = () => {
                                     </span>
                                     <Button 
                                         onClick={handleCheckout}
-                                        disabled={isProcessing || getTotalTickets() === 0}
+                                        disabled={isProcessing || getTotalTickets() === 0 || salesClosed}
                                         className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
                                     >
                                         {isProcessing ? (
@@ -392,7 +416,7 @@ const EventDetails: React.FC = () => {
                                                             <button
                                                                 onClick={() => handleTicketChange(ticket.id, (selectedTickets[ticket.id] || 0) - 1)}
                                                                 className="w-7 h-7 sm:w-8 sm:h-8 bg-yellow-500/20 border border-yellow-500/40 rounded-full flex items-center justify-center text-yellow-500 hover:bg-yellow-500/30 transition-all duration-300 cursor-pointer"
-                                                                disabled={ticket.available === 0 || (selectedTickets[ticket.id] || 0) === 0 || isProcessing}
+                                                                disabled={ticket.available === 0 || (selectedTickets[ticket.id] || 0) === 0 || isProcessing || salesClosed}
                                                             >
                                                                 <i className="fas fa-minus text-xs"></i>
                                                             </button>
@@ -402,7 +426,7 @@ const EventDetails: React.FC = () => {
                                                             <button
                                                                 onClick={() => handleTicketChange(ticket.id, (selectedTickets[ticket.id] || 0) + 1)}
                                                                 className="w-7 h-7 sm:w-8 sm:h-8 bg-yellow-500/20 border border-yellow-500/40 rounded-full flex items-center justify-center text-yellow-500 hover:bg-yellow-500/30 transition-all duration-300 cursor-pointer"
-                                                                disabled={(selectedTickets[ticket.id] || 0) >= ticket.available || isProcessing}
+                                                                disabled={(selectedTickets[ticket.id] || 0) >= ticket.available || isProcessing || salesClosed}
                                                             >
                                                                 <i className="fas fa-plus text-xs"></i>
                                                             </button>
@@ -430,7 +454,7 @@ const EventDetails: React.FC = () => {
                                             </div>
                                             <Button 
                                                 onClick={handleCheckout}
-                                                disabled={isProcessing || getTotalTickets() === 0}
+                                                disabled={isProcessing || getTotalTickets() === 0 || salesClosed}
                                                 className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 sm:py-4 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
                                             >
                                                 {isProcessing ? (

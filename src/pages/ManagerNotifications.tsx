@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Bell, ArrowLeft, Loader2, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
+import { fetchManagerCompanyNotificationEmail } from '@/utils/manager-scope';
 
 interface SettingsState {
     newSaleEmail: boolean;
@@ -45,18 +46,10 @@ const ManagerNotifications: React.FC = () => {
             }
             setUserId(user.id);
 
-            // Fetch Company Email
-            const { data: companyData, error: companyError } = await supabase
-                .from('companies')
-                .select('email')
-                .eq('user_id', user.id)
-                .single();
-
-            if (companyError && companyError.code !== 'PGRST116') {
-                console.error("Error fetching company email:", companyError);
-            }
-            
-            const fetchedCompanyEmail = companyData?.email || null;
+            const fetchedCompanyEmail = await fetchManagerCompanyNotificationEmail(
+                supabase,
+                user.id,
+            );
             setCompanyEmail(fetchedCompanyEmail);
 
             // Fetch Manager Settings

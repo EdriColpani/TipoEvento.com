@@ -4,12 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Loader2, ArrowLeft, FileText, Edit, Power, Eye, AlertTriangle, XCircle, Trash2, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
+import { normalizeContractContentForDisplay } from '@/utils/contractContent';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useProfile } from '@/hooks/use-profile';
@@ -23,14 +25,37 @@ interface EventContract {
     created_at: string;
     created_by: string | null;
     updated_at: string;
+    contract_type: string; // Adiciona o tipo de contrato
 }
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
+/** Chaves persistidas em `event_contracts.contract_type` — exibição sempre em pt-BR na UI. */
+const CONTRACT_TYPE_LABELS: Record<string, string> = {
+    event_terms: 'Termos de Evento',
+    company_registration: 'Cadastro de Empresa',
+    client_terms: 'Termos de Cliente (Usuário)',
+    company_membership: 'Adesão à Empresa',
+    other: 'Outros',
+};
+
+const CONTRACT_TYPE_ORDER = [
+    'event_terms',
+    'company_registration',
+    'client_terms',
+    'company_membership',
+    'other',
+] as const;
+
+function getContractTypeLabel(contractType: string | null | undefined): string {
+    if (!contractType) return '—';
+    return CONTRACT_TYPE_LABELS[contractType] ?? contractType;
+}
+
 const fetchEventContracts = async (): Promise<EventContract[]> => {
     const { data, error } = await supabase
         .from('event_contracts')
-        .select('*')
+        .select('*, profiles(first_name, last_name)')
         .order('created_at', { ascending: false });
 
     if (error) {
@@ -74,13 +99,14 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
     const [version, setVersion] = useState(initialData?.version || '');
     const [title, setTitle] = useState(initialData?.title || '');
     const [content, setContent] = useState(initialData?.content || '');
+    const [contractType, setContractType] = useState(initialData?.contract_type || 'event_terms'); // Default para event_terms
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
         const toastId = showLoading(initialData ? "Atualizando contrato..." : "Criando novo contrato...");
 
-        if (!version || !title || !content) {
+        if (!version || !title || !content || !contractType) {
             dismissToast(toastId);
             showError("Todos os campos são obrigatórios.");
             setIsSaving(false);
@@ -92,8 +118,9 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
             const { data: existing, error: existingError } = await supabase
                 .from('event_contracts')
                 .select('id')
-                .eq('version', version)
-                .single();
+                .eq('version', version) // Busca pela versão
+                .eq('contract_type', contractType) // E pelo tipo de contrato
+                .maybeSingle(); // Usar maybeSingle para quando não há resultado
             
             if (existingError && existingError.code !== 'PGRST116') { // PGRST116 = No rows found
                 dismissToast(toastId);
@@ -103,7 +130,7 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
             }
             if (existing) {
                 dismissToast(toastId);
-                showError("Já existe um contrato com esta versão.");
+                showError("Já existe um contrato com esta versão e tipo.");
                 setIsSaving(false);
                 return;
             }
@@ -113,6 +140,7 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
             version,
             title,
             content,
+            contract_type: contractType,
             created_by: userId, // Salva o ID do admin que criou/editou
         };
 
@@ -165,7 +193,27 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
                 {!!initialData && <p className="text-xs text-gray-500 mt-1">A versão não pode ser alterada após a criação.</p>}
             </div>
             <div>
-                <label htmlFor="title" className="block text-sm font-medium text-white mb-2">Título</label>
+                <label htmlFor="contractType" className="block text-sm font-medium text-white mb-2">Tipo de Contrato</label>
+                <Select 
+                    value={contractType}
+                    onValueChange={setContractType}
+                    disabled={isSaving || !!initialData} // Não permite alterar o tipo após a criação
+                >
+                    <SelectTrigger id="contractType" className="bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500">
+                        <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-black border border-yellow-500/30 text-white">
+                        {CONTRACT_TYPE_ORDER.map((key) => (
+                            <SelectItem key={key} value={key}>
+                                {CONTRACT_TYPE_LABELS[key]}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                {!!initialData && <p className="text-xs text-gray-500 mt-1">O tipo não pode ser alterado após a criação.</p>}
+            </div>
+            <div>
+                 <label htmlFor="title" className="block text-sm font-medium text-white mb-2">Título</label>
                 <Input
                     id="title"
                     value={title}
@@ -239,24 +287,26 @@ const ToggleActiveDialog: React.FC<{ contract: EventContract, onToggleSuccess: (
                     .eq('id', contract.id);
                 error = result.error;
             } else {
-                // Se estiver ativando, primeiro desativa todos os outros, depois ativa este
-                // Desativa todos os contratos ativos primeiro
+                // Se estiver ativando, desativa outros contratos DO MESMO TIPO, depois ativa este
                 const { error: deactivateError } = await supabase
                     .from('event_contracts')
                     .update({ is_active: false, updated_at: new Date().toISOString(), created_by: userId })
-                    .eq('is_active', true);
-                
+                    .eq('is_active', true)
+                    .eq('contract_type', contract.contract_type); // Desativa apenas do mesmo tipo
+ 
                 if (deactivateError) {
-                    console.error("Erro ao desativar contratos antigos:", deactivateError);
-                    throw new Error("Falha ao desativar contratos antigos: " + deactivateError.message);
+                    console.error(`Erro ao desativar contratos ativos do tipo ${contract.contract_type}:`, deactivateError);
+                    throw new Error(
+                        `Falha ao desativar contratos antigos do tipo ${getContractTypeLabel(contract.contract_type)}: ${deactivateError.message}`
+                    );
                 }
-
-                // Ativa o contrato atual
-                const result = await supabase
-                    .from('event_contracts')
-                    .update({ is_active: true, updated_at: new Date().toISOString(), created_by: userId })
-                    .eq('id', contract.id);
-                error = result.error;
+ 
+                 // Ativa o contrato atual
+                 const result = await supabase
+                     .from('event_contracts')
+                     .update({ is_active: true, updated_at: new Date().toISOString(), created_by: userId })
+                     .eq('id', contract.id);
+                 error = result.error;
             }
             
             if (error) {
@@ -298,13 +348,13 @@ const ToggleActiveDialog: React.FC<{ contract: EventContract, onToggleSuccess: (
                             <>
                                 Tem certeza que deseja desativar este contrato? Ele não será mais aplicado a novos eventos.
                                 <br /><br />
-                                Contrato: <span className="font-semibold text-white">{contract.title} (Versão {contract.version})</span>
+                                Contrato: <span className="font-semibold text-white">{contract.title} (Versão {contract.version}, Tipo: {getContractTypeLabel(contract.contract_type)})</span>
                             </>
                         ) : (
                             <>
                                 Tem certeza que deseja ativar este contrato? Ele se tornará o contrato padrão para novos eventos. O contrato atualmente ativo será desativado.
                                 <br /><br />
-                                Contrato: <span className="font-semibold text-white">{contract.title} (Versão {contract.version})</span>
+                                Contrato: <span className="font-semibold text-white">{contract.title} (Versão {contract.version}, Tipo: {getContractTypeLabel(contract.contract_type)})</span>
                             </>
                         )}
                     </AlertDialogDescription>
@@ -417,8 +467,8 @@ const DeleteContractDialog: React.FC<{ contract: EventContract, onDeleteSuccess:
 const ViewContentDialog: React.FC<{ contract: EventContract, onClose: () => void }> = ({ contract, onClose }) => {
     return (
         <Dialog open={true} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[800px] bg-black/90 border border-yellow-500/30 text-white p-6">
-                <DialogHeader>
+            <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col gap-4 overflow-hidden bg-black/90 border border-yellow-500/30 text-white p-6">
+                <DialogHeader className="shrink-0">
                     <DialogTitle className="text-yellow-500 text-2xl flex items-center">
                         <FileText className="h-6 w-6 mr-2" />
                         Visualizar Contrato: {contract.title}
@@ -427,10 +477,16 @@ const ViewContentDialog: React.FC<{ contract: EventContract, onClose: () => void
                         Versão: <span className="font-semibold text-white">{contract.version}</span>
                     </DialogDescription>
                 </DialogHeader>
-                <div className="prose prose-invert max-h-[60vh] overflow-y-auto mt-4 p-4 border border-yellow-500/20 rounded-lg">
-                    <div dangerouslySetInnerHTML={{ __html: contract.content }} />
+                <div
+                    className="prose prose-invert max-w-none min-h-0 flex-1 overflow-y-auto overscroll-contain mt-0 p-4 border border-yellow-500/20 rounded-lg
+                    [&_h2]:mt-8 [&_h2]:mb-4 [&_h2]:text-yellow-500/95
+                    [&_h3]:mt-6 [&_h3]:mb-3 [&_h3]:text-yellow-500/90
+                    [&_p]:my-4 [&_p]:leading-relaxed
+                    [&_ul]:my-4 [&_ol]:my-4"
+                >
+                    <div dangerouslySetInnerHTML={{ __html: normalizeContractContentForDisplay(contract.content) }} />
                 </div>
-                <div className="flex justify-end pt-4 border-t border-yellow-500/20">
+                <div className="flex shrink-0 justify-end pt-4 border-t border-yellow-500/20">
                     <Button 
                         onClick={onClose}
                         variant="outline"
@@ -517,7 +573,7 @@ const AdminEventContracts: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0 flex items-center">
                     <FileText className="h-7 w-7 mr-3" />
-                    Contratos de Eventos ({contracts.filter(c => c.is_active).length} ativos / {contracts.length} total)
+                    Contratos ({contracts.filter(c => c.is_active).length} ativos / {contracts.length} total)
                 </h1>
                 <div className="flex space-x-3">
                     <Button 
@@ -540,7 +596,7 @@ const AdminEventContracts: React.FC = () => {
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <CardDescription className="text-gray-400 text-sm mb-6">
-                    Gerencie os termos e condições aplicados aos eventos. Apenas um contrato pode estar ativo por vez.
+                    Gerencie os termos e condições aplicados. Apenas um contrato de cada TIPO pode estar ativo por vez.
                 </CardDescription>
                 
                 {contracts.length === 0 ? (
@@ -555,9 +611,10 @@ const AdminEventContracts: React.FC = () => {
                             <TableHeader>
                                 <TableRow className="border-b border-yellow-500/20 text-sm hover:bg-black/40">
                                     <TableHead className="text-left text-gray-400 font-semibold py-3 w-[15%]">Versão</TableHead>
+                                    <TableHead className="text-left text-gray-400 font-semibold py-3 w-[20%]">Tipo</TableHead>
                                     <TableHead className="text-left text-gray-400 font-semibold py-3 w-[40%]">Título</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Status</TableHead>
-                                    <TableHead className="text-right text-gray-400 font-semibold py-3 w-[30%]">Ações</TableHead>
+                                    <TableHead className="text-right text-gray-400 font-semibold py-3 w-[10%]">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -566,12 +623,15 @@ const AdminEventContracts: React.FC = () => {
                                         key={contract.id} 
                                         className={`border-b border-yellow-500/10 hover:bg-black/40 transition-colors text-sm ${!contract.is_active ? 'opacity-50' : ''}`}
                                     >
-                                        <TableCell className="py-4 text-white font-medium">
-                                            {contract.version}
+                                         <TableCell className="py-4 text-white font-medium">
+                                             {contract.version}
+                                         </TableCell>
+                                        <TableCell className="py-4 text-gray-300">
+                                            {getContractTypeLabel(contract.contract_type)}
                                         </TableCell>
-                                        <TableCell className="py-4 text-white font-medium">
-                                            {contract.title}
-                                        </TableCell>
+                                         <TableCell className="py-4 text-white font-medium">
+                                             {contract.title}
+                                         </TableCell>
                                         <TableCell className="text-center py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-semibold ${contract.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                                                 {contract.is_active ? 'Ativo' : 'Inativo'}
@@ -609,25 +669,27 @@ const AdminEventContracts: React.FC = () => {
 
             {/* Modal de Criação/Edição */}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent className="sm:max-w-[700px] bg-black/90 border border-yellow-500/30 text-white p-6">
-                    <DialogHeader>
+                <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col gap-4 overflow-hidden bg-black/90 border border-yellow-500/30 text-white p-6">
+                    <DialogHeader className="shrink-0 pr-6">
                         <DialogTitle className="text-yellow-500 text-2xl flex items-center">
                             <FileText className="h-6 w-6 mr-2" />
                             {editingContract ? 'Editar Contrato' : 'Adicionar Novo Contrato'}
                         </DialogTitle>
                         <DialogDescription className="text-gray-400">
-                            Defina o conteúdo do contrato que será exibido aos organizadores de eventos. Apenas um contrato pode estar ativo por vez.
-                        </DialogDescription>
+                            Defina o conteúdo do contrato. Apenas um contrato de cada TIPO pode estar ativo por vez.
+                         </DialogDescription>
                     </DialogHeader>
-                    <ContractForm 
-                        initialData={editingContract}
-                        onSaveSuccess={() => {
-                            handleCloseModal();
-                            invalidateContracts();
-                        }}
-                        onCancel={handleCloseModal}
-                        userId={userId!}
-                    />
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 -mr-1">
+                        <ContractForm 
+                            initialData={editingContract}
+                            onSaveSuccess={() => {
+                                handleCloseModal();
+                                invalidateContracts();
+                            }}
+                            onCancel={handleCloseModal}
+                            userId={userId!}
+                        />
+                    </div>
                 </DialogContent>
             </Dialog>
 

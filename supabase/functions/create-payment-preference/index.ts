@@ -63,7 +63,7 @@ serve(async (req) => {
     // 2. Fetch Event Details to get Manager ID (corrigido: usar created_by em vez de user_id)
     const { data: eventData, error: eventError } = await supabaseService
         .from('events')
-        .select('created_by')
+        .select('created_by, is_active')
         .eq('id', eventId)
         .single();
 
@@ -73,6 +73,30 @@ serve(async (req) => {
             status: 404, 
             headers: corsHeaders 
         });
+    }
+
+    if (eventData.is_active === false) {
+        return new Response(JSON.stringify({ error: 'Este evento não está disponível para novas compras.' }), {
+            status: 403,
+            headers: corsHeaders,
+        });
+    }
+
+    const { data: salesOpen, error: salesRpcError } = await supabaseService.rpc('event_accepts_new_sales', {
+        p_event_id: eventId,
+    });
+    if (salesRpcError) {
+        console.error('[create-payment-preference] event_accepts_new_sales:', salesRpcError);
+        return new Response(
+            JSON.stringify({ error: 'Não foi possível validar o evento. Tente novamente em instantes.' }),
+            { status: 500, headers: corsHeaders },
+        );
+    }
+    if (salesOpen !== true) {
+        return new Response(
+            JSON.stringify({ error: 'O prazo para compra de ingressos deste evento foi encerrado.' }),
+            { status: 403, headers: corsHeaders },
+        );
     }
     
     const managerUserId = eventData.created_by;

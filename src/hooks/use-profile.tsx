@@ -20,6 +20,7 @@ interface ProfileData {
     tipo_usuario_id: number;
     natureza_juridica_id: number | null; // NOVO: Natureza Jurídica (1=PF, 2=PJ)
     public_id: string; // NOVO: Identificador público
+    contract_version_accepted_id: string | null;
 }
 
 const fetchProfile = async (userId: string): Promise<ProfileData | null> => {
@@ -30,7 +31,7 @@ const fetchProfile = async (userId: string): Promise<ProfileData | null> => {
         .select(`
             first_name, last_name, avatar_url, cpf, rg, birth_date, gender, 
             cep, rua, bairro, cidade, estado, numero, complemento,
-            tipo_usuario_id, natureza_juridica_id, public_id
+            tipo_usuario_id, natureza_juridica_id, public_id, contract_version_accepted_id
         `)
         .eq('id', userId)
         .single();
@@ -59,6 +60,7 @@ const fetchProfile = async (userId: string): Promise<ProfileData | null> => {
         tipo_usuario_id: data.tipo_usuario_id,
         natureza_juridica_id: data.natureza_juridica_id, // Mapeando natureza jurídica
         public_id: data.public_id || 'N/A', // Mapeando public_id
+        contract_version_accepted_id: data.contract_version_accepted_id ?? null,
     } as ProfileData;
 };
 

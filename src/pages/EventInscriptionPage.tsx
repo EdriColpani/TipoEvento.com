@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import { Loader2 } from 'lucide-react';
 
 const UF_LIST = [
@@ -18,6 +20,7 @@ interface EventInfo {
     time: string;
     location: string;
     is_paid: boolean;
+    is_active?: boolean;
     banner_image_url?: string | null;
 }
 
@@ -90,7 +93,7 @@ const EventInscriptionPage: React.FC = () => {
         const fetchEvent = async () => {
             const { data, error } = await supabase
                 .from('events')
-                .select('id, title, date, time, location, is_paid, banner_image_url')
+                .select('id, title, date, time, location, is_paid, is_active, banner_image_url')
                 .eq('id', eventId)
                 .single();
             if (error || !data) {
@@ -257,6 +260,8 @@ const EventInscriptionPage: React.FC = () => {
                     no_free_wristbands:
                         'Não há vagas com pulseira gratuita neste evento. Cadastre um lote com preço R$ 0,00 ou entre em contato com o organizador.',
                     event_not_free: 'Este evento não é gratuito.',
+                    event_inactive: 'Este evento não está aceitando novas inscrições no momento.',
+                    event_sales_closed: 'O prazo para inscrição neste evento foi encerrado.',
                     invalid_cpf: 'CPF inválido.',
                 };
                 showError(msg[row?.error || ''] || 'Não foi possível concluir a inscrição.');
@@ -302,6 +307,35 @@ const EventInscriptionPage: React.FC = () => {
         );
     }
 
+    if (event.is_active === false) {
+        return (
+            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-4 text-center">
+                <h1 className="text-2xl font-serif text-orange-400 mb-3">Inscrições indisponíveis</h1>
+                <p className="text-gray-400 max-w-md mb-6">
+                    O organizador desativou este evento. Não é possível realizar novas inscrições no momento.
+                </p>
+                <Button onClick={() => navigate('/')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Voltar à Home
+                </Button>
+            </div>
+        );
+    }
+
+    if (!isEventOpenForNewSales(event.date, event.time)) {
+        return (
+            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-4 text-center">
+                <h1 className="text-2xl font-serif text-orange-400 mb-3">Inscrições encerradas</h1>
+                <p className="text-gray-400 max-w-md mb-6">
+                    O prazo para inscrição neste evento foi encerrado (início do evento conforme data e horário
+                    cadastrados).
+                </p>
+                <Button onClick={() => navigate('/')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Voltar à Home
+                </Button>
+            </div>
+        );
+    }
+
     if (event.is_paid) {
         return (
             <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-4">
@@ -340,7 +374,7 @@ const EventInscriptionPage: React.FC = () => {
                                     {event.title}
                                 </h1>
                                 <p className="text-gray-300 text-xs mt-1 line-clamp-2">
-                                    {event.date} · {event.time}
+                                    {formatEventDateForDisplay(event.date) || event.date} · {event.time}
                                     {event.location ? ` · ${event.location}` : ''}
                                 </p>
                             </div>

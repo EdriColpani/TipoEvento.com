@@ -21,6 +21,8 @@ interface RegistrationRow {
   event_id: string;
   event_title: string;
   full_name: string;
+  /** code_wristbands (ex.: BASE-001) — mesmo código do e-mail; fallback: UUID do QR (qr_code) */
+  ingresso_code: string | null;
   cpf: string;
   turma_id: string | null;
   turma_nome: string | null;
@@ -42,11 +44,14 @@ const fetchEventsForFilter = async (): Promise<EventForFilter[]> => {
   return data;
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const fetchRegistrations = async (eventId: string | null, search: string): Promise<RegistrationRow[]> => {
   let query = supabase
     .from('event_registrations')
     .select(
-      'id, event_id, full_name, cpf, turma_id, city, state, phone, email, confirmed, confirmed_at, created_at, events(title), event_turmas(nome)',
+      'id, event_id, full_name, cpf, turma_id, qr_code, city, state, phone, email, confirmed, confirmed_at, created_at, events(title), event_turmas(nome)',
     )
     .order('created_at', { ascending: false });
 
@@ -57,29 +62,63 @@ const fetchRegistrations = async (eventId: string | null, search: string): Promi
   const { data, error } = await query;
   if (error) throw error;
 
-  let rows = (data || []).map((row: any) => ({
-    id: row.id,
-    event_id: row.event_id,
-    event_title: row.events?.title ?? 'Evento',
-    full_name: row.full_name,
-    cpf: row.cpf,
-    turma_id: row.turma_id ?? null,
-    turma_nome: row.event_turmas?.nome ?? null,
-    city: row.city,
-    state: row.state,
-    phone: row.phone,
-    email: row.email,
-    confirmed: row.confirmed ?? false,
-    confirmed_at: row.confirmed_at ?? null,
-    created_at: row.created_at,
-  })) as RegistrationRow[];
+  const raw = (data || []) as any[];
+  const analyticsIds = [
+    ...new Set(
+      raw
+        .map((row) => (typeof row.qr_code === 'string' ? row.qr_code.trim() : ''))
+        .filter((id) => UUID_RE.test(id)),
+    ),
+  ];
+
+  let codeByAnalyticsId = new Map<string, string>();
+  if (analyticsIds.length > 0) {
+    const { data: waRows, error: waErr } = await supabase
+      .from('wristband_analytics')
+      .select('id, code_wristbands')
+      .in('id', analyticsIds);
+    if (!waErr && waRows) {
+      codeByAnalyticsId = new Map(
+        waRows.map((w: { id: string; code_wristbands: string | null }) => [
+          w.id,
+          (w.code_wristbands || '').trim(),
+        ]),
+      );
+    }
+  }
+
+  let rows = raw.map((row: any) => {
+    const qr = typeof row.qr_code === 'string' ? row.qr_code.trim() : '';
+    const human = qr && codeByAnalyticsId.get(qr);
+    const ingresso_code = human && human.length > 0 ? human : qr || null;
+
+    return {
+      id: row.id,
+      event_id: row.event_id,
+      event_title: row.events?.title ?? 'Evento',
+      full_name: row.full_name,
+      ingresso_code,
+      cpf: row.cpf,
+      turma_id: row.turma_id ?? null,
+      turma_nome: row.event_turmas?.nome ?? null,
+      city: row.city,
+      state: row.state,
+      phone: row.phone,
+      email: row.email,
+      confirmed: row.confirmed ?? false,
+      confirmed_at: row.confirmed_at ?? null,
+      created_at: row.created_at,
+    } as RegistrationRow;
+  });
 
   if (search.trim()) {
     const term = search.toLowerCase();
-    rows = rows.filter((r) =>
-      r.full_name.toLowerCase().includes(term) ||
-      r.cpf.toLowerCase().includes(term) ||
-      r.email.toLowerCase().includes(term),
+    rows = rows.filter(
+      (r) =>
+        r.full_name.toLowerCase().includes(term) ||
+        r.cpf.toLowerCase().includes(term) ||
+        r.email.toLowerCase().includes(term) ||
+        (r.ingresso_code && r.ingresso_code.toLowerCase().includes(term)),
     );
   }
 
@@ -125,8 +164,9 @@ const RegistrationsReports: React.FC = () => {
 
     const header = [
       'Evento',
-      'Turma',
       'Nome Completo',
+      'Código pulseira/ingresso',
+      'Turma',
       'CPF',
       'Cidade',
       'Estado',
@@ -139,8 +179,9 @@ const RegistrationsReports: React.FC = () => {
 
     const rows = registrations.map((r) => [
       `"${r.event_title.replace(/"/g, '""')}"`,
-      `"${(r.turma_nome || '-').replace(/"/g, '""')}"`,
       `"${r.full_name.replace(/"/g, '""')}"`,
+      `"${(r.ingresso_code || '-').replace(/"/g, '""')}"`,
+      `"${(r.turma_nome || '-').replace(/"/g, '""')}"`,
       `"${r.cpf}"`,
       `"${r.city}"`,
       `"${r.state}"`,
@@ -184,12 +225,26 @@ const RegistrationsReports: React.FC = () => {
       doc.text(`Evento: ${eventLabel}`, 14, 18);
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 24);
       const head = [
-        ['Evento', 'Turma', 'Nome', 'CPF', 'Cidade', 'UF', 'Telefone', 'E-mail', 'Confirmado', 'Data inscricao', 'Data/hora confirmacao'],
+        [
+          'Evento',
+          'Nome',
+          'Cod. ingresso',
+          'Turma',
+          'CPF',
+          'Cidade',
+          'UF',
+          'Telefone',
+          'E-mail',
+          'Confirmado',
+          'Data inscricao',
+          'Data/hora confirmacao',
+        ],
       ];
       const body = registrations.map((r) => [
         r.event_title.slice(0, 28),
-        (r.turma_nome || '-').slice(0, 28),
         r.full_name.slice(0, 32),
+        (r.ingresso_code || '-').slice(0, 22),
+        (r.turma_nome || '-').slice(0, 28),
         r.cpf,
         r.city.slice(0, 18),
         r.state,
@@ -244,7 +299,7 @@ const RegistrationsReports: React.FC = () => {
         <CardHeader className="p-6 pb-2">
           <CardTitle className="text-white text-lg">Filtros</CardTitle>
           <CardDescription className="text-gray-400 text-sm">
-            Selecione o evento e faça buscas por nome, CPF ou e-mail.
+            Selecione o evento e busque por nome, CPF, e-mail ou código do ingresso.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-6 pb-6 space-y-4">
@@ -273,7 +328,7 @@ const RegistrationsReports: React.FC = () => {
               <label className="block text-sm font-medium text-white mb-1">Buscar</label>
               <div className="relative">
                 <Input
-                  placeholder="Nome, CPF ou e-mail"
+                  placeholder="Nome, CPF, e-mail ou código do ingresso"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="bg-black/60 border border-yellow-500/30 text-white pl-10"
@@ -316,8 +371,9 @@ const RegistrationsReports: React.FC = () => {
               <TableHeader className="bg-black/60">
                 <TableRow>
                   <TableHead className="text-yellow-500">Evento</TableHead>
-                  <TableHead className="text-yellow-500">Turma</TableHead>
                   <TableHead className="text-yellow-500">Nome completo</TableHead>
+                  <TableHead className="text-yellow-500">Código pulseira/ingresso</TableHead>
+                  <TableHead className="text-yellow-500">Turma</TableHead>
                   <TableHead className="text-yellow-500">CPF</TableHead>
                   <TableHead className="text-yellow-500">Cidade/UF</TableHead>
                   <TableHead className="text-yellow-500">Telefone</TableHead>
@@ -330,7 +386,7 @@ const RegistrationsReports: React.FC = () => {
               <TableBody>
                 {isLoadingRegistrations ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-6 text-gray-400">
+                    <TableCell colSpan={11} className="text-center py-6 text-gray-400">
                       Carregando inscrições...
                     </TableCell>
                   </TableRow>
@@ -338,8 +394,11 @@ const RegistrationsReports: React.FC = () => {
                   registrations.map((r) => (
                     <TableRow key={r.id} className="hover:bg-yellow-500/5">
                       <TableCell className="text-white">{r.event_title}</TableCell>
-                      <TableCell className="text-gray-300">{r.turma_nome || '—'}</TableCell>
                       <TableCell className="text-white">{r.full_name}</TableCell>
+                      <TableCell className="text-gray-300 font-mono text-sm whitespace-nowrap max-w-[200px] truncate" title={r.ingresso_code || undefined}>
+                        {r.ingresso_code || '—'}
+                      </TableCell>
+                      <TableCell className="text-gray-300">{r.turma_nome || '—'}</TableCell>
                       <TableCell className="text-gray-300">{r.cpf}</TableCell>
                       <TableCell className="text-gray-300">
                         {r.city} / {r.state}
@@ -367,7 +426,7 @@ const RegistrationsReports: React.FC = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-6 text-gray-400">
+                    <TableCell colSpan={11} className="text-center py-6 text-gray-400">
                       Nenhuma inscrição encontrada para os filtros selecionados.
                     </TableCell>
                   </TableRow>

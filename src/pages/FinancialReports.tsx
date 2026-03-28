@@ -11,6 +11,7 @@ import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 const MANAGER_PRO_USER_TYPE_ID = 2;
@@ -61,7 +62,7 @@ const FinancialReports: React.FC = () => {
 
     const formatDate = (dateString: string) => {
         if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleDateString('pt-BR');
+        return formatEventDateForDisplay(dateString) || 'N/A';
     };
 
     const handleExport = () => {

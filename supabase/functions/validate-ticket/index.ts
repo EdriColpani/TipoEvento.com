@@ -129,10 +129,41 @@ serve(async (req) => {
     }
 
     // 5. Obter dados da requisição
-    const body = await req.json();
-    const { wristband_code, validation_type = 'entry' } = body; // 'entry' ou 'exit'
+    let body: Record<string, unknown> = {};
+    try {
+      body = await req.json();
+    } catch {
+      body = {};
+    }
 
-    if (!wristband_code) {
+    const verify_key_only = body.verify_key_only === true;
+    const wristband_code = body.wristband_code as string | undefined;
+    const validation_type = (body.validation_type === 'exit' ? 'exit' : 'entry') as 'entry' | 'exit';
+
+    // 5a. Somente validar chave (validador: liberar UI antes de ler ingressos)
+    if (verify_key_only) {
+      let event_title: string | null = null;
+      if (apiKeyData.event_id) {
+        const { data: ev } = await supabaseService
+          .from('events')
+          .select('title')
+          .eq('id', apiKeyData.event_id)
+          .maybeSingle();
+        event_title = (ev as { title?: string } | null)?.title ?? null;
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Chave de acesso válida.',
+          validated_by: apiKeyData.name,
+          event_title,
+          event_id: apiKeyData.event_id,
+        }),
+        { status: 200, headers: corsHeaders },
+      );
+    }
+
+    if (!wristband_code || String(wristband_code).trim() === '') {
       return new Response(JSON.stringify({ 
         success: false,
         error: 'Código do ingresso não fornecido.' 

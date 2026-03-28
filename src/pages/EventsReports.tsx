@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { showSuccess, showError } from '@/utils/toast';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 interface Event {
     id: string;
@@ -132,8 +133,8 @@ const EventReports: React.FC = () => {
         const rows = eventReports.map(report => [
             report.event_title,
             report.status,
-            format(new Date(report.start_date), 'dd/MM/yyyy', { locale: ptBR }),
-            format(new Date(report.end_date), 'dd/MM/yyyy', { locale: ptBR }),
+            formatEventDateForDisplay(report.start_date) || report.start_date,
+            formatEventDateForDisplay(report.end_date) || report.end_date,
             report.location,
             report.company_name,
             report.total_wristbands_generated,
@@ -296,8 +297,8 @@ const EventReports: React.FC = () => {
                                             <TableCell className="py-3 text-white font-medium truncate max-w-[150px]">{report.event_title}</TableCell>
                                             <TableCell className="py-3 text-white font-medium truncate max-w-[150px]">{report.company_name}</TableCell>
                                             <TableCell className="py-3 text-center text-yellow-500">{report.status.charAt(0).toUpperCase() + report.status.slice(1)}</TableCell>
-                                            <TableCell className="py-3 text-center text-white">{format(new Date(report.start_date), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
-                                            <TableCell className="py-3 text-center text-white">{format(new Date(report.end_date), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
+                                            <TableCell className="py-3 text-center text-white">{formatEventDateForDisplay(report.start_date) || '—'}</TableCell>
+                                            <TableCell className="py-3 text-center text-white">{formatEventDateForDisplay(report.end_date) || '—'}</TableCell>
                                             <TableCell className="py-3 text-white truncate max-w-[150px]">{report.location}</TableCell>
                                             <TableCell className="py-3 text-right text-white">{report.total_wristbands_generated}</TableCell>
                                             <TableCell className="py-3 text-right text-white">{report.total_wristbands_sold}</TableCell>

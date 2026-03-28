@@ -20,7 +20,9 @@ export interface EventData {
     duration: string; // Adicionando duração
     min_price: number | null; // NOVO: Preço mínimo calculado
     min_price_wristband_id: string | null; // NOVO: ID da pulseira mais barata
-    
+    /** false quando o organizador desativou o evento (sem novas vendas na vitrine). */
+    is_active: boolean;
+
     // Dados do Organizador (JOIN)
     companies: {
         corporate_name: string;
@@ -50,7 +52,7 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     const { data: eventDataRaw, error: eventError } = await supabase
         .from('events')
         .select(`
-            id, title, description, date, time, location, address, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id
+            id, title, description, date, time, location, address, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active
         `)
         .eq('id', eventId)
         .maybeSingle();
@@ -146,6 +148,7 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
         ...eventDataRaw,
         min_price: minPrice,
         min_price_wristband_id: minPriceWristbandId,
+        is_active: (eventDataRaw as { is_active?: boolean }).is_active !== false,
         exposure_card_image_url: eventDataRaw.exposure_card_image_url || null, // Mapeando o novo campo
         banner_image_url: eventDataRaw.banner_image_url || null,
         companies: corporateName ? { corporate_name: corporateName } : null,

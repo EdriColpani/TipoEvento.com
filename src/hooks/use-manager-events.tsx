@@ -1,14 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
+import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
 
 export interface ManagerEvent {
     id: string;
     title: string;
-    is_draft: boolean; // NOVO: Status de rascunho
-    date: string; // Adicionado: Data do evento
-    company_id: string; // Adicionado: ID da empresa
-    // Removendo campos não essenciais para a listagem inicial
+    is_draft: boolean;
+    /** false = desativado (fora da vitrine / sem novas vendas). */
+    is_active: boolean;
+    date: string;
+    company_id: string;
 }
 
 const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promise<ManagerEvent[]> => {
@@ -17,49 +19,24 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
         return [];
     }
 
-    let query = supabase
-        .from('events')
-        .select(`
-            id,
-            title,
-            is_draft,
-            date,
-            company_id
-        `)
-        .order('created_at', { ascending: false });
-
-    if (!isAdminMaster) {
-        // Para gestores normais, primeiro precisamos do company_id
-        const { data: companyData, error: companyError } = await supabase
-            .from('user_companies')
-            .select('company_id')
-            .eq('user_id', userId)
-            .eq('is_primary', true)
-            .limit(1)
-            .single();
-
-        if (companyError && companyError.code !== 'PGRST116') {
-            console.error("Error fetching company ID for manager events:", companyError);
-            throw new Error(companyError.message);
+    const rows = await fetchEventsVisibleToGestor(supabase, userId, isAdminMaster);
+    const sorted = [...rows].sort((a, b) => {
+        const tb = new Date(b.created_at).getTime();
+        const ta = new Date(a.created_at).getTime();
+        if (Number.isFinite(ta) && Number.isFinite(tb)) {
+            return tb - ta;
         }
+        return (a.title || '').localeCompare(b.title || '', 'pt-BR', { sensitivity: 'base' });
+    });
 
-        if (!companyData?.company_id) {
-            console.warn("Manager has no primary company associated. Returning empty event list.");
-            return [];
-        }
-        query = query.eq('company_id', companyData.company_id);
-    }
-    // Se for isAdminMaster, nenhum filtro de company_id é aplicado,
-    // e a RLS no banco de dados já garante o acesso total.
-
-    const { data, error } = await query;
-
-    if (error) {
-        console.error("Error fetching manager events from Supabase:", error);
-        throw new Error(error.message); 
-    }
-    
-    return data as ManagerEvent[];
+    return sorted.map((e) => ({
+        id: e.id,
+        title: e.title,
+        is_draft: Boolean(e.is_draft ?? false),
+        is_active: e.is_active !== false,
+        date: e.date ?? '',
+        company_id: e.company_id ?? '',
+    }));
 };
 
 export const useManagerEvents = (userId: string | undefined, isAdminMaster: boolean) => {
