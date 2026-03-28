@@ -39,7 +39,7 @@ const fetchDailySales = async (): Promise<DailySales[]> => {
 
     const dailySalesData: DailySales[] = Array.from(salesMap.entries())
         .map(([date, total_sales]) => ({ date, total_sales }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        .sort((a, b) => a.date.localeCompare(b.date));
 
     return dailySalesData;
 };

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { parseEventLocalDay } from '@/utils/format-event-date';
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
 
 interface SalesMetrics {
@@ -76,11 +77,23 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
     const todayAdjustedForComparison = new Date();
     todayAdjustedForComparison.setHours(0, 0, 0, 0); // Zera a hora para comparar apenas a data
 
-    const activeEvents = eventsData.filter(event => {
-        const eventStartDate = new Date(event.date);
-        eventStartDate.setHours(0, 0, 0, 0); // Zera a hora da data do evento
+    const activeEvents = eventsData.filter((event) => {
+        const eventStartDate = parseEventLocalDay(event.date);
+        if (!eventStartDate) return false;
+        const day = new Date(
+            eventStartDate.getFullYear(),
+            eventStartDate.getMonth(),
+            eventStartDate.getDate(),
+            0,
+            0,
+            0,
+            0,
+        );
 
-        return (event.status === 'active' || event.status === 'approved') && eventStartDate >= todayAdjustedForComparison;
+        return (
+            (event.status === 'active' || event.status === 'approved') &&
+            day >= todayAdjustedForComparison
+        );
     }).length;
 
     // --- 3. Taxa de Ocupação Geral ---

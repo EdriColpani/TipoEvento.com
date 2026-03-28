@@ -14,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Image, CalendarDays, ListOrdered, Heading, Subtitles, ArrowLeft, Save, Calendar } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
+import { parseEventLocalDay } from '@/utils/format-event-date';
 import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
 import { useProfile } from '@/hooks/use-profile';
@@ -93,8 +94,11 @@ const ManagerCreateEventBanner: React.FC = () => {
                     
                     // 3. Define a data de início como a data do evento por padrão
                     if (data.date) {
-                        form.setValue('start_date', parseISO(data.date), { shouldValidate: true });
-                        form.setValue('end_date', parseISO(data.date), { shouldValidate: true });
+                        const eventDay = parseEventLocalDay(data.date);
+                        if (eventDay) {
+                            form.setValue('start_date', eventDay, { shouldValidate: true });
+                            form.setValue('end_date', eventDay, { shouldValidate: true });
+                        }
                     }
                 });
             }

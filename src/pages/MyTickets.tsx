@@ -8,6 +8,7 @@ import { useMyTickets, TicketData } from '@/hooks/use-my-tickets';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Calendar, MapPin, QrCode, History } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast'; // Importando showSuccess/showError
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { useQueryClient } from '@tanstack/react-query'; // Importando useQueryClient
 
 interface TicketCardProps {
@@ -37,7 +38,9 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
     const ticketType = ticket.wristbands?.access_type || 'Tipo Desconhecido';
     const eventName = eventDetails?.title || 'Evento Desconhecido';
     const eventLocation = eventDetails?.location || 'Local Desconhecido';
-    const eventDate = eventDetails?.date ? new Date(eventDetails.date).toLocaleDateString('pt-BR') : 'Data Desconhecida';
+    const eventDate = eventDetails?.date
+        ? formatEventDateForDisplay(eventDetails.date) || 'Data Desconhecida'
+        : 'Data Desconhecida';
     const unitPrice = ticket.wristbands?.price || 0;
     
     // Nota: Como cada registro de analytics representa 1 ingresso, a quantidade é 1.

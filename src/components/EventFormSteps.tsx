@@ -13,7 +13,8 @@ import { normalizeContractContentForDisplay } from '@/utils/contractContent';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, CheckSquare, FileText, XCircle, Plus, Ticket } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
+import { parseEventLocalDay } from '@/utils/format-event-date';
 import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
 import { useManagerCompany } from '@/hooks/use-manager-company';
@@ -229,7 +230,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
         defaultValues: {
             title: initialData?.title || '',
             description: initialData?.description || '',
-            date: initialData?.date ? parseISO(initialData.date.toISOString()) : undefined,
+            date: initialData?.date ?? undefined,
             time: initialData?.time || '',
             location: initialData?.location || '',
             address: initialData?.address || '',
@@ -243,11 +244,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
             is_paid: initialData?.is_paid || false,
             ticket_price: initialData?.ticket_price?.toString().replace('.', ',') || '',
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
-            batches: initialData?.batches?.map(batch => ({
-                ...batch, 
+            batches: initialData?.batches?.map((batch) => ({
+                ...batch,
                 price: batch.price.toString().replace('.', ','), // Formata o preço para BR
-                start_date: parseISO(batch.start_date.toString()),
-                end_date: parseISO(batch.end_date.toString())
+                start_date:
+                    batch.start_date instanceof Date
+                        ? batch.start_date
+                        : parseEventLocalDay(String(batch.start_date)) ?? undefined,
+                end_date:
+                    batch.end_date instanceof Date
+                        ? batch.end_date
+                        : parseEventLocalDay(String(batch.end_date)) ?? undefined,
             })) || [
                 { name: 'Lote 1', quantity: '', price: '', start_date: undefined, end_date: undefined } // Lote inicial
             ],
@@ -535,9 +542,16 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
 
                 if (!companyIdForEvent) {
                     dismissToast(toastId);
-                    showError(
-                        'Não foi possível obter a empresa vinculada ao seu usuário. Verifique: (1) em user_companies existe linha com seu user_id; (2) políticas RLS de user_companies/companies permitem SELECT para authenticated; (3) se é PJ, cadastre a empresa em Configurações; (4) se é PF, CPF completo no perfil.',
-                    );
+                    const nj = profile.natureza_juridica_id != null ? Number(profile.natureza_juridica_id) : null;
+                    if (nj === 2) {
+                        showError(
+                            'Sua conta é Pessoa Jurídica, mas não há empresa vinculada (user_companies). Conclua o cadastro da empresa em Configurações / registro PRO; se o cadastro antigo falhou no vínculo, refaça ou peça suporte para associar seu user_id à empresa.',
+                        );
+                    } else {
+                        showError(
+                            'Não foi possível obter a empresa vinculada ao seu usuário. Verifique: (1) em user_companies existe linha com seu user_id; (2) políticas RLS de user_companies/companies permitem SELECT para authenticated; (3) se é PJ, cadastre a empresa em Configurações; (4) se é PF, CPF completo (11 dígitos) no perfil.',
+                        );
+                    }
                     return;
                 }
             }

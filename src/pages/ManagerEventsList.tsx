@@ -1,19 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, AlertTriangle, FileEdit, QrCode } from 'lucide-react';
-import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
+import { Plus, Search, Loader2, FileEdit, QrCode } from 'lucide-react';
+import { useManagerEvents } from '@/hooks/use-manager-events';
 import { supabase } from '@/integrations/supabase/client';
-import DeleteEventDialog from '@/components/DeleteEventDialog'; 
+import DeleteEventDialog from '@/components/DeleteEventDialog';
+import EventActiveToggle from '@/components/EventActiveToggle'; 
 import { useProfile } from '@/hooks/use-profile'; // Importando useProfile
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const ManagerEventsList: React.FC = () => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -27,7 +30,15 @@ const ManagerEventsList: React.FC = () => {
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
 
     // O hook agora recebe isAdminMaster
-    const { events, isLoading, isError, invalidateEvents } = useManagerEvents(userId, isAdminMaster);
+    const { events, isLoading, isError, invalidateEvents: invalidateManagerEvents } = useManagerEvents(
+        userId,
+        isAdminMaster,
+    );
+
+    const invalidateEvents = useCallback(() => {
+        invalidateManagerEvents();
+        void queryClient.invalidateQueries({ queryKey: ['publicEvents'] });
+    }, [invalidateManagerEvents, queryClient]);
 
     const filteredEvents = events.filter(event =>
         event.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -112,8 +123,15 @@ const ManagerEventsList: React.FC = () => {
                             <TableBody>
                                 {filteredEvents.map((event) => {
                                     const isDraft = event.is_draft;
-                                    const statusText = isDraft ? 'Rascunho' : 'Publicado';
-                                    const statusClasses = isDraft ? 'bg-gray-500/20 text-gray-400' : 'bg-green-500/20 text-green-400';
+                                    let statusText = 'Publicado';
+                                    let statusClasses = 'bg-green-500/20 text-green-400';
+                                    if (isDraft) {
+                                        statusText = 'Rascunho';
+                                        statusClasses = 'bg-gray-500/20 text-gray-400';
+                                    } else if (!event.is_active) {
+                                        statusText = 'Desativado';
+                                        statusClasses = 'bg-orange-500/20 text-orange-300';
+                                    }
 
                                     return (
                                         <TableRow 
@@ -129,7 +147,10 @@ const ManagerEventsList: React.FC = () => {
                                                     {statusText}
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-right py-4 flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+                                            <TableCell
+                                                className="text-right py-4 flex flex-wrap items-center justify-end gap-2"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
                                                 <Button 
                                                     variant="outline" 
                                                     size="sm"
@@ -139,6 +160,13 @@ const ManagerEventsList: React.FC = () => {
                                                     <FileEdit className="h-4 w-4 mr-2" />
                                                     {isDraft ? 'Continuar Edição' : 'Gerenciar'}
                                                 </Button>
+                                                <EventActiveToggle
+                                                    eventId={event.id}
+                                                    eventTitle={event.title}
+                                                    isDraft={isDraft}
+                                                    isActive={event.is_active}
+                                                    onSuccess={invalidateEvents}
+                                                />
                                                 <DeleteEventDialog
                                                     eventId={event.id}
                                                     eventTitle={event.title}

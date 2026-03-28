@@ -43,7 +43,7 @@ const Login: React.FC = () => {
                     console.error("Erro ao buscar perfil:", profileError);
                     showError("Erro ao carregar dados do perfil. Tente novamente.");
                     // Opcional: forçar logout se o perfil não for encontrado
-                    await supabase.auth.signOut();
+                    await supabase.auth.signOut({ scope: 'local' });
                     setIsLoading(false);
                     return;
                 }
@@ -64,7 +64,7 @@ const Login: React.FC = () => {
                     redirectPath = '/profile';
                 } else {
                     showError("Tipo de usuário desconhecido. Acesso negado.");
-                    await supabase.auth.signOut();
+                    await supabase.auth.signOut({ scope: 'local' });
                     setIsLoading(false);
                     return;
                 }

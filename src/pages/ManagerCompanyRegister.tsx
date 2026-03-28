@@ -113,7 +113,24 @@ const ManagerCompanyRegister: React.FC = () => {
         };
 
         try {
-            // 1. Inserir dados na tabela 'companies'
+            // 1. Perfil primeiro: RLS em `companies` (companies_insert_gestor_pro) exige tipo_usuario_id = 2 no perfil.
+            //    Ordem antiga (empresa → perfil) fazia o INSERT falhar ou gerava estado estranho.
+            const { error: profileUpdateError } = await supabase
+                .from('profiles')
+                .update({
+                    tipo_usuario_id: 2,
+                    natureza_juridica_id: 2,
+                })
+                .eq('id', userId);
+
+            if (profileUpdateError) {
+                throw new Error(
+                    profileUpdateError.message ||
+                        'Não foi possível atualizar o perfil para Gestor PRO. Verifique permissões (RLS) ou tente de novo.',
+                );
+            }
+
+            // 2. Inserir empresa
             const { data: companyData, error: companyError } = await supabase
                 .from('companies')
                 .insert([dataToSave])
@@ -122,33 +139,27 @@ const ManagerCompanyRegister: React.FC = () => {
 
             if (companyError) {
                 if (companyError.code === '23505' && companyError.message.includes('cnpj')) {
-                    throw new Error("Este CNPJ já está cadastrado em outra conta.");
+                    throw new Error('Este CNPJ já está cadastrado em outra conta.');
                 }
                 throw companyError;
             }
-            
+
             const companyId = companyData.id;
 
-            // 2. Atualizar o perfil do usuário para Gestor PRO (tipo_usuario_id = 2) e Natureza Jurídica (2)
-            const { error: profileUpdateError } = await supabase
-                .from('profiles')
-                .update({ 
-                    tipo_usuario_id: 2, // Gestor PRO
-                    natureza_juridica_id: 2 // Pessoa Jurídica
-                })
-                .eq('id', userId);
+            // 3. Vínculo obrigatório — sem user_companies o app não resolve company_id ao salvar evento
+            const { error: associationError } = await supabase.from('user_companies').insert({
+                user_id: userId,
+                company_id: companyId,
+                role: 'owner',
+                is_primary: true,
+            });
 
-            if (profileUpdateError) {
-                console.error("Warning: Failed to update user profile type:", profileUpdateError);
-            }
-            
-            // 3. Criar associação na tabela user_companies (VINCULA O GESTOR À EMPRESA)
-            const { error: associationError } = await supabase
-                .from('user_companies')
-                .insert({ user_id: userId, company_id: companyId, role: 'owner', is_primary: true });
-            
             if (associationError) {
-                console.error("Warning: Failed to create user_company association:", associationError);
+                await supabase.from('companies').delete().eq('id', companyId);
+                throw new Error(
+                    associationError.message ||
+                        'Empresa criada, mas falhou o vínculo com sua conta. Tente novamente ou contate o suporte.',
+                );
             }
 
             // 4. NOVO: Atualizar o status dos eventos da nova empresa para 'approved'
@@ -162,9 +173,9 @@ const ManagerCompanyRegister: React.FC = () => {
                 console.error("Warning: Failed to update event statuses to approved:", eventUpdateError);
             }
 
-            // NOVO: Invalida o cache da empresa do gestor para forçar a re-busca
             queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
-            queryClient.invalidateQueries({ queryKey: ['dashboardData'] }); // Invalida cache do dashboard para refletir eventos ativos
+            queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
 
             dismissToast(toastId);
             showSuccess("Registro de Gestor (Empresa) concluído com sucesso!");

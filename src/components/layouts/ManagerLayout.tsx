@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserType } from '@/hooks/use-user-type';
-import { showError } from '@/utils/toast';
+import { showError, showSuccess } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useDevice } from '@/hooks/use-device';
 
@@ -67,11 +67,12 @@ const ManagerLayout: React.FC = () => {
 
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut({ scope: 'local' });
         if (error) {
             showError("Erro ao sair: " + error.message);
         } else {
-            navigate('/');
+            showSuccess('Sessão encerrada.');
+            navigate('/', { replace: true });
         }
     };
 

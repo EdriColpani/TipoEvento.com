@@ -242,17 +242,21 @@ const Profile: React.FC = () => {
 
     useEffect(() => {
 
-        if (profile && clientTermsContract && profile.contract_version_accepted_id === clientTermsContract.id) {
+        if (isLoadingClientTerms) return;
 
+        // Sem contrato ativo no admin: não há o que aceitar — libera salvar o cadastro.
+        if (!clientTermsContract) {
             setAgreedToTerms(true);
-
-        } else {
-
-            setAgreedToTerms(false);
-
+            return;
         }
 
-    }, [profile, clientTermsContract]);
+        if (profile && profile.contract_version_accepted_id === clientTermsContract.id) {
+            setAgreedToTerms(true);
+        } else {
+            setAgreedToTerms(false);
+        }
+
+    }, [profile, clientTermsContract, isLoadingClientTerms]);
 
     const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile);
 
@@ -550,7 +554,7 @@ const Profile: React.FC = () => {
 
         if (!session || !profile) return;
 
-
+        if (formLoading) return;
 
         if (isLoadingClientTerms) {
 
@@ -560,7 +564,7 @@ const Profile: React.FC = () => {
 
         }
 
-        if (isErrorClientTerms || !clientTermsContract) {
+        if (isErrorClientTerms) {
 
             showError("Não foi possível carregar os termos e condições. Tente novamente mais tarde.");
 
@@ -568,11 +572,8 @@ const Profile: React.FC = () => {
 
         }
 
-        
-
-        // Se estiver editando, exige a concordância com os termos
-
-        if (isEditing && !agreedToTerms) {
+        // Só exige aceite quando existe contrato ativo do tipo client_terms
+        if (isEditing && clientTermsContract && !agreedToTerms) {
 
             showError("Você deve concordar com os Termos e Condições para salvar as alterações.");
 
@@ -662,9 +663,12 @@ const Profile: React.FC = () => {
 
                     // Atualiza o ID do contrato aceito se for diferente do atual ou se o perfil ainda não tiver aceitado
 
-                    contract_version_accepted_id: (agreedToTerms && clientTermsContract.id !== profile.contract_version_accepted_id) 
-
-                                                    ? clientTermsContract.id : profile.contract_version_accepted_id,
+                    contract_version_accepted_id:
+                        clientTermsContract &&
+                        agreedToTerms &&
+                        clientTermsContract.id !== profile.contract_version_accepted_id
+                            ? clientTermsContract.id
+                            : profile.contract_version_accepted_id,
 
                 })
 
@@ -686,7 +690,11 @@ const Profile: React.FC = () => {
 
             // 2. Registrar aceite do contrato (se aceito e não for a mesma versão já registrada)
 
-            if (agreedToTerms && clientTermsContract.id !== profile.contract_version_accepted_id) {
+            if (
+                clientTermsContract &&
+                agreedToTerms &&
+                clientTermsContract.id !== profile.contract_version_accepted_id
+            ) {
 
                 const { error: acceptanceError } = await supabase
 
@@ -782,13 +790,37 @@ const Profile: React.FC = () => {
 
     const handleCancelEdit = () => {
 
-        // O reset agora usa os valores do 'profile' carregado pelo useQuery
-
-        form.reset();
+        if (profile) {
+            form.reset({
+                first_name: profile.first_name || '',
+                last_name: profile.last_name || '',
+                birth_date: profile.birth_date || '',
+                gender: profile.gender || '',
+                cpf: profile.cpf ? formatCPF(profile.cpf) : '',
+                rg: profile.rg ? formatRG(profile.rg) : '',
+                cep: profile.cep ? formatCEP(profile.cep) : '',
+                rua: profile.rua || '',
+                bairro: profile.bairro || '',
+                cidade: profile.cidade || '',
+                estado: profile.estado || '',
+                numero: profile.numero || '',
+                complemento: profile.complemento || '',
+            });
+        } else {
+            form.reset();
+        }
 
         setIsEditing(false);
 
-        setAgreedToTerms(false); // Reseta a concordância
+        if (!isLoadingClientTerms) {
+            if (!clientTermsContract) {
+                setAgreedToTerms(true);
+            } else if (profile?.contract_version_accepted_id === clientTermsContract.id) {
+                setAgreedToTerms(true);
+            } else {
+                setAgreedToTerms(false);
+            }
+        }
 
     };
 
@@ -1028,7 +1060,18 @@ const Profile: React.FC = () => {
 
                                     <Form {...form}>
 
-                                        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-6">
+                                        <form
+                                            onSubmit={(e) => e.preventDefault()}
+                                            onKeyDown={(e) => {
+                                                if (e.key !== 'Enter') return;
+                                                const t = e.target as HTMLElement;
+                                                if (t.tagName !== 'INPUT') return;
+                                                const input = t as HTMLInputElement;
+                                                if (input.type === 'submit' || input.type === 'button') return;
+                                                e.preventDefault();
+                                            }}
+                                            className="space-y-6"
+                                        >
 
                                             
 
@@ -1584,7 +1627,9 @@ const Profile: React.FC = () => {
 
                                                         {!isLoadingClientTerms && !isErrorClientTerms && !clientTermsContract && (
 
-                                                            <p className="text-amber-400 text-sm">Não há contrato ativo do tipo &quot;Termos de cliente&quot; cadastrado no admin.</p>
+                                                            <p className="text-gray-400 text-sm">
+                                                                Não há termos de cliente ativos no momento. Você pode concluir e salvar o cadastro normalmente.
+                                                            </p>
 
                                                         )}
 
@@ -1598,13 +1643,22 @@ const Profile: React.FC = () => {
 
                                                     <div className="flex items-center space-x-4 pt-4">
 
-                                                        <Button 
+                                                        <Button
 
-                                                            type="submit" 
+                                                            type="button"
 
-                                                            disabled={formLoading || !agreedToTerms || isLoadingClientTerms || isErrorClientTerms} // Desabilita se o contrato estiver carregando ou com erro
+                                                            disabled={
+                                                                formLoading ||
+                                                                isLoadingClientTerms ||
+                                                                isErrorClientTerms ||
+                                                                (!!clientTermsContract && !agreedToTerms)
+                                                            }
 
                                                             className="bg-yellow-500 text-black hover:bg-yellow-600 transition-all duration-300 cursor-pointer disabled:opacity-50"
+
+                                                            onClick={() => {
+                                                                void form.handleSubmit(onSubmit, onInvalid)();
+                                                            }}
 
                                                         >
 

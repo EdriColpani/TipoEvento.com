@@ -4,6 +4,7 @@ import { useEventDetails } from '@/hooks/use-event-details';
 import { Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { showError } from '@/utils/toast';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 // Helper function to get the minimum price display
 const getMinPriceDisplay = (price: number | null): string => {
@@ -88,7 +89,7 @@ const FinalizarCompra: React.FC = () => {
                                     <i className="fas fa-calendar-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4"></i>
                                     <div>
                                         <div className="text-xs sm:text-sm text-gray-400">Data</div>
-                                        <div className="text-sm sm:text-lg font-semibold text-white">{new Date(event.date).toLocaleDateString('pt-BR')}</div>
+                                        <div className="text-sm sm:text-lg font-semibold text-white">{formatEventDateForDisplay(event.date) || '—'}</div>
                                     </div>
                                 </div>
                                 <div className="flex items-center">

@@ -11,9 +11,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { useProfile } from '@/hooks/use-profile';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 interface ValidationApiKey {
     id: string;
@@ -90,26 +91,11 @@ const fetchValidationLogs = async (apiKeyId: string): Promise<ValidationLog[]> =
     }));
 };
 
-const fetchEvents = async (userId: string, isAdminMaster: boolean): Promise<{ id: string; title: string; date: string; time: string; duration: string | null }[]> => {
-    let query = supabase
-        .from('events')
-        .select('id, title, date, time, duration')
-        .order('title', { ascending: true });
-
-    // Se não for Admin Master, filtra por empresa
-    if (!isAdminMaster) {
-        const primaryCompanyId = await fetchManagerPrimaryCompanyId(supabase, userId);
-        if (primaryCompanyId) {
-            query = query.or(`company_id.eq.${primaryCompanyId},created_by.eq.${userId}`);
-        } else {
-            query = query.eq('created_by', userId);
-        }
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-    return data;
+const fetchEvents = async (userId: string, isAdminMaster: boolean) => {
+    const rows = await fetchEventsVisibleToGestor(supabase, userId, isAdminMaster);
+    return [...rows].sort((a, b) =>
+        (a.title || '').localeCompare(b.title || '', 'pt-BR', { sensitivity: 'base' }),
+    );
 };
 
 const ManagerValidationKeys: React.FC = () => {
@@ -145,48 +131,71 @@ const ManagerValidationKeys: React.FC = () => {
         enabled: !!userId,
     });
 
-    const { data: events } = useQuery({
+    const {
+        data: events,
+        isLoading: isLoadingEvents,
+        isError: isEventsQueryError,
+        error: eventsQueryError,
+        refetch: refetchEventsForKeys,
+    } = useQuery({
         queryKey: ['managerEventsForKeys', userId, isAdminMaster],
         queryFn: () => fetchEvents(userId!, isAdminMaster),
         enabled: !!userId,
     });
 
+    useEffect(() => {
+        if (showCreateDialog && userId) {
+            void refetchEventsForKeys();
+        }
+    }, [showCreateDialog, userId, refetchEventsForKeys]);
+
     // Função para calcular data de expiração baseada no evento
+    // - Data YYYY-MM-DD é interpretada no calendário local (evita deslocar um dia por UTC).
+    // - Com duração: término = início do evento + N horas (não "fim do dia + N horas", que virava o dia seguinte).
+    // - Sem duração e com hora: término = mesmo dia no horário do evento (:59).
+    // - Sem duração e sem hora: término = 23:59 do mesmo dia local.
     const calculateExpirationDate = (eventId: string | null) => {
         if (!eventId || !events) return '';
-        
-        const selectedEvent = events.find(e => e.id === eventId);
+
+        const selectedEvent = events.find((e) => e.id === eventId);
         if (!selectedEvent || !selectedEvent.date) return '';
 
-        // Pega a data do evento
-        const eventDate = new Date(selectedEvent.date);
-        
-        // Se tiver hora, adiciona a hora
+        const datePart = selectedEvent.date.trim().slice(0, 10);
+        const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+        if (!ymd) return '';
+
+        const y = Number(ymd[1]);
+        const mo = Number(ymd[2]);
+        const d = Number(ymd[3]);
+
+        let startH = 0;
+        let startMin = 0;
         if (selectedEvent.time) {
-            const [hours, minutes] = selectedEvent.time.split(':').map(Number);
-            eventDate.setHours(hours || 23, minutes || 59, 59, 999);
+            const tp = selectedEvent.time.split(':').map(Number);
+            startH = Number.isFinite(tp[0]) ? tp[0] : 0;
+            startMin = Number.isFinite(tp[1]) ? tp[1] : 0;
+        }
+
+        const durationMatch = selectedEvent.duration?.match(/(\d+)/);
+        const durationHours = durationMatch ? parseInt(durationMatch[1], 10) : 0;
+
+        let end: Date;
+        if (durationHours > 0) {
+            const start = new Date(y, mo - 1, d, startH, startMin, 0, 0);
+            end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+        } else if (selectedEvent.time) {
+            end = new Date(y, mo - 1, d, startH, startMin, 59, 999);
         } else {
-            // Se não tiver hora, coloca fim do dia
-            eventDate.setHours(23, 59, 59, 999);
+            end = new Date(y, mo - 1, d, 23, 59, 59, 999);
         }
 
-        // Se tiver duração, adiciona a duração (assumindo formato "X horas" ou "Xh")
-        if (selectedEvent.duration) {
-            const durationMatch = selectedEvent.duration.match(/(\d+)/);
-            if (durationMatch) {
-                const hours = parseInt(durationMatch[1]);
-                eventDate.setHours(eventDate.getHours() + hours);
-            }
-        }
+        const year = end.getFullYear();
+        const month = String(end.getMonth() + 1).padStart(2, '0');
+        const day = String(end.getDate()).padStart(2, '0');
+        const endH = String(end.getHours()).padStart(2, '0');
+        const endMin = String(end.getMinutes()).padStart(2, '0');
 
-        // Formata para datetime-local (YYYY-MM-DDTHH:mm)
-        const year = eventDate.getFullYear();
-        const month = String(eventDate.getMonth() + 1).padStart(2, '0');
-        const day = String(eventDate.getDate()).padStart(2, '0');
-        const hours = String(eventDate.getHours()).padStart(2, '0');
-        const minutes = String(eventDate.getMinutes()).padStart(2, '0');
-        
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
+        return `${year}-${month}-${day}T${endH}:${endMin}`;
     };
 
     // Quando selecionar evento na criação, atualiza a data de expiração
@@ -792,15 +801,26 @@ const ManagerValidationKeys: React.FC = () => {
                             <Select 
                                 value={newKeyEventId || undefined} 
                                 onValueChange={(value) => setNewKeyEventId(value || '')}
+                                disabled={isLoadingEvents}
                             >
                                 <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
-                                    <SelectValue placeholder="Selecione um evento" />
+                                    <SelectValue
+                                        placeholder={
+                                            isLoadingEvents
+                                                ? 'Carregando eventos…'
+                                                : 'Selecione um evento'
+                                        }
+                                    />
                                 </SelectTrigger>
-                                <SelectContent className="bg-black border-yellow-500/30 text-white">
-                                    {events && events.length > 0 ? (
+                                <SelectContent className="z-[200] bg-black border-yellow-500/30 text-white">
+                                    {isLoadingEvents ? (
+                                        <SelectItem value="loading-events" disabled>
+                                            Carregando…
+                                        </SelectItem>
+                                    ) : events && events.length > 0 ? (
                                         events.map((event) => (
                                             <SelectItem key={event.id} value={event.id}>
-                                                {event.title} {event.date ? `(${format(new Date(event.date), 'dd/MM/yyyy', { locale: ptBR })})` : ''}
+                                                {event.title} {event.date ? `(${formatEventDateForDisplay(event.date)})` : ''}
                                             </SelectItem>
                                         ))
                                     ) : (
@@ -810,6 +830,17 @@ const ManagerValidationKeys: React.FC = () => {
                                     )}
                                 </SelectContent>
                             </Select>
+                            {isEventsQueryError && (
+                                <p className="text-xs text-red-400 mt-1">
+                                    Não foi possível carregar os eventos.{' '}
+                                    {eventsQueryError instanceof Error ? eventsQueryError.message : 'Tente atualizar a página.'}
+                                </p>
+                            )}
+                            {!isLoadingEvents && !isEventsQueryError && (!events || events.length === 0) && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                    Não há eventos cadastrados no sistema ou a leitura falhou por permissão (RLS).
+                                </p>
+                            )}
                             {!newKeyEventId && (
                                 <p className="text-xs text-yellow-400 mt-1">
                                     * É obrigatório selecionar um evento. A chave expirará automaticamente quando o evento terminar.
@@ -888,11 +919,11 @@ const ManagerValidationKeys: React.FC = () => {
                                 <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
                                     <SelectValue placeholder="Selecione um evento" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                <SelectContent className="z-[200] bg-black border-yellow-500/30 text-white">
                                     {events && events.length > 0 ? (
                                         events.map((event) => (
                                             <SelectItem key={event.id} value={event.id}>
-                                                {event.title} {event.date ? `(${format(new Date(event.date), 'dd/MM/yyyy', { locale: ptBR })})` : ''}
+                                                {event.title} {event.date ? `(${formatEventDateForDisplay(event.date)})` : ''}
                                             </SelectItem>
                                         ))
                                     ) : (

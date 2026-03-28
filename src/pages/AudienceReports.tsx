@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { showSuccess, showError } from '@/utils/toast';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 interface Event {
     id: string;
@@ -133,7 +134,7 @@ const AudienceReports: React.FC = () => {
             report.email,
             report.cpf || 'N/A',
             report.gender || 'N/A',
-            report.birth_date ? format(new Date(report.birth_date), 'dd/MM/yyyy', { locale: ptBR }) : 'N/A',
+            report.birth_date ? formatEventDateForDisplay(report.birth_date) || 'N/A' : 'N/A',
             report.total_tickets_purchased,
             report.events_attended.join(', '),
         ]);
@@ -314,7 +315,7 @@ const AudienceReports: React.FC = () => {
                                             <TableCell className="py-3 text-yellow-500 font-medium truncate max-w-[150px]">{report.email}</TableCell>
                                             <TableCell className="py-3 text-white truncate max-w-[100px]">{report.cpf || 'N/A'}</TableCell>
                                             <TableCell className="py-3 text-center text-white">{report.gender || 'N/A'}</TableCell>
-                                            <TableCell className="py-3 text-center text-white">{report.birth_date ? format(new Date(report.birth_date), 'dd/MM/yyyy', { locale: ptBR }) : 'N/A'}</TableCell>
+                                            <TableCell className="py-3 text-center text-white">{report.birth_date ? formatEventDateForDisplay(report.birth_date) || 'N/A' : 'N/A'}</TableCell>
                                             <TableCell className="py-3 text-right text-yellow-500">{report.total_tickets_purchased}</TableCell>
                                             <TableCell className="py-3 text-white truncate max-w-[200px]">{report.events_attended.join(', ')}</TableCell>
                                         </TableRow>

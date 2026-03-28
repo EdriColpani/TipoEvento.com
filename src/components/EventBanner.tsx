@@ -2,6 +2,7 @@ import React from 'react';
 import { EventData } from '@/hooks/use-event-details';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 interface EventBannerProps {
     event: EventData;
@@ -47,7 +48,7 @@ const EventBanner: React.FC<EventBannerProps> = ({ event, minPriceDisplay, showA
                                 <i className="fas fa-calendar-alt text-yellow-500 text-2xl mr-3"></i>
                                 <div>
                                     <div className="text-xs text-gray-400">Data</div>
-                                    <div className="text-lg font-bold text-white">{new Date(event.date).toLocaleDateString('pt-BR')}</div>
+                                    <div className="text-lg font-bold text-white">{formatEventDateForDisplay(event.date) || '—'}</div>
                                 </div>
                             </div>
                             <div className="flex items-center">

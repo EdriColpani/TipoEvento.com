@@ -52,7 +52,7 @@ const MobileMenu: React.FC = () => {
     };
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut({ scope: 'local' });
         if (error) {
             showError("Erro ao sair: " + error.message);
         } else {

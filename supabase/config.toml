@@ -5,3 +5,7 @@ verify_jwt = false
 # Gestor autenticado no app; JWT é validado dentro da função (evita 401 no gateway com sessão ok)
 [functions.create-validation-key]
 verify_jwt = false
+
+# Comprador autenticado; mesma blindagem que create-validation-key — a função valida JWT com getUser()
+[functions.create-payment-preference]
+verify_jwt = false
