@@ -111,7 +111,7 @@ const ManagerCreateEvent: React.FC = () => {
                         <AlertDialogTitle className="text-yellow-500 text-xl font-serif pr-1 select-none outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-sm">
                             Próxima Etapa: Pulseiras
                         </AlertDialogTitle>
-                        <AlertDialogDescription className="text-gray-400 text-left text-sm sm:text-base leading-relaxed">
+                        <AlertDialogDescription className="!text-gray-300 hover:!text-gray-300 text-left text-sm sm:text-base leading-relaxed">
                             O evento foi criado com sucesso! Você deseja cadastrar as pulseiras de acesso agora?
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -121,7 +121,7 @@ const ManagerCreateEvent: React.FC = () => {
                             type="button"
                             variant="outline"
                             onClick={handleEmitirPulseiras}
-                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 bg-yellow-500 text-black border-0 hover:bg-yellow-600"
+                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-0 bg-yellow-500 !text-black hover:!bg-yellow-600 hover:!text-black focus-visible:!text-black"
                         >
                             <Plus className="h-4 w-4 mr-2 shrink-0" />
                             Emitir Pulseiras
@@ -130,7 +130,7 @@ const ManagerCreateEvent: React.FC = () => {
                             type="button"
                             variant="outline"
                             onClick={handleIrParaPulseiras}
-                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-yellow-500/30 bg-black/60 !text-yellow-400 hover:!bg-yellow-500/15 hover:!text-yellow-300 focus-visible:!text-yellow-300 focus-visible:ring-yellow-500/40"
                         >
                             <QrCode className="h-4 w-4 mr-2 shrink-0" />
                             Ir para Pulseiras
@@ -139,7 +139,7 @@ const ManagerCreateEvent: React.FC = () => {
                             type="button"
                             variant="outline"
                             onClick={handleNaoEmitir}
-                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-yellow-500/30 bg-black/60 !text-yellow-400 hover:!bg-yellow-500/15 hover:!text-yellow-300 focus-visible:!text-yellow-300 focus-visible:ring-yellow-500/40"
                         >
                             Não, Voltar para Eventos
                         </Button>

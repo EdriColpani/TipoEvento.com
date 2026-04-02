@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +66,8 @@ const ManagerCreateWristband: React.FC = () => {
         price: '0,00', // Usando vírgula para padrão brasileiro
     });
     const [isSaving, setIsSaving] = useState(false);
+    /** Evita segundo INSERT (pulseira + analytics) antes do re-render do botão — mesmo padrão do cadastro de evento. */
+    const submitInFlightRef = useRef(false);
 
     // Fetch current user ID
     useEffect(() => {
@@ -124,9 +126,14 @@ const ManagerCreateWristband: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         const priceNumeric = parsePriceToNumeric(formData.price);
         if (!validateForm(priceNumeric) || !company?.id || !userId) return;
+
+        if (submitInFlightRef.current) {
+            return;
+        }
+        submitInFlightRef.current = true;
 
         setIsSaving(true);
         const toastId = showLoading(`Cadastrando pulseira e ${formData.quantity} registros de analytics...`);
@@ -188,7 +195,13 @@ const ManagerCreateWristband: React.FC = () => {
                 .insert(analyticsToInsert);
 
             if (analyticsError) {
-                console.error("Warning: Failed to insert analytics records:", analyticsError);
+                console.error('Falha ao inserir wristband_analytics:', analyticsError);
+                if (String(analyticsError.code) === '23505') {
+                    throw new Error(
+                        'Esses códigos de pulseira já existem para esta pulseira (envio duplicado). Recarregue a lista ou exclua duplicatas antigas no banco.',
+                    );
+                }
+                throw analyticsError;
             }
 
             dismissToast(toastId);
@@ -208,6 +221,7 @@ const ManagerCreateWristband: React.FC = () => {
             console.error("Erro ao cadastrar pulseira:", error);
             showError(`Falha ao cadastrar pulseira: ${error.message || 'Erro desconhecido'}`);
         } finally {
+            submitInFlightRef.current = false;
             setIsSaving(false);
         }
     };
