@@ -46,10 +46,24 @@ const AuthStatusMenu: React.FC = () => {
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
 
     const handleLogout = async () => {
-        await supabase.auth.signOut({ scope: 'local' });
-        showSuccess('Sessão encerrada.');
-        setSession(null);
-        navigate('/', { replace: true });
+        try {
+            const { error } = await supabase.auth.signOut({ scope: 'local' });
+
+            const sessionMissing = error?.message?.toLowerCase().includes('auth session missing');
+
+            // Quando a sessão já expirou, o Supabase pode retornar "Auth session missing!".
+            // Nesse caso, tratamos como logout bem-sucedido para não travar o usuário.
+            if (error && !sessionMissing) {
+                showError('Erro ao sair: ' + error.message);
+            } else {
+                showSuccess('Sessão encerrada.');
+            }
+        } catch (err: unknown) {
+            showSuccess('Sessão encerrada.');
+        } finally {
+            setSession(null);
+            navigate('/login', { replace: true });
+        }
     };
 
     if (loadingSession || isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany)) {

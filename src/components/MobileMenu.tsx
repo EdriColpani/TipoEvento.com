@@ -52,12 +52,19 @@ const MobileMenu: React.FC = () => {
     };
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut({ scope: 'local' });
-        if (error) {
-            showError("Erro ao sair: " + error.message);
-        } else {
-            showSuccess("Sessão encerrada com sucesso.");
-            handleNavigation('/');
+        try {
+            const { error } = await supabase.auth.signOut({ scope: 'local' });
+            const sessionMissing = error?.message?.toLowerCase().includes('auth session missing');
+
+            if (error && !sessionMissing) {
+                showError('Erro ao sair: ' + error.message);
+            } else {
+                showSuccess('Sessão encerrada com sucesso.');
+            }
+        } catch {
+            showSuccess('Sessão encerrada com sucesso.');
+        } finally {
+            handleNavigation('/login');
         }
     };
 
