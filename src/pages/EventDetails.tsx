@@ -134,10 +134,19 @@ const EventDetails: React.FC = () => {
 
             if (response.error) {
                 console.error("Edge Function error:", response.error);
-                
-                // Se for um FunctionsHttpError, tenta obter o erro específico do corpo da resposta
-                if (response.data && typeof response.data === 'object' && 'error' in response.data) {
-                    errorMessage = (response.data as { error: string }).error;
+
+                const payload = response.data as
+                    | { error?: string; hint?: string; mpCode?: string }
+                    | undefined;
+
+                if (payload && typeof payload === 'object' && typeof payload.error === 'string') {
+                    errorMessage = payload.error;
+                    if (payload.hint) {
+                        errorMessage = `${payload.error} — ${payload.hint}`;
+                    } else if (payload.mpCode === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES') {
+                        errorMessage =
+                            'Pagamento bloqueado pelo Mercado Pago (políticas). Verifique no painel MP as URLs permitidas e as credenciais de produção.';
+                    }
                 } else if (response.error.message) {
                     // Verifica se a mensagem de erro contém informações úteis
                     if (response.error.message.includes('404') || response.error.message.includes('not found')) {

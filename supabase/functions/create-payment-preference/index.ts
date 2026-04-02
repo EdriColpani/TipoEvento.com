@@ -240,32 +240,54 @@ serve(async (req) => {
     if (!mpApiResponse.ok) {
         const errorText = await mpApiResponse.text();
         let errorMessage = 'Falha ao criar preferência de pagamento no Mercado Pago.';
-        
+        let mpCode: string | undefined;
+        let mpBlockedBy: string | undefined;
+
         try {
-            const errorJson = JSON.parse(errorText);
+            const errorJson = JSON.parse(errorText) as Record<string, unknown>;
             console.error(`[DEBUG] MP API Error (${mpApiResponse.status}):`, JSON.stringify(errorJson, null, 2));
-            
-            if (errorJson.message) {
+
+            if (typeof errorJson.message === 'string') {
                 errorMessage = errorJson.message;
-            } else if (errorJson.cause && Array.isArray(errorJson.cause)) {
-                errorMessage = errorJson.cause.map((c: any) => c.description || c.message).join(', ');
-            } else if (typeof errorJson === 'string') {
-                errorMessage = errorJson;
+            } else if (Array.isArray(errorJson.cause)) {
+                errorMessage = (errorJson.cause as any[])
+                    .map((c: any) => c.description || c.message)
+                    .filter(Boolean)
+                    .join(', ');
             }
-        } catch (e) {
+            if (typeof errorJson.code === 'string') mpCode = errorJson.code;
+            if (typeof errorJson.blocked_by === 'string') mpBlockedBy = errorJson.blocked_by;
+        } catch (_e) {
             console.error(`[DEBUG] MP API Error (${mpApiResponse.status}):`, errorText);
         }
-        
-        // Se falhar, reverter a transação pendente
+
+        const isPolicyBlock =
+            mpApiResponse.status === 403 &&
+            (mpCode === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES' || mpBlockedBy === 'PolicyAgent');
+
+        const hint = isPolicyBlock
+            ? 'Mercado Pago (PolicyAgent) bloqueou o checkout. Checklist: (1) Variável SITE_URL na Edge Function = domínio REAL da loja (se o cliente usa eventofest.com.br, não deixe tipoevento.vercel.app nas back_urls). (2) No painel MP: sua aplicação / Checkout Pro com URLs de retorno e webhook autorizados para esse domínio. (3) Token PAYMENT_API_KEY_SECRET de produção válido e conta sem pendências.'
+            : mpApiResponse.status === 401 || mpApiResponse.status === 403
+            ? 'Token do Mercado Pago recusado. Verifique PAYMENT_API_KEY_SECRET (produção vs teste) e se o token não expirou.'
+            : undefined;
+
         await supabaseService.from('receivables').delete().eq('id', transactionId);
-        return new Response(JSON.stringify({ 
-            error: errorMessage,
-            details: errorText,
-            statusCode: mpApiResponse.status
-        }), { 
-            status: 500, 
-            headers: corsHeaders 
-        });
+
+        const httpStatus = isPolicyBlock || mpApiResponse.status === 403 ? 403 : 502;
+
+        return new Response(
+            JSON.stringify({
+                error: errorMessage,
+                mpCode,
+                mpBlockedBy,
+                mpHttpStatus: mpApiResponse.status,
+                hint,
+            }),
+            {
+                status: httpStatus,
+                headers: corsHeaders,
+            },
+        );
     }
 
     const mpResponse = await mpApiResponse.json();
