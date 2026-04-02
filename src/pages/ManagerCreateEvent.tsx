@@ -87,9 +87,7 @@ const ManagerCreateEvent: React.FC = () => {
                 </div>
             </div>
 
-            <EventFormSteps 
-                userId={userId}
-            />
+            <EventFormSteps userId={userId} onCreateSuccess={handleSaveSuccess} />
             
             <AlertDialog open={showWristbandModal} onOpenChange={setShowWristbandModal}>
                 <AlertDialogContent className="bg-black/90 border border-yellow-500/30 text-white">

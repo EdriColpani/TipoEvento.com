@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -110,13 +110,22 @@ interface EventFormStepsProps {
     initialData?: EventFormData | null;
     eventId?: string;
     userId?: string | null; // Adicionar userId como prop opcional
+    /** Se definido em criação (sem eventId), chamado após persistir lotes/turmas; não redireciona para a lista. */
+    onCreateSuccess?: (newEventId: string) => void;
 }
 
-const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, userId: propUserId }) => {
+const EventFormSteps: React.FC<EventFormStepsProps> = ({
+    initialData,
+    eventId,
+    userId: propUserId,
+    onCreateSuccess,
+}) => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [currentStep, setCurrentStep] = useState(1);
     const [isSaving, setIsSaving] = useState(false);
+    /** Evita duplo INSERT/update: `isSaving` só atualiza no próximo render; clique duplo dispara dois submits no mesmo tick. */
+    const submitInFlightRef = useRef(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
     const [useTurmas, setUseTurmas] = useState(false);
@@ -489,6 +498,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
             return;
         }
 
+        if (submitInFlightRef.current) {
+            return;
+        }
+        submitInFlightRef.current = true;
+
         setIsSaving(true);
         const toastId = showLoading(eventId ? "Atualizando evento..." : "Criando novo evento...");
 
@@ -744,13 +758,19 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({ initialData, eventId, u
 
             queryClient.invalidateQueries({ queryKey: ['managerEvents', userId] });
             queryClient.invalidateQueries({ queryKey: ['publicEvents'] });
-            navigate('/manager/events');
+
+            if (!eventId && onCreateSuccess && newEventId) {
+                onCreateSuccess(newEventId);
+            } else {
+                navigate('/manager/events');
+            }
 
         } catch (error: any) {
             dismissToast(toastId);
             console.error("Erro ao salvar evento:", error);
             showError(`Falha ao salvar evento: ${error.message || 'Erro desconhecido'}`);
         } finally {
+            submitInFlightRef.current = false;
             setIsSaving(false);
         }
     };
