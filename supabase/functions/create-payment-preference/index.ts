@@ -7,6 +7,40 @@ const corsHeaders = {
   'Content-Type': 'application/json',
 };
 
+/** Origem pública (https://loja.com) para back_urls — alinha com o domínio onde o usuário compra (evita PA_UNAUTHORIZED no MP). */
+function resolveCheckoutOrigin(
+  body: Record<string, unknown>,
+  siteUrlEnv: string,
+): string {
+  const envBase = siteUrlEnv.replace(/\/$/, '');
+  const raw = typeof body.clientOrigin === 'string' ? body.clientOrigin.trim() : '';
+  let clientOrigin = '';
+  if (raw) {
+    try {
+      const u = new URL(raw);
+      if (u.protocol === 'https:' || (u.protocol === 'http:' && u.hostname === 'localhost')) {
+        clientOrigin = u.origin;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const allowCsv = (Deno.env.get('CHECKOUT_PUBLIC_ORIGINS') ?? '').trim();
+  const allowed = allowCsv
+    ? allowCsv.split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean)
+    : [];
+
+  if (clientOrigin) {
+    if (allowed.length === 0 || allowed.includes(clientOrigin)) {
+      return clientOrigin;
+    }
+    console.warn(
+      `[create-payment-preference] clientOrigin ${clientOrigin} não está em CHECKOUT_PUBLIC_ORIGINS; usando SITE_URL.`,
+    );
+  }
+  return envBase;
+}
+
 // Initialize Supabase client with Service Role Key for secure backend operations
 const supabaseService = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -44,13 +78,17 @@ serve(async (req) => {
   console.log(`[DEBUG] Client authenticated. User ID: ${clientUserId}`);
 
   try {
-    const body = await req.json();
-    const { eventId, purchaseItems } = body; // purchaseItems: [{ ticketTypeId, quantity, price, name }]
-    
-    const SITE_URL = Deno.env.get('SITE_URL') ?? '';
-    console.log(`[DEBUG] Received request for Event ID: ${eventId}. Site URL: ${SITE_URL}`);
+    const body = (await req.json()) as Record<string, unknown>;
+    const { eventId, purchaseItems } = body as {
+      eventId?: string;
+      purchaseItems?: unknown[];
+    };
 
-    if (!eventId || !purchaseItems || purchaseItems.length === 0) {
+    const siteUrlEnv = (Deno.env.get('SITE_URL') ?? '').replace(/\/$/, '');
+    const checkoutOrigin = resolveCheckoutOrigin(body, siteUrlEnv);
+    console.log(`[DEBUG] Event ID: ${eventId}. SITE_URL(env)=${siteUrlEnv || '(vazio)'} checkoutOrigin(usado)=${checkoutOrigin}`);
+
+    if (!eventId || !Array.isArray(purchaseItems) || purchaseItems.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing event details or purchase items' }), { 
         status: 400, 
         headers: corsHeaders 
@@ -184,16 +222,24 @@ serve(async (req) => {
     // Para notification_url, usa a URL completa da Edge Function
     const notificationUrl = `${supabaseUrl}/functions/v1/mercadopago-webhook`;
     
-    // Para back_urls, usa URLs do próprio Supabase (o Mercado Pago redireciona para lá)
-    // NOTA: Se sua aplicação frontend estiver em outro domínio, substitua aqui
-    const successUrl = `${SITE_URL}/tickets?status=success&transaction_id=${transactionId}`;
-    const pendingUrl = `${SITE_URL}/tickets?status=pending&transaction_id=${transactionId}`;
-    const failureUrl = `${SITE_URL}/tickets?status=failure&transaction_id=${transactionId}`;
-     
+    const base = checkoutOrigin.replace(/\/$/, '');
+    if (!base) {
+      await supabaseService.from('receivables').delete().eq('id', transactionId);
+      return new Response(
+        JSON.stringify({
+          error: 'SITE_URL ou clientOrigin inválido. Configure SITE_URL nas secrets da função e/ou envie clientOrigin do front.',
+        }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    const successUrl = `${base}/tickets?status=success&transaction_id=${transactionId}`;
+    const pendingUrl = `${base}/tickets?status=pending&transaction_id=${transactionId}`;
+    const failureUrl = `${base}/tickets?status=failure&transaction_id=${transactionId}`;
+
     console.log(`[DEBUG] Notification URL: ${notificationUrl}`);
     console.log(`[DEBUG] Success URL: ${successUrl}`);
     console.log(`[DEBUG] Supabase URL: ${supabaseUrl}`);
-    console.log(`[DEBUG] SITE_URL: ${SITE_URL}`);
 
     // 8. Create MP Preference usando API REST diretamente (mais confiável que SDK)
     // Validação: Preferência deve ter pelo menos um item com preço válido
@@ -205,16 +251,16 @@ serve(async (req) => {
         });
     }
 
-    const preferenceData = {
+    // Sem auto_return: em várias contas MP o PolicyAgent bloqueia preferência quando back_urls não batem com a app ou com auto_return.
+    const preferenceData: Record<string, unknown> = {
         items: mpItems,
         external_reference: transactionId,
-        notification_url: notificationUrl, 
+        notification_url: notificationUrl,
         back_urls: {
             success: successUrl,
             pending: pendingUrl,
             failure: failureUrl,
         },
-        auto_return: "approved",
     };
 
     console.log(`[DEBUG] Creating MP preference with access token length: ${mpAccessToken.length}`);
@@ -266,7 +312,7 @@ serve(async (req) => {
             (mpCode === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES' || mpBlockedBy === 'PolicyAgent');
 
         const hint = isPolicyBlock
-            ? 'Mercado Pago (PolicyAgent) bloqueou o checkout. Checklist: (1) Variável SITE_URL na Edge Function = domínio REAL da loja (se o cliente usa eventofest.com.br, não deixe tipoevento.vercel.app nas back_urls). (2) No painel MP: sua aplicação / Checkout Pro com URLs de retorno e webhook autorizados para esse domínio. (3) Token PAYMENT_API_KEY_SECRET de produção válido e conta sem pendências.'
+            ? 'Mercado Pago (PolicyAgent) bloqueou o checkout. Confira: (1) back_urls agora usam o domínio do navegador (clientOrigin); se usar vários domínios, defina a secret CHECKOUT_PUBLIC_ORIGINS com todos (ex.: https://eventofest.com.br,https://outro.com). (2) No painel MP, libere esse domínio nas URLs de retorno da aplicação. (3) PAYMENT_API_KEY_SECRET de produção válido.'
             : mpApiResponse.status === 401 || mpApiResponse.status === 403
             ? 'Token do Mercado Pago recusado. Verifique PAYMENT_API_KEY_SECRET (produção vs teste) e se o token não expirou.'
             : undefined;

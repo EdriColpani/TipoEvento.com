@@ -1,5 +1,5 @@
 // Service Worker para PWA
-const CACHE_NAME = 'validator-v1';
+const CACHE_NAME = 'validator-v2-scope';
 const urlsToCache = [
   '/',
   '/validator',
@@ -33,12 +33,31 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Estratégia: Network First, fallback para Cache
+// Só intercepta GET do app em rotas do validador — não mexe em /events/, /manager/, navegação nem Supabase (evita erro "Failed to convert value to 'Response'").
 self.addEventListener('fetch', (event) => {
-  // Ignora requisições para APIs externas (Supabase)
-  if (event.request.url.includes('/functions/v1/') || 
-      event.request.url.includes('supabase.co')) {
-    return fetch(event.request);
+  const url = new URL(event.request.url);
+
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  if (
+    event.request.method !== 'GET' ||
+    event.request.mode === 'navigate' ||
+    url.pathname.startsWith('/events/') ||
+    url.pathname.startsWith('/manager/')
+  ) {
+    return;
+  }
+
+  if (url.pathname.includes('/functions/v1/') || url.hostname.includes('supabase.co')) {
+    return;
+  }
+
+  const isValidatorScope =
+    url.pathname === '/' || url.pathname === '/validator' || url.pathname.startsWith('/validator/');
+  if (!isValidatorScope) {
+    return;
   }
 
   event.respondWith(
