@@ -44,18 +44,22 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clona a resposta
-        const responseToCache = response.clone();
-        
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-        
+        if (response.ok) {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
         return response;
       })
       .catch(() => {
-        // Se a rede falhar, tenta buscar do cache
-        return caches.match(event.request);
+        return caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return new Response('Sem conexão. Recarregue quando estiver online.', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          });
+        });
       })
   );
 });
