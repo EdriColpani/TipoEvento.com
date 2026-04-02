@@ -126,6 +126,14 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const [isSaving, setIsSaving] = useState(false);
     /** Evita duplo INSERT/update: `isSaving` só atualiza no próximo render; clique duplo dispara dois submits no mesmo tick. */
     const submitInFlightRef = useRef(false);
+    /** Após o 1º INSERT na página "criar evento", próximos "Salvar" fazem UPDATE (evita 2º registro no banco). Síncrono antes dos awaits dos lotes. */
+    const createdEventIdRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (eventId) {
+            createdEventIdRef.current = null;
+        }
+    }, [eventId]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
     const [useTurmas, setUseTurmas] = useState(false);
@@ -503,8 +511,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         }
         submitInFlightRef.current = true;
 
+        const persistenceEventId = eventId ?? createdEventIdRef.current ?? undefined;
+        const willInsertNewRow = !persistenceEventId;
+
         setIsSaving(true);
-        const toastId = showLoading(eventId ? "Atualizando evento..." : "Criando novo evento...");
+        const toastId = showLoading(persistenceEventId ? "Atualizando evento..." : "Criando novo evento...");
 
         try {
             const TIPO_GESTOR_PRO = 2;
@@ -612,19 +623,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 contract_version: activeContract?.version ?? null,
             };
 
-            let newEventId = eventId;
-            if (eventId) {
-                // Update existente
+            let newEventId = persistenceEventId;
+            if (persistenceEventId) {
                 const { error } = await supabase
                     .from('events')
                     .update(eventData)
-                    .eq('id', eventId);
+                    .eq('id', persistenceEventId);
 
                 if (error) throw error;
                 dismissToast(toastId);
                 showSuccess("Evento atualizado com sucesso!");
             } else {
-                // Insert novo
                 const { data, error } = await supabase
                     .from('events')
                     .insert([eventData])
@@ -636,6 +645,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     throw error;
                 }
                 newEventId = data.id;
+                createdEventIdRef.current = data.id;
                 dismissToast(toastId);
                 showSuccess("Evento criado com sucesso e enviado para aprovação!");
             }
@@ -759,7 +769,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             queryClient.invalidateQueries({ queryKey: ['managerEvents', userId] });
             queryClient.invalidateQueries({ queryKey: ['publicEvents'] });
 
-            if (!eventId && onCreateSuccess && newEventId) {
+            if (willInsertNewRow && onCreateSuccess && newEventId) {
                 onCreateSuccess(newEventId);
             } else {
                 navigate('/manager/events');
@@ -798,8 +808,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     const stepToRender = getStepToRender();
 
-    const onFormSubmit = handleSubmit(onSubmit, (errors) => {
-        // Mostra os erros de validação se houver
+    const onValidationError = (errors: Parameters<Parameters<typeof handleSubmit>[1]>[0]) => {
         console.error("Erros de validação:", errors);
         const firstError = Object.values(errors)[0];
         if (firstError?.message) {
@@ -807,8 +816,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         } else {
             showError("Por favor, verifique todos os campos obrigatórios antes de salvar.");
         }
-        
-        // Move para o primeiro passo com erro, se possível
+
         if (errors.date || errors.time || errors.title || errors.description) {
             setCurrentStep(activeContract ? 2 : 1);
         } else if (errors.card_image_url || errors.exposure_card_image_url || errors.banner_image_url) {
@@ -816,7 +824,15 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         } else if (errors.batches || errors.num_batches) {
             setCurrentStep(activeContract ? 4 : 3);
         }
-    });
+    };
+
+    const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        if (submitInFlightRef.current) {
+            e.preventDefault();
+            return;
+        }
+        void handleSubmit(onSubmit, onValidationError)(e);
+    };
 
     return (
         <FormProvider {...methods}>
