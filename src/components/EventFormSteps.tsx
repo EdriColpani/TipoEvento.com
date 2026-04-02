@@ -26,6 +26,12 @@ import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescripti
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQueryClient, useQuery } from '@tanstack/react-query'; // Importando useQueryClient e useQuery
 import { MANAGER_EVENT_CREATION_CONTRACT_TYPE } from '@/constants/event-contracts';
+import { cn } from '@/lib/utils';
+import {
+    getOrCreateClientSubmitId,
+    persistManagerCreateEventDraftId,
+    readManagerCreateEventDraftId,
+} from '@/utils/manager-create-event-session';
 
 interface EventContract {
     id: string;
@@ -112,6 +118,10 @@ interface EventFormStepsProps {
     userId?: string | null; // Adicionar userId como prop opcional
     /** Se definido em criação (sem eventId), chamado após persistir lotes/turmas; não redireciona para a lista. */
     onCreateSuccess?: (newEventId: string) => void;
+    /** ID do evento já criado nesta sessão (estado do pai). Sobrevive a remontagem do formulário — evita 2º INSERT. */
+    draftPersistedEventId?: string | null;
+    /** Enquanto o modal pós-criação está aberto, impede novo envio e cliques no form. */
+    freezeFormAfterCreate?: boolean;
 }
 
 const EventFormSteps: React.FC<EventFormStepsProps> = ({
@@ -119,6 +129,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     eventId,
     userId: propUserId,
     onCreateSuccess,
+    draftPersistedEventId,
+    freezeFormAfterCreate,
 }) => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -134,6 +146,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             createdEventIdRef.current = null;
         }
     }, [eventId]);
+
+    useEffect(() => {
+        if (draftPersistedEventId) {
+            createdEventIdRef.current = draftPersistedEventId;
+        }
+    }, [draftPersistedEventId]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
     const [useTurmas, setUseTurmas] = useState(false);
@@ -459,6 +477,13 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             return;
         }
 
+        if (freezeFormAfterCreate) {
+            showError(
+                'Este evento já foi criado. Use a janela de pulseiras ou feche-a antes de salvar de novo.',
+            );
+            return;
+        }
+
         // Validação: Para eventos pagos, é obrigatório ter e aceitar o contrato de comissão
         if (values.is_paid) {
             if (!activeContract) {
@@ -511,7 +536,13 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         }
         submitInFlightRef.current = true;
 
-        const persistenceEventId = eventId ?? createdEventIdRef.current ?? undefined;
+        const sessionDraftId = !eventId && userId ? readManagerCreateEventDraftId(userId) : undefined;
+        const persistenceEventId =
+            eventId ??
+            (draftPersistedEventId && draftPersistedEventId.trim() !== '' ? draftPersistedEventId : undefined) ??
+            sessionDraftId ??
+            createdEventIdRef.current ??
+            undefined;
         const willInsertNewRow = !persistenceEventId;
 
         setIsSaving(true);
@@ -595,10 +626,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 ? (minPriceFromBatches ?? (values.ticket_price ? parseFloat(values.ticket_price.replace(',', '.')) : null))
                 : null;
 
-            console.log("activeContract no onSubmit:", activeContract);
-            console.log("values.contractAccepted no onSubmit:", values.contractAccepted);
+            const clientSubmitId =
+                !persistenceEventId && userId ? getOrCreateClientSubmitId(userId) : undefined;
 
-            const eventData = {
+            const eventData: Record<string, unknown> = {
                 title: values.title,
                 description: values.description,
                 date: format(values.date!, 'yyyy-MM-dd'),
@@ -622,6 +653,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 contract_id: activeContract?.id || null,
                 contract_version: activeContract?.version ?? null,
             };
+            if (clientSubmitId) {
+                eventData.client_submit_id = clientSubmitId;
+            }
 
             let newEventId = persistenceEventId;
             if (persistenceEventId) {
@@ -641,13 +675,37 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     .single();
 
                 if (error) {
+                    const isUniqueViolation = String(error.code) === '23505';
+                    const isDupClientSubmit = isUniqueViolation && !!clientSubmitId;
+
+                    if (isDupClientSubmit) {
+                        const { data: existing, error: fetchErr } = await supabase
+                            .from('events')
+                            .select('id')
+                            .eq('client_submit_id', clientSubmitId)
+                            .maybeSingle();
+
+                        if (!fetchErr && existing?.id) {
+                            newEventId = existing.id;
+                            createdEventIdRef.current = existing.id;
+                            if (userId) persistManagerCreateEventDraftId(userId, existing.id);
+                            dismissToast(toastId);
+                            showSuccess("Evento criado com sucesso e enviado para aprovação!");
+                        } else {
+                            dismissToast(toastId);
+                            throw error;
+                        }
+                    } else {
+                        dismissToast(toastId);
+                        throw error;
+                    }
+                } else if (data?.id) {
+                    newEventId = data.id;
+                    createdEventIdRef.current = data.id;
+                    if (userId) persistManagerCreateEventDraftId(userId, data.id);
                     dismissToast(toastId);
-                    throw error;
+                    showSuccess("Evento criado com sucesso e enviado para aprovação!");
                 }
-                newEventId = data.id;
-                createdEventIdRef.current = data.id;
-                dismissToast(toastId);
-                showSuccess("Evento criado com sucesso e enviado para aprovação!");
             }
 
             // Lógica para lotes (se for pago)
@@ -836,7 +894,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     return (
         <FormProvider {...methods}>
-            <form onSubmit={onFormSubmit} className="space-y-8">
+            <form
+                onSubmit={onFormSubmit}
+                className={cn('space-y-8', freezeFormAfterCreate && 'pointer-events-none opacity-60')}
+                aria-disabled={freezeFormAfterCreate || undefined}
+            >
                 {/* Loading do Contrato */}
                 {stepToRender === 'loading' && (
                     <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
@@ -1512,7 +1574,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         {currentStep === (activeContract ? 4 : 3) && (
                             <Button
                                 type="submit"
-                                disabled={isSaving}
+                                disabled={isSaving || freezeFormAfterCreate}
                                 className="bg-yellow-500 text-black hover:bg-yellow-600 py-2 text-base font-semibold transition-all duration-300 cursor-pointer ml-auto disabled:opacity-50"
                             >
                                 {isSaving ? (

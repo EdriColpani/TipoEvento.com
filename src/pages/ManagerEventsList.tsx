@@ -112,12 +112,14 @@ const ManagerEventsList: React.FC = () => {
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <Table className="w-full min-w-[500px]">
+                        <Table className="w-full min-w-[640px]">
                             <TableHeader>
                                 <TableRow className="border-b border-yellow-500/20 text-sm hover:bg-black/40">
-                                    <TableHead className="text-left text-gray-400 font-semibold py-3 w-[60%]">Nome do Evento</TableHead>
-                                    <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Status</TableHead>
-                                    <TableHead className="text-right text-gray-400 font-semibold py-3 w-[25%]">Ações</TableHead>
+                                    <TableHead className="text-left text-gray-400 font-semibold py-3 min-w-0">Nome do Evento</TableHead>
+                                    <TableHead className="text-center text-gray-400 font-semibold py-3 w-32 shrink-0">Status</TableHead>
+                                    <TableHead className="text-right text-gray-400 font-semibold py-3 w-[1%] whitespace-nowrap min-w-[280px]">
+                                        Ações
+                                    </TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -148,30 +150,32 @@ const ManagerEventsList: React.FC = () => {
                                                 </span>
                                             </TableCell>
                                             <TableCell
-                                                className="text-right py-4 flex flex-wrap items-center justify-end gap-2"
+                                                className="py-4 align-middle w-[1%] min-w-[280px]"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
-                                                <Button 
-                                                    variant="outline" 
-                                                    size="sm"
-                                                    className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-black h-8 px-3"
-                                                    onClick={() => handleRowClick(event.id)}
-                                                >
-                                                    <FileEdit className="h-4 w-4 mr-2" />
-                                                    {isDraft ? 'Continuar Edição' : 'Gerenciar'}
-                                                </Button>
-                                                <EventActiveToggle
-                                                    eventId={event.id}
-                                                    eventTitle={event.title}
-                                                    isDraft={isDraft}
-                                                    isActive={event.is_active}
-                                                    onSuccess={invalidateEvents}
-                                                />
-                                                <DeleteEventDialog
-                                                    eventId={event.id}
-                                                    eventTitle={event.title}
-                                                    onDeleteSuccess={invalidateEvents}
-                                                />
+                                                <div className="ml-auto flex w-max max-w-none flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="shrink-0 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-black h-8 px-3"
+                                                        onClick={() => handleRowClick(event.id)}
+                                                    >
+                                                        <FileEdit className="h-4 w-4 mr-2 shrink-0" />
+                                                        {isDraft ? 'Continuar Edição' : 'Gerenciar'}
+                                                    </Button>
+                                                    <EventActiveToggle
+                                                        eventId={event.id}
+                                                        eventTitle={event.title}
+                                                        isDraft={isDraft}
+                                                        isActive={event.is_active}
+                                                        onSuccess={invalidateEvents}
+                                                    />
+                                                    <DeleteEventDialog
+                                                        eventId={event.id}
+                                                        eventTitle={event.title}
+                                                        onDeleteSuccess={invalidateEvents}
+                                                    />
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     );
