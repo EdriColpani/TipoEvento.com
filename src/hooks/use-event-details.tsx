@@ -109,39 +109,61 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     
     // Usa array vazio se não houver dados de wristbands
     const wristbands = wristbandsData || [];
-    
-    // 4. Agrupar, formatar e calcular preço mínimo/disponibilidade
+
+    // 4. Formatar ticketTypes e calcular disponibilidade REAL (wristband_analytics livres)
+    // Backend reserva em `wristband_analytics` com:
+    // - status = 'active'
+    // - client_user_id IS NULL
+    // Então o front precisa espelhar essa regra, caso contrário o usuário seleciona quantidade
+    // que o backend não consegue reservar (erro 409).
+    const activeWristbands = wristbands.filter((w: any) => w.status === 'active');
+
+    // Conta disponibilidade por wristband_id (pode haver várias entradas por pulseira via analytics).
+    const availabilityByWristbandId: Record<string, number> = {};
+    await Promise.all(
+        activeWristbands.map(async (w: any) => {
+            const { count, error } = await supabase
+                .from('wristband_analytics')
+                .select('id', { count: 'exact', head: true })
+                .eq('wristband_id', w.id)
+                .eq('status', 'active')
+                .is('client_user_id', null);
+
+            if (error) {
+                console.error('[useEventDetails] Erro ao contar disponibilidade de analytics:', error);
+                availabilityByWristbandId[w.id] = 0;
+                return;
+            }
+
+            availabilityByWristbandId[w.id] = typeof count === 'number' ? count : 0;
+        }),
+    );
+
+    // Preço mínimo/disponibilidade
     let minPrice: number | null = null;
     let minPriceWristbandId: string | null = null;
-    
-    const groupedTickets = wristbands.reduce((acc, wristband) => {
-        const price = parseFloat(wristband.price as unknown as string) || 0;
-        
-        // APENAS consideramos pulseiras ativas para venda e preço mínimo
-        if (wristband.status === 'active') {
-            const key = `${wristband.access_type}-${price}`;
-            
-            if (!acc[key]) {
-                acc[key] = {
-                    id: wristband.id, // Usamos o ID da primeira pulseira como ID do tipo (simplificação)
-                    name: wristband.access_type,
-                    price: price,
-                    available: 0,
-                    description: `Acesso ${wristband.access_type} para o evento.`,
-                };
-            }
-            acc[key].available += 1;
 
-            // Atualiza o preço mínimo
-            if (minPrice === null || price < minPrice) {
-                minPrice = price;
-                minPriceWristbandId = wristband.id;
-            }
-        }
-        return acc;
-    }, {} as { [key: string]: TicketType });
+    const ticketTypes = activeWristbands
+        .map((w: any) => {
+            const price = parseFloat(w.price as unknown as string) || 0;
+            const available = availabilityByWristbandId[w.id] ?? 0;
 
-    const ticketTypes = Object.values(groupedTickets).sort((a, b) => a.price - b.price);
+            return {
+                id: w.id, // ID do wristband_id (necessário para a Edge Function reservar corretamente)
+                name: w.access_type,
+                price,
+                available,
+                description: `Acesso ${w.access_type} para o evento.`,
+            } as TicketType;
+        })
+        .filter((t) => t.available > 0)
+        .sort((a, b) => a.price - b.price);
+
+    if (ticketTypes.length > 0) {
+        const cheapest = ticketTypes.reduce((min, t) => (min === null || t.price < min.price ? t : min), null as TicketType | null);
+        minPrice = cheapest ? cheapest.price : null;
+        minPriceWristbandId = cheapest ? cheapest.id : null;
+    }
     
     // 5. Combinar dados
     const event: EventData = {
