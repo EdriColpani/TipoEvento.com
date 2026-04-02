@@ -13,13 +13,40 @@ export interface ManagerEvent {
     company_id: string;
 }
 
+/**
+ * Gestor PRO: mesmos título+data+hora+empresa com mais de um id = duplicata acidental (duplo submit).
+ * Mantém só o registro mais recente por `created_at` para a lista não mentir.
+ * Admin master não deduplica (pode haver homônimos de gestores diferentes).
+ */
+function dedupeGestorRows<T extends { title: string; date: string | null; time: string | null; company_id: string | null; created_at: string }>(
+    rows: T[],
+): T[] {
+    const keyOf = (r: T) =>
+        `${(r.title || '').trim().toLowerCase()}|${r.date ?? ''}|${r.time ?? ''}|${r.company_id ?? ''}`;
+    const byKey = new Map<string, T>();
+    const newestFirst = [...rows].sort((a, b) => {
+        const tb = new Date(b.created_at).getTime();
+        const ta = new Date(a.created_at).getTime();
+        if (Number.isFinite(ta) && Number.isFinite(tb)) return tb - ta;
+        return 0;
+    });
+    for (const row of newestFirst) {
+        const k = keyOf(row);
+        if (!byKey.has(k)) byKey.set(k, row);
+    }
+    return Array.from(byKey.values());
+}
+
 const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promise<ManagerEvent[]> => {
     if (!userId) {
         console.warn("Attempted to fetch manager events without a userId.");
         return [];
     }
 
-    const rows = await fetchEventsVisibleToGestor(supabase, userId, isAdminMaster);
+    let rows = await fetchEventsVisibleToGestor(supabase, userId, isAdminMaster);
+    if (!isAdminMaster) {
+        rows = dedupeGestorRows(rows);
+    }
     const sorted = [...rows].sort((a, b) => {
         const tb = new Date(b.created_at).getTime();
         const ta = new Date(a.created_at).getTime();

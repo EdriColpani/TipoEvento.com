@@ -62,29 +62,32 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
 
     if (!isActive) {
         return (
-            <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="bg-black/60 border-green-500/40 text-green-400 hover:bg-green-500/10 h-8 px-3"
-                disabled={busy}
-                onClick={() => applyToggle(true)}
-                title="Ativar evento na vitrine"
-            >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-                <span className="ml-1.5 hidden sm:inline">Ativar</span>
-            </Button>
+            <span className="inline-flex shrink-0 align-middle">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 bg-black/60 border-green-500/40 text-green-400 hover:bg-green-500/10 h-8 px-3"
+                    disabled={busy}
+                    onClick={() => applyToggle(true)}
+                    title="Ativar evento na vitrine"
+                >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                    <span className="ml-1.5 hidden sm:inline">Ativar</span>
+                </Button>
+            </span>
         );
     }
 
     return (
+        <span className="inline-flex shrink-0 align-middle">
         <AlertDialog>
             <AlertDialogTrigger asChild>
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="bg-black/60 border-orange-500/40 text-orange-300 hover:bg-orange-500/10 h-8 px-3"
+                    className="shrink-0 bg-black/60 border-orange-500/40 text-orange-300 hover:bg-orange-500/10 h-8 px-3"
                     disabled={busy}
                     title="Desativar evento (remove da vitrine)"
                 >
@@ -117,6 +120,7 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+        </span>
     );
 };
 

@@ -53,21 +53,22 @@ const DeleteEventDialog: React.FC<DeleteEventDialogProps> = ({ eventId, eventTit
     };
 
     return (
-        <AlertDialog>
-            <AlertDialogTrigger asChild>
-                <Button 
-                    variant="destructive" 
-                    size="sm"
-                    className="bg-red-500/20 text-red-400 hover:bg-red-500/30 h-8 px-3 ml-2"
-                    disabled={isDeleting}
-                >
-                    {isDeleting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                        <Trash2 className="h-4 w-4" />
-                    )}
-                </Button>
-            </AlertDialogTrigger>
+        <span className="inline-flex shrink-0 align-middle">
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        className="shrink-0 bg-red-500/20 text-red-400 hover:bg-red-500/30 h-8 w-8 p-0"
+                        disabled={isDeleting}
+                    >
+                        {isDeleting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <Trash2 className="h-4 w-4" />
+                        )}
+                    </Button>
+                </AlertDialogTrigger>
             <AlertDialogContent className="bg-black/90 border border-red-500/30 text-white">
                 <AlertDialogHeader>
                     <AlertDialogTitle className="text-red-400">Tem certeza absoluta?</AlertDialogTitle>
@@ -90,7 +91,8 @@ const DeleteEventDialog: React.FC<DeleteEventDialogProps> = ({ eventId, eventTit
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
-        </AlertDialog>
+            </AlertDialog>
+        </span>
     );
 };
 
