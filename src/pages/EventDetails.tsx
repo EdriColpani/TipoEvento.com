@@ -118,6 +118,7 @@ const EventDetails: React.FC = () => {
             const response = await supabase.functions.invoke('create-payment-preference', {
                 body: {
                     eventId: id,
+                    clientOrigin: typeof window !== 'undefined' ? window.location.origin : '',
                     purchaseItems: purchaseItems.map(item => ({
                         ticketTypeId: item.ticketTypeId,
                         quantity: item.quantity,
