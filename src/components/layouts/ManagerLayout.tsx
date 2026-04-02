@@ -67,12 +67,23 @@ const ManagerLayout: React.FC = () => {
 
 
     const handleLogout = async () => {
-        const { error } = await supabase.auth.signOut({ scope: 'local' });
-        if (error) {
-            showError("Erro ao sair: " + error.message);
-        } else {
+        try {
+            const { error } = await supabase.auth.signOut({ scope: 'local' });
+            const sessionMissing = error?.message?.toLowerCase().includes('auth session missing');
+
+            // Se a sessão já expirou, o Supabase pode retornar erro "Auth session missing!".
+            // Nesse caso, ainda assim tratamos como logout para destravar o usuário.
+            if (error && !sessionMissing) {
+                showError('Erro ao sair: ' + error.message);
+            } else {
+                showSuccess('Sessão encerrada.');
+            }
+        } catch {
             showSuccess('Sessão encerrada.');
-            navigate('/', { replace: true });
+        } finally {
+            setUserId(undefined);
+            setLoadingSession(false);
+            navigate('/manager/login', { replace: true });
         }
     };
 
