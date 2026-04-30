@@ -102,6 +102,7 @@ const MyTickets: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams(); // Usando useSearchParams
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const [loadingSession, setLoadingSession] = useState(true);
+    const [checkingPurchaseId, setCheckingPurchaseId] = useState<string | null>(null);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -172,17 +173,48 @@ const MyTickets: React.FC = () => {
     const recentPurchases = purchases.slice(0, 10);
 
     const getPurchaseStatusText = (status: string, paymentStatus: string | null) => {
-        if (status === 'paid') return 'Pago';
-        if (status === 'failed') return 'Falhou';
-        if (paymentStatus === 'authorized') return 'Autorizado';
+        if (status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized') return 'Pago';
+        if (status === 'failed' || paymentStatus === 'rejected' || paymentStatus === 'cancelled') return 'Falhou';
         if (paymentStatus === 'in_process') return 'Em processamento';
         return 'Pendente';
     };
 
-    const getPurchaseStatusClass = (status: string) => {
-        if (status === 'paid') return 'bg-green-500/20 text-green-400 border-green-500/30';
-        if (status === 'failed') return 'bg-red-500/20 text-red-400 border-red-500/30';
+    const getPurchaseStatusClass = (status: string, paymentStatus: string | null) => {
+        if (status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized') {
+            return 'bg-green-500/20 text-green-400 border-green-500/30';
+        }
+        if (status === 'failed' || paymentStatus === 'rejected' || paymentStatus === 'cancelled') {
+            return 'bg-red-500/20 text-red-400 border-red-500/30';
+        }
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    };
+
+    const handleCheckPurchaseStatus = async (transactionId: string) => {
+        setCheckingPurchaseId(transactionId);
+        try {
+            const { data, error } = await supabase.functions.invoke('check-payment-status', {
+                body: { transactionId },
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            const paymentStatus = data?.paymentStatus || 'desconhecido';
+            const detail = data?.paymentStatusDetail ? ` (${data.paymentStatusDetail})` : '';
+            if (data?.requiresAttention) {
+                showError(data?.processingResult || 'Pagamento aprovado no MP, mas integração local ainda não concluiu.');
+            } else {
+                showSuccess(`Status atualizado: ${paymentStatus}${detail}`);
+            }
+            queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
+            queryClient.invalidateQueries({ queryKey: ['myTickets', userId] });
+        } catch (err: any) {
+            console.error('Erro ao verificar status de pagamento:', err);
+            showError(err?.message || 'Falha ao verificar status no Mercado Pago.');
+        } finally {
+            setCheckingPurchaseId(null);
+        }
     };
 
     return (
@@ -241,7 +273,7 @@ const MyTickets: React.FC = () => {
                                                     <p className="text-white font-semibold">
                                                         {purchase.events?.title || 'Evento'}
                                                     </p>
-                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getPurchaseStatusClass(purchase.status)}`}>
+                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getPurchaseStatusClass(purchase.status, purchase.payment_status)}`}>
                                                         {getPurchaseStatusText(purchase.status, purchase.payment_status)}
                                                     </span>
                                                 </div>
@@ -249,12 +281,30 @@ const MyTickets: React.FC = () => {
                                                 <p className="text-sm text-gray-400">
                                                     Data: {new Date(purchase.created_at).toLocaleString('pt-BR')}
                                                 </p>
+                                                {purchase.payment_status && (
+                                                    <p className="text-xs text-gray-500">
+                                                        MP: {purchase.payment_status}
+                                                        {purchase.mp_status_detail ? ` (${purchase.mp_status_detail})` : ''}
+                                                    </p>
+                                                )}
                                             </div>
-                                            <div className="text-left md:text-right">
+                                            <div className="text-left md:text-right space-y-2">
                                                 <p className="text-sm text-gray-400">Valor</p>
                                                 <p className="text-xl font-bold text-yellow-500">
                                                     R$ {(purchase.total_value || 0).toFixed(2).replace('.', ',')}
                                                 </p>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleCheckPurchaseStatus(purchase.id)}
+                                                    disabled={checkingPurchaseId === purchase.id}
+                                                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                                                >
+                                                    {checkingPurchaseId === purchase.id ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                                    ) : null}
+                                                    Verificar no MP
+                                                </Button>
                                             </div>
                                         </div>
                                     </Card>
