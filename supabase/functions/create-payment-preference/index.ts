@@ -13,15 +13,19 @@ function resolveCheckoutOrigin(
   siteUrlEnv: string,
 ): string {
   const envBase = siteUrlEnv.replace(/\/$/, '');
+  const useDynamicBackUrls = (Deno.env.get('USE_DYNAMIC_BACK_URLS') ?? '').trim() === 'true';
+  const allowLocalhostCheckout = (Deno.env.get('ALLOW_LOCALHOST_CHECKOUT') ?? '').trim() === 'true';
   const raw = typeof body.clientOrigin === 'string' ? body.clientOrigin.trim() : '';
   let clientOrigin = '';
+  let clientIsLocalhost = false;
   if (raw) {
     try {
       const u = new URL(raw);
-      if (u.protocol === 'https:' || (u.protocol === 'http:' && u.hostname === 'localhost')) {
+      clientIsLocalhost = u.protocol === 'http:' && u.hostname === 'localhost';
+      if (u.protocol === 'https:' || clientIsLocalhost) {
         clientOrigin = u.origin;
       }
-    } catch {
+    } catch (_error) {
       /* ignore */
     }
   }
@@ -30,7 +34,26 @@ function resolveCheckoutOrigin(
     ? allowCsv.split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean)
     : [];
 
+  // Modo estável (padrão): sempre usa SITE_URL para evitar bloqueios de PolicyAgent.
+  // Só usa clientOrigin quando USE_DYNAMIC_BACK_URLS=true.
+  if (!useDynamicBackUrls) {
+    if (!envBase) {
+      console.warn(
+        '[create-payment-preference] SITE_URL vazio e USE_DYNAMIC_BACK_URLS=false; sem origem válida para back_urls.',
+      );
+    }
+    return envBase;
+  }
+
   if (clientOrigin) {
+    // Mercado Pago frequentemente bloqueia back_urls localhost (PolicyAgent).
+    // Em dev local, preferimos SITE_URL por padrão; só usa localhost se explicitamente liberado.
+    if (clientIsLocalhost && !allowLocalhostCheckout) {
+      console.warn(
+        '[create-payment-preference] clientOrigin é localhost e ALLOW_LOCALHOST_CHECKOUT!=true; usando SITE_URL para evitar bloqueio do Mercado Pago.',
+      );
+      return envBase;
+    }
     if (allowed.length === 0 || allowed.includes(clientOrigin)) {
       return clientOrigin;
     }
@@ -85,8 +108,11 @@ serve(async (req) => {
     };
 
     const siteUrlEnv = (Deno.env.get('SITE_URL') ?? '').replace(/\/$/, '');
+    const useDynamicBackUrls = (Deno.env.get('USE_DYNAMIC_BACK_URLS') ?? '').trim() === 'true';
     const checkoutOrigin = resolveCheckoutOrigin(body, siteUrlEnv);
-    console.log(`[DEBUG] Event ID: ${eventId}. SITE_URL(env)=${siteUrlEnv || '(vazio)'} checkoutOrigin(usado)=${checkoutOrigin}`);
+    console.log(
+      `[DEBUG] Event ID: ${eventId}. SITE_URL(env)=${siteUrlEnv || '(vazio)'} USE_DYNAMIC_BACK_URLS=${useDynamicBackUrls} checkoutOrigin(usado)=${checkoutOrigin}`,
+    );
 
     if (!eventId || !Array.isArray(purchaseItems) || purchaseItems.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing event details or purchase items' }), { 
@@ -101,7 +127,7 @@ serve(async (req) => {
     // 2. Fetch Event Details to get Manager ID (corrigido: usar created_by em vez de user_id)
     const { data: eventData, error: eventError } = await supabaseService
         .from('events')
-        .select('created_by, is_active')
+        .select('created_by, company_id, is_active')
         .eq('id', eventId)
         .single();
 
@@ -137,13 +163,39 @@ serve(async (req) => {
         );
     }
     
-    const managerUserId = eventData.created_by;
-    
+    let managerUserId = eventData.created_by as string | null;
+    if (!managerUserId && eventData.company_id) {
+        console.warn(
+          `[DEBUG] Event ${eventId} sem created_by. Tentando fallback por company_id=${eventData.company_id}.`,
+        );
+        const { data: companyManagerData, error: companyManagerError } = await supabaseService
+          .from('user_companies')
+          .select('user_id')
+          .eq('company_id', eventData.company_id)
+          .limit(1)
+          .maybeSingle();
+
+        if (companyManagerError) {
+          console.error('[DEBUG] Erro ao buscar gestor por company_id:', companyManagerError);
+        } else if (companyManagerData?.user_id) {
+          managerUserId = companyManagerData.user_id as string;
+          console.log(
+            `[DEBUG] Fallback manager resolved via company_id. manager_user_id=${managerUserId}`,
+          );
+        } else {
+          console.warn(
+            `[DEBUG] Nenhum vínculo em user_companies para company_id=${eventData.company_id}.`,
+          );
+        }
+    }
+
     if (!managerUserId) {
-        console.error(`[DEBUG] Event ID ${eventId} has no created_by (manager) associated.`);
-        return new Response(JSON.stringify({ error: 'Evento não possui um gestor associado. Contate o suporte.' }), { 
-            status: 400, 
-            headers: corsHeaders 
+        console.error(
+          `[DEBUG] Event ID ${eventId} sem gestor. created_by=${eventData.created_by ?? 'null'} company_id=${eventData.company_id ?? 'null'}.`,
+        );
+        return new Response(JSON.stringify({ error: 'Evento não possui um gestor associado. Contate o suporte.' }), {
+            status: 400,
+            headers: corsHeaders
         });
     }
     console.log(`[DEBUG] Event found. Manager ID: ${managerUserId}`);
@@ -312,7 +364,7 @@ serve(async (req) => {
             (mpCode === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES' || mpBlockedBy === 'PolicyAgent');
 
         const hint = isPolicyBlock
-            ? 'Mercado Pago (PolicyAgent) bloqueou o checkout. Confira: (1) back_urls agora usam o domínio do navegador (clientOrigin); se usar vários domínios, defina a secret CHECKOUT_PUBLIC_ORIGINS com todos (ex.: https://eventofest.com.br,https://outro.com). (2) No painel MP, libere esse domínio nas URLs de retorno da aplicação. (3) PAYMENT_API_KEY_SECRET de produção válido.'
+            ? 'Mercado Pago (PolicyAgent) bloqueou o checkout. Confira: (1) por padrão, back_urls usam SITE_URL; valide SITE_URL https público da mesma aplicação cadastrada no MP. (2) Se optar por origem dinâmica, ative USE_DYNAMIC_BACK_URLS=true e preencha CHECKOUT_PUBLIC_ORIGINS. (3) No painel MP, libere o(s) domínio(s) nas URLs de retorno. (4) PAYMENT_API_KEY_SECRET de produção válido.'
             : mpApiResponse.status === 401 || mpApiResponse.status === 403
             ? 'Token do Mercado Pago recusado. Verifique PAYMENT_API_KEY_SECRET (produção vs teste) e se o token não expirou.'
             : undefined;
@@ -327,6 +379,9 @@ serve(async (req) => {
                 mpCode,
                 mpBlockedBy,
                 mpHttpStatus: mpApiResponse.status,
+                backUrlBaseUsed: base,
+                siteUrlEnv,
+                dynamicBackUrlsEnabled: (Deno.env.get('USE_DYNAMIC_BACK_URLS') ?? '').trim() === 'true',
                 hint,
             }),
             {

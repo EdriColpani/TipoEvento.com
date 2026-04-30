@@ -70,6 +70,13 @@ const ManagerEventsList: React.FC = () => {
                 </h1>
                 <div className="flex flex-wrap gap-3">
                     <Button
+                        onClick={() => navigate('/manager/dashboard')}
+                        variant="outline"
+                        className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm"
+                    >
+                        Voltar para o Dashboard
+                    </Button>
+                    <Button
                         onClick={() => navigate('/manager/wristbands')}
                         variant="outline"
                         className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-black py-3 text-base font-semibold transition-all duration-300 cursor-pointer"

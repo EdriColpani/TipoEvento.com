@@ -136,9 +136,25 @@ const EventDetails: React.FC = () => {
             if (response.error) {
                 console.error("Edge Function error:", response.error);
 
-                const payload = response.data as
+                let payload = response.data as
                     | { error?: string; hint?: string; mpCode?: string }
                     | undefined;
+
+                // Em respostas non-2xx, o supabase-js pode não preencher `data`.
+                // Nesse caso, tentamos extrair o JSON diretamente do contexto do erro.
+                if (
+                    (!payload || typeof payload !== 'object') &&
+                    response.error instanceof FunctionsHttpError
+                ) {
+                    try {
+                        const contextPayload = await response.error.context.json();
+                        if (contextPayload && typeof contextPayload === 'object') {
+                            payload = contextPayload as { error?: string; hint?: string; mpCode?: string };
+                        }
+                    } catch (contextParseError) {
+                        console.warn('Não foi possível ler o corpo do erro da Edge Function:', contextParseError);
+                    }
+                }
 
                 if (payload && typeof payload === 'object' && typeof payload.error === 'string') {
                     errorMessage = payload.error;

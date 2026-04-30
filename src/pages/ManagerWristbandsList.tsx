@@ -94,14 +94,22 @@ const ManagerWristbandsList: React.FC = () => {
                     {/* <QrCodeIcon className="h-7 w-7 mr-3" /> Removido o ícone de QR Code aqui */}
                     {isAdminMaster ? `Todas as Pulseiras (${wristbands.length})` : `Gestão de Pulseiras (${wristbands.length})`}
                 </h1>
-                {/* Este botão permanece no cabeçalho */}
-                <Button 
-                    onClick={() => navigate('/manager/wristbands/create')}
-                    className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
-                >
-                    <Plus className="mr-2 h-5 w-5" />
-                    Cadastrar Nova Pulseira
-                </Button>
+                <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
+                    <Button
+                        onClick={() => navigate('/manager/dashboard')}
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm"
+                    >
+                        Voltar para o Dashboard
+                    </Button>
+                    <Button 
+                        onClick={() => navigate('/manager/wristbands/create')}
+                        className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
+                    >
+                        <Plus className="mr-2 h-5 w-5" />
+                        Cadastrar Nova Pulseira
+                    </Button>
+                </div>
             </div>
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
