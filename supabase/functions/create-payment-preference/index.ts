@@ -250,6 +250,8 @@ serve(async (req) => {
             event_id: eventId,
             total_value: totalValue,
             status: 'pending',
+            payment_status: 'pending',
+            gross_amount: totalValue,
             wristband_analytics_ids: analyticsIdsToReserve, // IDs reservados
         })
         .select('id')
@@ -406,7 +408,11 @@ serve(async (req) => {
     // 9. Update receivables with payment gateway ID (MP preference ID)
     await supabaseService
         .from('receivables')
-        .update({ payment_gateway_id: mpResponse.id })
+        .update({
+            payment_gateway_id: mpResponse.id,
+            mp_preference_id: mpResponse.id,
+            payment_status: 'pending',
+        })
         .eq('id', transactionId);
 
     // 11. Return checkout URL
