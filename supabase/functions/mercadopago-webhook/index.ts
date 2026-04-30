@@ -162,10 +162,42 @@ serve(async (req) => {
         if (receivableAnyStatus) {
             console.log(`[MP Webhook] Found receivable with status: ${receivableAnyStatus.status}, payment_gateway_id: ${receivableAnyStatus.payment_gateway_id}`);
             if (receivableAnyStatus.status === 'paid') {
-                console.log(`[MP Webhook] Receivable already processed (status: paid). Ignoring notification.`);
-                return new Response(JSON.stringify({ message: 'Receivable already processed.' }), { status: 200, headers: corsHeaders });
+                // Idempotência robusta: só ignorar se split financeiro e vínculo dos ingressos
+                // já estiverem concluídos. Caso contrário, reprocessar para recuperar consistência.
+                const analyticsIds: string[] = Array.isArray(receivableAnyStatus.wristband_analytics_ids)
+                  ? receivableAnyStatus.wristband_analytics_ids
+                  : [];
+
+                const [{ count: assignedCount, error: assignedError }, { count: splitCount, error: splitError }] = await Promise.all([
+                  supabaseService
+                    .from('wristband_analytics')
+                    .select('id', { count: 'exact', head: true })
+                    .in('id', analyticsIds)
+                    .eq('client_user_id', receivableAnyStatus.client_user_id),
+                  supabaseService
+                    .from('financial_splits')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('transaction_id', receivableAnyStatus.id),
+                ]);
+
+                if (assignedError || splitError) {
+                    console.error('[MP Webhook] Error checking idempotency state:', { assignedError, splitError });
+                }
+
+                const expectedAssignments = analyticsIds.length;
+                const isAssignmentsComplete = expectedAssignments > 0 && (assignedCount ?? 0) >= expectedAssignments;
+                const isFinancialSplitComplete = (splitCount ?? 0) >= 1;
+
+                if (isAssignmentsComplete && isFinancialSplitComplete) {
+                    console.log(`[MP Webhook] Receivable already fully processed. Ignoring notification.`);
+                    return new Response(JSON.stringify({ message: 'Receivable already processed.' }), { status: 200, headers: corsHeaders });
+                }
+
+                console.warn(
+                  `[MP Webhook] Receivable marked as paid but incomplete. Reprocessing... assignments=${assignedCount ?? 0}/${expectedAssignments}, splits=${splitCount ?? 0}`,
+                );
             }
-            // Se está em outro status (ex: 'failed'), vamos processar mesmo assim se o pagamento foi aprovado
+            // Se está em outro status (ex: 'failed') ou paid incompleto, processar normalmente
             receivable = receivableAnyStatus;
         } else {
             // Última tentativa: buscar pelo payment_gateway_id (ID da preferência do MP)
@@ -185,10 +217,6 @@ serve(async (req) => {
                 
                 if (receivableByGatewayId) {
                     console.log(`[MP Webhook] Found receivable by preference ID (payment_gateway_id): ${receivableByGatewayId.id}, status: ${receivableByGatewayId.status}`);
-                    if (receivableByGatewayId.status === 'paid') {
-                        console.log(`[MP Webhook] Receivable already processed. Ignoring notification.`);
-                        return new Response(JSON.stringify({ message: 'Receivable already processed.' }), { status: 200, headers: corsHeaders });
-                    }
                     receivable = receivableByGatewayId;
                 } else {
                     console.error(`[MP Webhook] CRITICAL: Receivable not found by transaction ID (${transactionId}) or preference ID (${preferenceId}).`);

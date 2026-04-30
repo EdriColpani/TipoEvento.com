@@ -11,7 +11,7 @@ import { useManagerTransactions } from '@/hooks/use-manager-transactions';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
+import { showError, showSuccess } from '@/utils/toast';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
@@ -23,6 +23,7 @@ const FinancialReports: React.FC = () => {
     const [selectedEventId, setSelectedEventId] = useState<string>('all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
+    const [checkingTransactionId, setCheckingTransactionId] = useState<string | null>(null);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -74,17 +75,39 @@ const FinancialReports: React.FC = () => {
     };
 
     const getStatusLabel = (status: string, paymentStatus: string | null) => {
-        if (status === 'paid') return 'Pago';
-        if (status === 'failed') return 'Falhou';
-        if (paymentStatus === 'authorized') return 'Autorizado';
+        if (status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized') return 'Pago';
+        if (status === 'failed' || paymentStatus === 'rejected' || paymentStatus === 'cancelled') return 'Falhou';
         if (paymentStatus === 'in_process') return 'Em processamento';
         return 'Pendente';
     };
 
-    const getStatusClass = (status: string) => {
-        if (status === 'paid') return 'bg-green-500/20 text-green-400 border-green-500/30';
-        if (status === 'failed') return 'bg-red-500/20 text-red-400 border-red-500/30';
+    const getStatusClass = (status: string, paymentStatus: string | null) => {
+        if (status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized') return 'bg-green-500/20 text-green-400 border-green-500/30';
+        if (status === 'failed' || paymentStatus === 'rejected' || paymentStatus === 'cancelled') return 'bg-red-500/20 text-red-400 border-red-500/30';
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    };
+
+    const handleCheckTransactionStatus = async (transactionId: string) => {
+        setCheckingTransactionId(transactionId);
+        try {
+            const { data, error } = await supabase.functions.invoke('check-payment-status', {
+                body: { transactionId },
+            });
+            if (error) throw error;
+
+            const paymentStatus = data?.paymentStatus || 'desconhecido';
+            const detail = data?.paymentStatusDetail ? ` (${data.paymentStatusDetail})` : '';
+            if (data?.requiresAttention) {
+                showError(data?.processingResult || 'Pagamento aprovado no MP, mas integração local ainda não concluiu.');
+            } else {
+                showSuccess(`Consulta MP: ${paymentStatus}${detail}`);
+            }
+        } catch (err: any) {
+            console.error('Erro ao verificar transação no MP:', err);
+            showError(err?.message || 'Falha ao consultar status no Mercado Pago.');
+        } finally {
+            setCheckingTransactionId(null);
+        }
     };
 
     const handleExport = () => {
@@ -307,7 +330,9 @@ const FinancialReports: React.FC = () => {
                                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Taxa MP</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Líquido MP</TableHead>
+                                    <TableHead className="text-yellow-500">Detalhe MP</TableHead>
                                     <TableHead className="text-yellow-500">Data</TableHead>
+                                    <TableHead className="text-yellow-500">Ação</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -316,14 +341,29 @@ const FinancialReports: React.FC = () => {
                                         <TableCell className="text-white">#{transaction.id.slice(0, 8)}...</TableCell>
                                         <TableCell className="text-white">{transaction.events?.title || 'Evento'}</TableCell>
                                         <TableCell>
-                                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusClass(transaction.status)}`}>
+                                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusClass(transaction.status, transaction.payment_status)}`}>
                                                 {getStatusLabel(transaction.status, transaction.payment_status)}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-white text-right">{formatCurrency(transaction.gross_amount || transaction.total_value || 0)}</TableCell>
                                         <TableCell className="text-white text-right">{formatCurrency(transaction.mp_fee_amount || 0)}</TableCell>
                                         <TableCell className="text-white text-right">{formatCurrency(transaction.net_amount_after_mp || 0)}</TableCell>
+                                        <TableCell className="text-gray-400">{transaction.mp_status_detail || '-'}</TableCell>
                                         <TableCell className="text-gray-400">{new Date(transaction.created_at).toLocaleString('pt-BR')}</TableCell>
+                                        <TableCell>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleCheckTransactionStatus(transaction.id)}
+                                                disabled={checkingTransactionId === transaction.id}
+                                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                                            >
+                                                {checkingTransactionId === transaction.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                                ) : null}
+                                                Verificar
+                                            </Button>
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>

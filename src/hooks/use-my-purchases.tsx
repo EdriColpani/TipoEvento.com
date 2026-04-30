@@ -6,6 +6,8 @@ export interface PurchaseData {
   id: string;
   status: 'pending' | 'paid' | 'failed';
   payment_status: string | null;
+  mp_status_detail: string | null;
+  mp_payment_id: string | null;
   total_value: number;
   gross_amount: number | null;
   mp_fee_amount: number | null;
@@ -29,6 +31,8 @@ const fetchMyPurchases = async (userId: string): Promise<PurchaseData[]> => {
       id,
       status,
       payment_status,
+      mp_status_detail,
+      mp_payment_id,
       total_value,
       gross_amount,
       mp_fee_amount,
