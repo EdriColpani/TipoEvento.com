@@ -5,13 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, BarChart, CalendarIcon, Search, Download, DollarSign } from 'lucide-react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { DateRange } from 'react-day-picker';
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
+import { ArrowLeft, BarChart, Download, DollarSign } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
@@ -63,18 +57,16 @@ const SalesReports: React.FC = () => {
     const navigate = useNavigate();
     const { profile } = useProfile();
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-    const [dateRange, setDateRange] = useState<DateRange | undefined>({
-        from: undefined,
-        to: undefined,
-    });
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
 
     const { data: events, isLoading: isLoadingEvents } = useQuery<Event[]>({
         queryKey: ['sales_report_events'],
         queryFn: fetchEvents,
     });
 
-    const formattedStartDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : null;
-    const formattedEndDate = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : null;
+    const formattedStartDate = startDate || null;
+    const formattedEndDate = endDate || null;
 
     const { data: salesReports, isLoading: isLoadingSales } = useQuery<SalesReportData[]>({
         queryKey: ['sales_reports', selectedEventId, formattedStartDate, formattedEndDate],
@@ -175,43 +167,31 @@ const SalesReports: React.FC = () => {
                         </Select>
                     </div>
 
-                    <div className="grid gap-2">
+                    <div>
                         <label className="block text-sm font-medium text-gray-400 mb-2">Período</label>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    id="date"
-                                    variant={"outline"}
-                                    className={cn(
-                                        "w-full justify-start text-left font-normal bg-black/60 border-yellow-500/30 text-white hover:bg-yellow-500/10",
-                                        !dateRange?.from && "text-muted-foreground"
-                                    )}
-                                >
-                                    <CalendarIcon className="mr-2 h-4 w-4 text-yellow-500" />
-                                    {dateRange?.from ? (
-                                        dateRange.to ? (
-                                            <>{format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} - {format(dateRange.to, "dd/MM/yyyy", { locale: ptBR })}</>
-                                        ) : (
-                                            format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })
-                                        )
-                                    ) : (
-                                        <span className="text-gray-500">Selecione um período</span>
-                                    )}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-black border-yellow-500/30 text-white" align="start">
-                                <Calendar
-                                    initialFocus
-                                    mode="range"
-                                    defaultMonth={dateRange?.from}
-                                    selected={dateRange}
-                                    onSelect={setDateRange}
-                                    numberOfMonths={2}
-                                    locale={ptBR}
-                                    className="bg-black text-white"
-                                />
-                            </PopoverContent>
-                        </Popover>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <Input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => {
+                                    const nextStart = e.target.value;
+                                    setStartDate(nextStart);
+                                    if (endDate && nextStart && nextStart > endDate) {
+                                        setEndDate(nextStart);
+                                    }
+                                }}
+                                className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10"
+                                aria-label="Data inicial"
+                            />
+                            <Input
+                                type="date"
+                                value={endDate}
+                                min={startDate || undefined}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10"
+                                aria-label="Data final"
+                            />
+                        </div>
                     </div>
 
                     <div className="flex items-end">

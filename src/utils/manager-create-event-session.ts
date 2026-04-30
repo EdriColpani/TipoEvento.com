@@ -5,6 +5,22 @@ export const managerCreateEventClientSubmitKey = (userId: string) => `ef_evt_cli
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function fallbackUuidV4(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+        const rnd = Math.random() * 16 | 0;
+        const val = ch === 'x' ? rnd : (rnd & 0x3) | 0x8;
+        return val.toString(16);
+    });
+}
+
+function generateClientSubmitId(): string {
+    const safeCrypto = globalThis.crypto as Crypto | undefined;
+    if (safeCrypto && typeof safeCrypto.randomUUID === 'function') {
+        return safeCrypto.randomUUID();
+    }
+    return fallbackUuidV4();
+}
+
 export function readManagerCreateEventDraftId(userId: string): string | undefined {
     try {
         const raw = sessionStorage.getItem(managerCreateEventDraftKey(userId));
@@ -21,12 +37,12 @@ export function getOrCreateClientSubmitId(userId: string): string {
     try {
         let v = sessionStorage.getItem(k);
         if (!v || !UUID_RE.test(v)) {
-            v = crypto.randomUUID();
+            v = generateClientSubmitId();
             sessionStorage.setItem(k, v);
         }
         return v;
     } catch {
-        return crypto.randomUUID();
+        return generateClientSubmitId();
     }
 }
 
