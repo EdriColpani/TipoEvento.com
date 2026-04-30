@@ -1,0 +1,91 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { showError } from '@/utils/toast';
+
+export interface ManagerTransactionData {
+  id: string;
+  status: 'pending' | 'paid' | 'failed';
+  payment_status: string | null;
+  total_value: number;
+  gross_amount: number | null;
+  mp_fee_amount: number | null;
+  net_amount_after_mp: number | null;
+  created_at: string;
+  paid_at: string | null;
+  events: {
+    id: string;
+    title: string;
+    date: string;
+  } | null;
+}
+
+export interface ManagerTransactionFilters {
+  eventId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+const fetchManagerTransactions = async (
+  userId: string,
+  isAdminMaster: boolean,
+  filters: ManagerTransactionFilters = {},
+): Promise<ManagerTransactionData[]> => {
+  let query = supabase
+    .from('receivables')
+    .select(`
+      id,
+      status,
+      payment_status,
+      total_value,
+      gross_amount,
+      mp_fee_amount,
+      net_amount_after_mp,
+      created_at,
+      paid_at,
+      events:event_id (
+        id,
+        title,
+        date
+      )
+    `)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (!isAdminMaster) {
+    query = query.eq('manager_user_id', userId);
+  }
+  if (filters.eventId) query = query.eq('event_id', filters.eventId);
+  if (filters.startDate) query = query.gte('created_at', filters.startDate);
+  if (filters.endDate) {
+    const endDateWithTime = new Date(filters.endDate);
+    endDateWithTime.setHours(23, 59, 59, 999);
+    query = query.lte('created_at', endDateWithTime.toISOString());
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []) as ManagerTransactionData[];
+};
+
+export const useManagerTransactions = (
+  userId: string | undefined,
+  isAdminMaster: boolean,
+  filters: ManagerTransactionFilters = {},
+) => {
+  const query = useQuery({
+    queryKey: ['managerTransactions', userId, isAdminMaster, filters],
+    queryFn: () => fetchManagerTransactions(userId!, isAdminMaster, filters),
+    enabled: !!userId,
+    staleTime: 1000 * 60,
+    onError: (error) => {
+      console.error('Query Error: Failed to load manager transactions.', error);
+      showError('Erro ao carregar transações. Tente novamente.');
+    },
+  });
+
+  return {
+    ...query,
+    transactions: query.data || [],
+  };
+};
+

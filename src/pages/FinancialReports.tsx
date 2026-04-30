@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, DollarSign, TrendingUp, Users, Loader2, AlertCircle, Download, Eye } from 'lucide-react';
 import { useFinancialReports, FinancialReportData } from '@/hooks/use-financial-reports';
+import { useManagerTransactions } from '@/hooks/use-manager-transactions';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
@@ -43,6 +44,7 @@ const FinancialReports: React.FC = () => {
     };
 
     const { data: reportData, isLoading: isLoadingReports, isError } = useFinancialReports(filters);
+    const { transactions } = useManagerTransactions(userId, isAdminMaster || false, filters);
 
     // Calcular totais gerais
     const totals = reportData ? {
@@ -52,6 +54,12 @@ const FinancialReports: React.FC = () => {
         totalOrganizador: reportData.reduce((sum, item) => sum + item.valor_liquido_organizador, 0),
         totalComissao: reportData.reduce((sum, item) => sum + item.comissao_total_sistema, 0),
     } : null;
+
+    const transactionSummary = {
+        pending: transactions.filter(t => t.status === 'pending').length,
+        paid: transactions.filter(t => t.status === 'paid').length,
+        failed: transactions.filter(t => t.status === 'failed').length,
+    };
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -63,6 +71,20 @@ const FinancialReports: React.FC = () => {
     const formatDate = (dateString: string) => {
         if (!dateString) return 'N/A';
         return formatEventDateForDisplay(dateString) || 'N/A';
+    };
+
+    const getStatusLabel = (status: string, paymentStatus: string | null) => {
+        if (status === 'paid') return 'Pago';
+        if (status === 'failed') return 'Falhou';
+        if (paymentStatus === 'authorized') return 'Autorizado';
+        if (paymentStatus === 'in_process') return 'Em processamento';
+        return 'Pendente';
+    };
+
+    const getStatusClass = (status: string) => {
+        if (status === 'paid') return 'bg-green-500/20 text-green-400 border-green-500/30';
+        if (status === 'failed') return 'bg-red-500/20 text-red-400 border-red-500/30';
+        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
     };
 
     const handleExport = () => {
@@ -254,6 +276,61 @@ const FinancialReports: React.FC = () => {
                     </Card>
                 </div>
             )}
+
+            <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6 mb-6">
+                <CardHeader className="p-0 mb-4">
+                    <CardTitle className="text-white text-xl">Transações de Pagamento (Cliente/Gestor)</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div className="bg-black/60 border border-yellow-500/20 rounded-lg p-4">
+                            <p className="text-sm text-gray-400">Pendentes</p>
+                            <p className="text-2xl text-yellow-400 font-bold">{transactionSummary.pending}</p>
+                        </div>
+                        <div className="bg-black/60 border border-yellow-500/20 rounded-lg p-4">
+                            <p className="text-sm text-gray-400">Pagas</p>
+                            <p className="text-2xl text-green-400 font-bold">{transactionSummary.paid}</p>
+                        </div>
+                        <div className="bg-black/60 border border-yellow-500/20 rounded-lg p-4">
+                            <p className="text-sm text-gray-400">Falhas</p>
+                            <p className="text-2xl text-red-400 font-bold">{transactionSummary.failed}</p>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="border-yellow-500/20">
+                                    <TableHead className="text-yellow-500">Compra</TableHead>
+                                    <TableHead className="text-yellow-500">Evento</TableHead>
+                                    <TableHead className="text-yellow-500">Status</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Taxa MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Líquido MP</TableHead>
+                                    <TableHead className="text-yellow-500">Data</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {transactions.slice(0, 15).map((transaction) => (
+                                    <TableRow key={transaction.id} className="border-yellow-500/10">
+                                        <TableCell className="text-white">#{transaction.id.slice(0, 8)}...</TableCell>
+                                        <TableCell className="text-white">{transaction.events?.title || 'Evento'}</TableCell>
+                                        <TableCell>
+                                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusClass(transaction.status)}`}>
+                                                {getStatusLabel(transaction.status, transaction.payment_status)}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-white text-right">{formatCurrency(transaction.gross_amount || transaction.total_value || 0)}</TableCell>
+                                        <TableCell className="text-white text-right">{formatCurrency(transaction.mp_fee_amount || 0)}</TableCell>
+                                        <TableCell className="text-white text-right">{formatCurrency(transaction.net_amount_after_mp || 0)}</TableCell>
+                                        <TableCell className="text-gray-400">{new Date(transaction.created_at).toLocaleString('pt-BR')}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Tabela de Dados */}
             <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6">

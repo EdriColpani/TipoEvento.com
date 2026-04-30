@@ -13,6 +13,35 @@ const supabaseService = createClient(
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+function toAmount(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractMpFinancials(mpPaymentData: Record<string, any>) {
+  const grossAmount = toAmount(mpPaymentData.transaction_amount);
+  const netFromTransactionDetails = toAmount(mpPaymentData.transaction_details?.net_received_amount);
+  const feeDetails = Array.isArray(mpPaymentData.fee_details) ? mpPaymentData.fee_details : [];
+  const feeFromDetails = feeDetails.reduce((sum: number, fee: any) => sum + (toAmount(fee?.amount) ?? 0), 0);
+
+  let mpFeeAmount: number | null = feeFromDetails > 0 ? feeFromDetails : null;
+  if (mpFeeAmount === null && grossAmount !== null && netFromTransactionDetails !== null) {
+    const derivedFee = grossAmount - netFromTransactionDetails;
+    mpFeeAmount = derivedFee >= 0 ? derivedFee : null;
+  }
+
+  let netAmountAfterMp: number | null = netFromTransactionDetails;
+  if (netAmountAfterMp === null && grossAmount !== null && mpFeeAmount !== null) {
+    netAmountAfterMp = grossAmount - mpFeeAmount;
+  }
+
+  return {
+    grossAmount,
+    mpFeeAmount,
+    netAmountAfterMp,
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -30,7 +59,7 @@ serve(async (req) => {
     if (req.method !== 'OPTIONS') {
       body = await req.json().catch(() => null);
     }
-  } catch {
+  } catch (_error) {
     body = null;
   }
 
@@ -79,6 +108,11 @@ serve(async (req) => {
     const mpPaymentData = await mpPaymentApiResponse.json();
     const paymentStatus = mpPaymentData.status; // Status real do pagamento
     const paymentStatusDetail = mpPaymentData.status_detail || null; // Detalhes adicionais do status
+    const mpPaymentId = mpPaymentData.id ? String(mpPaymentData.id) : null;
+    const mpPreferenceId = mpPaymentData.order?.id
+      ? String(mpPaymentData.order.id)
+      : (mpPaymentData.preference_id ? String(mpPaymentData.preference_id) : null);
+    const { grossAmount, mpFeeAmount, netAmountAfterMp } = extractMpFinancials(mpPaymentData);
     console.log(`[MP Webhook] Payment status from Mercado Pago API: ${paymentStatus}`);
     console.log(`[MP Webhook] Payment status_detail: ${paymentStatusDetail}`);
     console.log(`[MP Webhook] Payment ID: ${mpPaymentData.id}`);
@@ -223,7 +257,17 @@ serve(async (req) => {
         console.log(`[MP Webhook] Updating receivable ${finalTransactionId} status to 'paid'...`);
         const { error: updateReceivableError, data: updateReceivableData } = await supabaseService
             .from('receivables')
-            .update({ status: 'paid' })
+            .update({
+                status: 'paid',
+                payment_status: paymentStatus || 'approved',
+                mp_status_detail: paymentStatusDetail,
+                mp_payment_id: mpPaymentId,
+                mp_preference_id: mpPreferenceId,
+                gross_amount: grossAmount,
+                mp_fee_amount: mpFeeAmount,
+                net_amount_after_mp: netAmountAfterMp,
+                paid_at: new Date().toISOString(),
+            })
             .eq('id', finalTransactionId)
             .select('id, status');
 
@@ -260,12 +304,22 @@ serve(async (req) => {
             throw new Error(`Invalid commission percentage for event ${eventId}.`);
         }
 
-        // 6. Calcular valores: comissão da plataforma e valor líquido do organizador
-        const platformAmount = totalValue * (appliedPercentage / 100);
-        const managerAmount = totalValue - platformAmount;
+        // 6. Calcular valores financeiros com taxa do Mercado Pago
+        // Regra aplicada:
+        // - Comissão da plataforma: percentual sobre o valor bruto da venda
+        // - Líquido do organizador: líquido pós-MP menos comissão da plataforma
+        // Observação: os campos gross/mp_fee/net vêm do retorno do gateway e já
+        // foram persistidos em receivables; aqui usamos os mesmos para split.
+        const grossSaleAmount = grossAmount ?? totalValue;
+        const feeAmount = mpFeeAmount ?? Math.max(grossSaleAmount - (netAmountAfterMp ?? grossSaleAmount), 0);
+        const netAfterMpAmount = netAmountAfterMp ?? Math.max(grossSaleAmount - feeAmount, 0);
+        const platformAmount = grossSaleAmount * (appliedPercentage / 100);
+        const managerAmount = Math.max(netAfterMpAmount - platformAmount, 0);
         
         console.log(`[MP Webhook] Financial Calculation for transaction ${finalTransactionId}:`);
-        console.log(`  - Total Value: R$ ${totalValue.toFixed(2)}`);
+        console.log(`  - Gross Sale Amount: R$ ${grossSaleAmount.toFixed(2)}`);
+        console.log(`  - Mercado Pago Fee: R$ ${feeAmount.toFixed(2)}`);
+        console.log(`  - Net After MP: R$ ${netAfterMpAmount.toFixed(2)}`);
         console.log(`  - Applied Percentage: ${appliedPercentage}%`);
         console.log(`  - Platform Commission: R$ ${platformAmount.toFixed(2)}`);
         console.log(`  - Manager Net Amount: R$ ${managerAmount.toFixed(2)}`);
@@ -289,7 +343,7 @@ serve(async (req) => {
                 manager_user_id: managerUserId,
                 platform_amount: 0, // Zero identifica que este é o valor líquido do organizador
                 manager_amount: managerAmount, // Valor líquido do organizador
-                total_amount: totalValue,
+                total_amount: grossSaleAmount,
                 applied_percentage: appliedPercentage,
             },
             // Registro 2: Comissão da plataforma (sistema)
@@ -299,7 +353,7 @@ serve(async (req) => {
                 manager_user_id: managerUserId,
                 platform_amount: platformAmount, // Valor > 0 identifica que este é a comissão do sistema
                 manager_amount: 0, // Zero identifica que este é a comissão
-                total_amount: totalValue,
+                total_amount: grossSaleAmount,
                 applied_percentage: appliedPercentage,
             }
         ];
@@ -371,6 +425,9 @@ serve(async (req) => {
                 platform_commission_percentage: appliedPercentage,
                 platform_commission_amount: platformAmount,
                 manager_net_amount: managerAmount,
+                gross_sale_amount: grossSaleAmount,
+                mercadopago_fee_amount: feeAmount,
+                net_after_mp_amount: netAfterMpAmount,
             };
             
             return {
@@ -379,7 +436,7 @@ serve(async (req) => {
                 code_wristbands: record.code_wristbands, // Campo obrigatório
                 sequential_number: record.sequential_number, // Campo obrigatório (pode ser null, mas incluímos)
                 client_user_id: clientUserId,
-                status: 'used', 
+                status: 'active',
                 event_type: 'purchase',
                 event_data: purchaseEventData,
             };
@@ -392,7 +449,7 @@ serve(async (req) => {
                 .from('wristband_analytics')
                 .update({
                     client_user_id: update.client_user_id,
-                    status: update.status,
+                    status: 'active',
                     event_type: update.event_type,
                     event_data: update.event_data,
                 })
@@ -423,7 +480,16 @@ serve(async (req) => {
         console.log(`[MP Webhook] Payment ${paymentStatus}. Updating receivable ${finalTransactionId} to 'failed'...`);
         const { error: updateReceivableError } = await supabaseService
             .from('receivables')
-            .update({ status: 'failed' })
+            .update({
+                status: 'failed',
+                payment_status: paymentStatus,
+                mp_status_detail: paymentStatusDetail,
+                mp_payment_id: mpPaymentId,
+                mp_preference_id: mpPreferenceId,
+                gross_amount: grossAmount,
+                mp_fee_amount: mpFeeAmount,
+                net_amount_after_mp: netAmountAfterMp,
+            })
             .eq('id', finalTransactionId);
 
         if (updateReceivableError) {
@@ -439,6 +505,18 @@ serve(async (req) => {
         // Status não tratado (pending, in_process sem date_approved, etc.)
         console.log(`[MP Webhook] Payment status '${paymentStatus}' not processed. Transaction ${finalTransactionId} remains in current status.`);
         console.log(`[MP Webhook] Payment will be processed when status changes to 'approved' or 'authorized'.`);
+        await supabaseService
+            .from('receivables')
+            .update({
+                payment_status: paymentStatus || 'pending',
+                mp_status_detail: paymentStatusDetail,
+                mp_payment_id: mpPaymentId,
+                mp_preference_id: mpPreferenceId,
+                gross_amount: grossAmount,
+                mp_fee_amount: mpFeeAmount,
+                net_amount_after_mp: netAmountAfterMp,
+            })
+            .eq('id', finalTransactionId);
         return new Response(JSON.stringify({ 
             message: `Notification processed. Payment status: ${paymentStatus}. Transaction remains pending.`,
             payment_status: paymentStatus

@@ -5,6 +5,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import AuthStatusMenu from '@/components/AuthStatusMenu';
 import { Input } from '@/components/ui/input';
 import { useMyTickets, TicketData } from '@/hooks/use-my-tickets';
+import { useMyPurchases } from '@/hooks/use-my-purchases';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Calendar, MapPin, QrCode, History } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast'; // Importando showSuccess/showError
@@ -110,6 +111,7 @@ const MyTickets: React.FC = () => {
     }, []);
     
     const { tickets, isLoading, isError } = useMyTickets(userId);
+    const { purchases } = useMyPurchases(userId);
 
     // NOVO: Lógica para processar os parâmetros de retorno do Mercado Pago
     useEffect(() => {
@@ -120,12 +122,15 @@ const MyTickets: React.FC = () => {
             if (status === 'success') {
                 showSuccess(`Compra #${transactionId.substring(0, 8)}... concluída com sucesso!`);
                 queryClient.invalidateQueries({ queryKey: ['myTickets', userId] }); // Recarrega os ingressos
+                queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
             } else if (status === 'pending') {
                 showError(`Compra #${transactionId.substring(0, 8)}... está pendente. Verifique o status no Mercado Pago.`);
                 queryClient.invalidateQueries({ queryKey: ['myTickets', userId] }); // Recarrega os ingressos
+                queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
             } else if (status === 'failure') {
                 showError(`Falha na compra #${transactionId.substring(0, 8)}... Por favor, tente novamente.`);
                 queryClient.invalidateQueries({ queryKey: ['myTickets', userId] }); // Recarrega os ingressos
+                queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
             }
             
             // Limpa os parâmetros da URL para evitar que a mensagem apareça novamente
@@ -164,6 +169,21 @@ const MyTickets: React.FC = () => {
 
     const activeTickets = tickets.filter(t => t.status === 'active' || t.status === 'pending'); // Inclui 'pending' nos ativos
     const pastTickets = tickets.filter(t => t.status !== 'active' && t.status !== 'pending'); // Exclui 'pending' dos passados
+    const recentPurchases = purchases.slice(0, 10);
+
+    const getPurchaseStatusText = (status: string, paymentStatus: string | null) => {
+        if (status === 'paid') return 'Pago';
+        if (status === 'failed') return 'Falhou';
+        if (paymentStatus === 'authorized') return 'Autorizado';
+        if (paymentStatus === 'in_process') return 'Em processamento';
+        return 'Pendente';
+    };
+
+    const getPurchaseStatusClass = (status: string) => {
+        if (status === 'paid') return 'bg-green-500/20 text-green-400 border-green-500/30';
+        if (status === 'failed') return 'bg-red-500/20 text-red-400 border-red-500/30';
+        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    };
 
     return (
         <div className="min-h-screen bg-black text-white overflow-x-hidden">
@@ -206,6 +226,45 @@ const MyTickets: React.FC = () => {
                 </div>
 
                 <div className="space-y-10 sm:space-y-12">
+                    <div>
+                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-6 border-b border-yellow-500/30 pb-3 flex items-center">
+                            <i className="fas fa-receipt mr-3 text-yellow-500"></i>
+                            Minhas Compras ({recentPurchases.length})
+                        </h2>
+                        {recentPurchases.length > 0 ? (
+                            <div className="space-y-4">
+                                {recentPurchases.map((purchase) => (
+                                    <Card key={purchase.id} className="bg-black/80 border border-yellow-500/30 rounded-2xl p-4 sm:p-5">
+                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-3 flex-wrap">
+                                                    <p className="text-white font-semibold">
+                                                        {purchase.events?.title || 'Evento'}
+                                                    </p>
+                                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getPurchaseStatusClass(purchase.status)}`}>
+                                                        {getPurchaseStatusText(purchase.status, purchase.payment_status)}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-400">Compra #{purchase.id.slice(0, 8)}...</p>
+                                                <p className="text-sm text-gray-400">
+                                                    Data: {new Date(purchase.created_at).toLocaleString('pt-BR')}
+                                                </p>
+                                            </div>
+                                            <div className="text-left md:text-right">
+                                                <p className="text-sm text-gray-400">Valor</p>
+                                                <p className="text-xl font-bold text-yellow-500">
+                                                    R$ {(purchase.total_value || 0).toFixed(2).replace('.', ',')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-gray-400 p-4 text-base">Nenhuma compra encontrada.</p>
+                        )}
+                    </div>
+
                     {/* Ingressos Ativos */}
                     <div>
                         <h2 className="text-2xl sm:text-3xl font-serif text-white mb-6 border-b border-yellow-500/30 pb-3 flex items-center">
