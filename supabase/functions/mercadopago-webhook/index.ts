@@ -92,17 +92,28 @@ serve(async (req) => {
   }
 
   const idFromBody = body?.data?.id || body?.id || null;
-  const notificationType = topic || type || body?.type || body?.action || null;
+  const rawNotificationType = topic || type || body?.type || body?.action || null;
+  const normalizedNotificationType =
+    typeof rawNotificationType === 'string' && rawNotificationType.toLowerCase().startsWith('payment')
+      ? 'payment'
+      : rawNotificationType;
 
-  if (!notificationType) {
+  if (!normalizedNotificationType) {
+    // Fallback: alguns payloads do MP não trazem type/action de forma consistente,
+    // mas incluem data.id (payment id). Nesse caso tratamos como payment.
+    if (idFromBody) {
+      console.warn('[MP Webhook] notification type ausente; inferindo tipo "payment" via data.id.');
+    } else {
     return new Response(JSON.stringify({ error: 'Missing notification type' }), { status: 400, headers: corsHeaders });
+    }
   }
   
   // 1. Determinar o tipo de notificação e ID do recurso
   const resourceId = idFromQuery || idFromBody;
+  const finalNotificationType = normalizedNotificationType || (idFromBody ? 'payment' : null);
 
-  if (notificationType !== 'payment' || !resourceId) {
-    console.log(`[MP Webhook] Ignoring notification type: ${notificationType} or missing resource ID. Query id: ${idFromQuery}, Body id: ${idFromBody}`);
+  if (finalNotificationType !== 'payment' || !resourceId) {
+    console.log(`[MP Webhook] Ignoring notification type: ${String(finalNotificationType)} (raw=${String(rawNotificationType)}) or missing resource ID. Query id: ${idFromQuery}, Body id: ${idFromBody}`);
     return new Response(JSON.stringify({ message: 'Notification received, but ignored.' }), { status: 200, headers: corsHeaders });
   }
 
@@ -287,7 +298,8 @@ serve(async (req) => {
       mpPaymentId,
       mpPreferenceId,
       payload: {
-        notification_type: notificationType,
+        notification_type: finalNotificationType,
+        notification_type_raw: rawNotificationType,
         resource_id: resourceId,
       },
     });
