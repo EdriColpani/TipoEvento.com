@@ -11,6 +11,7 @@ export interface ManagerTransactionData {
   total_value: number;
   gross_amount: number | null;
   mp_fee_amount: number | null;
+  mp_fee_percentage: number | null;
   net_amount_after_mp: number | null;
   created_at: string;
   paid_at: string | null;
@@ -25,6 +26,7 @@ export interface ManagerTransactionFilters {
   eventId?: string;
   startDate?: string;
   endDate?: string;
+  status?: 'pending' | 'paid' | 'failed';
 }
 
 const fetchManagerTransactions = async (
@@ -59,6 +61,7 @@ const fetchManagerTransactions = async (
     query = query.eq('manager_user_id', userId);
   }
   if (filters.eventId) query = query.eq('event_id', filters.eventId);
+  if (filters.status) query = query.eq('status', filters.status);
   if (filters.startDate) query = query.gte('created_at', filters.startDate);
   if (filters.endDate) {
     const endDateWithTime = new Date(filters.endDate);
@@ -68,7 +71,16 @@ const fetchManagerTransactions = async (
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []) as ManagerTransactionData[];
+  const mapped = (data || []).map((row: any) => {
+    const gross = typeof row.gross_amount === 'number' ? row.gross_amount : Number(row.gross_amount ?? row.total_value ?? 0);
+    const fee = typeof row.mp_fee_amount === 'number' ? row.mp_fee_amount : Number(row.mp_fee_amount ?? 0);
+    const mp_fee_percentage = gross > 0 ? (fee / gross) * 100 : null;
+    return {
+      ...row,
+      mp_fee_percentage,
+    };
+  });
+  return mapped as ManagerTransactionData[];
 };
 
 export const useManagerTransactions = (

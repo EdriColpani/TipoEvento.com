@@ -23,6 +23,8 @@ const FinancialReports: React.FC = () => {
     const [selectedEventId, setSelectedEventId] = useState<string>('all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
+    const [transactionStatusFilter, setTransactionStatusFilter] = useState<'all' | 'pending' | 'paid' | 'failed'>('all');
+    const [transactionPage, setTransactionPage] = useState(1);
     const [checkingTransactionId, setCheckingTransactionId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -42,6 +44,7 @@ const FinancialReports: React.FC = () => {
         eventId: selectedEventId !== 'all' ? selectedEventId : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        status: transactionStatusFilter !== 'all' ? transactionStatusFilter : undefined,
     };
 
     const { data: reportData, isLoading: isLoadingReports, isError } = useFinancialReports(filters);
@@ -61,6 +64,13 @@ const FinancialReports: React.FC = () => {
         paid: transactions.filter(t => t.status === 'paid').length,
         failed: transactions.filter(t => t.status === 'failed').length,
     };
+    const transactionPageSize = 15;
+    const totalTransactionPages = Math.max(1, Math.ceil(transactions.length / transactionPageSize));
+    const safeTransactionPage = Math.min(transactionPage, totalTransactionPages);
+    const pagedTransactions = transactions.slice(
+        (safeTransactionPage - 1) * transactionPageSize,
+        safeTransactionPage * transactionPageSize,
+    );
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -75,6 +85,7 @@ const FinancialReports: React.FC = () => {
     };
 
     const getStatusLabel = (status: string, paymentStatus: string | null) => {
+        if (paymentStatus === 'approved' && status !== 'paid') return 'Pago (aguardando emissão)';
         if (status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized') return 'Pago';
         if (status === 'failed' || paymentStatus === 'rejected' || paymentStatus === 'cancelled') return 'Falhou';
         if (paymentStatus === 'in_process') return 'Em processamento';
@@ -102,6 +113,7 @@ const FinancialReports: React.FC = () => {
             } else {
                 showSuccess(`Consulta MP: ${paymentStatus}${detail}`);
             }
+            setTransactionPage(1);
         } catch (err: any) {
             console.error('Erro ao verificar transação no MP:', err);
             showError(err?.message || 'Falha ao consultar status no Mercado Pago.');
@@ -319,6 +331,12 @@ const FinancialReports: React.FC = () => {
                             <p className="text-2xl text-red-400 font-bold">{transactionSummary.failed}</p>
                         </div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                        <Button variant={transactionStatusFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => { setTransactionStatusFilter('all'); setTransactionPage(1); }} className={transactionStatusFilter === 'all' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Todos</Button>
+                        <Button variant={transactionStatusFilter === 'pending' ? 'default' : 'outline'} size="sm" onClick={() => { setTransactionStatusFilter('pending'); setTransactionPage(1); }} className={transactionStatusFilter === 'pending' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Pendentes</Button>
+                        <Button variant={transactionStatusFilter === 'paid' ? 'default' : 'outline'} size="sm" onClick={() => { setTransactionStatusFilter('paid'); setTransactionPage(1); }} className={transactionStatusFilter === 'paid' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Pagas</Button>
+                        <Button variant={transactionStatusFilter === 'failed' ? 'default' : 'outline'} size="sm" onClick={() => { setTransactionStatusFilter('failed'); setTransactionPage(1); }} className={transactionStatusFilter === 'failed' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Falhas</Button>
+                    </div>
 
                     <div className="overflow-x-auto">
                         <Table>
@@ -329,6 +347,7 @@ const FinancialReports: React.FC = () => {
                                     <TableHead className="text-yellow-500">Status</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Taxa MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">% Taxa MP</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Líquido MP</TableHead>
                                     <TableHead className="text-yellow-500">Detalhe MP</TableHead>
                                     <TableHead className="text-yellow-500">Data</TableHead>
@@ -336,7 +355,7 @@ const FinancialReports: React.FC = () => {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {transactions.slice(0, 15).map((transaction) => (
+                                {pagedTransactions.map((transaction) => (
                                     <TableRow key={transaction.id} className="border-yellow-500/10">
                                         <TableCell className="text-white">#{transaction.id.slice(0, 8)}...</TableCell>
                                         <TableCell className="text-white">{transaction.events?.title || 'Evento'}</TableCell>
@@ -347,6 +366,11 @@ const FinancialReports: React.FC = () => {
                                         </TableCell>
                                         <TableCell className="text-white text-right">{formatCurrency(transaction.gross_amount || transaction.total_value || 0)}</TableCell>
                                         <TableCell className="text-white text-right">{formatCurrency(transaction.mp_fee_amount || 0)}</TableCell>
+                                        <TableCell className="text-white text-right">
+                                            {transaction.mp_fee_percentage !== null && transaction.mp_fee_percentage !== undefined
+                                                ? `${transaction.mp_fee_percentage.toFixed(2)}%`
+                                                : '-'}
+                                        </TableCell>
                                         <TableCell className="text-white text-right">{formatCurrency(transaction.net_amount_after_mp || 0)}</TableCell>
                                         <TableCell className="text-gray-400">{transaction.mp_status_detail || '-'}</TableCell>
                                         <TableCell className="text-gray-400">{new Date(transaction.created_at).toLocaleString('pt-BR')}</TableCell>
@@ -369,6 +393,31 @@ const FinancialReports: React.FC = () => {
                             </TableBody>
                         </Table>
                     </div>
+                    {totalTransactionPages > 1 && (
+                        <div className="flex items-center justify-end gap-2 mt-4">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setTransactionPage((p) => Math.max(1, p - 1))}
+                                disabled={safeTransactionPage <= 1}
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            >
+                                Anterior
+                            </Button>
+                            <span className="text-sm text-gray-400">
+                                Página {safeTransactionPage} de {totalTransactionPages}
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setTransactionPage((p) => Math.min(totalTransactionPages, p + 1))}
+                                disabled={safeTransactionPage >= totalTransactionPages}
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            >
+                                Próxima
+                            </Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

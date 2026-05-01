@@ -13,6 +13,34 @@ const supabaseService = createClient(
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+async function logPaymentEvent(params: {
+  transactionId: string;
+  source: 'webhook' | 'system';
+  paymentStatus?: string | null;
+  receivableStatus?: string | null;
+  paymentStatusDetail?: string | null;
+  mpPaymentId?: string | null;
+  mpPreferenceId?: string | null;
+  payload?: Record<string, unknown>;
+}) {
+  const { error } = await supabaseService
+    .from('payment_events')
+    .insert({
+      transaction_id: params.transactionId,
+      source: params.source,
+      payment_status: params.paymentStatus ?? null,
+      receivable_status: params.receivableStatus ?? null,
+      payment_status_detail: params.paymentStatusDetail ?? null,
+      mp_payment_id: params.mpPaymentId ?? null,
+      mp_preference_id: params.mpPreferenceId ?? null,
+      payload: params.payload ?? null,
+    });
+
+  if (error) {
+    console.error('[MP Webhook] Failed to write payment_events log:', error);
+  }
+}
+
 function toAmount(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -250,6 +278,19 @@ serve(async (req) => {
     // Atualizar transactionId para o ID real do receivable encontrado (caso tenha sido encontrado por payment_gateway_id)
     const finalTransactionId = receivable.id;
     console.log(`[MP Webhook] Successfully found receivable: ${finalTransactionId}, current status: ${receivable.status}`);
+    await logPaymentEvent({
+      transactionId: finalTransactionId,
+      source: 'webhook',
+      paymentStatus,
+      receivableStatus: receivable.status,
+      paymentStatusDetail,
+      mpPaymentId,
+      mpPreferenceId,
+      payload: {
+        notification_type: notificationType,
+        resource_id: resourceId,
+      },
+    });
 
     const clientUserId = receivable.client_user_id;
     const analyticsIds = receivable.wristband_analytics_ids;
@@ -310,6 +351,21 @@ serve(async (req) => {
         }
         
         console.log(`[MP Webhook] Successfully updated receivable ${finalTransactionId} status to 'paid'`);
+        await logPaymentEvent({
+          transactionId: finalTransactionId,
+          source: 'webhook',
+          paymentStatus,
+          receivableStatus: 'paid',
+          paymentStatusDetail,
+          mpPaymentId,
+          mpPreferenceId,
+          payload: {
+            stage: 'receivable_paid',
+            gross_amount: grossAmount,
+            mp_fee_amount: mpFeeAmount,
+            net_amount_after_mp: netAmountAfterMp,
+          },
+        });
 
         // 5. Buscar o percentual de comissão aplicado ao evento e company_id
         const { data: eventData, error: fetchEventError } = await supabaseService
@@ -526,6 +582,16 @@ serve(async (req) => {
         }
         
         console.log(`[MP Webhook] Receivable ${finalTransactionId} marked as 'failed'`);
+        await logPaymentEvent({
+          transactionId: finalTransactionId,
+          source: 'webhook',
+          paymentStatus,
+          receivableStatus: 'failed',
+          paymentStatusDetail,
+          mpPaymentId,
+          mpPreferenceId,
+          payload: { stage: 'receivable_failed' },
+        });
         // NOTA: Não precisamos reverter o status 'active' dos analytics, pois eles nunca foram alterados.
         
         return new Response(JSON.stringify({ message: `Payment ${paymentStatus}. Transaction marked as failed.` }), { status: 200, headers: corsHeaders });
@@ -545,6 +611,16 @@ serve(async (req) => {
                 net_amount_after_mp: netAmountAfterMp,
             })
             .eq('id', finalTransactionId);
+        await logPaymentEvent({
+          transactionId: finalTransactionId,
+          source: 'webhook',
+          paymentStatus,
+          receivableStatus: receivable.status,
+          paymentStatusDetail,
+          mpPaymentId,
+          mpPreferenceId,
+          payload: { stage: 'status_pending_or_processing' },
+        });
         return new Response(JSON.stringify({ 
             message: `Notification processed. Payment status: ${paymentStatus}. Transaction remains pending.`,
             payment_status: paymentStatus

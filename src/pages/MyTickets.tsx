@@ -103,6 +103,8 @@ const MyTickets: React.FC = () => {
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const [loadingSession, setLoadingSession] = useState(true);
     const [checkingPurchaseId, setCheckingPurchaseId] = useState<string | null>(null);
+    const [purchaseStatusFilter, setPurchaseStatusFilter] = useState<'all' | 'pending' | 'paid' | 'failed'>('all');
+    const [purchasePage, setPurchasePage] = useState(1);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -170,9 +172,23 @@ const MyTickets: React.FC = () => {
 
     const activeTickets = tickets.filter(t => t.status === 'active' || t.status === 'pending'); // Inclui 'pending' nos ativos
     const pastTickets = tickets.filter(t => t.status !== 'active' && t.status !== 'pending'); // Exclui 'pending' dos passados
-    const recentPurchases = purchases.slice(0, 10);
+    const purchasesWithUiStatus = purchases.map((p) => {
+        const resolvedStatus =
+            p.status === 'paid' || p.payment_status === 'approved' || p.payment_status === 'authorized'
+                ? 'paid'
+                : p.status === 'failed' || p.payment_status === 'rejected' || p.payment_status === 'cancelled'
+                ? 'failed'
+                : 'pending';
+        return { ...p, resolvedStatus };
+    });
+    const filteredPurchases = purchasesWithUiStatus.filter((p) => purchaseStatusFilter === 'all' || p.resolvedStatus === purchaseStatusFilter);
+    const purchasePageSize = 10;
+    const totalPurchasePages = Math.max(1, Math.ceil(filteredPurchases.length / purchasePageSize));
+    const safePurchasePage = Math.min(purchasePage, totalPurchasePages);
+    const recentPurchases = filteredPurchases.slice((safePurchasePage - 1) * purchasePageSize, safePurchasePage * purchasePageSize);
 
     const getPurchaseStatusText = (status: string, paymentStatus: string | null) => {
+        if (paymentStatus === 'approved' && status !== 'paid') return 'Pago (aguardando emissão)';
         if (status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized') return 'Pago';
         if (status === 'failed' || paymentStatus === 'rejected' || paymentStatus === 'cancelled') return 'Falhou';
         if (paymentStatus === 'in_process') return 'Em processamento';
@@ -209,6 +225,7 @@ const MyTickets: React.FC = () => {
             }
             queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
             queryClient.invalidateQueries({ queryKey: ['myTickets', userId] });
+            setPurchasePage(1);
         } catch (err: any) {
             console.error('Erro ao verificar status de pagamento:', err);
             showError(err?.message || 'Falha ao verificar status no Mercado Pago.');
@@ -261,8 +278,14 @@ const MyTickets: React.FC = () => {
                     <div>
                         <h2 className="text-2xl sm:text-3xl font-serif text-white mb-6 border-b border-yellow-500/30 pb-3 flex items-center">
                             <i className="fas fa-receipt mr-3 text-yellow-500"></i>
-                            Minhas Compras ({recentPurchases.length})
+                            Minhas Compras ({filteredPurchases.length})
                         </h2>
+                        <div className="flex flex-wrap items-center gap-2 mb-4">
+                            <Button variant={purchaseStatusFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => { setPurchaseStatusFilter('all'); setPurchasePage(1); }} className={purchaseStatusFilter === 'all' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Todos</Button>
+                            <Button variant={purchaseStatusFilter === 'pending' ? 'default' : 'outline'} size="sm" onClick={() => { setPurchaseStatusFilter('pending'); setPurchasePage(1); }} className={purchaseStatusFilter === 'pending' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Pendentes</Button>
+                            <Button variant={purchaseStatusFilter === 'paid' ? 'default' : 'outline'} size="sm" onClick={() => { setPurchaseStatusFilter('paid'); setPurchasePage(1); }} className={purchaseStatusFilter === 'paid' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Pagas</Button>
+                            <Button variant={purchaseStatusFilter === 'failed' ? 'default' : 'outline'} size="sm" onClick={() => { setPurchaseStatusFilter('failed'); setPurchasePage(1); }} className={purchaseStatusFilter === 'failed' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Falhas</Button>
+                        </div>
                         {recentPurchases.length > 0 ? (
                             <div className="space-y-4">
                                 {recentPurchases.map((purchase) => (
@@ -312,6 +335,31 @@ const MyTickets: React.FC = () => {
                             </div>
                         ) : (
                             <p className="text-gray-400 p-4 text-base">Nenhuma compra encontrada.</p>
+                        )}
+                        {totalPurchasePages > 1 && (
+                            <div className="flex items-center justify-end gap-2 mt-4">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPurchasePage((p) => Math.max(1, p - 1))}
+                                    disabled={safePurchasePage <= 1}
+                                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                                >
+                                    Anterior
+                                </Button>
+                                <span className="text-sm text-gray-400">
+                                    Página {safePurchasePage} de {totalPurchasePages}
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPurchasePage((p) => Math.min(totalPurchasePages, p + 1))}
+                                    disabled={safePurchasePage >= totalPurchasePages}
+                                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                                >
+                                    Próxima
+                                </Button>
+                            </div>
                         )}
                     </div>
 

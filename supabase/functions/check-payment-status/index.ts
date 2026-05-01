@@ -12,6 +12,34 @@ const supabaseService = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
 );
 
+async function logPaymentEvent(params: {
+  transactionId: string;
+  source: "manual_check" | "system";
+  paymentStatus?: string | null;
+  receivableStatus?: string | null;
+  paymentStatusDetail?: string | null;
+  mpPaymentId?: string | null;
+  mpPreferenceId?: string | null;
+  payload?: Record<string, unknown>;
+}) {
+  const { error } = await supabaseService
+    .from("payment_events")
+    .insert({
+      transaction_id: params.transactionId,
+      source: params.source,
+      payment_status: params.paymentStatus ?? null,
+      receivable_status: params.receivableStatus ?? null,
+      payment_status_detail: params.paymentStatusDetail ?? null,
+      mp_payment_id: params.mpPaymentId ?? null,
+      mp_preference_id: params.mpPreferenceId ?? null,
+      payload: params.payload ?? null,
+    });
+
+  if (error) {
+    console.error("[check-payment-status] Failed to write payment_events log:", error);
+  }
+}
+
 function toAmount(value: unknown): number | null {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -164,6 +192,16 @@ serve(async (req) => {
         net_amount_after_mp: netAfterMp,
       })
       .eq("id", transactionId);
+    await logPaymentEvent({
+      transactionId,
+      source: "manual_check",
+      paymentStatus,
+      receivableStatus: receivable.status,
+      paymentStatusDetail,
+      mpPaymentId,
+      mpPreferenceId,
+      payload: { stage: "refresh_status_from_mp" },
+    });
 
     let processingTriggered = false;
     let processingResult: string | null = null;
@@ -206,6 +244,24 @@ serve(async (req) => {
     const requiresAttention =
       (paymentStatus === "approved" || paymentStatus === "authorized") &&
       (refreshedReceivable?.status ?? receivable.status) !== "paid";
+
+    if (requiresAttention) {
+      await logPaymentEvent({
+        transactionId,
+        source: "manual_check",
+        paymentStatus,
+        receivableStatus: refreshedReceivable?.status ?? receivable.status,
+        paymentStatusDetail,
+        mpPaymentId,
+        mpPreferenceId,
+        payload: {
+          stage: "requires_attention",
+          processing_triggered: processingTriggered,
+          processing_result: processingResult,
+          processing_http_status: processingHttpStatus,
+        },
+      });
+    }
 
     return new Response(
       JSON.stringify({

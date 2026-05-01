@@ -106,6 +106,40 @@ Fluxo de compra com Mercado Pago evoluiu de um estado com erro de política (403
    - Criar tabela de auditoria de eventos de pagamento (`payment_events`) para trilha completa e reprocessamento seguro.
    - Adicionar paginação/filtro por status na lista de compras/transações.
 
+## Atualização 2026-05-01 (fases finalizadas)
+
+- [x] Tabela de auditoria criada: `payment_events` (migration `20260501134000_create_payment_events.sql`).
+- [x] Webhook e verificação manual passaram a registrar eventos em `payment_events`.
+- [x] UX com estado intermediário explícito:
+  - `Pago (aguardando emissão)` quando gateway está aprovado e integração local ainda não finalizou.
+- [x] Filtro + paginação implementados:
+  - cliente (`Minhas Compras`) por status e páginas;
+  - gestor (`Transações de Pagamento`) por status e páginas.
+- [x] Rotina de reconciliação criada:
+  - Edge Function `reconcile-pending-payments` para varrer pendências e reprocessar webhook.
+
+## Checklist final de operação
+
+1. Aplicar migrations:
+   - `20260430170000_receivables_payment_tracking_fields.sql`
+   - `20260501134000_create_payment_events.sql`
+2. Fazer deploy das funções:
+   - `create-payment-preference`
+   - `mercadopago-webhook`
+   - `check-payment-status`
+   - `reconcile-pending-payments`
+3. Configurar secret opcional para reconciliação:
+   - `RECONCILIATION_TOKEN` (recomendado para proteger execução manual/cron)
+4. Executar teste PIX ponta a ponta:
+   - comprar -> retornar -> verificar em `Minhas Compras` -> emitir em `Ingressos Ativos`.
+5. Auditar no banco por `transaction_id`:
+   - `receivables` (status e campos MP),
+   - `financial_splits` (2 lançamentos esperados),
+   - `wristband_analytics` (vínculo cliente + `status='active'`),
+   - `payment_events` (trilha dos eventos webhook/manual/system).
+6. Rodar reconciliação de pendentes (se necessário):
+   - invocar `reconcile-pending-payments` com `olderThanMinutes` e `limit`.
+
 ## Riscos conhecidos
 
 - Reprocessamento via chamada da função de diagnóstico para webhook depende de endpoint disponível e sem bloqueio de rede.
