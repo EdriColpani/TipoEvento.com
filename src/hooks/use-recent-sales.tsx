@@ -11,8 +11,12 @@ interface RecentSaleData {
     status: string;
 }
 
-const fetchRecentSales = async (limit: number = 5): Promise<RecentSaleData[]> => {
-    const { data: sales, error } = await supabase
+const fetchRecentSales = async (
+    limit: number = 5,
+    userId?: string,
+    isAdminMaster: boolean = false,
+): Promise<RecentSaleData[]> => {
+    let query = supabase
         .from('receivables')
         .select(`
             id,
@@ -22,9 +26,12 @@ const fetchRecentSales = async (limit: number = 5): Promise<RecentSaleData[]> =>
             wristband_analytics_ids,
             events ( title )
         `)
-        .eq('status', 'paid')
         .order('created_at', { ascending: false })
         .limit(limit);
+    if (!isAdminMaster && userId) {
+        query = query.eq('manager_user_id', userId);
+    }
+    const { data: sales = [], error } = await query.or('status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized');
 
     if (error) {
         console.error("Erro ao buscar vendas recentes:", error);
@@ -43,10 +50,11 @@ const fetchRecentSales = async (limit: number = 5): Promise<RecentSaleData[]> =>
     return formattedSales;
 };
 
-export const useRecentSales = (limit: number = 5) => {
+export const useRecentSales = (limit: number = 5, userId?: string, isAdminMaster: boolean = false) => {
     return useQuery<RecentSaleData[]>({ 
-        queryKey: ['recentSales', limit],
-        queryFn: () => fetchRecentSales(limit),
+        queryKey: ['recentSales', limit, userId, isAdminMaster],
+        queryFn: () => fetchRecentSales(limit, userId, isAdminMaster),
+        enabled: !!userId || isAdminMaster,
         staleTime: 1000 * 60 * 1, // 1 minuto
     });
 };

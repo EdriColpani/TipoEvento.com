@@ -10,14 +10,22 @@ import { Loader2 } from 'lucide-react';
 import SalesLineChart from '@/components/SalesLineChart';
 import { useTopSellingEvents } from '@/hooks/use-top-selling-events';
 import { useRecentSales } from '@/hooks/use-recent-sales';
+import { useProfile } from '@/hooks/use-profile';
+import { supabase } from '@/integrations/supabase/client';
 
 const ManagerDashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { data: dashboardData, isLoading, isError } = useDashboardData();
+    const [userId, setUserId] = useState<string | undefined>(undefined);
+    React.useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
+    }, []);
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const isAdminMaster = profile?.tipo_usuario_id === 1;
+    const { data: dashboardData, isLoading, isError } = useDashboardData(userId, isAdminMaster || false);
     const [monthlyRevenuePeriod, setMonthlyRevenuePeriod] = useState(6);
-    const { data: monthlyRevenueData, isLoading: isLoadingMonthlyRevenue, isError: isErrorMonthlyRevenue } = useMonthlyRevenueData(monthlyRevenuePeriod);
-    const { data: topSellingEvents, isLoading: isLoadingTopSellingEvents, isError: isErrorTopSellingEvents } = useTopSellingEvents(5); // Limite de 5 eventos
-    const { data: recentSales, isLoading: isLoadingRecentSales, isError: isErrorRecentSales } = useRecentSales(5); // Limite de 5 vendas recentes
+    const { data: monthlyRevenueData, isLoading: isLoadingMonthlyRevenue, isError: isErrorMonthlyRevenue } = useMonthlyRevenueData(monthlyRevenuePeriod, userId, isAdminMaster || false);
+    const { data: topSellingEvents, isLoading: isLoadingTopSellingEvents, isError: isErrorTopSellingEvents } = useTopSellingEvents(5, userId, isAdminMaster || false); // Limite de 5 eventos
+    const { data: recentSales, isLoading: isLoadingRecentSales, isError: isErrorRecentSales } = useRecentSales(5, userId, isAdminMaster || false); // Limite de 5 vendas recentes
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -27,7 +35,7 @@ const ManagerDashboard: React.FC = () => {
             </div>
 
             {/* Cartões de Estatísticas */}
-            {isLoading && (
+            {(isLoadingProfile || isLoading) && (
                 <div className="text-center py-20">
                     <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
                     <p className="text-gray-400">Carregando dados do dashboard...</p>
@@ -40,7 +48,7 @@ const ManagerDashboard: React.FC = () => {
                 </div>
             )}
 
-            {!isLoading && !isError && dashboardData && (
+            {!isLoadingProfile && !isLoading && !isError && dashboardData && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     {/* Cartão de Vendas Totais */}
                     <div className="bg-black border border-yellow-500/30 rounded-2xl p-6 hover:border-yellow-500/60 transition-all duration-300">
@@ -52,7 +60,7 @@ const ManagerDashboard: React.FC = () => {
                                 <div className={`text-sm font-semibold ${dashboardData.sales.salesPercentageChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                     {dashboardData.sales.salesPercentageChange >= 0 ? '+' : ''}{dashboardData.sales.salesPercentageChange.toFixed(1)}%
                                 </div>
-                                <div className="text-gray-400 text-xs">vs mês anterior</div>
+                                <div className="text-gray-400 text-xs">vs 30 dias anteriores</div>
                             </div>
                         </div>
                         <div>
@@ -71,7 +79,7 @@ const ManagerDashboard: React.FC = () => {
                                 <div className={`text-sm font-semibold ${dashboardData.sales.ticketsPercentageChange >= 0 ? 'text-blue-500' : 'text-red-500'}`}>
                                     {dashboardData.sales.ticketsPercentageChange >= 0 ? '+' : ''}{dashboardData.sales.ticketsPercentageChange.toFixed(1)}%
                                 </div>
-                                <div className="text-gray-400 text-xs">vs mês anterior</div>
+                                <div className="text-gray-400 text-xs">vs 30 dias anteriores</div>
                             </div>
                         </div>
                         <div>

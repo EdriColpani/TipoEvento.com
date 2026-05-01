@@ -19,7 +19,11 @@ export interface FinancialReportFilters {
     endDate?: string;
 }
 
-const fetchFinancialReports = async (filters: FinancialReportFilters = {}): Promise<FinancialReportData[]> => {
+const fetchFinancialReports = async (
+    filters: FinancialReportFilters = {},
+    userId?: string,
+    isAdminMaster: boolean = false,
+): Promise<FinancialReportData[]> => {
     let query = supabase
         .from('receivables')
         .select(`
@@ -33,8 +37,11 @@ const fetchFinancialReports = async (filters: FinancialReportFilters = {}): Prom
                 title,
                 date
             )
-        `)
-        .eq('status', 'paid');
+        `);
+
+    if (!isAdminMaster && userId) {
+        query = query.eq('manager_user_id', userId);
+    }
 
     // Aplicar filtro de evento
     if (filters.eventId) {
@@ -52,7 +59,9 @@ const fetchFinancialReports = async (filters: FinancialReportFilters = {}): Prom
         query = query.lte('created_at', endDateWithTime.toISOString());
     }
 
-    const { data: receivables, error: receivablesError } = await query;
+    const { data: receivables, error: receivablesError } = await query.or(
+        'status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized',
+    );
 
     if (receivablesError) throw receivablesError;
     if (!receivables) return [];
@@ -110,8 +119,8 @@ const fetchFinancialReports = async (filters: FinancialReportFilters = {}): Prom
             .reduce((sum: number, fs: any) => sum + (fs.platform_amount || 0), 0);
         
         const percentuais = eventSplits
-            .filter(fs => fs.platform_amount > 0 && fs.applied_percentage)
-            .map(fs => fs.applied_percentage);
+            .filter(fs => fs.applied_percentage !== null && fs.applied_percentage !== undefined)
+            .map(fs => Number(fs.applied_percentage));
         const percentualMedio = percentuais.length > 0
             ? percentuais.reduce((sum, p) => sum + p, 0) / percentuais.length
             : 0;
@@ -138,10 +147,15 @@ const fetchFinancialReports = async (filters: FinancialReportFilters = {}): Prom
     return reportData.sort((a, b) => b.valor_total_vendido - a.valor_total_vendido);
 };
 
-export const useFinancialReports = (filters: FinancialReportFilters = {}) => {
+export const useFinancialReports = (
+    filters: FinancialReportFilters = {},
+    userId?: string,
+    isAdminMaster: boolean = false,
+) => {
     return useQuery({
-        queryKey: ['financial-reports', filters],
-        queryFn: () => fetchFinancialReports(filters),
+        queryKey: ['financial-reports', filters, userId, isAdminMaster],
+        queryFn: () => fetchFinancialReports(filters, userId, isAdminMaster),
+        enabled: !!userId || isAdminMaster,
     });
 };
 

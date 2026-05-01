@@ -379,11 +379,11 @@ serve(async (req) => {
             throw new Error(`Event ${eventId} data incomplete for financial split.`);
         }
 
-        const appliedPercentage = eventData.applied_percentage;
+        const appliedPercentage = Number(eventData.applied_percentage ?? 0);
         const companyId = eventData.company_id;
         
         // Validação do percentual de comissão
-        if (!appliedPercentage || appliedPercentage < 0 || appliedPercentage > 100) {
+        if (!Number.isFinite(appliedPercentage) || appliedPercentage < 0 || appliedPercentage > 100) {
             console.error(`[MP Webhook] Critical Error: Invalid applied_percentage (${appliedPercentage}) for event ${eventId}.`);
             throw new Error(`Invalid commission percentage for event ${eventId}.`);
         }

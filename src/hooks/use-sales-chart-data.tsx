@@ -7,20 +7,26 @@ interface DailySales {
     total_sales: number;
 }
 
-const fetchDailySales = async (): Promise<DailySales[]> => {
+const fetchDailySales = async (
+    userId?: string,
+    isAdminMaster: boolean = false,
+): Promise<DailySales[]> => {
     const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
     const today = format(new Date(), 'yyyy-MM-dd');
 
     // Esta é uma query simplificada. Para um relatório de vendas mais preciso
     // e com performance otimizada, seria ideal criar uma VIEW no Supabase
     // que pré-agregasse esses dados diariamente.
-    const { data, error } = await supabase
+    let query = supabase
         .from('receivables')
         .select('created_at, total_value')
-        .eq('status', 'paid')
         .gte('created_at', thirtyDaysAgo + 'T00:00:00Z')
         .lte('created_at', today + 'T23:59:59Z')
         .order('created_at', { ascending: true });
+    if (!isAdminMaster && userId) {
+        query = query.eq('manager_user_id', userId);
+    }
+    const { data = [], error } = await query.or('status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized');
 
     if (error) throw error;
 
@@ -44,10 +50,11 @@ const fetchDailySales = async (): Promise<DailySales[]> => {
     return dailySalesData;
 };
 
-export const useSalesChartData = () => {
+export const useSalesChartData = (userId?: string, isAdminMaster: boolean = false) => {
     return useQuery<DailySales[]>({ 
-        queryKey: ['dailySalesData'], 
-        queryFn: fetchDailySales,
+        queryKey: ['dailySalesData', userId, isAdminMaster], 
+        queryFn: () => fetchDailySales(userId, isAdminMaster),
+        enabled: !!userId || isAdminMaster,
         staleTime: 1000 * 60 * 5, // 5 minutos
     });
 };
