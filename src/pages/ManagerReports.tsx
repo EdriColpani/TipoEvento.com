@@ -42,8 +42,8 @@ const ManagerReports: React.FC = () => {
     }, []);
 
     const { profile } = useProfile(userId);
-    const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData();
     const isAdminMaster = profile?.tipo_usuario_id === 1;
+    const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData(userId, isAdminMaster || false);
     const isManagerPro = profile?.tipo_usuario_id === 2;
     const canAccessFinancialReport = isAdminMaster || isManagerPro;
 

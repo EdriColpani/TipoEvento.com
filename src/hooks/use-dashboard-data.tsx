@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { parseEventLocalDay } from '@/utils/format-event-date';
-import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
+import { subDays, format } from 'date-fns';
 
 interface SalesMetrics {
     currentMonthTotalSales: number;
@@ -27,33 +27,45 @@ export interface DashboardData {
     occupancy: OccupancyMetrics;
 }
 
-const fetchDashboardData = async (): Promise<DashboardData> => {
+const applyPaidLikeFilter = <T,>(query: T & { or: (filters: string) => T }): T =>
+    query.or('status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized');
+
+const fetchDashboardData = async (
+    userId?: string,
+    isAdminMaster: boolean = false,
+): Promise<DashboardData> => {
     const today = new Date();
 
-    // Definir períodos para o mês atual e mês anterior
-    const currentMonthStart = format(startOfMonth(today), 'yyyy-MM-dd HH:mm:ss');
-    const currentMonthEnd = format(endOfMonth(today), 'yyyy-MM-dd HH:mm:ss');
-    const previousMonthStart = format(startOfMonth(subMonths(today, 1)), 'yyyy-MM-dd HH:mm:ss');
-    const previousMonthEnd = format(endOfMonth(subMonths(today, 1)), 'yyyy-MM-dd HH:mm:ss');
+    // Períodos móveis de 30 dias para evitar zerar no início do mês.
+    const currentWindowStart = format(subDays(today, 30), 'yyyy-MM-dd HH:mm:ss');
+    const currentWindowEnd = format(today, 'yyyy-MM-dd HH:mm:ss');
+    const previousWindowStart = format(subDays(today, 60), 'yyyy-MM-dd HH:mm:ss');
+    const previousWindowEnd = format(subDays(today, 31), 'yyyy-MM-dd HH:mm:ss');
 
     // --- 1. Vendas Totais e Ingressos Vendidos (Mês Atual e Anterior) ---
-    const { data: currentMonthSalesData, error: currentMonthSalesError } = await supabase
+    let currentSalesQuery = supabase
         .from('receivables')
         .select('total_value, wristband_analytics_ids')
-        .eq('status', 'paid')
-        .gte('created_at', currentMonthStart)
-        .lte('created_at', currentMonthEnd);
+        .gte('created_at', currentWindowStart)
+        .lte('created_at', currentWindowEnd);
+    if (!isAdminMaster && userId) {
+        currentSalesQuery = currentSalesQuery.eq('manager_user_id', userId);
+    }
+    const { data: currentMonthSalesData = [], error: currentMonthSalesError } = await applyPaidLikeFilter(currentSalesQuery);
     if (currentMonthSalesError) throw currentMonthSalesError;
 
     const currentMonthTotalSales = currentMonthSalesData.reduce((sum, r) => sum + r.total_value, 0);
     const currentMonthTicketsSold = currentMonthSalesData.reduce((sum, r) => sum + (r.wristband_analytics_ids ? r.wristband_analytics_ids.length : 0), 0);
 
-    const { data: previousMonthSalesData, error: previousMonthSalesError } = await supabase
+    let previousSalesQuery = supabase
         .from('receivables')
         .select('total_value, wristband_analytics_ids')
-        .eq('status', 'paid')
-        .gte('created_at', previousMonthStart)
-        .lte('created_at', previousMonthEnd);
+        .gte('created_at', previousWindowStart)
+        .lte('created_at', previousWindowEnd);
+    if (!isAdminMaster && userId) {
+        previousSalesQuery = previousSalesQuery.eq('manager_user_id', userId);
+    }
+    const { data: previousMonthSalesData = [], error: previousMonthSalesError } = await applyPaidLikeFilter(previousSalesQuery);
     if (previousMonthSalesError) throw previousMonthSalesError;
 
     const previousMonthTotalSales = previousMonthSalesData.reduce((sum, r) => sum + r.total_value, 0);
@@ -68,9 +80,13 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
         : ((currentMonthTicketsSold - previousMonthTicketsSold) / previousMonthTicketsSold) * 100;
 
     // --- 2. Eventos Ativos e Total de Eventos ---
-    const { data: eventsData, error: eventsError } = await supabase
+    let eventsQuery = supabase
         .from('events')
-        .select('id, status, date'); // Incluir a data para a validação de ativo
+        .select('id, is_active, date');
+    if (!isAdminMaster && userId) {
+        eventsQuery = eventsQuery.eq('created_by', userId);
+    }
+    const { data: eventsData = [], error: eventsError } = await eventsQuery;
     if (eventsError) throw eventsError;
 
     const totalEvents = eventsData.length;
@@ -91,7 +107,7 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
         );
 
         return (
-            (event.status === 'active' || event.status === 'approved') &&
+            event.is_active !== false &&
             day >= todayAdjustedForComparison
         );
     }).length;
@@ -104,11 +120,11 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
         .select('id', { count: 'exact' });
     if (generatedError) throw generatedError;
 
-    const { data: usedWristbands, error: usedError } = await supabase
+    const { data: usedWristbands = [], error: usedError } = await supabase
         .from('wristband_analytics')
         .select('wristband_id')
-        .eq('status', 'used')
-        .eq('event_type', 'purchase');
+        .eq('event_type', 'purchase')
+        .not('client_user_id', 'is', null);
     if (usedError) throw usedError;
 
     const distinctUsedWristbandIds = new Set(usedWristbands.map(wa => wa.wristband_id));
@@ -137,10 +153,11 @@ const fetchDashboardData = async (): Promise<DashboardData> => {
     };
 };
 
-export const useDashboardData = () => {
+export const useDashboardData = (userId?: string, isAdminMaster: boolean = false) => {
     return useQuery<DashboardData>({
-        queryKey: ['dashboardData'],
-        queryFn: fetchDashboardData,
+        queryKey: ['dashboardData', userId, isAdminMaster],
+        queryFn: () => fetchDashboardData(userId, isAdminMaster),
+        enabled: !!userId || isAdminMaster,
         staleTime: 1000 * 60 * 5, // 5 minutos
     });
 };

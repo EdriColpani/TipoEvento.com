@@ -47,7 +47,11 @@ const FinancialReports: React.FC = () => {
         status: transactionStatusFilter !== 'all' ? transactionStatusFilter : undefined,
     };
 
-    const { data: reportData, isLoading: isLoadingReports, isError } = useFinancialReports(filters);
+    const { data: reportData, isLoading: isLoadingReports, isError } = useFinancialReports(
+        filters,
+        userId,
+        isAdminMaster || false,
+    );
     const { transactions } = useManagerTransactions(userId, isAdminMaster || false, filters);
 
     // Calcular totais gerais
@@ -71,6 +75,24 @@ const FinancialReports: React.FC = () => {
         (safeTransactionPage - 1) * transactionPageSize,
         safeTransactionPage * transactionPageSize,
     );
+    const transactionTotals = transactions.reduce(
+        (acc, t) => {
+            const gross = Number(t.gross_amount ?? t.total_value ?? 0);
+            const fee = Number(t.mp_fee_amount ?? 0);
+            const netMp = Number(t.net_amount_after_mp ?? 0);
+            const systemCommission = Number(t.system_commission_amount ?? 0);
+            const organizerNet = Number(t.organizer_net_amount ?? 0);
+            acc.gross += gross;
+            acc.fee += fee;
+            acc.netMp += netMp;
+            acc.systemCommission += systemCommission;
+            acc.organizerNet += organizerNet;
+            return acc;
+        },
+        { gross: 0, fee: 0, netMp: 0, systemCommission: 0, organizerNet: 0 },
+    );
+    const transactionAvgFeePct = transactionTotals.gross > 0 ? (transactionTotals.fee / transactionTotals.gross) * 100 : 0;
+    const transactionAvgSystemPct = transactionTotals.gross > 0 ? (transactionTotals.systemCommission / transactionTotals.gross) * 100 : 0;
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -348,7 +370,9 @@ const FinancialReports: React.FC = () => {
                                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Taxa MP</TableHead>
                                     <TableHead className="text-yellow-500 text-right">% Taxa MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">% Sistema</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Líquido MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Líquido Organizador</TableHead>
                                     <TableHead className="text-yellow-500">Detalhe MP</TableHead>
                                     <TableHead className="text-yellow-500">Data</TableHead>
                                     <TableHead className="text-yellow-500">Ação</TableHead>
@@ -371,7 +395,13 @@ const FinancialReports: React.FC = () => {
                                                 ? `${transaction.mp_fee_percentage.toFixed(2)}%`
                                                 : '-'}
                                         </TableCell>
+                                        <TableCell className="text-white text-right">
+                                            {transaction.system_commission_percentage !== null && transaction.system_commission_percentage !== undefined
+                                                ? `${transaction.system_commission_percentage.toFixed(2)}%`
+                                                : '-'}
+                                        </TableCell>
                                         <TableCell className="text-white text-right">{formatCurrency(transaction.net_amount_after_mp || 0)}</TableCell>
+                                        <TableCell className="text-green-400 text-right">{formatCurrency(transaction.organizer_net_amount || 0)}</TableCell>
                                         <TableCell className="text-gray-400">{transaction.mp_status_detail || '-'}</TableCell>
                                         <TableCell className="text-gray-400">{new Date(transaction.created_at).toLocaleString('pt-BR')}</TableCell>
                                         <TableCell>
@@ -390,6 +420,18 @@ const FinancialReports: React.FC = () => {
                                         </TableCell>
                                     </TableRow>
                                 ))}
+                                {transactions.length > 0 && (
+                                    <TableRow className="border-yellow-500/30 bg-yellow-500/5">
+                                        <TableCell className="text-yellow-500 font-semibold" colSpan={3}>Total Geral (filtro atual)</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.gross)}</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.fee)}</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{transactionAvgFeePct.toFixed(2)}%</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{transactionAvgSystemPct.toFixed(2)}%</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.netMp)}</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.organizerNet)}</TableCell>
+                                        <TableCell className="text-yellow-500" colSpan={3}>-</TableCell>
+                                    </TableRow>
+                                )}
                             </TableBody>
                         </Table>
                     </div>
@@ -484,6 +526,21 @@ const FinancialReports: React.FC = () => {
                                             </TableCell>
                                         </TableRow>
                                     ))}
+                                    {reportData.length > 0 && totals && (
+                                        <TableRow className="border-yellow-500/30 bg-yellow-500/5">
+                                            <TableCell className="text-yellow-500 font-semibold">Total Geral</TableCell>
+                                            <TableCell className="text-yellow-500">-</TableCell>
+                                            <TableCell className="text-yellow-500 text-right font-semibold">{totals.totalVendas}</TableCell>
+                                            <TableCell className="text-yellow-500 text-right font-semibold">{totals.totalIngressos}</TableCell>
+                                            <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(totals.totalVendido)}</TableCell>
+                                            <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(totals.totalOrganizador)}</TableCell>
+                                            <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(totals.totalComissao)}</TableCell>
+                                            <TableCell className="text-yellow-500 text-right font-semibold">
+                                                {totals.totalVendido > 0 ? `${((totals.totalComissao / totals.totalVendido) * 100).toFixed(2)}%` : '0.00%'}
+                                            </TableCell>
+                                            <TableCell className="text-yellow-500">-</TableCell>
+                                        </TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                         </div>

@@ -7,17 +7,24 @@ interface MonthlyRevenueDataPoint {
     total_revenue: number;
 }
 
-const fetchMonthlyRevenueData = async (monthsBack: number = 6): Promise<MonthlyRevenueDataPoint[]> => {
+const fetchMonthlyRevenueData = async (
+    monthsBack: number = 6,
+    userId?: string,
+    isAdminMaster: boolean = false,
+): Promise<MonthlyRevenueDataPoint[]> => {
     const today = new Date();
     const startDate = subMonths(today, monthsBack - 1); // Ex: para 6 meses, começa 5 meses atrás
 
-    const { data: salesData, error } = await supabase
+    let salesQuery = supabase
         .from('receivables')
         .select('created_at, total_value')
-        .eq('status', 'paid')
         .gte('created_at', format(startDate, 'yyyy-MM-dd HH:mm:ss'))
         .lte('created_at', format(today, 'yyyy-MM-dd HH:mm:ss'))
         .order('created_at', { ascending: true });
+    if (!isAdminMaster && userId) {
+        salesQuery = salesQuery.eq('manager_user_id', userId);
+    }
+    const { data: salesData = [], error } = await salesQuery.or('status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized');
 
     if (error) throw error;
 
@@ -61,10 +68,11 @@ const getMonthNumber = (monthAbbr: string) => {
     return monthMap[monthAbbr];
 };
 
-export const useMonthlyRevenueData = (monthsBack: number = 6) => {
+export const useMonthlyRevenueData = (monthsBack: number = 6, userId?: string, isAdminMaster: boolean = false) => {
     return useQuery<MonthlyRevenueDataPoint[]>({ 
-        queryKey: ['monthlyRevenueData', monthsBack],
-        queryFn: () => fetchMonthlyRevenueData(monthsBack),
+        queryKey: ['monthlyRevenueData', monthsBack, userId, isAdminMaster],
+        queryFn: () => fetchMonthlyRevenueData(monthsBack, userId, isAdminMaster),
+        enabled: !!userId || isAdminMaster,
         staleTime: 1000 * 60 * 5, // 5 minutos
     });
 };
