@@ -115,32 +115,60 @@ const MyTickets: React.FC = () => {
     
     const { tickets, isLoading, isError } = useMyTickets(userId);
     const { purchases } = useMyPurchases(userId);
+    
+    const reconcilePurchaseOnReturn = async (transactionId: string) => {
+        const { data, error } = await supabase.functions.invoke('check-payment-status', {
+            body: { transactionId },
+        });
+        if (error) throw error;
+        return data;
+    };
 
     // NOVO: Lógica para processar os parâmetros de retorno do Mercado Pago
     useEffect(() => {
         const status = searchParams.get('status');
         const transactionId = searchParams.get('transaction_id');
 
-        if (status && transactionId) {
-            if (status === 'success') {
-                showSuccess(`Compra #${transactionId.substring(0, 8)}... concluída com sucesso!`);
-                queryClient.invalidateQueries({ queryKey: ['myTickets', userId] }); // Recarrega os ingressos
-                queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
-            } else if (status === 'pending') {
-                showError(`Compra #${transactionId.substring(0, 8)}... está pendente. Verifique o status no Mercado Pago.`);
-                queryClient.invalidateQueries({ queryKey: ['myTickets', userId] }); // Recarrega os ingressos
-                queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
-            } else if (status === 'failure') {
-                showError(`Falha na compra #${transactionId.substring(0, 8)}... Por favor, tente novamente.`);
-                queryClient.invalidateQueries({ queryKey: ['myTickets', userId] }); // Recarrega os ingressos
-                queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
+        if (!(status && transactionId) || !userId) return;
+
+        let cancelled = false;
+        const run = async () => {
+            try {
+                const data = await reconcilePurchaseOnReturn(transactionId);
+                if (cancelled) return;
+
+                const receivableStatus = data?.receivableStatus;
+                const paymentStatus = data?.paymentStatus;
+                const detail = data?.paymentStatusDetail ? ` (${data.paymentStatusDetail})` : '';
+
+                if (status === 'failure' || receivableStatus === 'failed') {
+                    showError(`Falha na compra #${transactionId.substring(0, 8)}... ${paymentStatus ? `Status MP: ${paymentStatus}${detail}` : ''}`.trim());
+                } else if (receivableStatus === 'paid') {
+                    showSuccess(`Compra #${transactionId.substring(0, 8)}... concluída e conciliada com sucesso!`);
+                } else if (paymentStatus === 'approved' || paymentStatus === 'authorized') {
+                    showError(`Compra #${transactionId.substring(0, 8)}... aprovada no MP, mas ainda em processamento interno. Tente novamente em instantes.`);
+                } else {
+                    showError(`Compra #${transactionId.substring(0, 8)}... está pendente no MP${detail}.`);
+                }
+            } catch (err: any) {
+                if (cancelled) return;
+                console.error('Erro ao conciliar retorno do checkout:', err);
+                showError('Não foi possível validar o pagamento no retorno. Atualize a página em instantes.');
+            } finally {
+                if (!cancelled) {
+                    queryClient.invalidateQueries({ queryKey: ['myTickets', userId] });
+                    queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
+                    searchParams.delete('status');
+                    searchParams.delete('transaction_id');
+                    setSearchParams(searchParams, { replace: true });
+                }
             }
-            
-            // Limpa os parâmetros da URL para evitar que a mensagem apareça novamente
-            searchParams.delete('status');
-            searchParams.delete('transaction_id');
-            setSearchParams(searchParams, { replace: true }); // Usa replace para não adicionar ao histórico
-        }
+        };
+
+        run();
+        return () => {
+            cancelled = true;
+        };
     }, [searchParams, setSearchParams, queryClient, userId]); // Dependências atualizadas
 
     if (loadingSession || isLoading) {

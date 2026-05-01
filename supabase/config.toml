@@ -9,3 +9,15 @@ verify_jwt = false
 # Comprador autenticado; mesma blindagem que create-validation-key — a função valida JWT com getUser()
 [functions.create-payment-preference]
 verify_jwt = false
+
+# Webhook do Mercado Pago não envia JWT do Supabase; precisa aceitar chamadas públicas.
+[functions.mercadopago-webhook]
+verify_jwt = false
+
+# Verificação manual é autenticada internamente pela função (getUser), então pode rodar sem bloqueio do gateway.
+[functions.check-payment-status]
+verify_jwt = false
+
+# Reconciliação usa token próprio (x-reconciliation-token), não JWT do Supabase.
+[functions.reconcile-pending-payments]
+verify_jwt = false
