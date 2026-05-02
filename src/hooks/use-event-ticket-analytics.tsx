@@ -36,6 +36,29 @@ export interface PaginatedEventTicketAnalytics {
     count: number;
 }
 
+/** Ingresso atribuído a comprador (venda/reserva) ou já utilizado na entrada */
+export function isAnalyticsTicketSold(t: WristbandDetailsForAnalytics): boolean {
+    const hasClient = t.client_user_id != null && String(t.client_user_id).trim() !== '';
+    if (hasClient) return true;
+    if (t.analytics_status === 'used') return true;
+    return false;
+}
+
+const fetchEventTicketAnalyticsFull = async (eventId: string): Promise<WristbandDetailsForAnalytics[]> => {
+    const { data, error } = await supabase
+        .from('wristband_analytics_with_profile_details')
+        .select('*')
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: true })
+        .limit(5000);
+
+    if (error) {
+        console.error('Error fetching full event ticket analytics:', error);
+        throw error;
+    }
+    return (data || []) as WristbandDetailsForAnalytics[];
+};
+
 const fetchEventTicketAnalytics = async (filters: EventTicketAnalyticsFilters): Promise<PaginatedEventTicketAnalytics> => {
     const { eventId, page = 1, pageSize = 10, searchQuery } = filters;
 
@@ -81,6 +104,16 @@ export const useEventTicketAnalytics = (filters: EventTicketAnalyticsFilters) =>
         queryKey: ['event-ticket-analytics', filters],
         queryFn: () => fetchEventTicketAnalytics(filters),
         enabled: !!filters.eventId,
+    });
+};
+
+/** Lista completa do evento (detalhe financeiro): evita vendidos só aparecerem em outra “página” da query única. */
+export const useEventTicketAnalyticsFull = (eventId: string | undefined) => {
+    return useQuery<WristbandDetailsForAnalytics[], Error>({
+        queryKey: ['event-ticket-analytics-full', eventId],
+        queryFn: () => fetchEventTicketAnalyticsFull(eventId!),
+        enabled: !!eventId,
+        staleTime: 60_000,
     });
 };
 

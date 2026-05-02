@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -174,7 +174,11 @@ const AuthStatusMenu: React.FC = () => {
     return (
         <div className="flex items-center space-x-3">
             <Button
-                onClick={() => navigate('/login')}
+                onClick={() =>
+                    navigate('/login', {
+                        state: { from: `${location.pathname}${location.search}` },
+                    })
+                }
                 className="bg-transparent text-yellow-500 hover:bg-yellow-500/10 transition-all duration-300 cursor-pointer px-4"
             >
                 Login

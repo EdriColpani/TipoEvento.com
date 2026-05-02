@@ -4,6 +4,8 @@ import { showError } from '@/utils/toast';
 
 export interface TicketData {
     id: string;
+    /** Código individual da pulseira (ex.: CHAVA-001), quando existir */
+    code_wristbands: string | null;
     status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending'; // NOVO: Adicionado 'pending'
     created_at: string;
     event_type: string;
@@ -36,6 +38,7 @@ const fetchMyTickets = async (userId: string): Promise<TicketData[]> => {
         .from('wristband_analytics')
         .select(`
             id,
+            code_wristbands,
             status,
             created_at,
             event_type,

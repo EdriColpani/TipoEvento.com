@@ -223,7 +223,10 @@ serve(async (req) => {
       }
 
       const paidOrFree = wa.event_type === 'purchase' || wa.event_type === 'free_registration';
-      const ok = wa.status === 'used' && paidOrFree;
+      const analyticsReady =
+        wa.status === 'used' ||
+        (wa.event_type === 'purchase' && wa.status === 'active');
+      const ok = analyticsReady && paidOrFree;
       const validationStatus = ok ? 'success' : 'not_paid';
       const validationMessage = ok
         ? (validation_type === 'entry' ? 'Entrada validada (inscrição gratuita).' : 'Saída registrada.')
@@ -303,7 +306,10 @@ serve(async (req) => {
             return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada para este evento.' }), { status: 403, headers: corsHeaders });
           }
           const paidOrFree = wa.event_type === 'purchase' || wa.event_type === 'free_registration';
-          const ok = wa.status === 'used' && paidOrFree;
+          const analyticsReady =
+            wa.status === 'used' ||
+            (wa.event_type === 'purchase' && wa.status === 'active');
+          const ok = analyticsReady && paidOrFree;
           const validationStatus = ok ? 'success' : 'not_paid';
           const validationMessage = ok
             ? (validation_type === 'entry' ? 'Entrada validada.' : 'Saída registrada.')
@@ -526,8 +532,12 @@ serve(async (req) => {
     let validationMessage = validation_type === 'entry' ? 'Entrada validada com sucesso.' : 'Saída validada com sucesso.';
     let httpStatus = 200;
 
-    // Verificar se o ingresso foi pago
-    if (!analyticsData || analyticsData.status !== 'used') {
+    // Verificar se o ingresso foi pago (compra paga fica em analytics como active ou used)
+    const purchaseAnalyticsOk =
+      analyticsData &&
+      (analyticsData.status === 'used' ||
+        (analyticsData.status === 'active' && analyticsData.event_type === 'purchase'));
+    if (!purchaseAnalyticsOk) {
       validationStatus = 'not_paid';
       validationMessage = 'Ingresso não foi pago ou não está associado a uma compra.';
       httpStatus = 400;

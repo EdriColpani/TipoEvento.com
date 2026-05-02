@@ -101,6 +101,25 @@ serve(async (req) => {
   console.log(`[DEBUG] Client authenticated. User ID: ${clientUserId}`);
 
   try {
+    const releaseReservedAnalytics = async (ids: string[]) => {
+      if (!ids || ids.length === 0) return;
+      const { error } = await supabaseService
+        .from('wristband_analytics')
+        .update({
+          status: 'active',
+          event_type: 'inventory',
+          event_data: {
+            reservation_released_at: new Date().toISOString(),
+          },
+        })
+        .in('id', ids)
+        .eq('status', 'pending')
+        .is('client_user_id', null);
+      if (error) {
+        console.error('[create-payment-preference] Falha ao liberar reservas:', error);
+      }
+    };
+
     const body = (await req.json()) as Record<string, unknown>;
     const { eventId, purchaseItems } = body as {
       eventId?: string;
@@ -259,6 +278,39 @@ serve(async (req) => {
 
     if (insertTransactionError) throw insertTransactionError;
     const transactionId = transactionData.id;
+
+    // 5.1 Reservar analytics imediatamente para evitar múltiplas compras pendentes
+    // apontarem para as mesmas pulseiras antes da confirmação de pagamento.
+    const { data: reservedRows, error: reserveError } = await supabaseService
+      .from('wristband_analytics')
+      .update({
+        status: 'pending',
+        event_type: 'checkout_pending',
+        event_data: {
+          reserved_transaction_id: transactionId,
+          reserved_at: new Date().toISOString(),
+        },
+      })
+      .in('id', analyticsIdsToReserve)
+      .eq('status', 'active')
+      .is('client_user_id', null)
+      .select('id');
+
+    if (reserveError) {
+      await supabaseService.from('receivables').delete().eq('id', transactionId);
+      throw reserveError;
+    }
+
+    const reservedIds = (reservedRows || []).map((r: any) => r.id as string);
+    if (reservedIds.length !== analyticsIdsToReserve.length) {
+      // Conflito de concorrência: alguém reservou/vendeu no intervalo.
+      await releaseReservedAnalytics(reservedIds);
+      await supabaseService.from('receivables').delete().eq('id', transactionId);
+      return new Response(
+        JSON.stringify({ error: 'Alguns ingressos acabaram de ser reservados por outra compra. Tente novamente.' }),
+        { status: 409, headers: corsHeaders },
+      );
+    }
     
     // 6. Prepare MP Preference Items
     // IMPORTANTE: unit_price deve ser número, não string
@@ -278,6 +330,7 @@ serve(async (req) => {
     
     const base = checkoutOrigin.replace(/\/$/, '');
     if (!base) {
+      await releaseReservedAnalytics(analyticsIdsToReserve);
       await supabaseService.from('receivables').delete().eq('id', transactionId);
       return new Response(
         JSON.stringify({
@@ -298,6 +351,7 @@ serve(async (req) => {
     // 8. Create MP Preference usando API REST diretamente (mais confiável que SDK)
     // Validação: Preferência deve ter pelo menos um item com preço válido
     if (!mpItems || mpItems.length === 0 || mpItems.some((item: any) => !item.unit_price || item.unit_price <= 0)) {
+        await releaseReservedAnalytics(analyticsIdsToReserve);
         await supabaseService.from('receivables').delete().eq('id', transactionId);
         return new Response(JSON.stringify({ error: 'Itens de pagamento inválidos. Verifique os preços.' }), { 
             status: 400, 
@@ -371,6 +425,7 @@ serve(async (req) => {
             ? 'Token do Mercado Pago recusado. Verifique PAYMENT_API_KEY_SECRET (produção vs teste) e se o token não expirou.'
             : undefined;
 
+        await releaseReservedAnalytics(analyticsIdsToReserve);
         await supabaseService.from('receivables').delete().eq('id', transactionId);
 
         const httpStatus = isPolicyBlock || mpApiResponse.status === 403 ? 403 : 502;
@@ -398,6 +453,7 @@ serve(async (req) => {
     
     if (!mpResponse.init_point) {
         // Se falhar, reverter a transação pendente
+        await releaseReservedAnalytics(analyticsIdsToReserve);
         await supabaseService.from('receivables').delete().eq('id', transactionId);
         return new Response(JSON.stringify({ error: 'URL de pagamento não foi gerada pelo Mercado Pago. Verifique as configurações.' }), { 
             status: 500, 

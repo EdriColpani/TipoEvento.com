@@ -103,8 +103,11 @@ const fetchManagerTransactions = async (
     const acc = splitByTransaction.get(key)!;
     const platformAmount = Number(split.platform_amount ?? 0);
     const managerAmount = Number(split.manager_amount ?? 0);
-    acc.system_commission_amount += platformAmount;
-    acc.organizer_net_amount += managerAmount;
+    // Consolidação defensiva: em caso de duplicidade de registros para a mesma transação,
+    // usamos o maior valor observado de cada "lado" do split (sistema e organizador),
+    // evitando inflar o líquido por soma indevida.
+    acc.system_commission_amount = Math.max(acc.system_commission_amount, platformAmount);
+    acc.organizer_net_amount = Math.max(acc.organizer_net_amount, managerAmount);
     if (split.applied_percentage !== null && split.applied_percentage !== undefined) {
       acc.system_commission_percentage = Number(split.applied_percentage);
     }

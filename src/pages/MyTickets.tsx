@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom'; // Importando useSearchParams
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'; // Importando useSearchParams
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import AuthStatusMenu from '@/components/AuthStatusMenu';
@@ -11,6 +11,7 @@ import { Loader2, Calendar, MapPin, QrCode, History } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast'; // Importando showSuccess/showError
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { useQueryClient } from '@tanstack/react-query'; // Importando useQueryClient
+import QrCodeModal from '@/components/QrCodeModal';
 
 interface TicketCardProps {
     ticket: TicketData;
@@ -18,6 +19,7 @@ interface TicketCardProps {
 
 const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
     const navigate = useNavigate();
+    const [qrOpen, setQrOpen] = useState(false);
     
     const statusClasses = {
         active: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -85,19 +87,28 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                 </div>
                 <Button 
                     className="bg-yellow-500 text-black hover:bg-yellow-600 transition-all duration-300 cursor-pointer px-4 sm:px-6 text-sm sm:text-base"
-                    onClick={() => alert(`Exibindo QR Code para o ingresso ${ticket.id}`)}
+                    onClick={() => setQrOpen(true)}
                     disabled={!isActive}
                 >
                     <QrCode className="mr-2 h-4 w-4" />
                     {isActive ? 'Ver QR Code' : 'Ingresso Inativo'}
                 </Button>
             </div>
+            <QrCodeModal
+                isOpen={qrOpen}
+                onClose={() => setQrOpen(false)}
+                eventName={eventName}
+                eventDate={eventDetails?.date || ''}
+                wristbandCode={(ticket.code_wristbands && ticket.code_wristbands.trim()) || ticket.id}
+                scanValue={ticket.id}
+            />
         </Card>
     );
 };
 
 const MyTickets: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const queryClient = useQueryClient(); // Inicializando useQueryClient
     const [searchParams, setSearchParams] = useSearchParams(); // Usando useSearchParams
     const [userId, setUserId] = useState<string | undefined>(undefined);
@@ -182,7 +193,7 @@ const MyTickets: React.FC = () => {
     
     if (!userId) {
         // Redirecionamento se a sessão expirar ou não estiver logado
-        navigate('/login');
+        navigate('/login', { state: { from: `${location.pathname}${location.search}` } });
         return null;
     }
 

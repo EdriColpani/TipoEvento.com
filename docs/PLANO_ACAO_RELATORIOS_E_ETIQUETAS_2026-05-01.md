@@ -176,3 +176,55 @@ Corrigir por partes, com previsibilidade e rastreio, os problemas reportados em:
   - matriz final "widget x valor esperado x valor exibido";
   - ajustes finos em widgets que ainda divergirem após teste de campo.
 
+### 2026-05-01 (Checkpoint salvo para continuidade)
+- Ajustes aplicados no retorno de pagamento e financeiro:
+  - normalização de tipo de notificação do MP no webhook (`payment.updated` etc.);
+  - correção de validação de `applied_percentage` (aceitando `0%`);
+  - conciliação automática no retorno do checkout (sem clique manual obrigatório);
+  - logs/auditoria em `payment_events`.
+- Ajustes aplicados nos relatórios do gestor:
+  - colunas reorganizadas para visão financeira clara (`Bruto`, `% MP`, `R$ MP`, `% Comissão`, `R$ Comissão`, `Despesas`, `Líquido`);
+  - totalização geral por colunas;
+  - fallback para cálculo quando split ainda não consolidado;
+  - proteção contra duplicidade visual de split na agregação.
+- Ajustes aplicados no fluxo de pulseiras:
+  - reserva imediata das pulseiras no `create-payment-preference` (`status = pending`) para evitar múltiplas compras apontando para os mesmos IDs;
+  - liberação automática das reservas quando pagamento falhar/cancelar no webhook.
+
+#### Ponto de atenção pendente (depende de deploy)
+- Deploy obrigatório das funções atualizadas:
+  1. `create-payment-preference`
+  2. `mercadopago-webhook`
+  3. `check-payment-status`
+- Sem esse deploy, o comportamento antigo pode continuar aparecendo.
+
+#### Próximo passo ao retomar
+1. Executar deploy das funções.
+2. Fazer 2-3 compras de teste sequenciais.
+3. Validar:
+   - `wristband_analytics` (reservas `pending` distintas por transação),
+   - `financial_splits` (registros por transação aprovada),
+   - UI do gestor (vendidas x ativas coerentes),
+   - relatório financeiro (líquido não maior que bruto).
+
+### Checkpoint – Relatório de Vendas (retomar na próxima sessão)
+
+**Contexto:** Na tela havia inconsistência (ex.: total R$ 3,20, 1 ingresso, média R$ 0,80). A view `sales_reports_view` não existe nas migrações do repo; o relatório foi refeito em código.
+
+**Implementado:**
+
+- Hook `src/hooks/use-sales-report.tsx`: agrega `receivables` com critério “pago” alinhado ao financeiro (`status = paid` ou `payment_status` em `approved` / `authorized`); gestor escopado por `manager_user_id`; admin master vê tudo; filtros por evento e `created_at` (início/fim do dia UTC).
+- Contagem de ingressos: `wristband_analytics_ids.length`, com **fallback 1** se o array vier vazio (evita média errada quando o backend não preenche analytics).
+- `average_ticket_price` por evento = `total_sales_value / total_tickets_sold`.
+- `src/pages/SalesReports.tsx`: usa o hook, `useProfile` + acesso tipos 1/2, eventos via `useManagerEvents`, terceiro card de **média ponderada** no resumo, textos explicando base em recebíveis pagos.
+- Query habilitada com `canAccess && (isAdminMaster || !!userId)` para não bloquear admin enquanto `userId` carrega.
+
+**Build:** `npm run build` OK após as alterações.
+
+**Para continuar amanhã:**
+
+1. Validar em ambiente real várias compras (1 vs N ingressos no mesmo recebível; array preenchido vs vazio).
+2. Decidir produto: manter fallback **1** quando `wristband_analytics_ids` está vazio ou alinhar 100% ao relatório financeiro (só tamanho do array, podendo dar 0 ingressos).
+3. Confirmar RLS em `receivables` / `events` para gestor.
+4. Se necessário, alinhar critérios entre relatório de vendas e relatório financeiro linha a linha.
+

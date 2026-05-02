@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,31 @@ interface MovementRow {
     } | null;
 }
 
-interface AggregatedMovement {
+interface MovementStats {
+    total_entries: number;
+    total_exits: number;
+    last_movement_type: 'entry' | 'exit' | null;
+    last_validated_at: string | null;
+}
+
+/** Ingresso atribuído a cliente (venda/reserva) — aparece mesmo sem leitura no portão */
+interface SoldAssignmentRow {
+    analytics_id: string;
     wristband_id: string;
-    code: string;
+    code_wristbands: string | null;
+    batch_code: string;
+    ingresso_status: string;
+    event_type: string;
+}
+
+interface ReportTableRow {
+    rowKey: string;
+    analytics_id: string | null;
+    wristband_id: string;
+    individual_code: string;
+    batch_code: string;
+    ingresso_status: string | null;
+    event_type: string | null;
     total_entries: number;
     total_exits: number;
     last_movement_type: 'entry' | 'exit' | null;
@@ -48,9 +70,7 @@ const fetchEventsForFilter = async (): Promise<EventOption[]> => {
     return (data || []) as EventOption[];
 };
 
-const fetchWristbandMovements = async (eventId: string | null): Promise<MovementRow[]> => {
-    if (!eventId) return [];
-
+const fetchWristbandMovements = async (eventId: string): Promise<MovementRow[]> => {
     const { data, error } = await supabase
         .from('wristband_movements')
         .select('wristband_id, event_id, movement_type, validated_at, wristbands(code)')
@@ -65,17 +85,16 @@ const fetchWristbandMovements = async (eventId: string | null): Promise<Movement
     return (data || []) as MovementRow[];
 };
 
-const aggregateMovements = (rows: MovementRow[]): AggregatedMovement[] => {
-    const map = new Map<string, AggregatedMovement>();
+/** Estatísticas de leitura por pulseira (wristbands.id), conforme gravado pelo validador */
+const movementStatsByWristbandId = (rows: MovementRow[]): Map<string, MovementStats> => {
+    const map = new Map<string, MovementStats>();
 
     for (const row of rows) {
-        const existing = map.get(row.wristband_id);
         const isEntry = row.movement_type === 'entry';
+        const existing = map.get(row.wristband_id);
 
         if (!existing) {
             map.set(row.wristband_id, {
-                wristband_id: row.wristband_id,
-                code: row.wristbands?.code || 'N/A',
                 total_entries: isEntry ? 1 : 0,
                 total_exits: isEntry ? 0 : 1,
                 last_movement_type: row.movement_type,
@@ -89,7 +108,117 @@ const aggregateMovements = (rows: MovementRow[]): AggregatedMovement[] => {
         }
     }
 
-    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
+    return map;
+};
+
+const fetchSoldAssignmentsForEvent = async (eventId: string): Promise<SoldAssignmentRow[]> => {
+    const { data: wristbandsForEvent, error: wbErr } = await supabase
+        .from('wristbands')
+        .select('id, code')
+        .eq('event_id', eventId);
+
+    if (wbErr) {
+        console.error('Erro ao carregar pulseiras do evento:', wbErr);
+        throw wbErr;
+    }
+
+    const bands = wristbandsForEvent || [];
+    const wristbandIds = bands.map((w) => w.id);
+    const batchCodeById = new Map(bands.map((w) => [w.id, w.code]));
+
+    if (wristbandIds.length === 0) return [];
+
+    const { data: analyticsRows, error: waErr } = await supabase
+        .from('wristband_analytics')
+        .select('id, wristband_id, code_wristbands, status, event_type')
+        .in('wristband_id', wristbandIds)
+        .not('client_user_id', 'is', null);
+
+    if (waErr) {
+        console.error('Erro ao carregar ingressos atribuídos:', waErr);
+        throw waErr;
+    }
+
+    return (analyticsRows || []).map((row) => ({
+        analytics_id: row.id,
+        wristband_id: row.wristband_id,
+        code_wristbands: row.code_wristbands,
+        batch_code: batchCodeById.get(row.wristband_id) || 'N/A',
+        ingresso_status: row.status,
+        event_type: row.event_type,
+    }));
+};
+
+const buildReportRows = (
+    sold: SoldAssignmentRow[],
+    movementRows: MovementRow[],
+): ReportTableRow[] => {
+    const statsMap = movementStatsByWristbandId(movementRows);
+    const soldWristbandIds = new Set(sold.map((s) => s.wristband_id));
+
+    const fromSold: ReportTableRow[] = sold.map((s) => {
+        const st = statsMap.get(s.wristband_id);
+        const individual = (s.code_wristbands && s.code_wristbands.trim()) || s.batch_code;
+        return {
+            rowKey: s.analytics_id,
+            analytics_id: s.analytics_id,
+            wristband_id: s.wristband_id,
+            individual_code: individual,
+            batch_code: s.batch_code,
+            ingresso_status: s.ingresso_status,
+            event_type: s.event_type,
+            total_entries: st?.total_entries ?? 0,
+            total_exits: st?.total_exits ?? 0,
+            last_movement_type: st?.last_movement_type ?? null,
+            last_validated_at: st?.last_validated_at ?? null,
+        };
+    });
+
+    // Movimentações sem linha de analytics atribuída (ex.: fluxos antigos) — ainda aparecem
+    const orphanRows: ReportTableRow[] = [];
+    for (const [wbId, st] of statsMap) {
+        if (!soldWristbandIds.has(wbId)) {
+            const mv = movementRows.find((r) => r.wristband_id === wbId);
+            const batchCode = mv?.wristbands?.code || 'N/A';
+            orphanRows.push({
+                rowKey: `mv-${wbId}`,
+                analytics_id: null,
+                wristband_id: wbId,
+                individual_code: batchCode,
+                batch_code: batchCode,
+                ingresso_status: null,
+                event_type: null,
+                total_entries: st.total_entries,
+                total_exits: st.total_exits,
+                last_movement_type: st.last_movement_type,
+                last_validated_at: st.last_validated_at,
+            });
+        }
+    }
+
+    return [...fromSold, ...orphanRows].sort((a, b) =>
+        a.individual_code.localeCompare(b.individual_code, 'pt-BR'),
+    );
+};
+
+const fetchMovementReportBundle = async (eventId: string): Promise<ReportTableRow[]> => {
+    const [movementRows, sold] = await Promise.all([
+        fetchWristbandMovements(eventId),
+        fetchSoldAssignmentsForEvent(eventId),
+    ]);
+    return buildReportRows(sold, movementRows);
+};
+
+const ingressoStatusLabel = (status: string | null): string => {
+    if (!status) return '—';
+    const map: Record<string, string> = {
+        active: 'Ativo',
+        pending: 'Pendente',
+        used: 'Utilizado',
+        lost: 'Perdido',
+        cancelled: 'Cancelado',
+    };
+    return map[status] || status;
 };
 
 const WristbandMovementsReports: React.FC = () => {
@@ -116,25 +245,33 @@ const WristbandMovementsReports: React.FC = () => {
         queryFn: fetchEventsForFilter,
     });
 
-    const { data: movementRows, isLoading: isLoadingMovements, isError } = useQuery<MovementRow[]>({
-        queryKey: ['wristband_movements', selectedEventId],
-        queryFn: () => fetchWristbandMovements(selectedEventId),
+    const {
+        data: reportBundle,
+        isLoading: isLoadingMovements,
+        isError,
+    } = useQuery({
+        queryKey: ['wristband_movements_report', selectedEventId],
+        queryFn: () => fetchMovementReportBundle(selectedEventId!),
         enabled: !!selectedEventId,
     });
 
-    if (isError) {
-        showError('Erro ao carregar movimentações de pulseiras.');
-    }
+    useEffect(() => {
+        if (isError) showError('Erro ao carregar movimentações de pulseiras.');
+    }, [isError]);
 
-    const aggregated = aggregateMovements(movementRows || []);
-    const filtered = aggregated.filter(item => {
+    const reportRows = reportBundle ?? [];
+    const filtered = reportRows.filter((item) => {
         if (!searchTerm.trim()) return true;
         const term = searchTerm.toLowerCase();
-        return item.code.toLowerCase().includes(term);
+        return (
+            item.individual_code.toLowerCase().includes(term) ||
+            item.batch_code.toLowerCase().includes(term) ||
+            (item.ingresso_status && ingressoStatusLabel(item.ingresso_status).toLowerCase().includes(term))
+        );
     });
 
-    const totalEntries = aggregated.reduce((sum, m) => sum + m.total_entries, 0);
-    const totalExits = aggregated.reduce((sum, m) => sum + m.total_exits, 0);
+    const totalEntries = filtered.reduce((sum, m) => sum + m.total_entries, 0);
+    const totalExits = filtered.reduce((sum, m) => sum + m.total_exits, 0);
 
     return (
         <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -157,7 +294,8 @@ const WristbandMovementsReports: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Filtros</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Selecione um evento e, opcionalmente, filtre por código da pulseira para analisar entradas e saídas.
+                        Lista ingressos já atribuídos a compradores neste evento. Entradas e saídas só aparecem após leitura no
+                        validador (portão); antes disso os totais ficam em zero.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -213,7 +351,8 @@ const WristbandMovementsReports: React.FC = () => {
                             <span className="font-semibold text-yellow-500">Total saídas:</span> {totalExits}
                         </p>
                         <p className="text-xs text-gray-500">
-                            Cada leitura válida da pulseira gera uma linha em movimentações (entrada/saída).
+                            O sistema lista primeiro os ingressos já vinculados a um comprador; as leituras do validador no portão
+                            incrementam entradas e saídas.
                         </p>
                     </div>
                 </CardContent>
@@ -223,7 +362,7 @@ const WristbandMovementsReports: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Detalhamento por pulseira</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Entradas, saídas e último status por pulseira/ingresso no evento selecionado.
+                        Por ingresso atribuído: status da pulseira, entradas/saídas no portão e última leitura.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -235,25 +374,35 @@ const WristbandMovementsReports: React.FC = () => {
                         <p className="text-gray-400 text-sm">Carregando movimentações...</p>
                     ) : filtered.length === 0 ? (
                         <p className="text-gray-400 text-sm">
-                            Nenhuma movimentação encontrada para este evento com os filtros atuais.
+                            {searchTerm.trim()
+                                ? 'Nenhum resultado para o filtro de busca.'
+                                : 'Nenhum ingresso atribuído a compradores neste evento (e sem movimentações registradas). Quando houver vendas com pulseira vinculada ao cliente, os ingressos aparecem aqui — mesmo antes da primeira leitura no portão.'}
                         </p>
                     ) : (
                         <div className="overflow-x-auto">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="text-gray-300">Código da Pulseira</TableHead>
+                                        <TableHead className="text-gray-300">Código do ingresso</TableHead>
+                                        <TableHead className="text-gray-300">Lote / tipo</TableHead>
+                                        <TableHead className="text-gray-300 text-center">Status ingresso</TableHead>
                                         <TableHead className="text-gray-300 text-center">Entradas</TableHead>
                                         <TableHead className="text-gray-300 text-center">Saídas</TableHead>
-                                        <TableHead className="text-gray-300 text-center">Último Movimento</TableHead>
-                                        <TableHead className="text-gray-300 text-center">Data/Hora Última Leitura</TableHead>
+                                        <TableHead className="text-gray-300 text-center">Último movimento</TableHead>
+                                        <TableHead className="text-gray-300 text-center">Última leitura</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filtered.map((item) => (
-                                        <TableRow key={item.wristband_id}>
+                                        <TableRow key={item.rowKey}>
                                             <TableCell className="font-mono text-sm text-yellow-500">
-                                                {item.code}
+                                                {item.individual_code}
+                                            </TableCell>
+                                            <TableCell className="font-mono text-xs text-gray-300">
+                                                {item.batch_code}
+                                            </TableCell>
+                                            <TableCell className="text-center text-gray-200 text-xs">
+                                                {ingressoStatusLabel(item.ingresso_status)}
                                             </TableCell>
                                             <TableCell className="text-center text-gray-200">
                                                 {item.total_entries}
@@ -263,10 +412,10 @@ const WristbandMovementsReports: React.FC = () => {
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 {item.last_movement_type === 'entry'
-                                                    ? <span className="text-green-400 text-xs px-2 py-1 rounded-full bg-green-500/10">Dentro</span>
+                                                    ? <span className="text-green-400 text-xs px-2 py-1 rounded-full bg-green-500/10">Entrada</span>
                                                     : item.last_movement_type === 'exit'
-                                                        ? <span className="text-red-400 text-xs px-2 py-1 rounded-full bg-red-500/10">Fora</span>
-                                                        : <span className="text-gray-400 text-xs">N/A</span>}
+                                                        ? <span className="text-red-400 text-xs px-2 py-1 rounded-full bg-red-500/10">Saída</span>
+                                                        : <span className="text-gray-500 text-xs">Sem leitura</span>}
                                             </TableCell>
                                             <TableCell className="text-center text-gray-300 text-xs">
                                                 {item.last_validated_at

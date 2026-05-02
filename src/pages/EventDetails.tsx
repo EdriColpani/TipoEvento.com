@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import AuthStatusMenu from '@/components/AuthStatusMenu';
@@ -35,6 +35,7 @@ const getMinPriceDisplay = (price: number | null | undefined) => {
 const EventDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
     
     const { details, isLoading, isError } = useEventDetails(id);
     const { isAuthenticated, redirectToLogin } = useAuthRedirect();
@@ -110,7 +111,9 @@ const EventDetails: React.FC = () => {
             if (!session) {
                 dismissToast(toastId);
                 showError("Sessão expirada. Faça login novamente.");
-                navigate('/login');
+                navigate('/login', {
+                    state: { from: `${location.pathname}${location.search}` },
+                });
                 return;
             }
             

@@ -1,85 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, FileText, CalendarIcon, Search, Download } from 'lucide-react';
+import { ArrowLeft, FileText, CalendarIcon, Download, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { useManagerEvents } from '@/hooks/use-manager-events';
+import { useEventsReport } from '@/hooks/use-events-report';
 import { showSuccess, showError } from '@/utils/toast';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
-interface Event {
-    id: string;
-    title: string;
-    status: string; // e.g., 'active', 'inactive', 'finished'
-    start_date: string;
-    end_date: string;
-    location: string;
-    company_name: string; // Adicionado para exibir no relatório
-}
-
-interface EventReportData {
-    event_id: string;
-    event_title: string;
-    status: string;
-    start_date: string;
-    end_date: string;
-    location: string;
-    company_name: string;
-    total_wristbands_generated: number;
-    total_wristbands_sold: number;
-    occupancy_percentage: number;
-}
-
-const fetchEventsForFilter = async (): Promise<Event[]> => {
-    const { data, error } = await supabase
-        .from('events')
-        .select('id, title, status, start_date, end_date, location, companies(corporate_name)')
-        .order('title', { ascending: true });
-    if (error) throw error;
-    // Flatten company_name
-    return data.map(event => ({ 
-        ...event, 
-        company_name: Array.isArray(event.companies) ? event.companies[0]?.corporate_name : event.companies?.corporate_name || 'N/A'
-    })) as Event[];
-};
-
-const fetchEventsReports = async (eventId: string | null, status: string | null, startDate: string | null, endDate: string | null): Promise<EventReportData[]> => {
-    let query = supabase
-        .from('events_reports_view') // Assumindo uma VIEW no Supabase para dados de eventos agregados
-        .select('*');
-
-    if (eventId) {
-        query = query.eq('event_id', eventId);
-    }
-    if (status) {
-        query = query.eq('status', status);
-    }
-    if (startDate) {
-        query = query.gte('start_date', startDate);
-    }
-    if (endDate) {
-        query = query.lte('end_date', endDate);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
-};
+const ADMIN_MASTER_USER_TYPE_ID = 1;
+const MANAGER_PRO_USER_TYPE_ID = 2;
 
 const EventReports: React.FC = () => {
     const navigate = useNavigate();
-    const { profile } = useProfile();
+    const [userId, setUserId] = useState<string | undefined>(undefined);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -87,21 +31,67 @@ const EventReports: React.FC = () => {
         to: undefined,
     });
 
-    const { data: eventsForFilter, isLoading: isLoadingEventsForFilter } = useQuery<Event[]>({
-        queryKey: ['events_report_events'],
-        queryFn: fetchEventsForFilter,
-    });
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
+    }, []);
+
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const canAccess =
+        profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID ||
+        profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
+
+    const { events: eventsForFilter, isLoading: isLoadingEventsForFilter } = useManagerEvents(
+        userId,
+        isAdminMaster,
+        { enabled: !!userId && !isLoadingProfile && !!profile && Boolean(canAccess) },
+    );
 
     const formattedStartDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : null;
     const formattedEndDate = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : null;
 
-    const { data: eventReports, isLoading: isLoadingEventReports } = useQuery<EventReportData[]>({
-        queryKey: ['event_reports', selectedEventId, selectedStatus, formattedStartDate, formattedEndDate],
-        queryFn: () => fetchEventsReports(selectedEventId, selectedStatus, formattedStartDate, formattedEndDate),
-    });
+    const reportFilters = useMemo(
+        () => ({
+            eventId: selectedEventId,
+            status: selectedStatus,
+            startDate: formattedStartDate,
+            endDate: formattedEndDate,
+        }),
+        [selectedEventId, selectedStatus, formattedStartDate, formattedEndDate],
+    );
 
-    // Acesso restrito
-    if (profile && profile.tipo_usuario_id !== 1 && profile.tipo_usuario_id !== 2) {
+    const {
+        data: eventReports = [],
+        isLoading: isLoadingEventReports,
+        isError: isReportError,
+    } = useEventsReport(userId, isAdminMaster, reportFilters, Boolean(canAccess));
+
+    useEffect(() => {
+        if (isReportError) showError('Erro ao carregar relatório de eventos.');
+    }, [isReportError]);
+
+    if (!userId || isLoadingProfile) {
+        return (
+            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
+                <p>Carregando sessão...</p>
+            </div>
+        );
+    }
+
+    if (!profile) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20 px-4">
+                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Perfil não encontrado</h1>
+                <p className="text-gray-400 mb-6">Não foi possível carregar seu perfil.</p>
+                <Button onClick={() => navigate('/manager/dashboard')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Voltar ao Dashboard
+                </Button>
+            </div>
+        );
+    }
+
+    if (profile.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID && profile.tipo_usuario_id !== MANAGER_PRO_USER_TYPE_ID) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <h1 className="text-3xl font-serif text-red-500 mb-4">Acesso Negado</h1>
@@ -130,11 +120,11 @@ const EventReports: React.FC = () => {
             'Total de Pulseiras Vendidas',
             'Percentual de Ocupação',
         ];
-        const rows = eventReports.map(report => [
+        const rows = eventReports.map((report) => [
             report.event_title,
             report.status,
             formatEventDateForDisplay(report.start_date) || report.start_date,
-            formatEventDateForDisplay(report.end_date) || report.end_date,
+            report.end_date ? formatEventDateForDisplay(report.end_date) || report.end_date : '—',
             report.location,
             report.company_name,
             report.total_wristbands_generated,
@@ -142,10 +132,7 @@ const EventReports: React.FC = () => {
             report.occupancy_percentage.toFixed(2) + '%',
         ]);
 
-        const csvContent = [
-            headers.join(';'),
-            ...rows.map(row => row.join(';'))
-        ].join('\n');
+        const csvContent = [headers.join(';'), ...rows.map((row) => row.join(';'))].join('\n');
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -177,7 +164,10 @@ const EventReports: React.FC = () => {
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6 mb-8">
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Filtros</CardTitle>
-                    <CardDescription className="text-gray-400">Selecione o evento, status e/ou período para filtrar os dados.</CardDescription>
+                    <CardDescription className="text-gray-400">
+                        Lista só os eventos que você pode gerir (como na tela de eventos). “Geradas” = ingressos individuais criados nos
+                        lotes; “Vendidas” = já atribuídas a um comprador.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div>
@@ -191,7 +181,7 @@ const EventReports: React.FC = () => {
                                 {isLoadingEventsForFilter ? (
                                     <SelectItem value="loading" disabled>Carregando eventos...</SelectItem>
                                 ) : (
-                                    eventsForFilter?.map(event => (
+                                    eventsForFilter?.map((event) => (
                                         <SelectItem key={event.id} value={event.id} className="hover:bg-yellow-500/10 cursor-pointer">
                                             {event.title}
                                         </SelectItem>
@@ -209,16 +199,17 @@ const EventReports: React.FC = () => {
                             </SelectTrigger>
                             <SelectContent className="bg-black border-yellow-500/30 text-white">
                                 <SelectItem value="all" className="hover:bg-yellow-500/10 cursor-pointer">Todos os Status</SelectItem>
-                                <SelectItem value="active" className="hover:bg-yellow-500/10 cursor-pointer">Ativo</SelectItem>
-                                <SelectItem value="inactive" className="hover:bg-yellow-500/10 cursor-pointer">Inativo</SelectItem>
-                                <SelectItem value="finished" className="hover:bg-yellow-500/10 cursor-pointer">Finalizado</SelectItem>
+                                <SelectItem value="pending" className="hover:bg-yellow-500/10 cursor-pointer">Pendente</SelectItem>
+                                <SelectItem value="active" className="hover:bg-yellow-500/10 cursor-pointer">Publicado</SelectItem>
+                                <SelectItem value="inactive" className="hover:bg-yellow-500/10 cursor-pointer">Desativado</SelectItem>
+                                <SelectItem value="finished" className="hover:bg-yellow-500/10 cursor-pointer">Finalizado (data passada)</SelectItem>
                                 <SelectItem value="cancelled" className="hover:bg-yellow-500/10 cursor-pointer">Cancelado</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
                     <div className="grid gap-2">
-                        <label className="block text-sm font-medium text-gray-400 mb-2">Período</label>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Período (data do evento)</label>
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button
@@ -268,7 +259,9 @@ const EventReports: React.FC = () => {
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Detalhes dos Eventos</CardTitle>
-                    <CardDescription className="text-gray-400">Visão detalhada de todos os eventos com suas informações e performance.</CardDescription>
+                    <CardDescription className="text-gray-400">
+                        Visão por evento: ocupação = vendidas ÷ geradas (ingressos individuais nos lotes).
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {(isLoadingEventReports) ? (
@@ -296,9 +289,9 @@ const EventReports: React.FC = () => {
                                         <TableRow key={report.event_id} className="border-b border-yellow-500/10 hover:bg-black/40 transition-colors text-sm">
                                             <TableCell className="py-3 text-white font-medium truncate max-w-[150px]">{report.event_title}</TableCell>
                                             <TableCell className="py-3 text-white font-medium truncate max-w-[150px]">{report.company_name}</TableCell>
-                                            <TableCell className="py-3 text-center text-yellow-500">{report.status.charAt(0).toUpperCase() + report.status.slice(1)}</TableCell>
+                                            <TableCell className="py-3 text-center text-yellow-500">{report.status}</TableCell>
                                             <TableCell className="py-3 text-center text-white">{formatEventDateForDisplay(report.start_date) || '—'}</TableCell>
-                                            <TableCell className="py-3 text-center text-white">{formatEventDateForDisplay(report.end_date) || '—'}</TableCell>
+                                            <TableCell className="py-3 text-center text-white">{report.end_date ? formatEventDateForDisplay(report.end_date) || '—' : '—'}</TableCell>
                                             <TableCell className="py-3 text-white truncate max-w-[150px]">{report.location}</TableCell>
                                             <TableCell className="py-3 text-right text-white">{report.total_wristbands_generated}</TableCell>
                                             <TableCell className="py-3 text-right text-white">{report.total_wristbands_sold}</TableCell>
@@ -320,4 +313,3 @@ const EventReports: React.FC = () => {
 };
 
 export default EventReports;
-

@@ -32,6 +32,7 @@ interface AnalyticsEntry {
     created_at: string;
     code_wristbands: string;
     status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending'; // NOVO: Adicionado 'pending'
+    client_user_id?: string | null;
     sequential_number: number | null; // Novo campo
 }
 
@@ -259,6 +260,9 @@ const ManagerManageWristband: React.FC = () => {
     
     // Função auxiliar para obter o status do evento de analytics
     const getAnalyticsStatus = (entry: AnalyticsEntry) => {
+        // Regra de negócio para gestão:
+        // se já existe cliente vinculado, consideramos "vendido" na visão operacional.
+        if (entry.client_user_id) return 'used';
         return entry.status || 'N/A';
     };
 
@@ -555,6 +559,7 @@ const ManagerManageWristband: React.FC = () => {
                     eventName={details.events?.title || 'Evento Desconhecido'}
                     eventDate={details.events?.date || ''}
                     wristbandCode={selectedAnalyticsEntry.code_wristbands || details.code}
+                    scanValue={selectedAnalyticsEntry.id}
                 />
             )}
         </div>

@@ -1,80 +1,83 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, BarChart, Download, DollarSign } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, BarChart, Download, DollarSign, Loader2, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { useManagerEvents } from '@/hooks/use-manager-events';
+import { useSalesReport } from '@/hooks/use-sales-report';
 import { showSuccess, showError } from '@/utils/toast';
 
-interface Event {
-    id: string;
-    title: string;
-}
-
-interface SalesReportData {
-    event_id: string;
-    event_title: string;
-    total_sales_value: number;
-    total_tickets_sold: number;
-    average_ticket_price: number;
-}
-
-const fetchEvents = async (): Promise<Event[]> => {
-    const { data, error } = await supabase
-        .from('events')
-        .select('id, title')
-        .order('title', { ascending: true });
-    if (error) throw error;
-    return data;
-};
-
-const fetchSalesReports = async (eventId: string | null, startDate: string | null, endDate: string | null): Promise<SalesReportData[]> => {
-    let query = supabase
-        .from('sales_reports_view') // Assumindo uma VIEW no Supabase para dados de vendas agregados
-        .select('*');
-
-    if (eventId) {
-        query = query.eq('event_id', eventId);
-    }
-    if (startDate) {
-        query = query.gte('sale_date', startDate);
-    }
-    if (endDate) {
-        query = query.lte('sale_date', endDate);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
-};
+const ADMIN_MASTER_USER_TYPE_ID = 1;
+const MANAGER_PRO_USER_TYPE_ID = 2;
 
 const SalesReports: React.FC = () => {
     const navigate = useNavigate();
-    const { profile } = useProfile();
+    const [userId, setUserId] = useState<string | undefined>(undefined);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
 
-    const { data: events, isLoading: isLoadingEvents } = useQuery<Event[]>({
-        queryKey: ['sales_report_events'],
-        queryFn: fetchEvents,
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
+    }, []);
+
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const canAccess =
+        profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID ||
+        profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
+
+    const { events, isLoading: isLoadingEvents } = useManagerEvents(userId, isAdminMaster, {
+        enabled: !!userId && !isLoadingProfile && !!profile && Boolean(canAccess),
     });
 
-    const formattedStartDate = startDate || null;
-    const formattedEndDate = endDate || null;
+    const filters = useMemo(
+        () => ({
+            eventId: selectedEventId,
+            startDate: startDate || null,
+            endDate: endDate || null,
+        }),
+        [selectedEventId, startDate, endDate],
+    );
 
-    const { data: salesReports, isLoading: isLoadingSales } = useQuery<SalesReportData[]>({
-        queryKey: ['sales_reports', selectedEventId, formattedStartDate, formattedEndDate],
-        queryFn: () => fetchSalesReports(selectedEventId, formattedStartDate, formattedEndDate),
-    });
+    const queryEnabled = Boolean(canAccess && (isAdminMaster || !!userId));
 
-    // Acesso restrito
-    if (profile && profile.tipo_usuario_id !== 1 && profile.tipo_usuario_id !== 2) {
+    const {
+        data: salesReports = [],
+        isLoading: isLoadingSales,
+        isError: isSalesError,
+    } = useSalesReport(userId, isAdminMaster, filters, queryEnabled);
+
+    useEffect(() => {
+        if (isSalesError) showError('Erro ao carregar relatório de vendas.');
+    }, [isSalesError]);
+
+    if (!userId || isLoadingProfile) {
+        return (
+            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
+                <p>Carregando sessão...</p>
+            </div>
+        );
+    }
+
+    if (!profile) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20 px-4">
+                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Perfil não encontrado</h1>
+                <Button onClick={() => navigate('/manager/dashboard')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Voltar ao Dashboard
+                </Button>
+            </div>
+        );
+    }
+
+    if (!canAccess) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <h1 className="text-3xl font-serif text-red-500 mb-4">Acesso Negado</h1>
@@ -86,8 +89,10 @@ const SalesReports: React.FC = () => {
         );
     }
 
-    const totalSalesValue = salesReports?.reduce((acc, report) => acc + report.total_sales_value, 0) || 0;
-    const totalTicketsSold = salesReports?.reduce((acc, report) => acc + report.total_tickets_sold, 0) || 0;
+    const totalSalesValue = salesReports.reduce((acc, r) => acc + r.total_sales_value, 0);
+    const totalTicketsSold = salesReports.reduce((acc, r) => acc + r.total_tickets_sold, 0);
+    const overallAverageTicket =
+        totalTicketsSold > 0 ? totalSalesValue / totalTicketsSold : 0;
 
     const handleExportCsv = () => {
         if (!salesReports || salesReports.length === 0) {
@@ -101,17 +106,14 @@ const SalesReports: React.FC = () => {
             'Total de Ingressos Vendidos',
             'Preço Médio do Ingresso',
         ];
-        const rows = salesReports.map(report => [
+        const rows = salesReports.map((report) => [
             report.event_title,
             report.total_sales_value.toFixed(2).replace('.', ','),
             report.total_tickets_sold,
             report.average_ticket_price.toFixed(2).replace('.', ','),
         ]);
 
-        const csvContent = [
-            headers.join(';'),
-            ...rows.map(row => row.join(';')),
-        ].join('\n');
+        const csvContent = [headers.join(';'), ...rows.map((row) => row.join(';'))].join('\n');
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -143,7 +145,11 @@ const SalesReports: React.FC = () => {
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6 mb-8">
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Filtros</CardTitle>
-                    <CardDescription className="text-gray-400">Selecione o evento e/ou período para filtrar os dados.</CardDescription>
+                    <CardDescription className="text-gray-400">
+                        Dados a partir de recebíveis pagos (mesma base do relatório financeiro). Período usa a{' '}
+                        <span className="text-gray-300">data de criação da compra</span>. Ingressos por venda = tamanho de{' '}
+                        <span className="text-gray-300">wristband_analytics_ids</span>, ou 1 se o campo vier vazio.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
@@ -157,7 +163,7 @@ const SalesReports: React.FC = () => {
                                 {isLoadingEvents ? (
                                     <SelectItem value="loading" disabled>Carregando eventos...</SelectItem>
                                 ) : (
-                                    events?.map(event => (
+                                    events?.map((event) => (
                                         <SelectItem key={event.id} value={event.id} className="hover:bg-yellow-500/10 cursor-pointer">
                                             {event.title}
                                         </SelectItem>
@@ -168,7 +174,7 @@ const SalesReports: React.FC = () => {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-2">Período</label>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Período (data da compra)</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <Input
                                 type="date"
@@ -203,15 +209,17 @@ const SalesReports: React.FC = () => {
                 </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-gray-400">Valor Total de Vendas</CardTitle>
                         <DollarSign className="h-4 w-4 text-yellow-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-white">{totalSalesValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
-                        <p className="text-xs text-gray-500 mt-1">Valor bruto de todas as vendas.</p>
+                        <div className="text-2xl font-bold text-white">
+                            {totalSalesValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Soma do valor bruto das transações pagas.</p>
                     </CardContent>
                 </Card>
                 <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
@@ -221,16 +229,29 @@ const SalesReports: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-white">{totalTicketsSold}</div>
-                        <p className="text-xs text-gray-500 mt-1">Quantidade total de ingressos que foram vendidos.</p>
+                        <p className="text-xs text-gray-500 mt-1">Quantidade de ingressos nas compras pagas.</p>
                     </CardContent>
                 </Card>
-                {/* Outros cards de resumo podem ser adicionados aqui */}
+                <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-400">Preço Médio (ponderado)</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-yellow-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-white">
+                            {overallAverageTicket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Valor total ÷ quantidade de ingressos (filtros atuais).</p>
+                    </CardContent>
+                </Card>
             </div>
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Detalhes de Vendas por Evento</CardTitle>
-                    <CardDescription className="text-gray-400">Visão detalhada das vendas agrupadas por evento.</CardDescription>
+                    <CardDescription className="text-gray-400">
+                        Por evento: preço médio = valor total ÷ ingressos vendidos naquele evento.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {(isLoadingSales) ? (
@@ -272,4 +293,3 @@ const SalesReports: React.FC = () => {
 };
 
 export default SalesReports;
-

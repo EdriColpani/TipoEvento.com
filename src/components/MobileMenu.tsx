@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, Bell, User, LogOut, Crown } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -14,6 +14,7 @@ const MANAGER_USER_TYPE_ID = 2;
 
 const MobileMenu: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [isOpen, setIsOpen] = useState(false);
     const [session, setSession] = useState<any>(null);
     const [loadingSession, setLoadingSession] = useState(true);
@@ -46,8 +47,12 @@ const MobileMenu: React.FC = () => {
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
 
 
-    const handleNavigation = (path: string) => {
+    const handleNavigation = (path: string, loginReturnTo?: string) => {
         setIsOpen(false);
+        if (path === '/login' && loginReturnTo !== undefined) {
+            navigate(path, { state: { from: loginReturnTo } });
+            return;
+        }
         navigate(path);
     };
 
@@ -161,7 +166,12 @@ const MobileMenu: React.FC = () => {
                     ) : (
                         <div className="space-y-4">
                             <Button
-                                onClick={() => handleNavigation('/login')}
+                                onClick={() =>
+                                    handleNavigation(
+                                        '/login',
+                                        `${location.pathname}${location.search}`,
+                                    )
+                                }
                                 className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-lg font-semibold"
                             >
                                 Login
