@@ -592,6 +592,30 @@ serve(async (req) => {
             console.error(`[MP Webhook] CRITICAL: Failed to update receivable to 'failed':`, updateReceivableError);
             throw updateReceivableError;
         }
+
+        // Libera pulseiras reservadas em checkout pendente que não foram atribuídas a cliente.
+        if (Array.isArray(analyticsIds) && analyticsIds.length > 0) {
+            const { error: releaseError } = await supabaseService
+                .from('wristband_analytics')
+                .update({
+                    status: 'active',
+                    event_type: 'inventory',
+                    event_data: {
+                        reservation_released_at: new Date().toISOString(),
+                        reservation_release_reason: paymentStatus,
+                        transaction_id: finalTransactionId,
+                    },
+                })
+                .in('id', analyticsIds)
+                .eq('status', 'pending')
+                .is('client_user_id', null);
+
+            if (releaseError) {
+                console.error(`[MP Webhook] Failed to release pending wristbands for transaction ${finalTransactionId}:`, releaseError);
+            } else {
+                console.log(`[MP Webhook] Released pending wristbands for failed/cancelled transaction ${finalTransactionId}.`);
+            }
+        }
         
         console.log(`[MP Webhook] Receivable ${finalTransactionId} marked as 'failed'`);
         await logPaymentEvent({

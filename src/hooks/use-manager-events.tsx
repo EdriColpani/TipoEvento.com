@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
 import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
 
 export interface ManagerEvent {
@@ -66,18 +65,21 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
     }));
 };
 
-export const useManagerEvents = (userId: string | undefined, isAdminMaster: boolean) => {
+export const useManagerEvents = (
+    userId: string | undefined,
+    isAdminMaster: boolean,
+    options?: { enabled?: boolean },
+) => {
     const queryClient = useQueryClient();
+
+    const enabledBase =
+        options?.enabled !== undefined ? Boolean(options.enabled) && !!userId : !!userId;
 
     const query = useQuery({
         queryKey: ['managerEvents', userId, isAdminMaster], // Adiciona isAdminMaster à chave de cache
         queryFn: () => fetchManagerEvents(userId!, isAdminMaster),
-        enabled: !!userId, // Só executa se tiver o userId
+        enabled: enabledBase,
         staleTime: 1000 * 60 * 1, // 1 minute
-        onError: (error) => {
-            console.error("Query Error:", error);
-            showError("Erro ao carregar eventos. Tente recarregar a página.");
-        }
     });
 
     return {

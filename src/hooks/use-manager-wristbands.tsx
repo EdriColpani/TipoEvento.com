@@ -54,8 +54,31 @@ const fetchManagerWristbands = async (userId: string, isAdminMaster: boolean): P
         console.error("Error fetching manager wristbands from Supabase:", error);
         throw new Error(error.message); 
     }
-    
-    return data as WristbandData[];
+
+    const wristbands = (data || []) as WristbandData[];
+    if (wristbands.length === 0) return [];
+
+    // Regras de negócio para exibição no gestor:
+    // - pulseira vendida = existe analytics com client_user_id preenchido
+    // - nesse caso, mostrar status "used" (vendida) na listagem de gestão
+    const wristbandIds = wristbands.map((w) => w.id);
+    const { data: soldAnalytics, error: soldError } = await supabase
+        .from('wristband_analytics')
+        .select('wristband_id')
+        .in('wristband_id', wristbandIds)
+        .not('client_user_id', 'is', null);
+
+    if (soldError) {
+        console.error("Error fetching sold analytics for wristbands:", soldError);
+        return wristbands;
+    }
+
+    const soldSet = new Set((soldAnalytics || []).map((a: any) => a.wristband_id as string));
+    return wristbands.map((w) =>
+        soldSet.has(w.id)
+            ? { ...w, status: 'used' }
+            : w
+    );
 };
 
 export const useManagerWristbands = (userId: string | undefined, isAdminMaster: boolean) => {

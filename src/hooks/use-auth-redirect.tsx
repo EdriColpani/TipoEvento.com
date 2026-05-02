@@ -30,7 +30,9 @@ export const useAuthRedirect = () => {
 
     const redirectToLogin = () => {
         // Salva a rota atual para redirecionar após o login
-        navigate('/login', { state: { from: location.pathname, eventState: location.state } });
+        navigate('/login', {
+            state: { from: `${location.pathname}${location.search}`, eventState: location.state },
+        });
     };
 
     return {

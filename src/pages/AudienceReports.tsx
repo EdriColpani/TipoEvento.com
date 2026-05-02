@@ -1,81 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Users, CalendarIcon, Search, Download } from 'lucide-react';
+import { ArrowLeft, Users, CalendarIcon, Search, Download, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { useManagerEvents } from '@/hooks/use-manager-events';
+import { useAudienceReport } from '@/hooks/use-audience-report';
 import { showSuccess, showError } from '@/utils/toast';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
-
-interface Event {
-    id: string;
-    title: string;
-}
-
-interface AudienceReportData {
-    client_user_id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    cpf: string | null;
-    gender: string | null;
-    birth_date: string | null;
-    total_tickets_purchased: number;
-    events_attended: string[]; // Nomes dos eventos
-}
-
-const fetchEventsForFilter = async (): Promise<Event[]> => {
-    const { data, error } = await supabase
-        .from('events')
-        .select('id, title')
-        .order('title', { ascending: true });
-    if (error) throw error;
-    return data;
-};
-
-const fetchAudienceReports = async (eventId: string | null, gender: string | null, minAge: number | null, maxAge: number | null, startDate: string | null, endDate: string | null): Promise<AudienceReportData[]> => {
-    let query = supabase
-        .from('audience_reports_view') // Assumindo uma VIEW no Supabase para dados de público agregados
-        .select('*');
-
-    if (eventId) {
-        query = query.filter('events_attended', 'cs', `{${eventId}}`); // Filtra array de IDs de eventos
-    }
-    if (gender) {
-        query = query.eq('gender', gender);
-    }
-    if (minAge) {
-        query = query.gte('age', minAge);
-    }
-    if (maxAge) {
-        query = query.lte('age', maxAge);
-    }
-    if (startDate) {
-        query = query.gte('first_purchase_date', startDate);
-    }
-    if (endDate) {
-        query = query.lte('last_purchase_date', endDate);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
-};
+const ADMIN_MASTER_USER_TYPE_ID = 1;
+const MANAGER_PRO_USER_TYPE_ID = 2;
 
 const AudienceReports: React.FC = () => {
     const navigate = useNavigate();
-    const { profile } = useProfile();
+    const [userId, setUserId] = useState<string | undefined>(undefined);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [selectedGender, setSelectedGender] = useState<string | null>(null);
     const [minAge, setMinAge] = useState<string>('');
@@ -85,24 +33,84 @@ const AudienceReports: React.FC = () => {
         to: undefined,
     });
 
-    const { data: eventsForFilter, isLoading: isLoadingEventsForFilter } = useQuery<Event[]>({
-        queryKey: ['audience_report_events'],
-        queryFn: fetchEventsForFilter,
-    });
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
+    }, []);
+
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const canAccess =
+        profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID ||
+        profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
+
+    const { events: eventsForFilter, isLoading: isLoadingEventsForFilter } = useManagerEvents(
+        userId,
+        isAdminMaster,
+        { enabled: !!userId && !isLoadingProfile && !!profile && canAccess },
+    );
 
     const formattedStartDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : null;
     const formattedEndDate = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : null;
 
-    const numericMinAge = minAge ? parseInt(minAge, 10) : null;
-    const numericMaxAge = maxAge ? parseInt(maxAge, 10) : null;
+    const numericMinAge = useMemo(() => {
+        const t = minAge.trim();
+        if (!t) return null;
+        const n = parseInt(t, 10);
+        return Number.isFinite(n) ? n : null;
+    }, [minAge]);
 
-    const { data: audienceReports, isLoading: isLoadingAudienceReports } = useQuery<AudienceReportData[]>({
-        queryKey: ['audience_reports', selectedEventId, selectedGender, numericMinAge, numericMaxAge, formattedStartDate, formattedEndDate],
-        queryFn: () => fetchAudienceReports(selectedEventId, selectedGender, numericMinAge, numericMaxAge, formattedStartDate, formattedEndDate),
-    });
+    const numericMaxAge = useMemo(() => {
+        const t = maxAge.trim();
+        if (!t) return null;
+        const n = parseInt(t, 10);
+        return Number.isFinite(n) ? n : null;
+    }, [maxAge]);
+
+    const audienceFilters = useMemo(
+        () => ({
+            eventId: selectedEventId,
+            gender: selectedGender,
+            minAge: numericMinAge,
+            maxAge: numericMaxAge,
+            startDate: formattedStartDate,
+            endDate: formattedEndDate,
+        }),
+        [selectedEventId, selectedGender, numericMinAge, numericMaxAge, formattedStartDate, formattedEndDate],
+    );
+
+    const {
+        data: audienceReports = [],
+        isLoading: isLoadingAudienceReports,
+        isError: isAudienceError,
+    } = useAudienceReport(userId, isAdminMaster, audienceFilters, Boolean(canAccess));
+
+    useEffect(() => {
+        if (isAudienceError) showError('Erro ao carregar relatório de público.');
+    }, [isAudienceError]);
+
+    if (!userId || isLoadingProfile) {
+        return (
+            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
+                <p>Carregando sessão...</p>
+            </div>
+        );
+    }
+
+    if (!profile) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20 px-4">
+                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Perfil não encontrado</h1>
+                <p className="text-gray-400 mb-6">Não foi possível carregar seu perfil. Tente entrar novamente.</p>
+                <Button onClick={() => navigate('/manager/dashboard')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Voltar ao Dashboard
+                </Button>
+            </div>
+        );
+    }
 
     // Acesso restrito
-    if (profile && profile.tipo_usuario_id !== 1 && profile.tipo_usuario_id !== 2) {
+    if (profile.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID && profile.tipo_usuario_id !== MANAGER_PRO_USER_TYPE_ID) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <h1 className="text-3xl font-serif text-red-500 mb-4">Acesso Negado</h1>
@@ -122,7 +130,7 @@ const AudienceReports: React.FC = () => {
 
         const headers = [
             'Nome',
-            'Email',
+            'E-mail (não disponível)',
             'CPF',
             'Gênero',
             'Data de Nascimento',
@@ -174,7 +182,11 @@ const AudienceReports: React.FC = () => {
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6 mb-8">
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Filtros</CardTitle>
-                    <CardDescription className="text-gray-400">Selecione o evento, demografia e/ou período de compra para filtrar os dados.</CardDescription>
+                    <CardDescription className="text-gray-400">
+                        Baseado em <span className="text-gray-300">recebíveis pagos</span> do seu escopo (mesma regra do financeiro).
+                        Filtros de idade e gênero usam o cadastro em <span className="text-gray-300">perfis</span>; clientes sem data de nascimento
+                        não entram no recorte quando há filtro de idade.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div>
@@ -287,7 +299,10 @@ const AudienceReports: React.FC = () => {
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Detalhes do Público</CardTitle>
-                    <CardDescription className="text-gray-400">Visão detalhada dos clientes que compraram ingressos.</CardDescription>
+                    <CardDescription className="text-gray-400">
+                        Uma linha por cliente com compras pagas nos critérios acima. Coluna E-mail não está disponível neste relatório (não
+                        armazenada em perfil); use nome e CPF para identificação.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {(isLoadingAudienceReports) ? (

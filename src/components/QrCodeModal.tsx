@@ -19,7 +19,13 @@ interface QrCodeModalProps {
     onClose: () => void;
     eventName: string;
     eventDate: string; // Já vem como string 'YYYY-MM-DD'
+    /** Texto amigável exibido (ex.: BASE-001) */
     wristbandCode: string;
+    /**
+     * Valor escaneável pelo validador: UUID de wristband_analytics ou code_wristbands (BASE-NNN).
+     * Se omitido, usa wristbandCode.
+     */
+    scanValue?: string;
 }
 
 const QrCodeModal: React.FC<QrCodeModalProps> = ({
@@ -28,14 +34,21 @@ const QrCodeModal: React.FC<QrCodeModalProps> = ({
     eventName,
     eventDate,
     wristbandCode,
+    scanValue,
 }) => {
-    // A string a ser codificada no QR Code
-    // Usaremos um formato simples: "EVENTO|DATA|CODIGO"
-    const qrCodeValue = `${eventName}|${eventDate}|${wristbandCode}`;
-    const formattedDate = format(new Date(eventDate), 'dd/MM/yyyy'); // Formata para exibição
+    const qrCodeValue = (scanValue ?? wristbandCode).trim();
+    const formattedDate =
+        eventDate && !Number.isNaN(new Date(eventDate).getTime())
+            ? format(new Date(eventDate), 'dd/MM/yyyy')
+            : '—';
 
     return (
-        <AlertDialog open={isOpen} onOpenChange={onClose}>
+        <AlertDialog
+            open={isOpen}
+            onOpenChange={(open) => {
+                if (!open) onClose();
+            }}
+        >
             <AlertDialogContent className="bg-black/90 border border-yellow-500/30 text-white max-w-md">
                 <AlertDialogHeader>
                     <AlertDialogTitle className="text-yellow-400 text-xl text-center">QR Code da Pulseira</AlertDialogTitle>

@@ -81,15 +81,19 @@ const FinancialReports: React.FC = () => {
             const fee = Number(t.mp_fee_amount ?? 0);
             const netMp = Number(t.net_amount_after_mp ?? 0);
             const systemCommission = Number(t.system_commission_amount ?? 0);
-            const organizerNet = Number(t.organizer_net_amount ?? 0);
+            const organizerNet = Number(
+                t.organizer_net_amount ?? Math.max(gross - fee - systemCommission, 0),
+            );
+            const expenses = fee + systemCommission;
             acc.gross += gross;
             acc.fee += fee;
             acc.netMp += netMp;
             acc.systemCommission += systemCommission;
             acc.organizerNet += organizerNet;
+            acc.expenses += expenses;
             return acc;
         },
-        { gross: 0, fee: 0, netMp: 0, systemCommission: 0, organizerNet: 0 },
+        { gross: 0, fee: 0, netMp: 0, systemCommission: 0, organizerNet: 0, expenses: 0 },
     );
     const transactionAvgFeePct = transactionTotals.gross > 0 ? (transactionTotals.fee / transactionTotals.gross) * 100 : 0;
     const transactionAvgSystemPct = transactionTotals.gross > 0 ? (transactionTotals.systemCommission / transactionTotals.gross) * 100 : 0;
@@ -367,19 +371,28 @@ const FinancialReports: React.FC = () => {
                                     <TableHead className="text-yellow-500">Compra</TableHead>
                                     <TableHead className="text-yellow-500">Evento</TableHead>
                                     <TableHead className="text-yellow-500">Status</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">Taxa MP</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">% Taxa MP</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">% Sistema</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">Líquido MP</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">Líquido Organizador</TableHead>
-                                    <TableHead className="text-yellow-500">Detalhe MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Valor Bruto</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">% MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">R$ MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">% Comissão Sistema</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">R$ Comissão Sistema</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Total de Despesas</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Total Líquido</TableHead>
                                     <TableHead className="text-yellow-500">Data</TableHead>
                                     <TableHead className="text-yellow-500">Ação</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {pagedTransactions.map((transaction) => (
+                                    (() => {
+                                        const gross = Number(transaction.gross_amount ?? transaction.total_value ?? 0);
+                                        const mpFee = Number(transaction.mp_fee_amount ?? 0);
+                                        const systemCommission = Number(transaction.system_commission_amount ?? 0);
+                                        const totalExpenses = mpFee + systemCommission;
+                                        const totalNet = Number(
+                                            transaction.organizer_net_amount ?? Math.max(gross - totalExpenses, 0),
+                                        );
+                                        return (
                                     <TableRow key={transaction.id} className="border-yellow-500/10">
                                         <TableCell className="text-white">#{transaction.id.slice(0, 8)}...</TableCell>
                                         <TableCell className="text-white">{transaction.events?.title || 'Evento'}</TableCell>
@@ -388,21 +401,23 @@ const FinancialReports: React.FC = () => {
                                                 {getStatusLabel(transaction.status, transaction.payment_status)}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="text-white text-right">{formatCurrency(transaction.gross_amount || transaction.total_value || 0)}</TableCell>
-                                        <TableCell className="text-white text-right">{formatCurrency(transaction.mp_fee_amount || 0)}</TableCell>
+                                        <TableCell className="text-white text-right">
+                                            {formatCurrency(gross)}
+                                        </TableCell>
                                         <TableCell className="text-white text-right">
                                             {transaction.mp_fee_percentage !== null && transaction.mp_fee_percentage !== undefined
                                                 ? `${transaction.mp_fee_percentage.toFixed(2)}%`
                                                 : '-'}
                                         </TableCell>
+                                        <TableCell className="text-white text-right">{formatCurrency(mpFee)}</TableCell>
                                         <TableCell className="text-white text-right">
                                             {transaction.system_commission_percentage !== null && transaction.system_commission_percentage !== undefined
                                                 ? `${transaction.system_commission_percentage.toFixed(2)}%`
                                                 : '-'}
                                         </TableCell>
-                                        <TableCell className="text-white text-right">{formatCurrency(transaction.net_amount_after_mp || 0)}</TableCell>
-                                        <TableCell className="text-green-400 text-right">{formatCurrency(transaction.organizer_net_amount || 0)}</TableCell>
-                                        <TableCell className="text-gray-400">{transaction.mp_status_detail || '-'}</TableCell>
+                                        <TableCell className="text-white text-right">{formatCurrency(systemCommission)}</TableCell>
+                                        <TableCell className="text-white text-right">{formatCurrency(totalExpenses)}</TableCell>
+                                        <TableCell className="text-green-400 text-right font-semibold">{formatCurrency(totalNet)}</TableCell>
                                         <TableCell className="text-gray-400">{new Date(transaction.created_at).toLocaleString('pt-BR')}</TableCell>
                                         <TableCell>
                                             <Button
@@ -419,17 +434,20 @@ const FinancialReports: React.FC = () => {
                                             </Button>
                                         </TableCell>
                                     </TableRow>
+                                        );
+                                    })()
                                 ))}
                                 {transactions.length > 0 && (
                                     <TableRow className="border-yellow-500/30 bg-yellow-500/5">
                                         <TableCell className="text-yellow-500 font-semibold" colSpan={3}>Total Geral (filtro atual)</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.gross)}</TableCell>
-                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.fee)}</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{transactionAvgFeePct.toFixed(2)}%</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.fee)}</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{transactionAvgSystemPct.toFixed(2)}%</TableCell>
-                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.netMp)}</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.systemCommission)}</TableCell>
+                                        <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.expenses)}</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.organizerNet)}</TableCell>
-                                        <TableCell className="text-yellow-500" colSpan={3}>-</TableCell>
+                                        <TableCell className="text-yellow-500" colSpan={2}>-</TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>

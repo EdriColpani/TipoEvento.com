@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { resolveClientPostLoginPath } from '@/utils/safe-login-redirect';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const returnTo = (location.state as { from?: string } | null)?.from;
     const [loginData, setLoginData] = useState({ email: '', password: '' });
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -61,7 +64,8 @@ const Login: React.FC = () => {
                     redirectPath = '/manager/dashboard';
                 } else if (userType === 3) {
                     successMessage = "Login de Cliente realizado com sucesso!";
-                    redirectPath = '/profile';
+                    // UX: cliente volta ao site (ou à página em que estava antes do login)
+                    redirectPath = resolveClientPostLoginPath(returnTo);
                 } else {
                     showError("Tipo de usuário desconhecido. Acesso negado.");
                     await supabase.auth.signOut({ scope: 'local' });

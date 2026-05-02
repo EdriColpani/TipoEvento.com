@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import { supabase } from '@/integrations/supabase/client';
 
@@ -145,6 +145,7 @@ const profileSchema = z.object({
 const Profile: React.FC = () => {
 
     const navigate = useNavigate();
+    const location = useLocation();
 
     const queryClient = useQueryClient();
 
@@ -202,7 +203,7 @@ const Profile: React.FC = () => {
 
             if (!session) {
 
-                navigate('/login');
+                navigate('/login', { state: { from: `${location.pathname}${location.search}` } });
 
                 return;
 
