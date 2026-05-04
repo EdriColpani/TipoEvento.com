@@ -20,7 +20,7 @@ const ManagerLogin: React.FC = () => {
                         className="text-3xl font-serif text-yellow-500 font-bold mb-2 flex items-center justify-center cursor-pointer"
                         onClick={() => navigate('/')} // Adicionado onClick para navegar para a home
                     >
-                        EventoFest
+                        EventFest
                         <span className="ml-3 bg-gradient-to-r from-yellow-500 to-yellow-600 text-black px-3 py-1 rounded-lg text-sm font-bold">PRO</span>
                     </div>
                     <h1 className="text-2xl font-semibold text-white mb-2">Área do Gestor</h1>

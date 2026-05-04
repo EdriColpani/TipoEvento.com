@@ -43,7 +43,7 @@ const ForgotPassword = () => {
             <div className="relative z-10 w-full max-w-sm sm:max-w-md">
                 <div className="text-center mb-6 sm:mb-8">
                     <div className="text-3xl font-serif text-yellow-500 font-bold mb-2">
-                        EventoFest
+                        EventFest
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">Redefinir Senha</h1>
                     <p className="text-gray-400 text-sm sm:text-base">Insira seu e-mail para receber o link de redefinição</p>

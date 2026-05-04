@@ -104,7 +104,7 @@ const MobileMenu: React.FC = () => {
             </SheetTrigger>
             <SheetContent side="right" className="flex h-full max-h-[100dvh] w-[300px] flex-col overflow-hidden border-l border-yellow-500/30 bg-black/95 p-0 text-white sm:w-[400px]">
                 <SheetHeader className="shrink-0 border-b border-yellow-500/20 p-6">
-                    <SheetTitle className="text-3xl font-serif text-yellow-500">EventoFest</SheetTitle>
+                    <SheetTitle className="text-3xl font-serif text-yellow-500">EventFest</SheetTitle>
                 </SheetHeader>
                 
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-6 [-webkit-overflow-scrolling:touch]">

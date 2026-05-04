@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface NotificationBellProps {
     hasPendingNotifications: boolean;
     loading: boolean;
+    isLandingPage?: boolean;
 }
 
 // Mock para simular notificações de sistema para o gestor
@@ -37,7 +38,7 @@ const getManagerNotifications = (userId: string) => {
     return [];
 };
 
-const NotificationBell: React.FC<NotificationBellProps> = ({ hasPendingNotifications, loading }) => {
+const NotificationBell: React.FC<NotificationBellProps> = ({ hasPendingNotifications, loading, isLandingPage = false }) => {
     const navigate = useNavigate();
     const [session, setSession] = React.useState<any>(null);
     
@@ -59,7 +60,13 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ hasPendingNotificat
     const showManagerAlert = managerNotifications.length > 0;
 
     if (loading) {
-        return <div className="w-8 h-8 bg-yellow-500/20 rounded-full animate-pulse"></div>;
+        return (
+            <div
+                className={`w-8 h-8 rounded-full animate-pulse ${
+                    isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'
+                }`}
+            ></div>
+        );
     }
 
     if (!userId) {
@@ -70,7 +77,9 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ hasPendingNotificat
         <Popover>
             <PopoverTrigger asChild>
                 <button 
-                    className="relative p-2 text-yellow-500 hover:bg-yellow-500/10 rounded-lg transition-colors cursor-pointer"
+                    className={`relative p-2 rounded-lg transition-colors cursor-pointer ${
+                        isLandingPage ? 'text-cyan-300 hover:bg-cyan-400/10' : 'text-yellow-500 hover:bg-yellow-500/10'
+                    }`}
                     title={hasPendingNotifications ? "Notificações Pendentes" : "Nenhuma notificação"}
                 >
                     <i className="fas fa-bell text-lg"></i>
@@ -79,9 +88,9 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ hasPendingNotificat
                     )}
                 </button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 bg-black/90 border border-yellow-500/30 text-white p-0">
-                <div className="p-4 border-b border-yellow-500/20">
-                    <h4 className="text-lg font-semibold text-yellow-500">Notificações</h4>
+            <PopoverContent className={`w-80 bg-black/90 border text-white p-0 ${isLandingPage ? 'border-cyan-400/30' : 'border-yellow-500/30'}`}>
+                <div className={`p-4 border-b ${isLandingPage ? 'border-cyan-400/20' : 'border-yellow-500/20'}`}>
+                    <h4 className={`text-lg font-semibold ${isLandingPage ? 'text-cyan-300' : 'text-yellow-500'}`}>Notificações</h4>
                 </div>
                 <div className="p-4 max-h-80 overflow-y-auto">
                     {/* Lógica para Gestor */}
@@ -97,7 +106,9 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ hasPendingNotificat
                                         </p>
                                         <Button 
                                             variant="link" 
-                                            className="h-auto p-0 mt-2 text-xs text-yellow-500 hover:text-yellow-400"
+                                            className={`h-auto p-0 mt-2 text-xs ${
+                                                isLandingPage ? 'text-cyan-300 hover:text-cyan-200' : 'text-yellow-500 hover:text-yellow-400'
+                                            }`}
                                             onClick={() => navigate(notif.link)}
                                         >
                                             Ver Detalhes
@@ -119,7 +130,9 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ hasPendingNotificat
                                     </p>
                                     <Button 
                                         variant="link" 
-                                        className="h-auto p-0 mt-2 text-xs text-yellow-500 hover:text-yellow-400"
+                                        className={`h-auto p-0 mt-2 text-xs ${
+                                            isLandingPage ? 'text-cyan-300 hover:text-cyan-200' : 'text-yellow-500 hover:text-yellow-400'
+                                        }`}
                                         onClick={() => navigate('/manager/register')} // Redireciona para a página de registro de gestor
                                     >
                                         Continuar Cadastro PRO

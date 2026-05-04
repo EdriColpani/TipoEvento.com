@@ -14,7 +14,7 @@
      - `https://seu-dominio.com/reset-password`
 
 2. **Authentication → Email Templates → Reset password**
-   - O e-mail “feio” é o template padrão. Edite o HTML e o assunto (ex.: “EventoFest — Redefinir senha”).
+   - O e-mail “feio” é o template padrão. Edite o HTML e o assunto (ex.: “EventFest — Redefinir senha”).
    - O link do template deve continuar sendo `{{ .ConfirmationURL }}` (o Supabase já monta a URL correta com `redirectTo` do app).
 
 ## Fluxo no app (já implementado)

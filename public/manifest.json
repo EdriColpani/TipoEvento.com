@@ -1,7 +1,7 @@
 {
-  "name": "EventoFest",
-  "short_name": "EventoFest",
-  "description": "EventoFest — eventos, ingressos e validação",
+  "name": "EventFest",
+  "short_name": "EventFest",
+  "description": "EventFest — eventos, ingressos e validação",
   "start_url": "/validator",
   "display": "standalone",
   "background_color": "#000000",

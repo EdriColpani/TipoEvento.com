@@ -14,8 +14,10 @@ import { useManagerCompany } from '@/hooks/use-manager-company'; // NOVO: Import
 
 const AuthStatusMenu: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [session, setSession] = useState<any>(null);
     const [loadingSession, setLoadingSession] = useState(true);
+    const isLandingPage = location.pathname === '/';
 
     useEffect(() => {
         const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
@@ -68,7 +70,13 @@ const AuthStatusMenu: React.FC = () => {
 
     if (loadingSession || isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany)) {
         // Pode retornar um Skeleton ou null durante o carregamento inicial
-        return <div className="w-10 h-10 bg-yellow-500/20 rounded-full animate-pulse"></div>;
+        return (
+            <div
+                className={`w-10 h-10 rounded-full animate-pulse ${
+                    isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'
+                }`}
+            ></div>
+        );
     }
 
     if (session && profile) {
@@ -92,36 +100,57 @@ const AuthStatusMenu: React.FC = () => {
                 <NotificationBell 
                     hasPendingNotifications={hasPendingNotifications} 
                     loading={statusLoading} 
+                    isLandingPage={isLandingPage}
                 />
 
                 {/* Menu de Perfil */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <div className="cursor-pointer p-1 rounded-full border-2 border-yellow-500/50 hover:border-yellow-500 transition-all duration-300">
+                        <div
+                            className={`cursor-pointer p-1 rounded-full border-2 transition-all duration-300 ${
+                                isLandingPage
+                                    ? 'border-cyan-400/60 hover:border-blue-500'
+                                    : 'border-yellow-500/50 hover:border-yellow-500'
+                            }`}
+                        >
                             <Avatar className="h-8 w-8">
                                 <AvatarImage src={profile.avatar_url || undefined} alt={profile.first_name} />
-                                <AvatarFallback className="bg-yellow-500 text-black font-bold text-sm">{initials}</AvatarFallback>
+                                <AvatarFallback
+                                    className={`text-black font-bold text-sm ${
+                                        isLandingPage ? 'bg-cyan-400' : 'bg-yellow-500'
+                                    }`}
+                                >
+                                    {initials}
+                                </AvatarFallback>
                             </Avatar>
                         </div>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56 bg-black/90 border border-yellow-500/30 text-white">
-                        <DropdownMenuLabel className="text-yellow-500 truncate max-w-[200px]">
+                    <DropdownMenuContent
+                        className={`w-56 bg-black/90 border text-white ${
+                            isLandingPage ? 'border-cyan-400/30' : 'border-yellow-500/30'
+                        }`}
+                    >
+                        <DropdownMenuLabel
+                            className={`truncate max-w-[200px] ${
+                                isLandingPage ? 'text-cyan-300' : 'text-yellow-500'
+                            }`}
+                        >
                             {fullName}
                         </DropdownMenuLabel>
                         <DropdownMenuLabel className="text-gray-400 text-xs pt-0">
                             {userRoleDisplay}
                         </DropdownMenuLabel>
-                        <DropdownMenuSeparator className="bg-yellow-500/20" />
+                        <DropdownMenuSeparator className={isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'} />
                         <DropdownMenuItem 
                             onClick={() => navigate('/profile')} 
-                            className="cursor-pointer hover:bg-yellow-500/10"
+                            className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
                         >
                             <i className="fas fa-user-circle mr-2"></i>
                             Editar Perfil
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                             onClick={() => navigate('/tickets')} 
-                            className="cursor-pointer hover:bg-yellow-500/10"
+                            className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
                         >
                             <i className="fas fa-ticket-alt mr-2"></i>
                             Meus Ingressos
@@ -131,7 +160,9 @@ const AuthStatusMenu: React.FC = () => {
                         {isClient && (
                             <DropdownMenuItem 
                                 onClick={() => navigate('/manager/register')} 
-                                className="cursor-pointer hover:bg-yellow-500/10 text-green-400 font-semibold"
+                                className={`cursor-pointer text-green-400 font-semibold ${
+                                    isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'
+                                }`}
                             >
                                 <i className="fas fa-plus-circle mr-2"></i>
                                 Cadastrar Eventos
@@ -141,7 +172,9 @@ const AuthStatusMenu: React.FC = () => {
                         {isManager && (
                             <DropdownMenuItem 
                                 onClick={() => navigate('/manager/dashboard')} 
-                                className="cursor-pointer hover:bg-yellow-500/10 text-yellow-500 font-semibold"
+                                className={`cursor-pointer font-semibold ${
+                                    isLandingPage ? 'hover:bg-cyan-400/10 text-cyan-300' : 'hover:bg-yellow-500/10 text-yellow-500'
+                                }`}
                             >
                                 <i className="fas fa-crown mr-2"></i>
                                 Dashboard PRO
@@ -150,13 +183,15 @@ const AuthStatusMenu: React.FC = () => {
                         {isAdmin && (
                             <DropdownMenuItem 
                                 onClick={() => navigate('/admin/dashboard')} 
-                                className="cursor-pointer hover:bg-yellow-500/10 text-red-400 font-semibold"
+                                className={`cursor-pointer text-red-400 font-semibold ${
+                                    isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'
+                                }`}
                             >
                                 <Shield className="mr-2 h-4 w-4" />
                                 Dashboard Admin
                             </DropdownMenuItem>
                         )}
-                        <DropdownMenuSeparator className="bg-yellow-500/20" />
+                        <DropdownMenuSeparator className={isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'} />
                         <DropdownMenuItem 
                             onClick={handleLogout} 
                             className="cursor-pointer hover:bg-red-500/10 text-red-400"
@@ -179,13 +214,19 @@ const AuthStatusMenu: React.FC = () => {
                         state: { from: `${location.pathname}${location.search}` },
                     })
                 }
-                className="bg-transparent text-yellow-500 hover:bg-yellow-500/10 transition-all duration-300 cursor-pointer px-4"
+                className={`bg-transparent transition-all duration-300 cursor-pointer px-4 ${
+                    isLandingPage ? 'text-cyan-300 hover:bg-cyan-400/10' : 'text-yellow-500 hover:bg-yellow-500/10'
+                }`}
             >
                 Login
             </Button>
             <Button
                 onClick={() => navigate('/register')}
-                className="border border-yellow-500 bg-transparent text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all duration-300 cursor-pointer px-4"
+                className={`border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
+                    isLandingPage
+                        ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
+                        : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
+                }`}
             >
                 Cadastro
             </Button>

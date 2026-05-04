@@ -211,8 +211,28 @@ const Index: React.FC = () => {
         return pages;
     };
 
+    const efThemeStyles = `
+        .landing-ef-theme .text-yellow-500 { color: #22d3ee !important; }
+        .landing-ef-theme .bg-yellow-500 { background-color: #22d3ee !important; }
+        .landing-ef-theme .from-yellow-500 { --tw-gradient-from: #22d3ee var(--tw-gradient-from-position) !important; --tw-gradient-to: rgb(34 211 238 / 0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+        .landing-ef-theme .to-yellow-600 { --tw-gradient-to: #3b82f6 var(--tw-gradient-to-position) !important; }
+        .landing-ef-theme .hover\\:bg-yellow-600:hover { background-color: #3b82f6 !important; }
+        .landing-ef-theme .hover\\:from-yellow-600:hover { --tw-gradient-from: #0ea5e9 var(--tw-gradient-from-position) !important; --tw-gradient-to: rgb(14 165 233 / 0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+        .landing-ef-theme .hover\\:to-yellow-700:hover { --tw-gradient-to: #2563eb var(--tw-gradient-to-position) !important; }
+        .landing-ef-theme .border-yellow-500\\/20 { border-color: rgb(34 211 238 / 0.2) !important; }
+        .landing-ef-theme .border-yellow-500\\/30 { border-color: rgb(34 211 238 / 0.3) !important; }
+        .landing-ef-theme .hover\\:border-yellow-500\\/60:hover { border-color: rgb(59 130 246 / 0.6) !important; }
+        .landing-ef-theme .focus\\:border-yellow-500:focus { border-color: #22d3ee !important; }
+        .landing-ef-theme .focus\\:ring-yellow-500\\/20:focus { --tw-ring-color: rgb(34 211 238 / 0.2) !important; }
+        .landing-ef-theme .hover\\:bg-yellow-500\\/20:hover { background-color: rgb(34 211 238 / 0.2) !important; }
+        .landing-ef-theme .hover\\:shadow-yellow-500\\/20:hover { --tw-shadow-color: rgb(59 130 246 / 0.2) !important; --tw-shadow: var(--tw-shadow-colored) !important; }
+        .landing-ef-theme .hover\\:text-yellow-500:hover { color: #22d3ee !important; }
+        .landing-ef-theme #carousel .border-white\\/20 { border-color: transparent !important; }
+    `;
+
     return (
-        <>
+        <div className="landing-ef-theme">
+            <style>{efThemeStyles}</style>
             {/* NOVO: Carrossel 3D */}
             <section id="carousel" className="pt-0 bg-black">
                 <Carousel3D />
@@ -514,10 +534,10 @@ const Index: React.FC = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
                         <div className="col-span-2 md:col-span-1">
                             <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold mb-4">
-                                EventoFest
+                                EventFest
                             </div>
                             <p className="text-gray-400 text-sm leading-relaxed">
-                                A plataforma premium para eventos exclusivos e experiências inesquecíveis.
+                                A plataforma que faz tudo acontecer.
                             </p>
                         </div>
                         <div>
@@ -558,12 +578,12 @@ const Index: React.FC = () => {
                     </div>
                     <div className="border-t border-yellow-500/20 pt-6 text-center">
                         <p className="text-gray-400 text-sm">
-                            © 2025 EventoFest. Todos os direitos reservados.
+                            © 2025 EventFest. Todos os direitos reservados.
                         </p>
                     </div>
                 </div>
             </footer>
-        </>
+        </div>
     );
 };
 

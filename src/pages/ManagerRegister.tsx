@@ -75,7 +75,7 @@ const ManagerRegister: React.FC = () => {
                         className="text-3xl font-serif text-yellow-500 font-bold mb-2 cursor-pointer"
                         onClick={() => navigate('/')} 
                     >
-                        EventoFest PRO
+                        EventFest PRO
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">
                         {isAdminRegisterRoute && isAdminMaster ? "Editar Termos de Registro de Gestor" : "Cadastro de Gestor"}

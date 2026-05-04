@@ -913,7 +913,7 @@ const Profile: React.FC = () => {
 
                         <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer" onClick={() => navigate('/')}>
 
-                            EventoFest
+                            EventFest
 
                         </div>
 
