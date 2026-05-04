@@ -13,7 +13,7 @@
 }
 
 #qr-reader__scan_region {
-  border: 4px solid #eab308 !important;
+  border: 4px solid #22d3ee !important;
   border-radius: 8px;
 }
 
@@ -165,4 +165,48 @@ body {
 }
 .text-shadow-xl {
     text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.9);
+}
+
+/* Tema global EventFesta (paleta EF) */
+.text-yellow-500 { color: #22d3ee !important; }
+.text-yellow-400 { color: #38bdf8 !important; }
+.text-yellow-600 { color: #0ea5e9 !important; }
+
+.bg-yellow-500 { background-color: #22d3ee !important; }
+.bg-yellow-500\/10 { background-color: rgb(34 211 238 / 0.1) !important; }
+.bg-yellow-500\/20 { background-color: rgb(34 211 238 / 0.2) !important; }
+
+.border-yellow-500 { border-color: #22d3ee !important; }
+.border-yellow-500\/20 { border-color: rgb(34 211 238 / 0.2) !important; }
+.border-yellow-500\/30 { border-color: rgb(34 211 238 / 0.3) !important; }
+.border-yellow-500\/50 { border-color: rgb(34 211 238 / 0.5) !important; }
+
+.hover\:text-yellow-500:hover { color: #22d3ee !important; }
+.hover\:text-yellow-600:hover { color: #0ea5e9 !important; }
+.hover\:bg-yellow-500:hover { background-color: #22d3ee !important; }
+.hover\:bg-yellow-500\/10:hover { background-color: rgb(34 211 238 / 0.1) !important; }
+.hover\:bg-yellow-500\/20:hover { background-color: rgb(34 211 238 / 0.2) !important; }
+.hover\:bg-yellow-600:hover { background-color: #0ea5e9 !important; }
+.hover\:border-yellow-500:hover { border-color: #22d3ee !important; }
+.hover\:border-yellow-500\/60:hover { border-color: rgb(59 130 246 / 0.6) !important; }
+
+.focus\:border-yellow-500:focus { border-color: #22d3ee !important; }
+.focus\:ring-yellow-500\/20:focus { --tw-ring-color: rgb(34 211 238 / 0.2) !important; }
+
+.from-yellow-500 {
+  --tw-gradient-from: #22d3ee var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(34 211 238 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+.to-yellow-600 { --tw-gradient-to: #3b82f6 var(--tw-gradient-to-position) !important; }
+.hover\:from-yellow-600:hover {
+  --tw-gradient-from: #0ea5e9 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(14 165 233 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+.hover\:to-yellow-700:hover { --tw-gradient-to: #2563eb var(--tw-gradient-to-position) !important; }
+
+.hover\:shadow-yellow-500\/20:hover {
+  --tw-shadow-color: rgb(59 130 246 / 0.2) !important;
+  --tw-shadow: var(--tw-shadow-colored) !important;
 }

@@ -4,7 +4,7 @@ O site já tem **manifest** (`/manifest.json`) com `start_url: /validator` e íc
 
 ## Android (Chrome)
 
-1. Abra **https://eventofest.com.br/validator** (ou seu domínio).
+1. Abra **https://EventFest.com.br/validator** (ou seu domínio).
 2. Toque no menu **⋮** → **Instalar app** / **Adicionar à tela inicial** (o texto varia).
 3. Confirme. O ícone **Validador** abre em tela cheia (`standalone`).
 

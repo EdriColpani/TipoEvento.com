@@ -25,7 +25,7 @@ const AdminDashboard: React.FC = () => {
                     <i className="fas fa-user-shield mr-3"></i>
                     Dashboard Admin Master
                 </h1>
-                <p className="text-gray-400 text-sm sm:text-base">Visão geral e gerenciamento da saúde da plataforma EventoFest.</p>
+                <p className="text-gray-400 text-sm sm:text-base">Visão geral e gerenciamento da saúde da plataforma EventFest.</p>
             </div>
 
             {/* Cartões de Estatísticas Globais */}

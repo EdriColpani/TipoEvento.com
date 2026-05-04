@@ -8,8 +8,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-/** Remetente fixo: domínio eventofest.com.br (verificado na Resend). Sem secret de e-mail. */
-const RESEND_FROM = "EventoFest <noreply@eventofest.com.br>";
+/** Remetente fixo: domínio EventFest.com.br (verificado na Resend). Sem secret de e-mail. */
+const RESEND_FROM = "EventFest <noreply@EventFest.com.br>";
 
 const json200 = (obj: Record<string, unknown>) =>
   new Response(JSON.stringify(obj), {
@@ -116,7 +116,7 @@ serve(async (req) => {
   <p style="font-size:14px"><strong>É obrigatório apresentar este QR Code na entrada</strong> para confirmar sua presença no evento. Sem o QR, a entrada pode ser recusada.</p>
   <p><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}" width="200" height="200" alt="QR" /></p>
   ${codeFallbackBlock}
-  <p style="font-size:12px;color:#666;margin-top:20px">EventoFest · eventofest.com.br</p>
+  <p style="font-size:12px;color:#666;margin-top:20px">EventFest · EventFest.com.br</p>
 </div></body></html>`;
 
     const controller = new AbortController();

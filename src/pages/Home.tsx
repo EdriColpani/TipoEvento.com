@@ -195,7 +195,7 @@ const Home: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center space-x-4 sm:space-x-8">
                         <Link to="/" className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer">
-                            EventoFest
+                            EventFest
                         </Link>
                         <nav className="hidden md:flex items-center space-x-8">
                             <a href="#home" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Home</a>
@@ -227,7 +227,7 @@ const Home: React.FC = () => {
             <section id="home" className="relative w-full h-[500px] sm:h-[600px] md:h-[700px] overflow-hidden bg-black pt-20">
                 <div className="relative z-10 max-w-7xl mx-auto h-full flex flex-col justify-center items-center text-center px-4 sm:px-6">
                     <h1 className="text-4xl sm:text-6xl lg:text-7xl font-serif text-yellow-500 font-bold mb-4 sm:mb-6">
-                        EventoFest
+                        EventFest
                     </h1>
                     <h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-white mb-6 sm:mb-8 leading-tight">
                         Experiências Premium. Ingressos Exclusivos.
@@ -565,7 +565,7 @@ const Home: React.FC = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
                         <div className="col-span-2 md:col-span-1">
                             <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold mb-4">
-                                EventoFest
+                                EventFest
                             </div>
                             <p className="text-gray-400 text-sm leading-relaxed">
                                 A plataforma premium para eventos exclusivos e experiências inesquecíveis.
@@ -609,7 +609,7 @@ const Home: React.FC = () => {
                     </div>
                     <div className="border-t border-yellow-500/20 pt-6 text-center">
                         <p className="text-gray-400 text-sm">
-                            © 2025 EventoFest. Todos os direitos reservados.
+                            © 2025 EventFest. Todos os direitos reservados.
                         </p>
                     </div>
                 </div>

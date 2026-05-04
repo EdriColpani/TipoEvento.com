@@ -96,7 +96,7 @@ const ResetPassword = () => {
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <div className="text-3xl font-serif text-yellow-500 font-bold mb-2">EventoFest</div>
+          <div className="text-3xl font-serif text-yellow-500 font-bold mb-2">EventFest</div>
           <h1 className="text-2xl font-semibold">Nova senha</h1>
           <p className="text-gray-400 text-sm mt-1">
             Link de recuperação ativo — não é login normal. Defina a nova senha e depois entre de novo.
