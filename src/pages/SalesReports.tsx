@@ -155,16 +155,16 @@ const SalesReports: React.FC = () => {
                     <div>
                         <label htmlFor="event-filter" className="block text-sm font-medium text-gray-400 mb-2">Filtrar por Evento</label>
                         <Select onValueChange={(value) => setSelectedEventId(value === 'all' ? null : value)} value={selectedEventId || 'all'}>
-                            <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10">
+                            <SelectTrigger className="w-full bg-black/60 border-cyan-500/30 text-white focus:ring-cyan-400/40 h-10 [&_svg]:text-cyan-400">
                                 <SelectValue className="text-white" placeholder="Todos os Eventos" />
                             </SelectTrigger>
-                            <SelectContent className="bg-black border-yellow-500/30 text-white">
-                                <SelectItem value="all" className="hover:bg-yellow-500/10 cursor-pointer">Todos os Eventos</SelectItem>
+                            <SelectContent className="bg-black border-cyan-500/30 text-white">
+                                <SelectItem value="all" className="cursor-pointer">Todos os Eventos</SelectItem>
                                 {isLoadingEvents ? (
                                     <SelectItem value="loading" disabled>Carregando eventos...</SelectItem>
                                 ) : (
                                     events?.map((event) => (
-                                        <SelectItem key={event.id} value={event.id} className="hover:bg-yellow-500/10 cursor-pointer">
+                                        <SelectItem key={event.id} value={event.id} className="cursor-pointer">
                                             {event.title}
                                         </SelectItem>
                                     ))

@@ -228,3 +228,27 @@ Corrigir por partes, com previsibilidade e rastreio, os problemas reportados em:
 3. Confirmar RLS em `receivables` / `events` para gestor.
 4. Se necessário, alinhar critérios entre relatório de vendas e relatório financeiro linha a linha.
 
+### Checkpoint – Branding e UI (retomar na próxima sessão)
+
+**Contexto:** Foi iniciado o ajuste visual do sistema com nova identidade da marca e correções de usabilidade no menu.
+
+**Diretriz validada do cliente (não alterar):**
+- Nome oficial do sistema: **EventFest**.
+- Logo oficial: PNG enviado pelo cliente (arquivo em uso: `public/logo-eventfest.png`).
+
+**Implementado:**
+- Landing/header usando a logo PNG oficial.
+- Ajustes de tamanho da logo para maior visibilidade.
+- Troca de paleta visual para tons da identidade EF (ciano/azul) aplicada de forma ampla no sistema.
+- Correção do bug de menu: texto sumia ao passar o mouse no dropdown; corrigido no componente base `src/components/ui/dropdown-menu.tsx` para manter contraste no hover/focus.
+- Ajustes no texto do rodapé da landing conforme solicitado anteriormente.
+
+**Build e qualidade:**
+- `npm run build` executado com sucesso após os ajustes.
+- Sem erros de lint nos arquivos principais alterados.
+
+**Pendências para retomar:**
+1. Revisão visual final tela a tela (gestor/admin/cliente) para confirmar contraste e legibilidade após a paleta global.
+2. Validar com o cliente se mantém a paleta EF global ou se deseja escopo apenas em áreas específicas.
+3. Se aprovado, consolidar tokens de tema (semânticos) para reduzir dependência de classes utilitárias legadas.
+

@@ -126,12 +126,12 @@ const ManagerDashboard: React.FC = () => {
 
             {/* Gráficos e Top Eventos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                <div className="bg-black border border-yellow-500/30 rounded-2xl p-6">
+                <div className="bg-black border border-cyan-500/30 rounded-2xl p-6 shadow-lg shadow-cyan-500/5">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg sm:text-xl font-semibold text-white">Receita Mensal</h3>
                         <div className="flex items-center space-x-4">
                             <select 
-                                className="bg-black/60 border border-yellow-500/30 rounded-lg px-3 py-1 text-white text-sm focus:outline-none cursor-pointer"
+                                className="bg-black/60 border border-cyan-500/30 rounded-lg px-3 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/30 cursor-pointer"
                                 value={monthlyRevenuePeriod}
                                 onChange={(e) => setMonthlyRevenuePeriod(Number(e.target.value))}
                             >
@@ -143,7 +143,7 @@ const ManagerDashboard: React.FC = () => {
                     <div className="h-64 bg-black/40 rounded-xl flex items-center justify-center">
                         {isLoadingMonthlyRevenue ? (
                             <div className="text-center">
-                                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                                <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mx-auto mb-4" />
                                 <p className="text-gray-400">Carregando gráfico de receita...</p>
                             </div>
                         ) : isErrorMonthlyRevenue ? (
@@ -152,7 +152,8 @@ const ManagerDashboard: React.FC = () => {
                             </div>
                         ) : (monthlyRevenueData && monthlyRevenueData.length > 0) ? (
                             <div className="relative w-full h-full p-4">
-                                <SalesLineChart 
+                                <SalesLineChart
+                                    datasetLabel="Receita mensal"
                                     data={monthlyRevenueData.map(item => ({ date: item.month, total_sales: item.total_revenue }))}
                                 />
                             </div>

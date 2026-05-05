@@ -90,21 +90,25 @@ const Login: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-4 sm:px-6 py-12">
-            <div className="absolute inset-0 opacity-10">
-                <div className="absolute inset-0" style={{
-                    backgroundImage: 'radial-gradient(circle at 25% 25%, #fbbf24 0%, transparent 50%), radial-gradient(circle at 75% 75%, #fbbf24 0%, transparent 50%)',
-                    backgroundSize: '400px 400px'
-                }}></div>
+            <div className="absolute inset-0 opacity-[0.12]">
+                <div
+                    className="absolute inset-0"
+                    style={{
+                        backgroundImage:
+                            'radial-gradient(circle at 25% 25%, #22d3ee 0%, transparent 50%), radial-gradient(circle at 75% 75%, #3b82f6 0%, transparent 50%)',
+                        backgroundSize: '400px 400px',
+                    }}
+                />
             </div>
             <div className="relative z-10 w-full max-w-sm sm:max-w-md">
                 <div className="text-center mb-6 sm:mb-8">
-                    <div className="text-3xl font-serif text-yellow-500 font-bold mb-2">
+                    <div className="text-3xl font-serif font-bold mb-2 bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 bg-clip-text text-transparent">
                         EventFest
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">Acessar Conta</h1>
                     <p className="text-gray-400 text-sm sm:text-base">Bem-vindo de volta!</p>
                 </div>
-                <div className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-yellow-500/10">
+                <div className="bg-black/80 backdrop-blur-sm border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/15">
                     <form onSubmit={handleLogin} className="space-y-5 sm:space-y-6">
                         <div>
                             <label htmlFor="email" className="block text-sm font-medium text-white mb-2">
@@ -116,11 +120,11 @@ const Login: React.FC = () => {
                                     id="email"
                                     value={loginData.email}
                                     onChange={(e) => setLoginData(prev => ({ ...prev, email: e.target.value }))}
-                                    className="w-full bg-black/60 border border-yellow-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-400 text-sm sm:text-base focus:outline-none focus:ring-2 focus:border-yellow-500 focus:ring-yellow-500/20 transition-all duration-300"
+                                    className="w-full bg-black/60 border border-cyan-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-400 text-sm sm:text-base focus:outline-none focus:ring-2 focus:border-cyan-400 focus:ring-cyan-400/25 transition-all duration-300"
                                     placeholder="seu@email.com"
                                     required
                                 />
-                                <i className="fas fa-envelope absolute right-4 top-1/2 transform -translate-y-1/2 text-yellow-500/60 text-sm"></i>
+                                <i className="fas fa-envelope absolute right-4 top-1/2 transform -translate-y-1/2 text-cyan-400/70 text-sm"></i>
                             </div>
                         </div>
                         <div>
@@ -133,11 +137,11 @@ const Login: React.FC = () => {
                                     id="password"
                                     value={loginData.password}
                                     onChange={(e) => setLoginData(prev => ({ ...prev, password: e.target.value }))}
-                                    className="w-full bg-black/60 border border-yellow-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-400 text-sm sm:text-base focus:outline-none focus:ring-2 focus:border-yellow-500 focus:ring-yellow-500/20 transition-all duration-300"
+                                    className="w-full bg-black/60 border border-cyan-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-400 text-sm sm:text-base focus:outline-none focus:ring-2 focus:border-cyan-400 focus:ring-cyan-400/25 transition-all duration-300"
                                     placeholder="Digite sua senha"
                                     required
                                 />
-                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-yellow-500/60 hover:text-yellow-500 transition-colors">
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-cyan-400/70 hover:text-cyan-300 transition-colors">
                                     <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                                 </button>
                             </div>
@@ -148,14 +152,15 @@ const Login: React.FC = () => {
                                     type="checkbox" 
                                     checked={rememberMe}
                                     onChange={(e) => setRememberMe(e.target.checked)}
-                                    className="mr-2 accent-yellow-500" 
+                                    className="mr-2 h-4 w-4 accent-[#22d3ee] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:ring-offset-2 focus:ring-offset-black/80"
+                                    style={{ accentColor: '#22d3ee' }}
                                 />
                                 <span className="text-xs sm:text-sm text-gray-300">Lembrar-me</span>
                             </label>
                             <button 
                                 type="button" 
                                 onClick={() => navigate('/forgot-password')}
-                                className="text-xs sm:text-sm text-yellow-500 hover:text-yellow-400 transition-colors cursor-pointer"
+                                className="text-xs sm:text-sm text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
                             >
                                 Esqueci a senha
                             </button>
@@ -164,7 +169,7 @@ const Login: React.FC = () => {
                             <Button
                                 type="submit"
                                 disabled={isLoading}
-                                className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-black hover:from-cyan-400 hover:to-blue-500 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                             >
                                 {isLoading ? (
                                     <div className="flex items-center justify-center">
@@ -178,18 +183,18 @@ const Login: React.FC = () => {
                             <Button
                                 type="button"
                                 onClick={() => navigate('/')}
-                                className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
+                                className="w-full bg-transparent border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
                             >
                                 Voltar
                             </Button>
                         </div>
-                        <div className="text-center pt-4 border-t border-yellow-500/20">
+                        <div className="text-center pt-4 border-t border-cyan-500/25">
                             <p className="text-gray-400 text-sm">
                                 Não tem uma conta?{' '}
                                 <button
                                     type="button"
                                     onClick={() => navigate('/register')}
-                                    className="text-yellow-500 hover:text-yellow-400 font-semibold transition-colors cursor-pointer"
+                                    className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
                                 >
                                     Cadastre-se
                                 </button>

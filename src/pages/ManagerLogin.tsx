@@ -1,10 +1,79 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
+import { supabase } from '@/integrations/supabase/client';
+import { showSuccess, showError } from '@/utils/toast';
+
+const ADMIN_USER_TYPE_ID = 1;
+const MANAGER_USER_TYPE_ID = 2;
+const CLIENT_USER_TYPE_ID = 3;
 
 const ManagerLogin: React.FC = () => {
     const navigate = useNavigate();
     const [managerLoginData, setManagerLoginData] = useState({ email: '', password: '' });
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+
+        try {
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                email: managerLoginData.email.trim(),
+                password: managerLoginData.password,
+            });
+
+            if (authError) {
+                showError('Credenciais inválidas ou usuário não encontrado.');
+                return;
+            }
+
+            const user = authData.user;
+            if (!user) {
+                showError('Login falhou. Verifique seu e-mail e senha.');
+                return;
+            }
+
+            const { data: profileData, error: profileError } = await supabase
+                .from('profiles')
+                .select('tipo_usuario_id')
+                .eq('id', user.id)
+                .single();
+
+            if (profileError || !profileData) {
+                showError('Erro ao carregar dados do perfil. Tente novamente.');
+                await supabase.auth.signOut({ scope: 'local' });
+                return;
+            }
+
+            const userType = profileData.tipo_usuario_id;
+
+            if (userType === ADMIN_USER_TYPE_ID) {
+                showSuccess('Login de Administrador Master realizado com sucesso!');
+                navigate('/admin/dashboard', { replace: true });
+                return;
+            }
+
+            if (userType === MANAGER_USER_TYPE_ID) {
+                showSuccess('Login de Gestor PRO realizado com sucesso!');
+                navigate('/manager/dashboard', { replace: true });
+                return;
+            }
+
+            if (userType === CLIENT_USER_TYPE_ID) {
+                showError('Conta de cliente: use o login do site em “Acessar Conta”.');
+                await supabase.auth.signOut({ scope: 'local' });
+                return;
+            }
+
+            showError('Tipo de usuário não autorizado nesta área.');
+            await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+            showError('Ocorreu um erro inesperado. Tente novamente.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-6 py-12">
@@ -27,7 +96,7 @@ const ManagerLogin: React.FC = () => {
                     <p className="text-gray-400">Acesse seu painel de controle premium</p>
                 </div>
                 <div className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-8 shadow-2xl shadow-yellow-500/10">
-                    <form onSubmit={(e) => { e.preventDefault(); navigate('/manager/dashboard'); }} className="space-y-6">
+                    <form onSubmit={handleSubmit} className="space-y-6">
                         <div>
                             <label htmlFor="managerEmail" className="block text-sm font-medium text-white mb-2">
                                 E-mail Corporativo
@@ -67,17 +136,31 @@ const ManagerLogin: React.FC = () => {
                                 <input type="checkbox" className="mr-2 accent-yellow-500" />
                                 <span className="text-sm text-gray-300">Manter-me conectado</span>
                             </label>
-                            <button type="button" className="text-sm text-yellow-500 hover:text-yellow-400 transition-colors cursor-pointer">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/forgot-password')}
+                                className="text-sm text-yellow-500 hover:text-yellow-400 transition-colors cursor-pointer"
+                            >
                                 Esqueci minha senha
                             </button>
                         </div>
                         <div className="space-y-4">
                             <Button
                                 type="submit"
-                                className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-600 hover:to-yellow-700 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105"
+                                disabled={isLoading}
+                                className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-600 hover:to-yellow-700 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                             >
-                                <i className="fas fa-crown mr-2"></i>
-                                Acessar Dashboard PRO
+                                {isLoading ? (
+                                    <span className="inline-flex items-center justify-center gap-2">
+                                        <span className="h-5 w-5 border-2 border-black/20 border-t-black rounded-full animate-spin" aria-hidden />
+                                        Entrando...
+                                    </span>
+                                ) : (
+                                    <>
+                                        <i className="fas fa-crown mr-2"></i>
+                                        Acessar Dashboard PRO
+                                    </>
+                                )}
                             </Button>
                             <Button
                                 type="button"

@@ -170,8 +170,8 @@ const EventReports: React.FC = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div>
-                        <label htmlFor="event-filter" className="block text-sm font-medium text-gray-400 mb-2">Filtrar por Evento</label>
+                    <div className="flex min-h-0 flex-col gap-2">
+                        <label htmlFor="event-filter" className="text-sm font-medium text-gray-400">Filtrar por Evento</label>
                         <Select onValueChange={(value) => setSelectedEventId(value === 'all' ? null : value)} value={selectedEventId || 'all'}>
                             <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10">
                                 <SelectValue className="text-white" placeholder="Todos os Eventos" />
@@ -191,8 +191,8 @@ const EventReports: React.FC = () => {
                         </Select>
                     </div>
 
-                    <div>
-                        <label htmlFor="status-filter" className="block text-sm font-medium text-gray-400 mb-2">Filtrar por Status</label>
+                    <div className="flex min-h-0 flex-col gap-2">
+                        <label htmlFor="status-filter" className="text-sm font-medium text-gray-400">Filtrar por Status</label>
                         <Select onValueChange={(value) => setSelectedStatus(value === 'all' ? null : value)} value={selectedStatus || 'all'}>
                             <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10">
                                 <SelectValue className="text-white" placeholder="Todos os Status" />
@@ -208,15 +208,19 @@ const EventReports: React.FC = () => {
                         </Select>
                     </div>
 
-                    <div className="grid gap-2">
-                        <label className="block text-sm font-medium text-gray-400 mb-2">Período (data do evento)</label>
+                    <div className="flex min-h-0 flex-col gap-2">
+                        <label htmlFor="date" className="text-sm font-medium text-gray-400">
+                            Período (data do evento)
+                        </label>
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button
                                     id="date"
-                                    variant={"outline"}
+                                    type="button"
+                                    variant="outline"
+                                    size="default"
                                     className={cn(
-                                        "w-full justify-start text-left font-normal bg-black/60 border-yellow-500/30 text-white hover:bg-yellow-500/10",
+                                        "h-10 min-h-10 w-full justify-start rounded-md border px-3 py-0 text-left text-sm font-normal bg-black/60 border-yellow-500/30 text-white hover:bg-yellow-500/10 [&_svg]:shrink-0",
                                         !dateRange?.from && "text-muted-foreground"
                                     )}
                                 >
@@ -247,9 +251,17 @@ const EventReports: React.FC = () => {
                         </Popover>
                     </div>
 
-                    <div className="flex items-end">
-                        <Button onClick={handleExportCsv} className="w-full bg-yellow-500 text-black hover:bg-yellow-600">
-                            <Download className="mr-2 h-4 w-4" />
+                    <div className="flex min-h-0 flex-col gap-2">
+                        <span className="text-sm font-medium text-transparent select-none" aria-hidden="true">
+                            Exportar
+                        </span>
+                        <Button
+                            type="button"
+                            onClick={handleExportCsv}
+                            size="default"
+                            className="h-10 min-h-10 w-full shrink-0 bg-yellow-500 px-4 py-0 text-black hover:bg-yellow-600"
+                        >
+                            <Download className="mr-2 h-4 w-4 shrink-0" />
                             Exportar CSV
                         </Button>
                     </div>
