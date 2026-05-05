@@ -128,7 +128,7 @@ const ManagerReports: React.FC = () => {
                         </div>
                     ) : (salesData && salesData.length > 0) ? (
                         <div className="relative w-full h-full p-4">
-                            <SalesLineChart data={salesData} />
+                            <SalesLineChart data={salesData} datasetLabel="Faturamento diário" />
                         </div>
                     ) : (
                         <div className="text-center">

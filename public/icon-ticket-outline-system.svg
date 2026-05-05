@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="strokeGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="40%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="detailGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" ry="108" fill="#000000"/>
+  <path
+    fill="none"
+    stroke="url(#strokeGrad)"
+    stroke-width="9"
+    stroke-linejoin="round"
+    d="
+      M 128 184
+      L 384 184
+      A 8 8 0 0 1 392 192
+      L 392 208
+      A 20 20 0 0 0 412 224
+      A 20 20 0 0 0 392 240
+      L 392 256
+      A 20 20 0 0 0 412 272
+      A 20 20 0 0 0 392 288
+      L 392 320
+      A 8 8 0 0 1 384 328
+      L 128 328
+      A 8 8 0 0 1 120 320
+      L 120 288
+      A 20 20 0 0 0 100 272
+      A 20 20 0 0 0 120 256
+      L 120 240
+      A 20 20 0 0 0 100 224
+      A 20 20 0 0 0 120 208
+      L 120 192
+      A 8 8 0 0 1 128 184
+      Z
+    "
+  />
+  <circle cx="152" cy="220" r="7" fill="url(#detailGrad)"/>
+  <circle cx="152" cy="244" r="7" fill="url(#detailGrad)"/>
+  <circle cx="152" cy="268" r="7" fill="url(#detailGrad)"/>
+  <circle cx="152" cy="292" r="7" fill="url(#detailGrad)"/>
+  <polygon fill="url(#detailGrad)" points="320,220 324,232 336,232 326,240 330,252 320,245 310,252 314,240 304,232 316,232"/>
+</svg>

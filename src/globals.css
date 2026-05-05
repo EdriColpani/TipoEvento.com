@@ -181,6 +181,10 @@ body {
 .border-yellow-500\/30 { border-color: rgb(34 211 238 / 0.3) !important; }
 .border-yellow-500\/50 { border-color: rgb(34 211 238 / 0.5) !important; }
 
+.accent-yellow-500 {
+  accent-color: #22d3ee !important;
+}
+
 .hover\:text-yellow-500:hover { color: #22d3ee !important; }
 .hover\:text-yellow-600:hover { color: #0ea5e9 !important; }
 .hover\:bg-yellow-500:hover { background-color: #22d3ee !important; }
