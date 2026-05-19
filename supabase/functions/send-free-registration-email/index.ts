@@ -104,7 +104,7 @@ serve(async (req) => {
       : "";
 
     const codeFallbackBlock = wristbandCode?.trim()
-      ? `<p style="font-size:14px;margin-top:16px;padding:12px;background:#f5f5f5;border-radius:8px"><strong>Código da pulseira:</strong> <span style="font-family:monospace;font-size:16px">${wristbandCode}</span></p>
+      ? `<p style="font-size:14px;margin-top:16px;padding:12px;background:#f5f5f5;border-radius:8px"><strong>Código do ingresso:</strong> <span style="font-family:monospace;font-size:16px">${wristbandCode}</span></p>
   <p style="font-size:13px;color:#555">Se o QR code não funcionar na entrada, informe este código ao organizador.</p>`
       : "";
 

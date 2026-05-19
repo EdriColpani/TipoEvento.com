@@ -51,9 +51,9 @@ const QrCodeModal: React.FC<QrCodeModalProps> = ({
         >
             <AlertDialogContent className="bg-black/90 border border-yellow-500/30 text-white max-w-md">
                 <AlertDialogHeader>
-                    <AlertDialogTitle className="text-yellow-400 text-xl text-center">QR Code da Pulseira</AlertDialogTitle>
+                    <AlertDialogTitle className="text-yellow-400 text-xl text-center">QR Code do Ingresso</AlertDialogTitle>
                     <AlertDialogDescription className="text-gray-400 text-center">
-                        Escaneie este código para validar a pulseira.
+                        Escaneie este código para validar o ingresso.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="flex flex-col items-center justify-center p-4">

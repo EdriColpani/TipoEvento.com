@@ -3,19 +3,22 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { User, Building, Mail, Phone, MapPin, Calendar, Plus } from 'lucide-react';
+import { User, Building, Mail, Phone, MapPin, Calendar, Plus, CreditCard } from 'lucide-react';
+import CompanyBillingPlanSection from '@/components/CompanyBillingPlanSection';
 import { ProfileData } from '@/hooks/use-profile';
 import { CompanyFormData } from './CompanyForm'; // Reutilizando o tipo de dados da empresa
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 
 interface ManagerCompanyTabsProps {
+    companyId: string;
     companyData: CompanyFormData;
     profile: ProfileData;
     isSaving: boolean;
     isCepLoading: boolean;
     fetchAddressByCep: (cep: string) => void;
     formComponent: React.ReactNode; // O formulário de edição da empresa
+    isAdminMaster?: boolean;
 }
 
 // Helper para formatar dados
@@ -25,12 +28,14 @@ const formatData = (value: string | number | null | undefined, fallback: string 
 };
 
 const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({ 
+    companyId,
     companyData, 
     profile, 
     isSaving, 
     isCepLoading, 
     fetchAddressByCep, 
-    formComponent 
+    formComponent,
+    isAdminMaster = false,
 }) => {
     const navigate = useNavigate();
     
@@ -44,10 +49,14 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
 
     return (
         <Tabs defaultValue="company" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-black/60 border border-yellow-500/30">
+            <TabsList className="grid w-full grid-cols-3 bg-black/60 border border-yellow-500/30">
                 <TabsTrigger value="company" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
                     <Building className="h-4 w-4 mr-2" />
                     Dados Corporativos
+                </TabsTrigger>
+                <TabsTrigger value="billing" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Plano e cobrança
                 </TabsTrigger>
                 <TabsTrigger value="manager" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
                     <User className="h-4 w-4 mr-2" />
@@ -58,6 +67,10 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
             {/* Aba 1: Dados Corporativos (Formulário de Edição) */}
             <TabsContent value="company" className="mt-6">
                 {formComponent}
+            </TabsContent>
+
+            <TabsContent value="billing" className="mt-6">
+                <CompanyBillingPlanSection companyId={companyId} isAdminMaster={isAdminMaster} />
             </TabsContent>
 
             {/* Aba 2: Gestor Principal (Visualização de Dados) */}

@@ -181,6 +181,27 @@ serve(async (req) => {
             { status: 403, headers: corsHeaders },
         );
     }
+
+    const { data: allowsTicketSales, error: allowsSalesErr } = await supabaseService.rpc(
+        'event_allows_ticket_sales',
+        { p_event_id: eventId },
+    );
+    if (allowsSalesErr) {
+        console.error('[create-payment-preference] event_allows_ticket_sales:', allowsSalesErr);
+        return new Response(
+            JSON.stringify({ error: 'Não foi possível validar o plano comercial do evento.' }),
+            { status: 500, headers: corsHeaders },
+        );
+    }
+    if (allowsTicketSales !== true) {
+        return new Response(
+            JSON.stringify({
+                error:
+                    'Este evento está em modo divulgação (plano mensalidade). A venda de ingressos pela plataforma não está disponível.',
+            }),
+            { status: 403, headers: corsHeaders },
+        );
+    }
     
     let managerUserId = eventData.created_by as string | null;
     if (!managerUserId && eventData.company_id) {

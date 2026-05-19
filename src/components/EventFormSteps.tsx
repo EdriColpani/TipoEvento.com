@@ -25,7 +25,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useQueryClient, useQuery } from '@tanstack/react-query'; // Importando useQueryClient e useQuery
-import { MANAGER_EVENT_CREATION_CONTRACT_TYPE } from '@/constants/event-contracts';
+import {
+    getContractTypesForBillingPlan,
+    MANAGER_EVENT_CREATION_CONTRACT_TYPE,
+} from '@/constants/event-contracts';
+import { isCompanyBillingReady } from '@/constants/billing-plans';
+import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { cn } from '@/lib/utils';
 import {
     getOrCreateClientSubmitId,
@@ -163,68 +169,75 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId);
+    const { billing: companyBilling, isLoading: isLoadingCompanyBilling } = useCompanyBilling(company?.id);
+    const companyBillingReady = isCompanyBillingReady(companyBilling);
+    const isListingPlan = isListingMonthlyPlan(companyBilling?.billing_plan);
 
     const { data: activeContract, isLoading: isLoadingContract } = useQuery<EventContract | null>({ // Adicionado useQuery para buscar contrato
         queryKey: ['activeEventContract', MANAGER_EVENT_CREATION_CONTRACT_TYPE],
         queryFn: async () => {
             try {
-                let { data, error } = await supabase
-                    .from('event_contracts')
-                    .select('*')
-                    .eq('contract_type', MANAGER_EVENT_CREATION_CONTRACT_TYPE)
-                    .eq('is_active', true)
-                    .maybeSingle();
-                
-                // Se não encontrou contrato ativo, busca a última versão (mais recente por created_at ou updated_at)
-                if (!data && (!error || error.code === 'PGRST116' || error.code === 'PGRST117')) {
-                    const { data: latestData, error: latestError } = await supabase
+                const contractTypes = getContractTypesForBillingPlan(MANAGER_EVENT_CREATION_CONTRACT_TYPE);
+                let data: EventContract | null = null;
+
+                for (const contractType of contractTypes) {
+                    const { data: active, error } = await supabase
                         .from('event_contracts')
                         .select('*')
-                        .eq('contract_type', MANAGER_EVENT_CREATION_CONTRACT_TYPE)
-                        .order('updated_at', { ascending: false })
-                        .order('created_at', { ascending: false })
-                        .limit(1)
+                        .eq('contract_type', contractType)
+                        .eq('is_active', true)
                         .maybeSingle();
-                    
-                    if (latestError) {
-                        // Se for erro de permissão (RLS), mostra mensagem específica
-                        if (latestError.code === '42501' || latestError.message?.includes('permission') || latestError.message?.includes('policy')) {
-                            console.error("Erro de permissão ao buscar contrato (RLS):", latestError);
-                            showError("Você não tem permissão para ler os contratos. Isso pode ser um problema de configuração do sistema. Entre em contato com o administrador.");
-                            return null;
-                        }
-                        if (latestError.code !== 'PGRST116' && latestError.code !== 'PGRST117') {
-                            console.error('Error fetching latest event_terms contract:', latestError);
-                            showError('Erro ao carregar o contrato: ' + latestError.message);
-                            return null;
-                        }
-                    }
-                    
-                    data = latestData;
-                    error = latestError;
-                    
-                    // Se encontrou um contrato mas não está ativo, avisa mas retorna mesmo assim
-                    if (data && !data.is_active) {
-                        console.warn(
-                            '[EventFormSteps] Contrato event_terms inativo; usando no fluxo. Ative em Admin > Contratos.',
-                            data.id,
-                        );
-                    }
-                } else if (error) {
-                    // Se for erro de permissão (RLS), mostra mensagem específica
-                    if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
-                        console.error("Erro de permissão ao buscar contrato ativo (RLS):", error);
-                        showError("Você não tem permissão para ler os contratos. Isso pode ser um problema de configuração do sistema. Entre em contato com o administrador.");
+
+                    if (error?.code === '42501' || error?.message?.includes('permission') || error?.message?.includes('policy')) {
+                        console.error('Erro de permissão ao buscar contrato (RLS):', error);
+                        showError('Você não tem permissão para ler os contratos. Entre em contato com o administrador.');
                         return null;
                     }
-                    if (error.code !== 'PGRST116' && error.code !== 'PGRST117') {
-                        console.error('Error fetching active event_terms contract:', error);
+                    if (error && error.code !== 'PGRST116' && error.code !== 'PGRST117') {
+                        console.error('Error fetching active contract:', error);
                         showError('Erro ao carregar o contrato ativo: ' + error.message);
                         return null;
                     }
+                    if (active) {
+                        data = active as EventContract;
+                        break;
+                    }
                 }
-                
-                return data as EventContract | null;
+
+                if (!data) {
+                    for (const contractType of contractTypes) {
+                        const { data: latestData, error: latestError } = await supabase
+                            .from('event_contracts')
+                            .select('*')
+                            .eq('contract_type', contractType)
+                            .order('updated_at', { ascending: false })
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (latestError?.code === '42501' || latestError?.message?.includes('permission')) {
+                            showError('Você não tem permissão para ler os contratos. Entre em contato com o administrador.');
+                            return null;
+                        }
+                        if (latestError && latestError.code !== 'PGRST116' && latestError.code !== 'PGRST117') {
+                            console.error('Error fetching latest contract:', latestError);
+                            showError('Erro ao carregar o contrato: ' + latestError.message);
+                            return null;
+                        }
+                        if (latestData) {
+                            data = latestData as EventContract;
+                            if (!data.is_active) {
+                                console.warn(
+                                    '[EventFormSteps] Contrato de ingressos inativo; usando no fluxo. Ative em Admin → Contratos.',
+                                    data.id,
+                                );
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                return data;
             } catch (err: unknown) {
                 console.error('Erro inesperado ao buscar contrato:', err);
                 showError(
@@ -345,6 +358,22 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         }
     }, [eventId, initialData, activeContract, setValue]);
 
+    // Plano já aceito na empresa: não exige passo de contrato no formulário do evento
+    useEffect(() => {
+        if (companyBillingReady && companyBilling?.billing_contract_id) {
+            setValue('contractAccepted', true);
+            setValue('contract_id', companyBilling.billing_contract_id);
+        }
+    }, [companyBillingReady, companyBilling, setValue]);
+
+    const showContractStep = Boolean(activeContract) && !companyBillingReady;
+
+    useEffect(() => {
+        if (isListingPlan) {
+            setValue('is_paid', false);
+        }
+    }, [isListingPlan, setValue]);
+
     // LOGS DE DEBUG
 
     // Função para formatar as faixas de comissão em HTML
@@ -447,7 +476,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     // AGORA PODEMOS FAZER OS RETURNS CONDICIONAIS
     // Garante que o userId esteja disponível para ImageUploadPicker
-    if (isLoadingProfile || isLoadingCompany || isLoadingContract || isLoadingCommissionRanges) {
+    if (isLoadingProfile || isLoadingCompany || isLoadingCompanyBilling || isLoadingContract || isLoadingCommissionRanges) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -479,23 +508,26 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
         if (freezeFormAfterCreate) {
             showError(
-                'Este evento já foi criado. Use a janela de pulseiras ou feche-a antes de salvar de novo.',
+                'Este evento já foi criado. Use a janela de ingressos ou feche-a antes de salvar de novo.',
             );
             return;
         }
 
-        // Validação: Para eventos pagos, é obrigatório ter e aceitar o contrato de comissão
+        const effectiveContractId =
+            companyBillingReady && companyBilling?.billing_contract_id
+                ? companyBilling.billing_contract_id
+                : activeContract?.id ?? null;
+
+        // Validação: Para eventos pagos, é obrigatório ter contrato (empresa ou evento)
         if (values.is_paid) {
-            if (!activeContract) {
-                showError("Para eventos pagos, é obrigatório existir um contrato de comissão ativo. Entre em contato com o administrador do sistema.");
+            if (!effectiveContractId && !activeContract) {
+                showError("Para eventos pagos, é obrigatório existir um contrato de comissão ativo. Confirme o plano em Configurações → Perfil da Empresa ou contate o administrador.");
                 return;
             }
-            if (!values.contractAccepted) {
-                showError("Para eventos pagos, você DEVE aceitar o contrato de percentual de comissão sobre a quantidade de ingressos vendidos antes de salvar o evento. Por favor, volte ao passo do contrato e aceite os termos.");
-                // Volta para o passo do contrato
-                if (activeContract) {
+            if (!companyBillingReady && !values.contractAccepted) {
+                showError("Para eventos pagos, você DEVE aceitar o contrato de percentual de comissão sobre a quantidade de ingressos vendidos antes de salvar o evento. Confirme o plano em Perfil da Empresa ou aceite o contrato neste formulário.");
+                if (showContractStep) {
                     setCurrentStep(1);
-                    // Scroll para o topo
                     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                 }
                 return;
@@ -503,7 +535,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             // Validação: Se é evento pago, deve ter lotes válidos
             if (!values.batches || values.batches.length === 0) {
                 showError("Para eventos pagos, é obrigatório cadastrar pelo menos um lote de ingressos.");
-                setCurrentStep(activeContract ? 4 : 3);
+                setCurrentStep(showContractStep ? 4 : 3);
                 setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                 return;
             }
@@ -517,17 +549,21 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             );
             if (invalidBatches) {
                 showError("Por favor, preencha todos os campos dos lotes de ingressos antes de salvar.");
-                setCurrentStep(activeContract ? 4 : 3);
+                setCurrentStep(showContractStep ? 4 : 3);
                 setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
                 return;
             }
-        } else if (activeContract && !values.contractAccepted) {
-            // Para eventos gratuitos, também exige aceite se houver contrato
-            showError("Você deve aceitar o contrato para criar/atualizar o evento.");
+        } else if (showContractStep && !values.contractAccepted) {
+            showError("Você deve aceitar o contrato para criar/atualizar o evento, ou confirme o plano em Perfil da Empresa.");
             if (currentStep !== 1) {
                 setCurrentStep(1);
                 setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
             }
+            return;
+        }
+
+        if (!companyBillingReady && profile?.tipo_usuario_id === 2 && company?.id) {
+            showError("Confirme o plano e o contrato em Configurações → Perfil da Empresa → Plano e cobrança antes de criar eventos.");
             return;
         }
 
@@ -612,22 +648,30 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 }
             }
 
+            const effectiveIsPaid = isListingPlan ? false : values.is_paid;
+
             // Quantidade total de ingressos: pago = soma dos lotes; gratuito = capacidade (exigido pelo banco como valor positivo)
             const totalTicketsQuantity = values.batches && values.batches.length > 0
                 ? values.batches.reduce((sum, batch) => sum + Number(batch.quantity || 0), 0)
                 : 0;
-            const totalTickets = values.is_paid ? totalTicketsQuantity : Number(values.capacity);
+            const totalTickets = effectiveIsPaid ? totalTicketsQuantity : Number(values.capacity);
 
             // Preço mínimo para exibição no card: lotes têm prioridade; senão usa o campo único ticket_price
-            const minPriceFromBatches = values.is_paid && values.batches?.length
+            const minPriceFromBatches = effectiveIsPaid && values.batches?.length
                 ? Math.min(...values.batches.map(b => parseFloat(String(b.price || '0').replace(',', '.')) || 0))
                 : null;
-            const ticketPriceForEvent = values.is_paid
+            const ticketPriceForEvent = effectiveIsPaid
                 ? (minPriceFromBatches ?? (values.ticket_price ? parseFloat(values.ticket_price.replace(',', '.')) : null))
                 : null;
 
             const clientSubmitId =
                 !persistenceEventId && userId ? getOrCreateClientSubmitId(userId) : undefined;
+
+            // Com empresa já vinculada, publica automaticamente (evita ficar preso em "pending").
+            const eventStatus = companyIdForEvent ? 'approved' : 'pending';
+            const createSuccessMessage = companyIdForEvent
+                ? 'Evento criado com sucesso e publicado!'
+                : 'Evento criado com sucesso e enviado para aprovação!';
 
             const eventData: Record<string, unknown> = {
                 title: values.title,
@@ -644,14 +688,18 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 category: values.category,
                 capacity: Number(values.capacity),
                 duration: values.duration,
-                is_paid: values.is_paid,
-                total_tickets: totalTickets,
-                ticket_price: ticketPriceForEvent,
+                is_paid: effectiveIsPaid,
+                listing_only: isListingPlan,
+                total_tickets: isListingPlan ? Number(values.capacity) : totalTickets,
+                ticket_price: effectiveIsPaid ? ticketPriceForEvent : null,
                 created_by: userId,
                 company_id: companyIdForEvent,
-                status: 'pending',
-                contract_id: activeContract?.id || null,
-                contract_version: activeContract?.version ?? null,
+                status: eventStatus,
+                contract_id: effectiveContractId,
+                contract_version:
+                    companyBilling?.billing_contract_version ??
+                    (activeContract?.id === effectiveContractId ? activeContract?.version : null) ??
+                    null,
             };
             if (clientSubmitId) {
                 eventData.client_submit_id = clientSubmitId;
@@ -666,7 +714,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                 if (error) throw error;
                 dismissToast(toastId);
-                showSuccess("Evento atualizado com sucesso!");
+                showSuccess(
+                    companyIdForEvent
+                        ? 'Evento atualizado com sucesso e publicado!'
+                        : 'Evento atualizado com sucesso!',
+                );
             } else {
                 const { data, error } = await supabase
                     .from('events')
@@ -690,7 +742,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             createdEventIdRef.current = existing.id;
                             if (userId) persistManagerCreateEventDraftId(userId, existing.id);
                             dismissToast(toastId);
-                            showSuccess("Evento criado com sucesso e enviado para aprovação!");
+                            showSuccess(createSuccessMessage);
                         } else {
                             dismissToast(toastId);
                             throw error;
@@ -704,12 +756,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     createdEventIdRef.current = data.id;
                     if (userId) persistManagerCreateEventDraftId(userId, data.id);
                     dismissToast(toastId);
-                    showSuccess("Evento criado com sucesso e enviado para aprovação!");
+                    showSuccess(createSuccessMessage);
                 }
             }
 
             // Lógica para lotes (se for pago)
-            if (values.is_paid && newEventId && values.batches) {
+            if (effectiveIsPaid && newEventId && values.batches) {
                 try {
                     // Exclui lotes antigos para recriar (simples para este exemplo, considerar updates mais complexos para produção)
                     const { error: deleteError } = await supabase
@@ -751,7 +803,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             }
 
             // Lógica para turmas (somente eventos gratuitos)
-            if (!values.is_paid && newEventId) {
+            if (!effectiveIsPaid && newEventId) {
                 try {
                     // Normaliza draft para comparar e persistir.
                     const normalizedDraft = turmasDraft
@@ -845,12 +897,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     // Determina qual passo deve ser exibido baseado no currentStep e no contrato
     const getStepToRender = () => {
-        if (isLoadingContract || isLoadingCommissionRanges) {
+        if (isLoadingContract || isLoadingCommissionRanges || isLoadingCompanyBilling) {
             return 'loading';
         }
         
-        // Se há contrato ativo
-        if (activeContract) {
+        if (showContractStep) {
             if (currentStep === 1) return 'contract';
             if (currentStep === 2) return 'details';
             if (currentStep === 3) return 'media';
@@ -865,6 +916,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     };
 
     const stepToRender = getStepToRender();
+    const maxFormStep = showContractStep ? (isListingPlan ? 3 : 4) : isListingPlan ? 2 : 3;
 
     const onValidationError = (errors: Parameters<Parameters<typeof handleSubmit>[1]>[0]) => {
         console.error("Erros de validação:", errors);
@@ -876,11 +928,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         }
 
         if (errors.date || errors.time || errors.title || errors.description) {
-            setCurrentStep(activeContract ? 2 : 1);
+            setCurrentStep(showContractStep ? 2 : 1);
         } else if (errors.card_image_url || errors.exposure_card_image_url || errors.banner_image_url) {
-            setCurrentStep(activeContract ? 3 : 2);
+            setCurrentStep(showContractStep ? 3 : 2);
         } else if (errors.batches || errors.num_batches) {
-            setCurrentStep(activeContract ? 4 : 3);
+            setCurrentStep(showContractStep ? 4 : 3);
         }
     };
 
@@ -961,7 +1013,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 {stepToRender === 'details' && (
                     <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                         <CardHeader>
-                            <CardTitle className="text-yellow-500 text-2xl">{activeContract ? '2.' : '1.'} Detalhes do Evento</CardTitle>
+                            <CardTitle className="text-yellow-500 text-2xl">{showContractStep ? '2.' : '1.'} Detalhes do Evento</CardTitle>
                             <CardDescription className="text-gray-400">Informações essenciais sobre o seu evento.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -1081,7 +1133,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 {stepToRender === 'media' && (
                     <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                         <CardHeader>
-                            <CardTitle className="text-yellow-500 text-2xl">{activeContract ? '3.' : '2.'} Mídias e Configurações</CardTitle>
+                            <CardTitle className="text-yellow-500 text-2xl">{showContractStep ? '3.' : '2.'} Mídias e Configurações</CardTitle>
                             <CardDescription className="text-gray-400">Imagens e detalhes adicionais do evento.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -1241,15 +1293,21 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     )}
                                 />
                             </div>
+                            {isListingPlan && (
+                                <div className="p-4 rounded-xl border border-blue-500/40 bg-blue-500/10 text-sm text-blue-200 mb-4">
+                                    Plano de <strong>divulgação</strong>: evento em modo vitrine, sem venda de ingressos pela plataforma.
+                                </div>
+                            )}
                             <FormField
                                 control={control}
                                 name="is_paid"
                                 render={({ field }) => (
-                                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4">
+                                    <FormItem className={`flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 ${isListingPlan ? 'opacity-50' : ''}`}>
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
+                                                disabled={isListingPlan}
                                                 className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
                                             />
                                         </FormControl>
@@ -1268,12 +1326,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 )}
 
                 {/* Passo 3: Preço e Lotes de Ingressos (condicional) */}
-                {stepToRender === 'pricing' && (
+                {stepToRender === 'pricing' && !isListingPlan && (
                     <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                         <CardHeader>
                             <CardTitle className="text-yellow-500 text-2xl flex items-center">
                                 <Ticket className="h-6 w-6 mr-2" />
-                                {activeContract ? '4.' : '3.'} Preço e Lotes de Ingressos
+                                {showContractStep ? '4.' : '3.'} Preço e Lotes de Ingressos
                             </CardTitle>
                             <CardDescription className="text-gray-400">Defina os preços e organize os ingressos em lotes.</CardDescription>
                         </CardHeader>
@@ -1551,12 +1609,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                 Voltar
                             </Button>
                         )}
-                        {currentStep < (activeContract ? 4 : 3) && (
+                        {currentStep < maxFormStep && (
                             <Button 
                                 type="button" 
                                 onClick={() => {
                                     // Validação: se está no passo do contrato, verifica se foi aceito
-                                    if (activeContract && currentStep === 1) {
+                                    if (showContractStep && currentStep === 1) {
                                         const contractAccepted = methods.getValues('contractAccepted');
                                         if (!contractAccepted) {
                                             showError("Você precisa aceitar o contrato para continuar.");
@@ -1571,7 +1629,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                 <ArrowRight className="ml-2 h-5 w-5" />
                             </Button>
                         )}
-                        {currentStep === (activeContract ? 4 : 3) && (
+                        {currentStep === maxFormStep && (
                             <Button
                                 type="submit"
                                 disabled={isSaving || freezeFormAfterCreate}

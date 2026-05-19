@@ -190,7 +190,7 @@ const ManagerLogin: React.FC = () => {
                     <ul className="text-gray-300 text-xs space-y-1">
                         <li>• Dashboard avançado com analytics em tempo real</li>
                         <li>• Gestão completa de eventos e vendas</li>
-                        <li>• Sistema de pulseiras inteligentes</li>
+                        <li>• Sistema de ingressos inteligentes</li>
                         <li>• Relatórios detalhados e exportação</li>
                     </ul>
                 </div>

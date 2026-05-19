@@ -20,6 +20,7 @@ interface EventInfo {
     time: string;
     location: string;
     is_paid: boolean;
+    listing_only?: boolean;
     is_active?: boolean;
     banner_image_url?: string | null;
 }
@@ -93,7 +94,7 @@ const EventInscriptionPage: React.FC = () => {
         const fetchEvent = async () => {
             const { data, error } = await supabase
                 .from('events')
-                .select('id, title, date, time, location, is_paid, is_active, banner_image_url')
+                .select('id, title, date, time, location, is_paid, listing_only, is_active, banner_image_url')
                 .eq('id', eventId)
                 .single();
             if (error || !data) {
@@ -258,8 +259,9 @@ const EventInscriptionPage: React.FC = () => {
                     turma_full: 'A turma selecionada já atingiu a capacidade. Escolha outra turma para continuar.',
                     invalid_turma: 'Turma inválida. Recarregue a página e tente novamente.',
                     no_free_wristbands:
-                        'Não há vagas com pulseira gratuita neste evento. Cadastre um lote com preço R$ 0,00 ou entre em contato com o organizador.',
+                        'Não há vagas com ingresso gratuito neste evento. Cadastre um lote com preço R$ 0,00 ou entre em contato com o organizador.',
                     event_not_free: 'Este evento não é gratuito.',
+                    event_listing_only: 'Este evento está em modo divulgação e não aceita inscrições online.',
                     event_inactive: 'Este evento não está aceitando novas inscrições no momento.',
                     event_sales_closed: 'O prazo para inscrição neste evento foi encerrado.',
                     invalid_cpf: 'CPF inválido.',
@@ -302,6 +304,27 @@ const EventInscriptionPage: React.FC = () => {
                 <h1 className="text-2xl font-serif text-yellow-500 mb-2">Evento não encontrado</h1>
                 <Button onClick={() => navigate('/')} className="bg-yellow-500 text-black hover:bg-yellow-600 mt-4">
                     Voltar à Home
+                </Button>
+            </div>
+        );
+    }
+
+    if (event.listing_only || event.is_paid) {
+        return (
+            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-4 text-center">
+                <h1 className="text-2xl font-serif text-blue-400 mb-3">
+                    {event.listing_only ? 'Evento em divulgação' : 'Ingressos pagos'}
+                </h1>
+                <p className="text-gray-400 max-w-md mb-6">
+                    {event.listing_only
+                        ? 'Este evento está publicado apenas para divulgação. Inscrições e vendas online não estão disponíveis.'
+                        : 'Este evento utiliza venda de ingressos. Acesse a página do evento para comprar.'}
+                </p>
+                <Button
+                    onClick={() => navigate(`/events/${eventId}`)}
+                    className="bg-yellow-500 text-black hover:bg-yellow-600"
+                >
+                    Ver página do evento
                 </Button>
             </div>
         );

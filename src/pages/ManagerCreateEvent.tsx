@@ -7,7 +7,12 @@ import { supabase } from '@/integrations/supabase/client';
 import EventFormSteps from '@/components/EventFormSteps';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useProfile } from '@/hooks/use-profile';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { isCompanyBillingReady } from '@/constants/billing-plans';
 import { clearManagerCreateEventSession } from '@/utils/manager-create-event-session';
+import { Card, CardContent } from '@/components/ui/card';
+import { AlertTriangle } from 'lucide-react';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -15,6 +20,10 @@ const ManagerCreateEvent: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | null>(null);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+    const { company, isLoading: isLoadingCompany } = useManagerCompany(userId || undefined);
+    const { billing, isLoading: isLoadingBilling } = useCompanyBilling(company?.id);
+    const billingReady = isCompanyBillingReady(billing);
+    const needsBillingConfirm = !isAdminMaster && !!company?.id && !isLoadingBilling && !billingReady;
     const [showWristbandModal, setShowWristbandModal] = useState(false);
     const [newEventId, setNewEventId] = useState<string | null>(null);
     const userIdRef = useRef<string | null>(null);
@@ -62,7 +71,7 @@ const ManagerCreateEvent: React.FC = () => {
         showError("Funcionalidade de auto-preenchimento movida para o componente de formulário.");
     };
 
-    if (isLoadingProfile || !userId) {
+    if (isLoadingProfile || isLoadingCompany || !userId) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -98,6 +107,28 @@ const ManagerCreateEvent: React.FC = () => {
                 </div>
             </div>
 
+            {needsBillingConfirm && (
+                <Card className="mb-6 bg-amber-500/10 border border-amber-500/40">
+                    <CardContent className="pt-6 flex gap-3">
+                        <AlertTriangle className="h-6 w-6 text-amber-400 shrink-0" />
+                        <div className="text-sm text-amber-100">
+                            <p className="font-medium">Confirme o plano da empresa antes de criar eventos</p>
+                            <p className="mt-1 text-amber-200/90">
+                                Acesse Configurações → Perfil da Empresa → aba Plano e cobrança, confirme o plano
+                                e aceite o contrato.
+                            </p>
+                            <Button
+                                type="button"
+                                className="mt-3 bg-yellow-500 text-black hover:bg-yellow-600"
+                                onClick={() => navigate('/manager/settings/company-profile')}
+                            >
+                                Ir para Plano e cobrança
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             <EventFormSteps
                 userId={userId}
                 onCreateSuccess={handleSaveSuccess}
@@ -109,10 +140,10 @@ const ManagerCreateEvent: React.FC = () => {
                 <AlertDialogContent className="bg-black/90 border border-yellow-500/30 text-white w-[calc(100vw-1.5rem)] max-w-2xl sm:max-w-2xl overflow-hidden p-5 sm:p-6">
                     <AlertDialogHeader className="text-left space-y-3">
                         <AlertDialogTitle className="text-yellow-500 text-xl font-serif pr-1 select-none outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-sm">
-                            Próxima Etapa: Pulseiras
+                            Próxima Etapa: Ingressos
                         </AlertDialogTitle>
                         <AlertDialogDescription className="!text-gray-300 hover:!text-gray-300 text-left text-sm sm:text-base leading-relaxed">
-                            O evento foi criado com sucesso! Você deseja cadastrar as pulseiras de acesso agora?
+                            O evento foi criado com sucesso! Você deseja cadastrar os ingressos de acesso agora?
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     {/* Só Button: AlertDialogAction/Cancel do Radix aplicam estilos que escapam do grid em alguns temas */}
@@ -124,7 +155,7 @@ const ManagerCreateEvent: React.FC = () => {
                             className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-0 bg-yellow-500 !text-black hover:!bg-yellow-600 hover:!text-black focus-visible:!text-black"
                         >
                             <Plus className="h-4 w-4 mr-2 shrink-0" />
-                            Emitir Pulseiras
+                            Emitir Ingressos
                         </Button>
                         <Button
                             type="button"
@@ -133,7 +164,7 @@ const ManagerCreateEvent: React.FC = () => {
                             className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-yellow-500/30 bg-black/60 !text-yellow-400 hover:!bg-yellow-500/15 hover:!text-yellow-300 focus-visible:!text-yellow-300 focus-visible:ring-yellow-500/40"
                         >
                             <QrCode className="h-4 w-4 mr-2 shrink-0" />
-                            Ir para Pulseiras
+                            Ir para Ingressos
                         </Button>
                         <Button
                             type="button"

@@ -4,7 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    CONTRACT_TYPE_SELECT_GROUPS,
+    getContractTypeLabel,
+    getSelectableContractTypes,
+} from '@/constants/event-contracts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Loader2, ArrowLeft, FileText, Edit, Power, Eye, AlertTriangle, XCircle, Trash2, Save } from 'lucide-react';
@@ -29,28 +34,6 @@ interface EventContract {
 }
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
-
-/** Chaves persistidas em `event_contracts.contract_type` — exibição sempre em pt-BR na UI. */
-const CONTRACT_TYPE_LABELS: Record<string, string> = {
-    event_terms: 'Termos de Evento',
-    company_registration: 'Cadastro de Empresa',
-    client_terms: 'Termos de Cliente (Usuário)',
-    company_membership: 'Adesão à Empresa',
-    other: 'Outros',
-};
-
-const CONTRACT_TYPE_ORDER = [
-    'event_terms',
-    'company_registration',
-    'client_terms',
-    'company_membership',
-    'other',
-] as const;
-
-function getContractTypeLabel(contractType: string | null | undefined): string {
-    if (!contractType) return '—';
-    return CONTRACT_TYPE_LABELS[contractType] ?? contractType;
-}
 
 const fetchEventContracts = async (): Promise<EventContract[]> => {
     const { data, error } = await supabase
@@ -99,7 +82,13 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
     const [version, setVersion] = useState(initialData?.version || '');
     const [title, setTitle] = useState(initialData?.title || '');
     const [content, setContent] = useState(initialData?.content || '');
-    const [contractType, setContractType] = useState(initialData?.contract_type || 'event_terms'); // Default para event_terms
+    const selectableTypes = getSelectableContractTypes();
+    const defaultContractType = selectableTypes[0] ?? 'ticket_commission';
+    const [contractType, setContractType] = useState(
+        initialData?.contract_type && selectableTypes.includes(initialData.contract_type)
+            ? initialData.contract_type
+            : defaultContractType,
+    );
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -193,24 +182,34 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
                 {!!initialData && <p className="text-xs text-gray-500 mt-1">A versão não pode ser alterada após a criação.</p>}
             </div>
             <div>
-                <label htmlFor="contractType" className="block text-sm font-medium text-white mb-2">Tipo de Contrato</label>
+                <label htmlFor="contractType" className="block text-sm font-medium text-white mb-2">Serviço prestado</label>
                 <Select 
                     value={contractType}
                     onValueChange={setContractType}
-                    disabled={isSaving || !!initialData} // Não permite alterar o tipo após a criação
+                    disabled={isSaving || !!initialData}
                 >
                     <SelectTrigger id="contractType" className="bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500">
-                        <SelectValue placeholder="Selecione o tipo" />
+                        <SelectValue placeholder="Selecione o serviço" />
                     </SelectTrigger>
                     <SelectContent className="bg-black border border-yellow-500/30 text-white">
-                        {CONTRACT_TYPE_ORDER.map((key) => (
-                            <SelectItem key={key} value={key}>
-                                {CONTRACT_TYPE_LABELS[key]}
-                            </SelectItem>
+                        {CONTRACT_TYPE_SELECT_GROUPS.map((group) => (
+                            <SelectGroup key={group.groupLabel}>
+                                <SelectLabel className="text-yellow-500/80 text-xs px-2 py-1.5">
+                                    {group.groupLabel}
+                                </SelectLabel>
+                                {group.types.map((key) => (
+                                    <SelectItem key={key} value={key}>
+                                        {getContractTypeLabel(key)}
+                                    </SelectItem>
+                                ))}
+                            </SelectGroup>
                         ))}
                     </SelectContent>
                 </Select>
-                {!!initialData && <p className="text-xs text-gray-500 mt-1">O tipo não pode ser alterado após a criação.</p>}
+                <p className="text-xs text-gray-500 mt-1">
+                    Um contrato ativo por serviço. Planos comerciais usam o mesmo código do plano de cobrança.
+                </p>
+                {!!initialData && <p className="text-xs text-gray-500 mt-1">O serviço não pode ser alterado após a criação.</p>}
             </div>
             <div>
                  <label htmlFor="title" className="block text-sm font-medium text-white mb-2">Título</label>
@@ -596,7 +595,7 @@ const AdminEventContracts: React.FC = () => {
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <CardDescription className="text-gray-400 text-sm mb-6">
-                    Gerencie os termos e condições aplicados. Apenas um contrato de cada TIPO pode estar ativo por vez.
+                    Cadastre um contrato por serviço prestado (cada plano comercial + cadastro da empresa + termos do cliente). Apenas um contrato ativo por serviço.
                 </CardDescription>
                 
                 {contracts.length === 0 ? (
@@ -611,7 +610,7 @@ const AdminEventContracts: React.FC = () => {
                             <TableHeader>
                                 <TableRow className="border-b border-yellow-500/20 text-sm hover:bg-black/40">
                                     <TableHead className="text-left text-gray-400 font-semibold py-3 w-[15%]">Versão</TableHead>
-                                    <TableHead className="text-left text-gray-400 font-semibold py-3 w-[20%]">Tipo</TableHead>
+                                    <TableHead className="text-left text-gray-400 font-semibold py-3 w-[20%]">Serviço</TableHead>
                                     <TableHead className="text-left text-gray-400 font-semibold py-3 w-[40%]">Título</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Status</TableHead>
                                     <TableHead className="text-right text-gray-400 font-semibold py-3 w-[10%]">Ações</TableHead>
@@ -676,7 +675,7 @@ const AdminEventContracts: React.FC = () => {
                             {editingContract ? 'Editar Contrato' : 'Adicionar Novo Contrato'}
                         </DialogTitle>
                         <DialogDescription className="text-gray-400">
-                            Defina o conteúdo do contrato. Apenas um contrato de cada TIPO pode estar ativo por vez.
+                            Relacione o contrato ao serviço prestado. Apenas um contrato ativo por serviço.
                          </DialogDescription>
                     </DialogHeader>
                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 -mr-1">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Percent, FileText, Key, Database } from 'lucide-react';
+import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from '@/integrations/supabase/client';
@@ -26,6 +26,7 @@ const ManagerLayout: React.FC = () => {
 
     const isAdminSettingsPath = useMemo(() => {
         return location.pathname.startsWith('/admin/settings') ||
+               location.pathname.startsWith('/admin/settings/companies-billing') ||
                location.pathname.startsWith('/manager/settings/advanced') ||
                location.pathname.startsWith('/manager/settings/backup-database') ||
                location.pathname.startsWith('/manager/settings/history');
@@ -123,7 +124,7 @@ const ManagerLayout: React.FC = () => {
         { path: '/manager/events', label: 'Eventos', icon: <CalendarDays className="mr-2 h-4 w-4" /> },
         { path: '/manager/events/create', label: 'Criar Novo Evento', icon: <Plus className="mr-2 h-4 w-4" /> },
         { path: '/manager/events/banners/create', label: 'Criar Banner de Evento', icon: <Image className="mr-2 h-4 w-4" /> },
-        { path: '/manager/wristbands', label: 'Pulseiras', icon: <QrCode className="mr-2 h-4 w-4" /> },
+        { path: '/manager/wristbands', label: 'Ingressos', icon: <QrCode className="mr-2 h-4 w-4" /> },
         { path: '/manager/validation-keys', label: 'Chaves de Validação', icon: <Key className="mr-2 h-4 w-4" /> },
         { path: '/manager/reports', label: 'Relatórios', icon: <BarChart3 className="mr-2 h-4 w-4" /> },
         { path: '/manager/settings', label: 'Configurações', icon: <Settings className="mr-2 h-4 w-4" /> },
@@ -224,11 +225,25 @@ const ManagerLayout: React.FC = () => {
                                                             Config. Carrossel
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem 
-                                                            onClick={() => navigate('/admin/settings/commission-tiers')}
-                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/commission-tiers' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                            onClick={() => navigate('/admin/settings/pricing')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname.startsWith('/admin/settings/pricing') || location.pathname === '/admin/settings/commission-tiers' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
                                                         >
-                                                            <Percent className="mr-2 h-4 w-4" />
-                                                            Faixas de Comissão
+                                                            <Tags className="mr-2 h-4 w-4" />
+                                                            Preços e comissões
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem 
+                                                            onClick={() => navigate('/admin/settings/companies-billing')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/companies-billing' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Building2 className="mr-2 h-4 w-4" />
+                                                            Planos das Empresas
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem 
+                                                            onClick={() => navigate('/admin/settings/monthly-invoices')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/monthly-invoices' || location.pathname === '/admin/settings/listing-monthly-billing' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Receipt className="mr-2 h-4 w-4" />
+                                                            Faturas mensais
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem 
                                                             onClick={() => navigate('/admin/settings/contracts')}
@@ -348,11 +363,25 @@ const ManagerLayout: React.FC = () => {
                                                                 Config. Carrossel
                                                             </button>
                                                             <button 
-                                                                onClick={() => { navigate('/admin/settings/commission-tiers'); setIsMobileMenuOpen(false); }}
+                                                                onClick={() => { navigate('/admin/settings/pricing'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
-                                                                <Percent className="mr-2 h-4 w-4" />
-                                                                Faixas de Comissão
+                                                                <Tags className="mr-2 h-4 w-4" />
+                                                                Preços e comissões
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => { navigate('/admin/settings/companies-billing'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Building2 className="mr-2 h-4 w-4" />
+                                                                Planos das Empresas
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => { navigate('/admin/settings/monthly-invoices'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Receipt className="mr-2 h-4 w-4" />
+                                                                Faturas mensais
                                                             </button>
                                                             <button 
                                                                 onClick={() => { navigate('/admin/settings/contracts'); setIsMobileMenuOpen(false); }}

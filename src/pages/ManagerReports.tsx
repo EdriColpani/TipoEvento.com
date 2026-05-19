@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -104,9 +104,15 @@ const ManagerReports: React.FC = () => {
                 />
                 <ReportCard
                     icon={<Activity className="h-6 w-6 text-yellow-500" />}
-                    title="Movimentação de Pulseiras"
-                    description="Entradas e saídas por pulseira/ingresso em cada evento, com total de passagens na portaria."
+                    title="Movimentação de Ingressos"
+                    description="Entradas e saídas por ingresso em cada evento, com total de passagens na portaria."
                     onClick={() => navigate('/manager/reports/wristband-movements')}
+                />
+                <ReportCard
+                    icon={<Receipt className="h-6 w-6 text-yellow-500" />}
+                    title="Mensalidade de divulgação"
+                    description="Faturas mensais do plano vitrine (sem venda de ingressos pela plataforma)."
+                    onClick={() => navigate('/manager/reports/listing-monthly')}
                 />
             </div>
             

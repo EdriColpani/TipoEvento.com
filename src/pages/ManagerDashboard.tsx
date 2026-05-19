@@ -293,7 +293,7 @@ const ManagerDashboard: React.FC = () => {
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="w-full bg-black/90 border border-yellow-500/30 text-white">
-                            <DropdownMenuLabel className="text-yellow-500">Gerenciar Eventos e Pulseiras</DropdownMenuLabel>
+                            <DropdownMenuLabel className="text-yellow-500">Gerenciar Eventos e Ingressos</DropdownMenuLabel>
                             <DropdownMenuSeparator className="bg-yellow-500/20" />
                             <DropdownMenuItem 
                                 onClick={() => navigate('/manager/events/create')}
@@ -307,7 +307,7 @@ const ManagerDashboard: React.FC = () => {
                                 className="cursor-pointer hover:bg-yellow-500/10"
                             >
                                 <QrCode className="mr-2 h-4 w-4" />
-                                Gerar Pulseiras
+                                Gerar Ingressos
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-yellow-500/20" />
                             <DropdownMenuItem 
@@ -349,7 +349,7 @@ const ManagerDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                                <span className="text-gray-400">Sistema Pulseiras</span>
+                                <span className="text-gray-400">Sistema Ingressos</span>
                                 <div className="flex items-center">
                                     <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
                                     <span className="text-green-500">Ativo</span>

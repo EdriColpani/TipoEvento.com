@@ -47,7 +47,12 @@ import AdminEditPromotionalBanner from "./pages/AdminEditPromotionalBanner";
 import ManagerCreateEventBanner from "./pages/ManagerCreateEventBanner"; 
 import ManagerSettingsHistory from "./pages/ManagerSettingsHistory"; 
 import AdminCommissionTiers from "./pages/AdminCommissionTiers"; 
+import AdminPricingAndCommissions from "./pages/AdminPricingAndCommissions";
+import AdminListingMonthlyRedirect from "./pages/AdminListingMonthlyRedirect";
 import AdminEventContracts from "./pages/AdminEventContracts"; // NOVO
+import AdminCompaniesBilling from "./pages/AdminCompaniesBilling";
+import AdminListingMonthlyBilling from "./pages/AdminListingMonthlyBilling";
+import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
 import SalesReports from "./pages/SalesReports"; // NOVO
 import EventReports from "./pages/EventsReports"; // NOVO
 import AudienceReports from "./pages/AudienceReports"; // NOVO
@@ -110,6 +115,7 @@ const App = () => (
             <Route path="/manager/reports/audience" element={<AudienceReports />} />
             <Route path="/manager/reports/registrations" element={<RegistrationsReports />} />
             <Route path="/manager/reports/wristband-movements" element={<WristbandMovementsReports />} />
+            <Route path="/manager/reports/listing-monthly" element={<ManagerListingMonthlyBilling />} />
             <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />
             <Route path="/manager/settings/company-profile" element={<ManagerCompanyProfile />} />
@@ -124,8 +130,12 @@ const App = () => (
             <Route element={<ManagerLayout />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/settings/carousel" element={<AdminCarouselSettings />} />
-                <Route path="/admin/settings/commission-tiers" element={<AdminCommissionTiers />} /> 
-                <Route path="/admin/settings/contracts" element={<AdminEventContracts />} /> {/* NOVO */}
+                <Route path="/admin/settings/pricing" element={<AdminPricingAndCommissions />} />
+                <Route path="/admin/settings/commission-tiers" element={<AdminCommissionTiers />} />
+                <Route path="/admin/settings/contracts" element={<AdminEventContracts />} />
+                <Route path="/admin/settings/companies-billing" element={<AdminCompaniesBilling />} />
+                <Route path="/admin/settings/monthly-invoices" element={<AdminListingMonthlyBilling />} />
+                <Route path="/admin/settings/listing-monthly-billing" element={<AdminListingMonthlyRedirect />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 

@@ -253,7 +253,7 @@ const EventTicketDetailsPage: React.FC = () => {
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                     Vendido = ingresso com comprador vinculado ou já utilizado na entrada. Pagamentos aprovados ficam como status{' '}
-                    <span className="text-gray-400">ativo</span> no cadastro da pulseira até a validação no portão.
+                    <span className="text-gray-400">ativo</span> no cadastro do ingresso até a validação no portão.
                 </p>
             </div>
 

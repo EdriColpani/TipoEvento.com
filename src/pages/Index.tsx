@@ -71,7 +71,8 @@ function applyAdvancedFilters(events: PublicEvent[], filters: AdvancedFiltersSta
     });
 }
 
-const getMinPriceDisplay = (price: number | null, isPaid: boolean): string => {
+const getMinPriceDisplay = (price: number | null, isPaid: boolean, listingOnly?: boolean): string => {
+    if (listingOnly) return 'Divulgação';
     if (isPaid && (price === null || price === 0)) return 'R$ 0,00';
     if (!isPaid) return 'Gratuito';
     return `R$ ${(price ?? 0).toFixed(2).replace('.', ',')}`;
@@ -145,11 +146,7 @@ const Index: React.FC = () => {
     }, []);
 
     const handleEventClick = (event: PublicEvent) => {
-        if (event.is_paid) {
-            navigate(`/events/${event.id}`);
-        } else {
-            navigate(`/events/${event.id}/inscricao`);
-        }
+        navigate(`/events/${event.id}`);
     };
     
     const handleApplyFilters = () => {
@@ -398,10 +395,15 @@ const Index: React.FC = () => {
                                                         className="w-full h-[200px] object-cover object-top group-hover:scale-110 transition-transform duration-500"
                                                     />
                                                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                                                    <div className="absolute top-4 left-4">
+                                                    <div className="absolute top-4 left-4 flex flex-wrap gap-2">
                                                         <span className="bg-yellow-500 text-black px-3 py-1 rounded-full text-sm font-semibold">
                                                             {event.category}
                                                         </span>
+                                                        {event.listing_only && (
+                                                            <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                                                                Divulgação
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="absolute top-4 right-4">
                                                         <button className="w-10 h-10 bg-black/60 border border-yellow-500/30 rounded-full flex items-center justify-center text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all duration-300">
@@ -433,16 +435,16 @@ const Index: React.FC = () => {
                                                     <div className="flex items-center justify-between pt-4 border-t border-yellow-500/20">
                                                         <div className="flex flex-col">
                                                             <span className="text-sm text-gray-400">
-                                                                {event.is_paid ? 'A partir de' : 'Entrada'}
+                                                                {event.listing_only ? 'Modo' : event.is_paid ? 'A partir de' : 'Entrada'}
                                                             </span>
                                                             <span className="text-xl font-bold text-yellow-500 whitespace-nowrap">
-                                                                {getMinPriceDisplay(event.min_price, event.is_paid)}
+                                                                {getMinPriceDisplay(event.min_price, event.is_paid, event.listing_only)}
                                                             </span>
                                                         </div>
                                                         <Button
                                                             className="bg-yellow-500 text-black hover:bg-yellow-600 transition-all duration-300 cursor-pointer px-4 sm:px-6"
                                                         >
-                                                            {event.is_paid ? 'Ver Detalhes' : 'Faça sua inscrição'}
+                                                            {event.listing_only ? 'Ver evento' : event.is_paid ? 'Ver Detalhes' : 'Faça sua inscrição'}
                                                         </Button>
                                                     </div>
                                                 </div>

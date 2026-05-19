@@ -165,7 +165,7 @@ const RegistrationsReports: React.FC = () => {
     const header = [
       'Evento',
       'Nome Completo',
-      'Código pulseira/ingresso',
+      'Código do ingresso',
       'Turma',
       'CPF',
       'Cidade',
@@ -372,7 +372,7 @@ const RegistrationsReports: React.FC = () => {
                 <TableRow>
                   <TableHead className="text-yellow-500">Evento</TableHead>
                   <TableHead className="text-yellow-500">Nome completo</TableHead>
-                  <TableHead className="text-yellow-500">Código pulseira/ingresso</TableHead>
+                  <TableHead className="text-yellow-500">Código do ingresso</TableHead>
                   <TableHead className="text-yellow-500">Turma</TableHead>
                   <TableHead className="text-yellow-500">CPF</TableHead>
                   <TableHead className="text-yellow-500">Cidade/UF</TableHead>

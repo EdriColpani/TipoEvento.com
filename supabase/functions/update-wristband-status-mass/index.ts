@@ -78,7 +78,7 @@ serve(async (req) => {
         if (checkError) throw checkError;
 
         if (soldCheck && soldCheck.length > 0) {
-            return new Response(JSON.stringify({ error: 'Não é possível desativar: Pelo menos uma pulseira deste evento já foi vendida ou associada a um cliente.' }), { 
+            return new Response(JSON.stringify({ error: 'Não é possível desativar: Pelo menos um ingresso deste evento já foi vendido ou associado a um cliente.' }), { 
                 status: 403, 
                 headers: corsHeaders 
             });
