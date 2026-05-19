@@ -121,7 +121,7 @@ const EventInscriptionSuccessPage: React.FC = () => {
                 </p>
                 {wristbandCode && (
                   <div className="mt-4 p-3 bg-black/60 border border-yellow-500/30 rounded-xl w-full max-w-xs text-left">
-                    <p className="text-yellow-400 text-xs font-semibold mb-1">Código da pulseira</p>
+                    <p className="text-yellow-400 text-xs font-semibold mb-1">Código do ingresso</p>
                     <p className="text-white font-mono text-sm break-all">{wristbandCode}</p>
                     <p className="text-gray-500 text-xs mt-2">
                       Se o QR code não funcionar na entrada, informe este código ao organizador.

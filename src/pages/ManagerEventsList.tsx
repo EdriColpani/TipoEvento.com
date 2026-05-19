@@ -82,7 +82,7 @@ const ManagerEventsList: React.FC = () => {
                         className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-black py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
                     >
                         <QrCode className="mr-2 h-5 w-5" />
-                        Pulseiras
+                        Ingressos
                     </Button>
                     <Button
                         onClick={() => navigate('/manager/events/create')}

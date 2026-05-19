@@ -81,7 +81,7 @@ const ManagerWristbandsList: React.FC = () => {
         return (
             <div className="text-red-400 text-center py-10 flex flex-col items-center">
                 <AlertTriangle className="h-10 w-10 mb-4" />
-                Erro ao carregar pulseiras.
+                Erro ao carregar ingressos.
             </div>
         );
     }
@@ -92,7 +92,7 @@ const ManagerWristbandsList: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0 flex items-center">
                     {/* <QrCodeIcon className="h-7 w-7 mr-3" /> Removido o ícone de QR Code aqui */}
-                    {isAdminMaster ? `Todas as Pulseiras (${wristbands.length})` : `Gestão de Pulseiras (${wristbands.length})`}
+                    {isAdminMaster ? `Todos os Ingressos (${wristbands.length})` : `Gestão de Ingressos (${wristbands.length})`}
                 </h1>
                 <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
                     <Button
@@ -107,7 +107,7 @@ const ManagerWristbandsList: React.FC = () => {
                         className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
                     >
                         <Plus className="mr-2 h-5 w-5" />
-                        Cadastrar Nova Pulseira
+                        Cadastrar Novo Ingresso
                     </Button>
                 </div>
             </div>
@@ -119,7 +119,7 @@ const ManagerWristbandsList: React.FC = () => {
                     className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 px-8 text-lg font-semibold transition-all duration-300 cursor-pointer shadow-lg shadow-yellow-500/30 hover:shadow-yellow-500/50 mb-6"
                 >
                     <Plus className="mr-2 h-6 w-6" />
-                    Cadastrar Nova Pulseira
+                    Cadastrar Novo Ingresso
                 </Button>
 
                 <div className="relative mb-6">
@@ -136,13 +136,13 @@ const ManagerWristbandsList: React.FC = () => {
                 {isLoading ? (
                     <div className="text-center py-10">
                         <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
-                        <p className="text-gray-400">Carregando pulseiras...</p>
+                        <p className="text-gray-400">Carregando ingressos...</p>
                     </div>
                 ) : filteredWristbands.length === 0 ? (
                     <div className="text-center py-10">
                         <Tag className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400 text-lg">Nenhuma pulseira encontrada.</p>
-                        <p className="text-gray-500 text-sm mt-2">Cadastre a primeira pulseira para começar a gerenciar.</p>
+                        <p className="text-gray-400 text-lg">Nenhum ingresso encontrado.</p>
+                        <p className="text-gray-500 text-sm mt-2">Cadastre o primeiro ingresso para começar a gerenciar.</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">

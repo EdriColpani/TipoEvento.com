@@ -91,7 +91,7 @@ export const useManagerWristbands = (userId: string | undefined, isAdminMaster: 
         staleTime: 1000 * 30, // 30 seconds
         onError: (error) => {
             console.error("Query Error:", error);
-            showError("Erro ao carregar lista de pulseiras.");
+            showError("Erro ao carregar lista de ingressos.");
         }
     });
 

@@ -116,8 +116,8 @@ const EventReports: React.FC = () => {
             'Data Fim',
             'Local',
             'Empresa',
-            'Total de Pulseiras Geradas',
-            'Total de Pulseiras Vendidas',
+            'Total de Ingressos Gerados',
+            'Total de Ingressos Vendidos',
             'Percentual de Ocupação',
         ];
         const rows = eventReports.map((report) => [
@@ -291,8 +291,8 @@ const EventReports: React.FC = () => {
                                         <TableHead className="text-center text-gray-400 font-semibold py-3">Início</TableHead>
                                         <TableHead className="text-center text-gray-400 font-semibold py-3">Fim</TableHead>
                                         <TableHead className="text-left text-gray-400 font-semibold py-3">Local</TableHead>
-                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Pulseiras Geradas</TableHead>
-                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Pulseiras Vendidas</TableHead>
+                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Ingressos Gerados</TableHead>
+                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Ingressos Vendidos</TableHead>
                                         <TableHead className="text-right text-gray-400 font-semibold py-3">% Ocupação</TableHead>
                                     </TableRow>
                                 </TableHeader>

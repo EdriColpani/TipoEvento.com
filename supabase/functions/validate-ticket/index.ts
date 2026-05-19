@@ -215,7 +215,7 @@ serve(async (req) => {
         .single();
 
       if (wbErr || !wristbandData) {
-        return new Response(JSON.stringify({ success: false, error: 'Pulseira não encontrada.' }), { status: 404, headers: corsHeaders });
+        return new Response(JSON.stringify({ success: false, error: 'Ingresso não encontrado.' }), { status: 404, headers: corsHeaders });
       }
 
       if (apiKeyData.event_id && apiKeyData.event_id !== wristbandData.event_id) {

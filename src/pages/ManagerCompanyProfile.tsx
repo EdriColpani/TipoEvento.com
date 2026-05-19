@@ -113,6 +113,7 @@ const ManagerCompanyProfile: React.FC = () => {
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId || undefined);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
     const companyId = company?.id;
+    const isAdminMaster = profile?.tipo_usuario_id === 1;
 
     const form = useForm<CompanyProfileData>({
         resolver: zodResolver(companyProfileSchema),
@@ -386,12 +387,14 @@ const ManagerCompanyProfile: React.FC = () => {
             </div>
 
             <ManagerCompanyTabs
+                companyId={companyId}
                 companyData={form.getValues()}
                 profile={profile}
                 isSaving={isSaving}
                 isCepLoading={isCepLoading}
                 fetchAddressByCep={fetchAddressByCep}
                 formComponent={CompanyFormContent}
+                isAdminMaster={isAdminMaster}
             />
         </div>
     );

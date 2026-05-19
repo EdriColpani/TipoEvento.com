@@ -244,7 +244,7 @@ const ManagerManageWristband: React.FC = () => {
             }
 
             dismissToast(String(toastId));
-            showSuccess(`Status e/ou Preço atualizados com sucesso! ${isMassOperation ? `(${updateCount} pulseiras do evento foram desativadas)` : ''}`);
+            showSuccess(`Status e/ou Preço atualizados com sucesso! ${isMassOperation ? `(${updateCount} ingressos do evento foram desativados)` : ''}`);
             
             // Força a re-busca dos dados para refletir a mudança na grade de analytics e nos detalhes
             refetch(); 
@@ -281,7 +281,7 @@ const ManagerManageWristband: React.FC = () => {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
-                <p className="text-gray-400">Carregando detalhes da pulseira...</p>
+                <p className="text-gray-400">Carregando detalhes do ingresso...</p>
             </div>
         );
     }
@@ -290,7 +290,7 @@ const ManagerManageWristband: React.FC = () => {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <AlertTriangle className="h-10 w-10 text-red-500 mx-auto mb-4" />
-                <p className="text-red-400">Pulseira não encontrada ou erro de carregamento.</p>
+                <p className="text-red-400">Ingresso não encontrado ou erro de carregamento.</p>
                 <Button onClick={() => navigate('/manager/wristbands')} className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600">
                     Voltar para a Lista
                 </Button>
@@ -337,7 +337,7 @@ const ManagerManageWristband: React.FC = () => {
             <div className="flex items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
                     <QrCode className="h-7 w-7 mr-3" />
-                    Gerenciar Pulseira: <span className="ml-2 text-white">{details.code}</span>
+                    Gerenciar Ingresso: <span className="ml-2 text-white">{details.code}</span>
                 </h1>
                 <Button 
                     onClick={() => navigate('/manager/wristbands')}
@@ -370,7 +370,7 @@ const ManagerManageWristband: React.FC = () => {
                         <div className="space-y-4 pt-4 border-t border-yellow-500/10">
                             <h3 className="text-lg font-semibold text-white flex items-center">
                                 <DollarSign className="h-5 w-5 mr-2 text-yellow-500" />
-                                Valor da Pulseira
+                                Valor do Ingresso
                             </h3>
                             <div>
                                 <label htmlFor="price" className="block text-sm font-medium text-gray-400 mb-2">Preço Atual (R$)</label>
@@ -423,8 +423,8 @@ const ManagerManageWristband: React.FC = () => {
                                 <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-gray-300 flex items-start space-x-2">
                                     <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-red-400" />
                                     <p>
-                                        Atenção: Mudar o status de uma pulseira ATIVA para {newStatus === 'lost' ? 'PERDIDA' : 'CANCELADA'} 
-                                        resultará na desativação de TODAS as pulseiras deste evento, se nenhuma tiver sido vendida.
+                                        Atenção: Mudar o status de um ingresso ATIVO para {newStatus === 'lost' ? 'PERDIDO' : 'CANCELADO'} 
+                                        resultará na desativação de TODOS os ingressos deste evento, se nenhum tiver sido vendido.
                                     </p>
                                 </div>
                             )}
@@ -474,7 +474,7 @@ const ManagerManageWristband: React.FC = () => {
                         <div className="relative mb-6">
                             <Input 
                                 type="search" 
-                                placeholder="Pesquisar por código da pulseira ou tipo de evento..." 
+                                placeholder="Pesquisar por código do ingresso ou tipo de evento..." 
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 w-full pl-10 py-3 rounded-xl"
@@ -492,8 +492,8 @@ const ManagerManageWristband: React.FC = () => {
                                     <TableHeader>
                                         <TableRow className="border-b border-yellow-500/20 text-sm hover:bg-black/40">
                                             <TableHead className="text-left text-gray-400 font-semibold py-3 w-[25%]">Evento</TableHead>
-                                            <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Nº Pulseira</TableHead>
-                                            <TableHead className="text-left text-gray-400 font-semibold py-3 w-[20%]">Código Pulseira</TableHead>
+                                            <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Nº Ingresso</TableHead>
+                                            <TableHead className="text-left text-gray-400 font-semibold py-3 w-[20%]">Código Ingresso</TableHead>
                                             <TableHead className="text-center text-gray-400 font-semibold py-3 w-[15%]">Status</TableHead>
                                             <TableHead className="text-right text-gray-400 font-semibold py-3 w-[20%]">Data/Hora</TableHead>
                                             <TableHead className="text-right text-gray-400 font-semibold py-3 w-[15%]">Ações</TableHead>

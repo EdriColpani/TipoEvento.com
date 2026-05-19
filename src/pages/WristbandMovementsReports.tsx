@@ -256,7 +256,7 @@ const WristbandMovementsReports: React.FC = () => {
     });
 
     useEffect(() => {
-        if (isError) showError('Erro ao carregar movimentações de pulseiras.');
+        if (isError) showError('Erro ao carregar movimentações de ingressos.');
     }, [isError]);
 
     const reportRows = reportBundle ?? [];
@@ -278,7 +278,7 @@ const WristbandMovementsReports: React.FC = () => {
             <div className="flex items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
                     <Activity className="h-7 w-7 mr-3" />
-                    Movimentação de Pulseiras
+                    Movimentação de Ingressos
                 </h1>
                 <Button
                     onClick={() => navigate('/manager/reports')}
@@ -360,15 +360,15 @@ const WristbandMovementsReports: React.FC = () => {
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <CardHeader>
-                    <CardTitle className="text-white text-xl">Detalhamento por pulseira</CardTitle>
+                    <CardTitle className="text-white text-xl">Detalhamento por ingresso</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Por ingresso atribuído: status da pulseira, entradas/saídas no portão e última leitura.
+                        Por ingresso atribuído: status, entradas/saídas no portão e última leitura.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {!selectedEventId ? (
                         <p className="text-gray-400 text-sm">
-                            Selecione um evento para visualizar as movimentações das pulseiras.
+                            Selecione um evento para visualizar as movimentações dos ingressos.
                         </p>
                     ) : isLoadingMovements ? (
                         <p className="text-gray-400 text-sm">Carregando movimentações...</p>
@@ -376,7 +376,7 @@ const WristbandMovementsReports: React.FC = () => {
                         <p className="text-gray-400 text-sm">
                             {searchTerm.trim()
                                 ? 'Nenhum resultado para o filtro de busca.'
-                                : 'Nenhum ingresso atribuído a compradores neste evento (e sem movimentações registradas). Quando houver vendas com pulseira vinculada ao cliente, os ingressos aparecem aqui — mesmo antes da primeira leitura no portão.'}
+                                : 'Nenhum ingresso atribuído a compradores neste evento (e sem movimentações registradas). Quando houver vendas com ingresso vinculado ao cliente, os ingressos aparecem aqui — mesmo antes da primeira leitura no portão.'}
                         </p>
                     ) : (
                         <div className="overflow-x-auto">

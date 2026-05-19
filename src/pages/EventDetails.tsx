@@ -240,6 +240,7 @@ const EventDetails: React.FC = () => {
     }
     
     const { event, ticketTypes } = details;
+    const isListingOnly = event.listing_only === true;
     const salesClosedInactive = !event.is_active;
     const salesClosedByDeadline = !isEventOpenForNewSales(event.date, event.time);
     const salesClosed = salesClosedInactive || salesClosedByDeadline;
@@ -336,21 +337,29 @@ const EventDetails: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
-                                    <span className="text-2xl sm:text-4xl font-bold text-yellow-500">
-                                        A partir de {minPriceDisplay}
-                                    </span>
-                                    <Button 
-                                        onClick={handleCheckout}
-                                        disabled={isProcessing || getTotalTickets() === 0 || salesClosed}
-                                        className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
-                                    >
-                                        {isProcessing ? (
-                                            <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                                        ) : (
-                                            <ShoppingCart className="h-5 w-5 mr-2" />
-                                        )}
-                                        {isProcessing ? 'Processando...' : 'Comprar Ingressos'}
-                                    </Button>
+                                    {isListingOnly ? (
+                                        <span className="text-2xl sm:text-3xl font-bold text-blue-400">
+                                            Evento em divulgação — sem venda de ingressos online
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <span className="text-2xl sm:text-4xl font-bold text-yellow-500">
+                                                A partir de {minPriceDisplay}
+                                            </span>
+                                            <Button 
+                                                onClick={handleCheckout}
+                                                disabled={isProcessing || getTotalTickets() === 0 || salesClosed}
+                                                className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
+                                            >
+                                                {isProcessing ? (
+                                                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                                ) : (
+                                                    <ShoppingCart className="h-5 w-5 mr-2" />
+                                                )}
+                                                {isProcessing ? 'Processando...' : 'Comprar Ingressos'}
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -424,6 +433,19 @@ const EventDetails: React.FC = () => {
                         <div className="lg:col-span-1 order-1 lg:order-2">
                             <div className="lg:sticky lg:top-24">
                                 <div className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
+                                    {isListingOnly ? (
+                                        <div className="text-center space-y-4">
+                                            <h3 className="text-xl sm:text-2xl font-serif text-blue-400">Divulgação</h3>
+                                            <p className="text-gray-300 text-sm leading-relaxed">
+                                                Este evento está publicado apenas para divulgação. Ingressos não são vendidos
+                                                pela plataforma — consulte o organizador para mais informações.
+                                            </p>
+                                            <p className="text-gray-500 text-xs">
+                                                Organizador: {organizerName}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                    <>
                                     <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-6">Selecionar Ingressos</h3>
                                     <div className="space-y-6">
                                         {ticketTypes.length > 0 ? (
@@ -504,6 +526,8 @@ const EventDetails: React.FC = () => {
                                             Seus dados estão protegidos e a compra é 100% segura.
                                         </p>
                                     </div>
+                                    </>
+                                    )}
                                 </div>
                             </div>
                         </div>

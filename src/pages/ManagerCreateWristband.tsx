@@ -136,7 +136,7 @@ const ManagerCreateWristband: React.FC = () => {
         submitInFlightRef.current = true;
 
         setIsSaving(true);
-        const toastId = showLoading(`Cadastrando pulseira e ${formData.quantity} registros de analytics...`);
+        const toastId = showLoading(`Cadastrando ingresso e ${formData.quantity} registros de analytics...`);
 
         try {
             const baseCodeClean = formData.baseCode.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
@@ -198,14 +198,14 @@ const ManagerCreateWristband: React.FC = () => {
                 console.error('Falha ao inserir wristband_analytics:', analyticsError);
                 if (String(analyticsError.code) === '23505') {
                     throw new Error(
-                        'Esses códigos de pulseira já existem para esta pulseira (envio duplicado). Recarregue a lista ou exclua duplicatas antigas no banco.',
+                        'Esses códigos de ingresso já existem para este ingresso (envio duplicado). Recarregue a lista ou exclua duplicatas antigas no banco.',
                     );
                 }
                 throw analyticsError;
             }
 
             dismissToast(toastId);
-            showSuccess(`Pulseira "${baseCodeClean}" cadastrada com ${formData.quantity} registros de analytics...`);
+            showSuccess(`Ingresso "${baseCodeClean}" cadastrado com ${formData.quantity} registros de analytics...`);
             
             // Limpar formulário após sucesso
             setFormData(prev => ({ 
@@ -219,7 +219,7 @@ const ManagerCreateWristband: React.FC = () => {
         } catch (error: any) {
             dismissToast(toastId);
             console.error("Erro ao cadastrar pulseira:", error);
-            showError(`Falha ao cadastrar pulseira: ${error.message || 'Erro desconhecido'}`);
+            showError(`Falha ao cadastrar ingresso: ${error.message || 'Erro desconhecido'}`);
         } finally {
             submitInFlightRef.current = false;
             setIsSaving(false);
@@ -241,7 +241,7 @@ const ManagerCreateWristband: React.FC = () => {
                 <div className="bg-red-500/20 border border-red-500/50 text-red-400 p-6 rounded-xl mb-8">
                     <i className="fas fa-exclamation-triangle text-2xl mb-3"></i>
                     <h3 className="font-semibold text-white mb-2">Perfil da Empresa Necessário</h3>
-                    <p className="text-sm">Você precisa cadastrar o Perfil da Empresa antes de gerenciar pulseiras.</p>
+                    <p className="text-sm">Você precisa cadastrar o Perfil da Empresa antes de gerenciar ingressos.</p>
                     <Button 
                         onClick={() => navigate('/manager/settings/company-profile')}
                         className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600"
@@ -258,7 +258,7 @@ const ManagerCreateWristband: React.FC = () => {
             <div className="flex items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
                     <QrCode className="h-7 w-7 mr-3" />
-                    Cadastro de Pulseira
+                    Cadastro de Ingresso
                 </h1>
                 <Button 
                     onClick={() => navigate('/manager/wristbands')}
@@ -272,9 +272,9 @@ const ManagerCreateWristband: React.FC = () => {
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
                 <CardHeader>
-                    <CardTitle className="text-white text-xl sm:text-2xl font-semibold">Detalhes da Pulseira</CardTitle>
+                    <CardTitle className="text-white text-xl sm:text-2xl font-semibold">Detalhes do Ingresso</CardTitle>
                     <CardDescription className="text-gray-400 text-sm">
-                        Cadastre uma pulseira e defina quantos registros de uso inicial ela representa.
+                        Cadastre um ingresso e defina quantos registros de uso inicial ele representa.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -319,7 +319,7 @@ const ManagerCreateWristband: React.FC = () => {
                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                     required
                                 />
-                                <p className="text-xs text-gray-500 mt-1">Este será o código único da pulseira.</p>
+                                <p className="text-xs text-gray-500 mt-1">Este será o código único do ingresso.</p>
                             </div>
                             <div>
                                 <label htmlFor="quantity" className="block text-sm font-medium text-white mb-2 flex items-center">
@@ -359,11 +359,11 @@ const ManagerCreateWristband: React.FC = () => {
                             </div>
                         </div>
                         
-                        {/* Valor da Pulseira */}
+                        {/* Valor do Ingresso */}
                         <div>
                             <label htmlFor="price" className="block text-sm font-medium text-white mb-2 flex items-center">
                                 <DollarSign className="h-4 w-4 mr-2 text-yellow-500" />
-                                Valor da Pulseira (R$) *
+                                Valor do Ingresso (R$) *
                             </label>
                             <Input 
                                 id="price" 
@@ -374,7 +374,7 @@ const ManagerCreateWristband: React.FC = () => {
                                 className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                 required
                             />
-                            <p className="text-xs text-gray-500 mt-1">O valor de venda ou custo desta pulseira.</p>
+                            <p className="text-xs text-gray-500 mt-1">O valor de venda ou custo deste ingresso.</p>
                         </div>
 
                         {/* Associação de Cliente (Aviso atualizado) */}
@@ -405,7 +405,7 @@ const ManagerCreateWristband: React.FC = () => {
                                 ) : (
                                     <>
                                         <i className="fas fa-save mr-2"></i>
-                                        Gerar e Gravar Pulseira
+                                        Gerar e Gravar Ingresso
                                     </>
                                 )}
                             </Button>
