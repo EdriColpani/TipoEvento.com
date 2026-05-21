@@ -21,3 +21,21 @@ verify_jwt = false
 # Reconciliação usa token próprio (x-reconciliation-token), não JWT do Supabase.
 [functions.reconcile-pending-payments]
 verify_jwt = false
+
+[functions.create-listing-monthly-checkout]
+verify_jwt = false
+
+[functions.save-manager-payment-settings]
+verify_jwt = false
+
+[functions.save-platform-mp-settings]
+verify_jwt = false
+
+[functions.mp-oauth-start]
+verify_jwt = false
+
+[functions.mp-oauth-callback]
+verify_jwt = false
+
+[functions.mp-oauth-disconnect]
+verify_jwt = false

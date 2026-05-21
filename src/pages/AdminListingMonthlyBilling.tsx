@@ -37,6 +37,12 @@ import {
     useListingMonthlyCharges,
 } from '@/hooks/use-listing-monthly-charges';
 import { useSystemBillingSettings } from '@/hooks/use-system-billing-settings';
+import {
+    formatCurrencyBrInput,
+    isValidCurrencyBr,
+    parseCurrencyBr,
+    sanitizeCurrencyBrInput,
+} from '@/utils/currency-input';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import {
     billingAccentText,
@@ -95,7 +101,7 @@ const AdminListingMonthlyBilling: React.FC = () => {
 
     useEffect(() => {
         if (createOpen && !newAmount) {
-            setNewAmount(String(listingMonthlyDefaultFee));
+            setNewAmount(formatCurrencyBrInput(listingMonthlyDefaultFee));
         }
     }, [createOpen, listingMonthlyDefaultFee, newAmount]);
     const listingCompanies = useMemo(
@@ -125,11 +131,11 @@ const AdminListingMonthlyBilling: React.FC = () => {
             showError('Selecione uma empresa.');
             return;
         }
-        const amount = parseFloat(newAmount.replace(',', '.'));
-        if (Number.isNaN(amount) || amount < 0) {
-            showError('Informe um valor válido.');
+        if (!isValidCurrencyBr(newAmount)) {
+            showError('Informe um valor válido (ex.: 299,99).');
             return;
         }
+        const amount = parseCurrencyBr(newAmount);
 
         const referenceMonth = `${newMonth}-01`;
         setIsSaving(true);
@@ -386,11 +392,11 @@ const AdminListingMonthlyBilling: React.FC = () => {
                         <div className="space-y-2">
                             <Label>Valor (R$)</Label>
                             <Input
-                                type="number"
-                                min={0}
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0,00"
                                 value={newAmount}
-                                onChange={(e) => setNewAmount(e.target.value)}
+                                onChange={(e) => setNewAmount(sanitizeCurrencyBrInput(e.target.value))}
                                 className={billingInput}
                             />
                         </div>

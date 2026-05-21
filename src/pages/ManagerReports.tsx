@@ -8,7 +8,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
 import { useSalesChartData } from '@/hooks/use-sales-chart-data';
 import SalesLineChart from '@/components/SalesLineChart';
-import { format } from 'date-fns';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
+import { isCompanyBillingReady } from '@/constants/billing-plans';
+import { isPlanFeatureEnabled, type PlanFeatureKey } from '@/constants/plan-features';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
 
 const ReportCard: React.FC<{ icon: React.ReactNode, title: string, description: string, onClick: () => void }> = ({ icon, title, description, onClick }) => (
     <Card 
@@ -31,6 +35,64 @@ const ReportCard: React.FC<{ icon: React.ReactNode, title: string, description: 
     </Card>
 );
 
+const REPORT_CARDS: Array<{
+    featureKey: PlanFeatureKey;
+    icon: React.ReactNode;
+    title: string;
+    description: string;
+    path: string;
+}> = [
+    {
+        featureKey: 'reports_financial',
+        icon: <DollarSign className="h-6 w-6 text-yellow-500" />,
+        title: 'Relatório Financeiro',
+        description: 'Valores vendidos, comissões do sistema e valores líquidos dos organizadores por evento.',
+        path: '/manager/reports/financial',
+    },
+    {
+        featureKey: 'reports_sales',
+        icon: <TrendingUp className="h-6 w-6 text-yellow-500" />,
+        title: 'Relatório de Vendas',
+        description: 'Análise detalhada de receita, ingressos vendidos e performance por evento.',
+        path: '/manager/reports/sales',
+    },
+    {
+        featureKey: 'reports_events',
+        icon: <FileText className="h-6 w-6 text-yellow-500" />,
+        title: 'Relatório de Eventos',
+        description: 'Status, ocupação e dados cadastrais de todos os eventos ativos e passados.',
+        path: '/manager/reports/events',
+    },
+    {
+        featureKey: 'reports_audience',
+        icon: <Users className="h-6 w-6 text-yellow-500" />,
+        title: 'Relatório de Público',
+        description: 'Dados demográficos e comportamento dos clientes que compraram ingressos.',
+        path: '/manager/reports/audience',
+    },
+    {
+        featureKey: 'reports_registrations',
+        icon: <ClipboardList className="h-6 w-6 text-yellow-500" />,
+        title: 'Relatório de Inscrições',
+        description: 'Lista de inscritos por evento, com coluna de confirmação para impressão e controle de presença.',
+        path: '/manager/reports/registrations',
+    },
+    {
+        featureKey: 'reports_wristband_movements',
+        icon: <Activity className="h-6 w-6 text-yellow-500" />,
+        title: 'Movimentação de Ingressos',
+        description: 'Entradas e saídas por ingresso em cada evento, com total de passagens na portaria.',
+        path: '/manager/reports/wristband-movements',
+    },
+    {
+        featureKey: 'reports_listing_monthly',
+        icon: <Receipt className="h-6 w-6 text-yellow-500" />,
+        title: 'Mensalidade de divulgação',
+        description: 'Faturas mensais do plano vitrine (sem venda de ingressos pela plataforma).',
+        path: '/manager/reports/listing-monthly',
+    },
+];
+
 const ManagerReports: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>(undefined);
@@ -43,14 +105,20 @@ const ManagerReports: React.FC = () => {
 
     const { profile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
-    const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData(userId, isAdminMaster || false);
     const isManagerPro = profile?.tipo_usuario_id === 2;
-    const canAccessFinancialReport = isAdminMaster || isManagerPro;
+    const { company } = useManagerCompany(isManagerPro && !isAdminMaster ? userId : undefined);
+    const { billing } = useCompanyBilling(company?.id);
+    const billingReady = isCompanyBillingReady(billing);
+    const { features } = useCompanyPlanFeatures(company?.id, {
+        isAdminMaster,
+        enabled: isManagerPro && !isAdminMaster && !!company?.id,
+    });
+    const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData(userId, isAdminMaster || false);
 
-    const handleReportClick = (reportName: string) => {
-        alert(`Gerando relatório: ${reportName}`);
-        // Aqui seria a lógica para navegar para um relatório específico ou gerar um PDF
-    };
+    const visibleReports = REPORT_CARDS.filter((card) =>
+        isPlanFeatureEnabled(features, card.featureKey, isAdminMaster) &&
+            (isAdminMaster || billingReady),
+    );
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -69,52 +137,23 @@ const ManagerReports: React.FC = () => {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-                {canAccessFinancialReport && (
-                    <ReportCard
-                        icon={<DollarSign className="h-6 w-6 text-yellow-500" />}
-                        title="Relatório Financeiro"
-                        description="Valores vendidos, comissões do sistema e valores líquidos dos organizadores por evento."
-                        onClick={() => navigate('/manager/reports/financial')}
-                    />
-                )}
-                <ReportCard
-                    icon={<TrendingUp className="h-6 w-6 text-yellow-500" />}
-                    title="Relatório de Vendas"
-                    description="Análise detalhada de receita, ingressos vendidos e performance por evento."
-                    onClick={() => navigate('/manager/reports/sales')}
-                />
-                <ReportCard
-                    icon={<FileText className="h-6 w-6 text-yellow-500" />}
-                    title="Relatório de Eventos"
-                    description="Status, ocupação e dados cadastrais de todos os eventos ativos e passados."
-                    onClick={() => navigate('/manager/reports/events')}
-                />
-                <ReportCard
-                    icon={<Users className="h-6 w-6 text-yellow-500" />}
-                    title="Relatório de Público"
-                    description="Dados demográficos e comportamento dos clientes que compraram ingressos."
-                    onClick={() => navigate('/manager/reports/audience')}
-                />
-                <ReportCard
-                    icon={<ClipboardList className="h-6 w-6 text-yellow-500" />}
-                    title="Relatório de Inscrições"
-                    description="Lista de inscritos por evento, com coluna de confirmação para impressão e controle de presença."
-                    onClick={() => navigate('/manager/reports/registrations')}
-                />
-                <ReportCard
-                    icon={<Activity className="h-6 w-6 text-yellow-500" />}
-                    title="Movimentação de Ingressos"
-                    description="Entradas e saídas por ingresso em cada evento, com total de passagens na portaria."
-                    onClick={() => navigate('/manager/reports/wristband-movements')}
-                />
-                <ReportCard
-                    icon={<Receipt className="h-6 w-6 text-yellow-500" />}
-                    title="Mensalidade de divulgação"
-                    description="Faturas mensais do plano vitrine (sem venda de ingressos pela plataforma)."
-                    onClick={() => navigate('/manager/reports/listing-monthly')}
-                />
-            </div>
+            {visibleReports.length === 0 ? (
+                <p className="text-gray-400 text-sm mb-8">
+                    Nenhum relatório disponível no plano comercial da sua empresa.
+                </p>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+                    {visibleReports.map((card) => (
+                        <ReportCard
+                            key={card.path}
+                            icon={card.icon}
+                            title={card.title}
+                            description={card.description}
+                            onClick={() => navigate(card.path)}
+                        />
+                    ))}
+                </div>
+            )}
             
             <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6">
                 <CardHeader className="p-0 mb-4">

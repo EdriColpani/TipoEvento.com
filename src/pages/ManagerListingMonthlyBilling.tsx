@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, CalendarDays, Loader2, Receipt } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CreditCard, Loader2, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -19,6 +19,8 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useListingMonthlyCharges, ListingChargeStatus } from '@/hooks/use-listing-monthly-charges';
 import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
 import { supabase } from '@/integrations/supabase/client';
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 
 const STATUS_LABELS: Record<ListingChargeStatus, string> = {
     pending: 'Pendente',
@@ -40,7 +42,9 @@ function formatReferenceMonth(isoDate: string): string {
 
 const ManagerListingMonthlyBilling: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [userId, setUserId] = useState<string | undefined>();
+    const [payingChargeId, setPayingChargeId] = useState<string | null>(null);
 
     React.useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
@@ -51,10 +55,41 @@ const ManagerListingMonthlyBilling: React.FC = () => {
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
     const isListingPlan = isListingMonthlyPlan(billing?.billing_plan);
 
-    const { charges, isLoading, isError } = useListingMonthlyCharges(
+    const { charges, isLoading, isError, invalidate } = useListingMonthlyCharges(
         !!company?.id && isListingPlan,
         company?.id,
     );
+
+    useEffect(() => {
+        const status = searchParams.get('status');
+        if (!status) return;
+        if (status === 'success') {
+            showSuccess('Pagamento recebido. A confirmação pode levar alguns instantes.');
+            invalidate();
+        } else if (status === 'pending') {
+            showSuccess('Pagamento pendente. Você será notificado quando for confirmado.');
+        } else if (status === 'failure') {
+            showError('Pagamento não concluído. Tente novamente.');
+        }
+        searchParams.delete('status');
+        searchParams.delete('charge_id');
+        setSearchParams(searchParams, { replace: true });
+    }, [searchParams, setSearchParams, invalidate]);
+
+    const handlePay = async (chargeId?: string) => {
+        if (!company?.id) return;
+        setPayingChargeId(chargeId ?? 'current');
+        const toastId = showLoading('Abrindo checkout...');
+        try {
+            const { checkoutUrl } = await startListingMonthlyCheckout(company.id, chargeId);
+            dismissToast(toastId);
+            window.location.href = checkoutUrl;
+        } catch (e: unknown) {
+            dismissToast(toastId);
+            showError(e instanceof Error ? e.message : 'Erro ao iniciar pagamento.');
+            setPayingChargeId(null);
+        }
+    };
 
     const summary = useMemo(() => {
         const pending = charges.filter((c) => c.status === 'pending');
@@ -126,8 +161,28 @@ const ManagerListingMonthlyBilling: React.FC = () => {
                         {summary.pendingCount} fatura(s) · {formatMoney(summary.pendingAmount)}
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="text-gray-500 text-xs">
-                    Pagamentos são confirmados pelo administrador da plataforma.
+                <CardContent className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <p className="text-gray-500 text-xs flex-1">
+                        Pague online pelo Mercado Pago ou aguarde confirmação manual do administrador.
+                    </p>
+                    {summary.pendingCount > 0 && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="bg-yellow-500 text-black hover:bg-yellow-400 shrink-0"
+                            disabled={!!payingChargeId}
+                            onClick={() => handlePay()}
+                        >
+                            {payingChargeId ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <>
+                                    <CreditCard className="h-4 w-4 mr-1" />
+                                    Pagar em aberto
+                                </>
+                            )}
+                        </Button>
+                    )}
                 </CardContent>
             </Card>
 
@@ -158,6 +213,7 @@ const ManagerListingMonthlyBilling: React.FC = () => {
                                         <TableHead className="text-yellow-500">Valor</TableHead>
                                         <TableHead className="text-yellow-500">Status</TableHead>
                                         <TableHead className="text-yellow-500">Pago em</TableHead>
+                                        <TableHead className="text-yellow-500 text-right">Ação</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -186,6 +242,24 @@ const ManagerListingMonthlyBilling: React.FC = () => {
                                                           locale: ptBR,
                                                       })
                                                     : '—'}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {charge.status === 'pending' && (
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="border-yellow-500/40 text-yellow-500 h-8"
+                                                        disabled={!!payingChargeId}
+                                                        onClick={() => handlePay(charge.id)}
+                                                    >
+                                                        {payingChargeId === charge.id ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            'Pagar'
+                                                        )}
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))}

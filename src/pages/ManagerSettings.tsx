@@ -39,19 +39,18 @@ const ManagerSettings: React.FC = () => {
     // Adiciona opções específicas para Admin Master
     if (isAdminMaster) {
         settingsOptions.push(
-            { icon: <CreditCard className="h-6 w-6 text-yellow-500" />, title: "Configurações de Pagamento", description: "Gerencie contas bancárias e gateways de pagamento.", path: "/manager/settings/payment" },
             { icon: <History className="h-6 w-6 text-yellow-500" />, title: "Histórico de Configurações", description: "Visualize todas as alterações feitas nas configurações da sua conta.", path: "/manager/settings/history" },
-            { icon: <Settings className="h-6 w-6 text-yellow-500" />, title: "Configurações Avançadas", description: "Ajustes de sistema, segurança e integrações.", path: "/manager/settings/advanced" }
+            { icon: <Settings className="h-6 w-6 text-yellow-500" />, title: "Configurações Avançadas", description: "Mercado Pago da plataforma (mensalidade), sistema e backup.", path: "/manager/settings/advanced" }
         );
     }
 
-    // Adiciona opção de perfil de empresa se for Manager Pro
+    // Perfil da empresa (gestor PRO): inclui aba Ingressos MP para credenciais de venda
     if (isManagerPro) {
-        settingsOptions.splice(1, 0, { 
-            icon: <Building className="h-6 w-6 text-yellow-500" />, 
-            title: "Perfil da Empresa", 
-            description: "Gerencie as informações da sua empresa e dados corporativos.", 
-            path: "/manager/settings/company-profile" 
+        settingsOptions.splice(1, 0, {
+            icon: <Building className="h-6 w-6 text-yellow-500" />,
+            title: "Perfil da Empresa",
+            description: "Dados corporativos, plano, credenciais Mercado Pago de ingressos.",
+            path: "/manager/settings/company-profile",
         });
     }
 

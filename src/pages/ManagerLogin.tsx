@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
+import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 
 const ADMIN_USER_TYPE_ID = 1;
 const MANAGER_USER_TYPE_ID = 2;
@@ -55,8 +56,9 @@ const ManagerLogin: React.FC = () => {
             }
 
             if (userType === MANAGER_USER_TYPE_ID) {
+                const destination = await resolveManagerPostLoginPath(user.id);
                 showSuccess('Login de Gestor PRO realizado com sucesso!');
-                navigate('/manager/dashboard', { replace: true });
+                navigate(destination, { replace: true });
                 return;
             }
 

@@ -46,14 +46,16 @@ export const BILLING_PLANS: BillingPlanDefinition[] = [
     {
         code: 'ticket_plus_consumption',
         label: '% ingresso + consumo interno',
-        description: 'Venda de ingressos e controle de consumo no evento. Disponível em breve.',
+        description:
+            'Venda de ingressos (faixas de comissão) + módulo de consumo interno quando liberado pelo admin. Contratação via Admin Master.',
         selectableByGestor: false,
         contractType: 'ticket_plus_consumption',
     },
     {
         code: 'consumption_or_license',
         label: 'Consumo / licença / mensal',
-        description: 'Comissão sobre créditos de consumo ou licença de uso. Fase posterior.',
+        description:
+            'Divulgação de eventos; consumo por créditos/licença quando o módulo estiver ativo. Contratação via Admin Master.',
         selectableByGestor: false,
         contractType: 'consumption_or_license',
     },
@@ -78,6 +80,16 @@ export const BILLING_CHANGE_TYPE_LABELS: Record<string, string> = {
 export function isBillingPlanUpgrade(from: BillingPlanCode, to: BillingPlanCode): boolean {
     return BILLING_PLAN_RANK[to] > BILLING_PLAN_RANK[from];
 }
+
+export function isBillingPlanDowngrade(from: BillingPlanCode, to: BillingPlanCode): boolean {
+    return BILLING_PLAN_RANK[to] < BILLING_PLAN_RANK[from];
+}
+
+/** Mensagem exibida ao gestor ao tentar reduzir o plano (downgrade só via Admin Master). */
+export const BILLING_DOWNGRADE_GESTOR_MESSAGE =
+    'Para reduzir o plano comercial, entre em contato com a EventFest e informe sua solicitação. ' +
+    'Após a análise, o administrador da plataforma registrará a alteração; quando o novo plano estiver ativo, ' +
+    'aceite o contrato correspondente nesta aba, se solicitado.';
 
 export interface CompanyBillingFields {
     billing_plan: BillingPlanCode | null;

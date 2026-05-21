@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import {
+  calcMarketplaceFee,
+  resolveTicketCheckoutToken,
+} from './mp-ticket-payment.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -146,7 +150,7 @@ serve(async (req) => {
     // 2. Fetch Event Details to get Manager ID (corrigido: usar created_by em vez de user_id)
     const { data: eventData, error: eventError } = await supabaseService
         .from('events')
-        .select('created_by, company_id, is_active')
+        .select('created_by, company_id, is_active, applied_percentage')
         .eq('id', eventId)
         .single();
 
@@ -240,19 +244,28 @@ serve(async (req) => {
     }
     console.log(`[DEBUG] Event found. Manager ID: ${managerUserId}`);
     
-    // 3. Mercado Pago Access Token (mesmo formato do outro projeto: via variável de ambiente)
-    // IMPORTANTE: para este teste, não buscamos mais em payment_settings
-    const mpAccessTokenRaw = Deno.env.get('PAYMENT_API_KEY_SECRET');
-    if (!mpAccessTokenRaw || mpAccessTokenRaw.trim() === '') {
-        console.error('[DEBUG ERROR] PAYMENT_API_KEY_SECRET not set or empty.');
-        return new Response(JSON.stringify({ error: 'Payment service not configured (missing PAYMENT_API_KEY_SECRET).' }), {
-            status: 500,
-            headers: corsHeaders
-        });
+    // 3. Mercado Pago — ingressos: token do gestor (Perfil da Empresa) + marketplace_fee = comissão EventFest
+    let mpAccessToken: string;
+    let checkoutTokenSource: 'manager' | 'legacy_env' = 'legacy_env';
+    let checkoutCollectorId: string | null = null;
+    try {
+        const resolved = await resolveTicketCheckoutToken(supabaseService, managerUserId);
+        mpAccessToken = resolved.accessToken;
+        checkoutTokenSource = resolved.source;
+        checkoutCollectorId = resolved.collectorId ?? null;
+    } catch (credErr) {
+        const msg = credErr instanceof Error ? credErr.message : 'Credencial de pagamento não configurada.';
+        return new Response(JSON.stringify({ error: msg }), { status: 400, headers: corsHeaders });
     }
-    const mpAccessToken = mpAccessTokenRaw.trim();
-    console.log(`[DEBUG] Access Token found (masked length: ${mpAccessToken.length})`);
-    console.log(`[DEBUG] Access Token starts with: ${mpAccessToken.substring(0, 10)}...`);
+
+    const appliedPercentage = Number(eventData.applied_percentage ?? 0);
+    const marketplaceFee = checkoutTokenSource === 'manager'
+        ? calcMarketplaceFee(totalValue, appliedPercentage)
+        : 0;
+
+    console.log(
+        `[DEBUG] MP checkout ingressos source=${checkoutTokenSource} collector=${checkoutCollectorId ?? 'n/a'} fee=${marketplaceFee} pct=${appliedPercentage}% gross=${totalValue}`,
+    );
     
     // 4. Reserve/Identify available wristband analytics records
     const analyticsIdsToReserve: string[] = [];
@@ -392,6 +405,10 @@ serve(async (req) => {
         },
     };
 
+    if (marketplaceFee > 0) {
+        preferenceData.marketplace_fee = marketplaceFee;
+    }
+
     console.log(`[DEBUG] Creating MP preference with access token length: ${mpAccessToken.length}`);
     console.log(`[DEBUG] Preference data:`, JSON.stringify(preferenceData, null, 2));
     
@@ -443,7 +460,7 @@ serve(async (req) => {
         const hint = isPolicyBlock
             ? 'Mercado Pago (PolicyAgent) bloqueou o checkout. Confira: (1) por padrão, back_urls usam SITE_URL; valide SITE_URL https público da mesma aplicação cadastrada no MP. (2) Se optar por origem dinâmica, ative USE_DYNAMIC_BACK_URLS=true e preencha CHECKOUT_PUBLIC_ORIGINS. (3) No painel MP, libere o(s) domínio(s) nas URLs de retorno. (4) PAYMENT_API_KEY_SECRET de produção válido.'
             : mpApiResponse.status === 401 || mpApiResponse.status === 403
-            ? 'Token do Mercado Pago recusado. Verifique PAYMENT_API_KEY_SECRET (produção vs teste) e se o token não expirou.'
+            ? 'Token do Mercado Pago recusado. Verifique o Access Token em Perfil da Empresa → Ingressos MP (conta do gestor vinculada ao marketplace EventFest).'
             : undefined;
 
         await releaseReservedAnalytics(analyticsIdsToReserve);

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import {
     getContractTypeLabel,
     getSelectableContractTypes,
 } from '@/constants/event-contracts';
+import { bumpContractVersion, contractContentChanged } from '@/utils/contractVersion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Loader2, ArrowLeft, FileText, Edit, Power, Eye, AlertTriangle, XCircle, Trash2, Save } from 'lucide-react';
@@ -90,6 +91,19 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
             : defaultContractType,
     );
 
+    const hasMaterialChanges = useMemo(() => {
+        if (!initialData) return false;
+        return contractContentChanged(
+            { title: initialData.title, content: initialData.content },
+            { title, content },
+        );
+    }, [initialData, title, content]);
+
+    const versionOnSave = useMemo(() => {
+        if (!initialData) return version;
+        return hasMaterialChanges ? bumpContractVersion(initialData.version) : initialData.version;
+    }, [initialData, hasMaterialChanges, version]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
@@ -125,18 +139,47 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
             }
         }
 
+        let versionToSave = version;
+        if (initialData) {
+            versionToSave = versionOnSave;
+            if (hasMaterialChanges) {
+                let candidate = versionToSave;
+                for (let attempt = 0; attempt < 25; attempt++) {
+                    const { data: taken, error: takenErr } = await supabase
+                        .from('event_contracts')
+                        .select('id')
+                        .eq('version', candidate)
+                        .eq('contract_type', contractType)
+                        .neq('id', initialData.id)
+                        .maybeSingle();
+                    if (takenErr && takenErr.code !== 'PGRST116') {
+                        dismissToast(toastId);
+                        showError('Erro ao verificar versão: ' + takenErr.message);
+                        setIsSaving(false);
+                        return;
+                    }
+                    if (!taken) {
+                        versionToSave = candidate;
+                        break;
+                    }
+                    candidate = bumpContractVersion(candidate);
+                    versionToSave = candidate;
+                }
+            }
+        }
+
         const dataToSave = {
-            version,
+            version: versionToSave,
             title,
             content,
             contract_type: contractType,
-            created_by: userId, // Salva o ID do admin que criou/editou
+            created_by: userId,
+            updated_at: new Date().toISOString(),
         };
 
         try {
             let error;
             if (initialData) {
-                // Update
                 const result = await supabase
                     .from('event_contracts')
                     .update(dataToSave)
@@ -155,7 +198,11 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
             }
 
             dismissToast(toastId);
-            showSuccess(`Contrato ${initialData ? 'atualizado' : 'criado'} com sucesso!`);
+            if (initialData && hasMaterialChanges && versionToSave !== initialData.version) {
+                showSuccess(`Contrato atualizado para a versão ${versionToSave}.`);
+            } else {
+                showSuccess(`Contrato ${initialData ? 'atualizado' : 'criado'} com sucesso!`);
+            }
             onSaveSuccess();
 
         } catch (e: any) {
@@ -173,13 +220,28 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
                 <label htmlFor="version" className="block text-sm font-medium text-white mb-2">Versão</label>
                 <Input
                     id="version"
-                    value={version}
+                    value={initialData ? versionOnSave : version}
                     onChange={(e) => setVersion(e.target.value)}
                     placeholder="Ex: 1.0"
                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                    disabled={isSaving || !!initialData} // Não permite alterar a versão após a criação
+                    disabled={isSaving || !!initialData}
                 />
-                {!!initialData && <p className="text-xs text-gray-500 mt-1">A versão não pode ser alterada após a criação.</p>}
+                {!!initialData && (
+                    <p className="text-xs text-gray-500 mt-1">
+                        {hasMaterialChanges ? (
+                            <>
+                                Versão atual: <span className="text-yellow-500/90">{initialData.version}</span>
+                                {' → '}
+                                ao salvar: <span className="text-yellow-500">{versionOnSave}</span>
+                            </>
+                        ) : (
+                            <>
+                                Versão <span className="text-yellow-500/90">{initialData.version}</span>
+                                {' '}(incrementa automaticamente quando o título ou o conteúdo mudar)
+                            </>
+                        )}
+                    </p>
+                )}
             </div>
             <div>
                 <label htmlFor="contractType" className="block text-sm font-medium text-white mb-2">Serviço prestado</label>

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Settings, ArrowLeft, Loader2, Zap, Key, Database } from 'lucide-react';
+import { Settings, ArrowLeft, Loader2, Zap, Key, Database, CreditCard } from 'lucide-react';
+import PlatformMpCredentialsSection from '@/components/admin/PlatformMpCredentialsSection';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 
 interface AdvancedSettingsState {
@@ -169,6 +170,15 @@ const ManagerAdvancedSettings: React.FC = () => {
                             />
                             <p className="text-xs text-gray-500 mt-1">Mantenha esta chave segura. Clique para gerar uma nova.</p>
                         </div>
+                    </div>
+
+                    {/* Mercado Pago — conta EventFest (mensalidade / recorrência) */}
+                    <div className="space-y-4 pt-4 border-t border-yellow-500/10">
+                        <h3 className="text-lg font-semibold text-white flex items-center">
+                            <CreditCard className="mr-2 h-5 w-5 text-yellow-500" />
+                            Pagamentos da plataforma
+                        </h3>
+                        <PlatformMpCredentialsSection variant="advanced" />
                     </div>
 
                     {/* Backup do Banco (somente Administrador Global - página já protegida) */}

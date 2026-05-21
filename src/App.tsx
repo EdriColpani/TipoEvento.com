@@ -48,6 +48,7 @@ import ManagerCreateEventBanner from "./pages/ManagerCreateEventBanner";
 import ManagerSettingsHistory from "./pages/ManagerSettingsHistory"; 
 import AdminCommissionTiers from "./pages/AdminCommissionTiers"; 
 import AdminPricingAndCommissions from "./pages/AdminPricingAndCommissions";
+import AdminPlanFeatures from "./pages/AdminPlanFeatures";
 import AdminListingMonthlyRedirect from "./pages/AdminListingMonthlyRedirect";
 import AdminEventContracts from "./pages/AdminEventContracts"; // NOVO
 import AdminCompaniesBilling from "./pages/AdminCompaniesBilling";
@@ -134,6 +135,7 @@ const App = () => (
                 <Route path="/admin/settings/commission-tiers" element={<AdminCommissionTiers />} />
                 <Route path="/admin/settings/contracts" element={<AdminEventContracts />} />
                 <Route path="/admin/settings/companies-billing" element={<AdminCompaniesBilling />} />
+                <Route path="/admin/settings/plan-features" element={<AdminPlanFeatures />} />
                 <Route path="/admin/settings/monthly-invoices" element={<AdminListingMonthlyBilling />} />
                 <Route path="/admin/settings/listing-monthly-billing" element={<AdminListingMonthlyRedirect />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 

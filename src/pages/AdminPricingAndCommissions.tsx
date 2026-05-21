@@ -9,7 +9,7 @@ import { showError } from '@/utils/toast';
 import { billingBtnBack, billingSpinner } from '@/constants/billing-ui';
 import CommissionTiersPanel from '@/components/admin/CommissionTiersPanel';
 import ListingMonthlyDefaultFeeSection from '@/components/admin/ListingMonthlyDefaultFeeSection';
-import BillingPlanPlaceholderTab from '@/components/admin/BillingPlanPlaceholderTab';
+import FuturePlanSettingsSection from '@/components/admin/FuturePlanSettingsSection';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -111,17 +111,11 @@ const AdminPricingAndCommissions: React.FC = () => {
                 </TabsContent>
 
                 <TabsContent value="hybrid" className="mt-0">
-                    <BillingPlanPlaceholderTab
-                        title="Ingresso + consumo interno"
-                        description="Percentual sobre ingressos e parâmetros de consumo no evento."
-                    />
+                    <FuturePlanSettingsSection kind="hybrid" enabled={isAdminMaster} />
                 </TabsContent>
 
                 <TabsContent value="consumption" className="mt-0">
-                    <BillingPlanPlaceholderTab
-                        title="Consumo / licença / mensal"
-                        description="Comissão sobre créditos de consumo ou licença de uso da plataforma."
-                    />
+                    <FuturePlanSettingsSection kind="consumption" enabled={isAdminMaster} />
                 </TabsContent>
             </Tabs>
 

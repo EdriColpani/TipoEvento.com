@@ -31,6 +31,12 @@ import {
 } from '@/hooks/use-admin-companies-billing';
 import { useSystemBillingSettings } from '@/hooks/use-system-billing-settings';
 import { DEFAULT_LISTING_MONTHLY_FEE } from '@/utils/company-billing-rules';
+import {
+    formatCurrencyBrInput,
+    isValidCurrencyBr,
+    parseCurrencyBr,
+    sanitizeCurrencyBrInput,
+} from '@/utils/currency-input';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -93,9 +99,11 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
         setContractId(company.billing_contract_id ?? KEEP_CONTRACT_VALUE);
         setRequireReacceptance(company.requires_billing_reacceptance);
         setListingMonthlyFee(
-            company.listing_monthly_fee != null
-                ? String(company.listing_monthly_fee)
-                : String(listingMonthlyDefaultFee || DEFAULT_LISTING_MONTHLY_FEE),
+            formatCurrencyBrInput(
+                company.listing_monthly_fee ??
+                    listingMonthlyDefaultFee ??
+                    DEFAULT_LISTING_MONTHLY_FEE,
+            ),
         );
     }, [company, open, listingMonthlyDefaultFee]);
 
@@ -138,11 +146,9 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                 (planChanged && !contractProvided);
 
             const feeValue =
-                selectedPlan === 'listing_monthly'
-                    ? parseFloat(listingMonthlyFee.replace(',', '.'))
-                    : null;
-            if (selectedPlan === 'listing_monthly' && (Number.isNaN(feeValue!) || feeValue! < 0)) {
-                throw new Error('Informe uma mensalidade válida para o plano vitrine.');
+                selectedPlan === 'listing_monthly' ? parseCurrencyBr(listingMonthlyFee) : null;
+            if (selectedPlan === 'listing_monthly' && !isValidCurrencyBr(listingMonthlyFee)) {
+                throw new Error('Informe uma mensalidade válida (ex.: 299,99).');
             }
 
             const companyPatch: Record<string, unknown> = {
@@ -235,11 +241,13 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                         <div className="space-y-2">
                             <Label className="text-white">Mensalidade padrão (R$)</Label>
                             <Input
-                                type="number"
-                                min={0}
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0,00"
                                 value={listingMonthlyFee}
-                                onChange={(e) => setListingMonthlyFee(e.target.value)}
+                                onChange={(e) =>
+                                    setListingMonthlyFee(sanitizeCurrencyBrInput(e.target.value))
+                                }
                                 className="bg-black/60 border-yellow-500/30 text-white"
                             />
                             <p className="text-xs text-gray-500">

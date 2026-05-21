@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { resolveWebhookPayment } from './mp-ticket-payment.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -118,33 +119,13 @@ serve(async (req) => {
   }
 
   try {
-    // 2. Obter o access token do Mercado Pago das Secrets (PAYMENT_API_KEY_SECRET)
-    const mpAccessTokenRaw = Deno.env.get('PAYMENT_API_KEY_SECRET');
-    if (!mpAccessTokenRaw || mpAccessTokenRaw.trim() === '') {
-        console.error('[MP Webhook] ERROR: PAYMENT_API_KEY_SECRET not set or empty.');
-        return new Response(JSON.stringify({ error: 'Payment service not configured (missing PAYMENT_API_KEY_SECRET).' }), { status: 500, headers: corsHeaders });
-    }
-    const mpAccessToken = mpAccessTokenRaw.trim();
-    console.log(`[MP Webhook] Access Token found (masked length: ${mpAccessToken.length})`);
-    console.log(`[MP Webhook] Access Token starts with: ${mpAccessToken.substring(0, 10)}...`);
-
-    // 3. Chamar a API do Mercado Pago para obter o status real do pagamento
-    console.log(`[MP Webhook] Fetching payment details for resource ID: ${resourceId}`);
-    const mpPaymentApiResponse = await fetch(`https://api.mercadopago.com/v1/payments/${resourceId}`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${mpAccessToken}`,
-            'Content-Type': 'application/json',
-        },
-    });
-
-    if (!mpPaymentApiResponse.ok) {
-        const errorText = await mpPaymentApiResponse.text();
-        console.error(`[MP Webhook] Mercado Pago API error fetching payment (${mpPaymentApiResponse.status}):`, errorText);
-        return new Response(JSON.stringify({ error: 'Failed to fetch payment details from Mercado Pago.' }), { status: 500, headers: corsHeaders });
+    const paymentLookup = await resolveWebhookPayment(supabaseService, String(resourceId));
+    if (!paymentLookup.ok) {
+      console.error(`[MP Webhook] Mercado Pago API error (${paymentLookup.status}):`, paymentLookup.text);
+      return new Response(JSON.stringify({ error: 'Failed to fetch payment details from Mercado Pago.' }), { status: 500, headers: corsHeaders });
     }
 
-    const mpPaymentData = await mpPaymentApiResponse.json();
+    const mpPaymentData = paymentLookup.data as Record<string, any>;
     const paymentStatus = mpPaymentData.status; // Status real do pagamento
     const paymentStatusDetail = mpPaymentData.status_detail || null; // Detalhes adicionais do status
     const mpPaymentId = mpPaymentData.id ? String(mpPaymentData.id) : null;
@@ -174,6 +155,34 @@ serve(async (req) => {
         console.error('[MP Webhook] ERROR: Payment external_reference not found. Cannot link to receivables transaction.');
         console.error('[MP Webhook] Full payment data keys:', Object.keys(mpPaymentData));
         return new Response(JSON.stringify({ error: 'Payment external_reference missing. Cannot link transaction.' }), { status: 500, headers: corsHeaders });
+    }
+
+    const LISTING_CHARGE_PREFIX = 'listing_charge:';
+    if (externalReference.startsWith(LISTING_CHARGE_PREFIX)) {
+        const listingChargeId = externalReference.slice(LISTING_CHARGE_PREFIX.length);
+        console.log(`[MP Webhook] Listing monthly charge payment: ${listingChargeId}, status=${paymentStatus}`);
+
+        if (paymentStatus === 'approved' || paymentStatus === 'authorized') {
+            const { error: completeErr } = await supabaseService.rpc(
+                'complete_listing_monthly_charge_payment',
+                {
+                    p_charge_id: listingChargeId,
+                    p_mp_payment_id: mpPaymentId,
+                },
+            );
+            if (completeErr) {
+                console.error('[MP Webhook] complete_listing_monthly_charge_payment:', completeErr);
+                return new Response(JSON.stringify({ error: completeErr.message }), {
+                    status: 500,
+                    headers: corsHeaders,
+                });
+            }
+        }
+
+        return new Response(JSON.stringify({ received: true, type: 'listing_monthly_charge' }), {
+            status: 200,
+            headers: corsHeaders,
+        });
     }
 
     const transactionId = externalReference;

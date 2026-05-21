@@ -1,10 +1,12 @@
 "use client";
 
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { User, Building, Mail, Phone, MapPin, Calendar, Plus, CreditCard } from 'lucide-react';
+import { User, Building, Mail, Phone, MapPin, Calendar, Plus, CreditCard, Wallet } from 'lucide-react';
 import CompanyBillingPlanSection from '@/components/CompanyBillingPlanSection';
+import ManagerTicketMpCredentialsSection from '@/components/ManagerTicketMpCredentialsSection';
 import { ProfileData } from '@/hooks/use-profile';
 import { CompanyFormData } from './CompanyForm'; // Reutilizando o tipo de dados da empresa
 import { Button } from '@/components/ui/button';
@@ -38,7 +40,18 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
     isAdminMaster = false,
 }) => {
     const navigate = useNavigate();
-    
+    const [searchParams] = useSearchParams();
+    const showPaymentsTab = !isAdminMaster;
+    const tabParam = searchParams.get('tab');
+    const initialTab =
+        tabParam === 'billing'
+            ? 'billing'
+            : tabParam === 'payments' && showPaymentsTab
+              ? 'payments'
+              : tabParam === 'manager'
+                ? 'manager'
+                : 'company';
+
     const fullName = `${formatData(profile.first_name)} ${formatData(profile.last_name, '')}`.trim();
     const fullAddress = [
         formatData(profile.rua),
@@ -48,19 +61,29 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
     const cityState = `${formatData(profile.cidade, '')} - ${formatData(profile.estado, '')}`.trim();
 
     return (
-        <Tabs defaultValue="company" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-black/60 border border-yellow-500/30">
-                <TabsTrigger value="company" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
-                    <Building className="h-4 w-4 mr-2" />
-                    Dados Corporativos
+        <Tabs key={initialTab} defaultValue={initialTab} className="w-full">
+            <TabsList
+                className={`grid w-full bg-black/60 border border-yellow-500/30 ${
+                    showPaymentsTab ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'
+                }`}
+            >
+                <TabsTrigger value="company" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black text-xs sm:text-sm">
+                    <Building className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
+                    <span className="truncate">Empresa</span>
                 </TabsTrigger>
-                <TabsTrigger value="billing" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Plano e cobrança
+                <TabsTrigger value="billing" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black text-xs sm:text-sm">
+                    <CreditCard className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
+                    <span className="truncate">Plano</span>
                 </TabsTrigger>
-                <TabsTrigger value="manager" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
-                    <User className="h-4 w-4 mr-2" />
-                    Gestor Principal
+                {showPaymentsTab && (
+                    <TabsTrigger value="payments" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black text-xs sm:text-sm">
+                        <Wallet className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
+                        <span className="truncate">Ingressos MP</span>
+                    </TabsTrigger>
+                )}
+                <TabsTrigger value="manager" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black text-xs sm:text-sm">
+                    <User className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
+                    <span className="truncate">Gestor</span>
                 </TabsTrigger>
             </TabsList>
             
@@ -73,7 +96,13 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
                 <CompanyBillingPlanSection companyId={companyId} isAdminMaster={isAdminMaster} />
             </TabsContent>
 
-            {/* Aba 2: Gestor Principal (Visualização de Dados) */}
+            {showPaymentsTab && (
+                <TabsContent value="payments" className="mt-6">
+                    <ManagerTicketMpCredentialsSection companyId={companyId} />
+                </TabsContent>
+            )}
+
+            {/* Gestor Principal (visualização) */}
             <TabsContent value="manager" className="mt-6">
                 <Card className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
                     <CardHeader>

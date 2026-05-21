@@ -1,7 +1,7 @@
 # Plano: Planos de cobrança por empresa
 
-**Status:** Fases 1–4 implementadas no código (aplicar migrations no Supabase)  
-**Última atualização:** 2026-05-19  
+**Status:** Fases 1–4, 4b, 4c e 5 (base) implementadas no código (aplicar migrations no Supabase)  
+**Última atualização:** 2026-05-26  
 **Contexto:** Nova fase do sistema — modelo comercial por empresa, contrato desacoplado de cada evento.
 
 ---
@@ -158,6 +158,16 @@ UPDATE companies SET billing_plan = 'ticket_commission' WHERE billing_plan IS NU
 
 ---
 
+## Fase 4b — Permissões na API (implementado)
+
+- Migration `20260523120000_billing_plan_features.sql`: matriz plano × menu (`billing_plan_features`)
+- Tela Admin: `/admin/settings/plan-features`
+- Gestor: menu e rotas filtrados após contrato aceito (`PlanFeatureRouteGuard`, `ManagerLayout`)
+- Migration `20260525120000_billing_plan_api_enforcement.sql`:
+  - Triggers em `events`, `wristbands`, `validation_api_keys`
+  - Função `company_plan_feature_enabled` (uso em Edge Functions)
+  - Mensagens amigáveis via `plan_feature_label`
+
 ## Fase 4 — Implementado
 
 - Migration `20260519120000_listing_monthly_billing.sql`: `listing_only`, `listing_monthly_fee`, tabela `company_listing_monthly_charges`, RPCs admin
@@ -170,8 +180,45 @@ UPDATE companies SET billing_plan = 'ticket_commission' WHERE billing_plan IS NU
 
 ## Próximo passo
 
-1. Aplicar migrations: `supabase db push` (inclui `20260517120000`, `20260519120000`, `20260519120100`)
-2. Gestor: **Perfil da Empresa → Plano e cobrança** → confirmar plano
-3. Admin: **Preços e comissões**, **Faturas mensais** e **Planos das Empresas**
-4. Migration `20260520120000_system_billing_settings.sql` (mensalidade padrão no banco)
-5. Fase 5: consumo / créditos (fase posterior)
+1. Aplicar migrations: `supabase db push` (lista completa abaixo)
+2. Deploy Edge Function: `create-validation-key` (validação de plano)
+3. Gestor: **Perfil da Empresa → Plano e cobrança** → confirmar plano
+4. Admin: **Preços e comissões**, **Permissões por plano**, **Faturas mensais**, **Planos das Empresas**
+
+### Migrations (ordem)
+
+- `20260517120000_company_billing_plans.sql`
+- `20260519120000_listing_monthly_billing.sql`
+- `20260519120100_block_listing_only_free_registration.sql`
+- `20260520120000_system_billing_settings.sql`
+- `20260521120000_contract_types_per_service.sql`
+- `20260522120000_get_event_contract_for_billing_plan.sql`
+- `20260523120000_billing_plan_features.sql`
+- `20260525120000_billing_plan_api_enforcement.sql`
+
+## Fase 4c — Checkout mensalidade vitrine (implementado)
+
+- Migration `20260526120000_listing_monthly_checkout.sql`: MP fields em `company_listing_monthly_charges`, RPCs `ensure_listing_monthly_charge`, `complete_listing_monthly_charge_payment`
+- Edge Function `create-listing-monthly-checkout` + webhook `listing_charge:{uuid}`
+- Gestor: após confirmar plano vitrine → opção pagar; relatório mensalidade com botão **Pagar**
+
+## Fase 5 — Base (implementado)
+
+- Migration `20260526200000_billing_plan_phase5_rules.sql`: regras `company_allows_ticket_sales` (comissão + híbrido), eventos vitrine em consumo/licença, matriz de features do plano consumo
+- Admin → Preços e comissões: abas híbrido e consumo com notas e flags piloto
+- Módulo completo de consumo/créditos: **fase futura** (quando `consumption_module_enabled` for ligado)
+
+### Migrations (ordem) — atualizado
+
+- `20260526120000_listing_monthly_checkout.sql`
+- `20260526200000_billing_plan_phase5_rules.sql`
+
+### Deploy
+
+- `supabase functions deploy create-listing-monthly-checkout`
+- `supabase functions deploy mercadopago-webhook` (handler mensalidade)
+
+### Pendente (produto completo)
+
+- UI e APIs de consumo interno / créditos de cliente
+- Cobrança automática recorrente (assinatura) da mensalidade vitrine
