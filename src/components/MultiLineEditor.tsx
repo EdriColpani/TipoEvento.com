@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Edit, Save, CheckSquare, XSquare, AlertTriangle } from 'lucide-react';
+import { Loader2, Edit, Save, CheckSquare, XSquare } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { normalizeContractContentForDisplay } from '@/utils/contractContent';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
+import ContractScrollHint from '@/components/ContractScrollHint';
 
 interface MultiLineEditorProps {
     onAgree: (agreed: boolean) => void;
@@ -67,10 +69,12 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
     const [isEditing, setIsEditing] = useState(false);
     const [editedContent, setEditedContent] = useState<string>('');
     const [isSaving, setIsSaving] = useState(false);
-    const [hasScrolledToEnd, setHasScrolledToEnd] = useState(false);
     const [agreed, setAgreed] = useState(initialAgreedState);
 
-    const contentRef = useRef<HTMLDivElement>(null);
+    const scrollContentKey = useExternal
+        ? `ext-${externalTitle ?? 'contract'}`
+        : `terms-${termsType}-${termsData?.id ?? 'none'}`;
+    const { scrollRef: contentRef, hasScrolledToEnd, onScroll } = useContractScrollEnd(scrollContentKey);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -87,17 +91,13 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
     }, [termsData]);
 
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
-    const isClient = profile?.tipo_usuario_id === 3; // Tipo 3 é cliente
 
-    const handleScroll = () => {
-        if (contentRef.current) {
-            const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
-            // Considera que o usuário rolou até o final se estiver a 10px do fim
-            if (scrollHeight - scrollTop <= clientHeight + 10) {
-                setHasScrolledToEnd(true);
-            }
+    useEffect(() => {
+        if (showAgreementCheckbox) {
+            setAgreed(false);
+            onAgree(false);
         }
-    };
+    }, [scrollContentKey, showAgreementCheckbox]);
 
     const handleCheckboxChange = (checked: boolean) => {
         setAgreed(checked);
@@ -221,10 +221,10 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
                     </Button>
                 )}
             </div>
-            <div 
+            <div
                 ref={contentRef}
-                onScroll={isClient && showAgreementCheckbox ? handleScroll : undefined} // Apenas clientes precisam rolar até o final se o checkbox for visível
-                className="max-h-96 overflow-y-auto bg-black/60 border border-yellow-500/20 rounded-xl text-gray-300 text-sm leading-relaxed whitespace-pre-wrap"
+                onScroll={showAgreementCheckbox ? onScroll : undefined}
+                className="max-h-96 overflow-y-auto overscroll-contain bg-black/60 border border-yellow-500/20 rounded-xl text-gray-300 text-sm leading-relaxed whitespace-pre-wrap"
             >
                 {isEditing ? (
                     <Textarea
@@ -267,25 +267,32 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
                 </div>
             )}
 
-            {showAgreementCheckbox && ( // Renderiza o checkbox apenas se a prop for true
-                <div className="flex items-center space-x-3 pt-4 border-t border-yellow-500/10">
-                    <Checkbox 
-                        id="agreeTerms" 
-                        checked={agreed}
-                        onCheckedChange={handleCheckboxChange}
-                        disabled={isClient && !hasScrolledToEnd} // Desabilitado para clientes até rolar
-                        className="border-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
+            {showAgreementCheckbox && (
+                <>
+                    <ContractScrollHint
+                        visible={!hasScrolledToEnd}
+                        className="text-xs text-amber-400 mt-2 flex items-start gap-1"
                     />
-                    <label htmlFor="agreeTerms" className="text-sm font-medium text-white leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                        Eu li e concordo com os Termos e Condições.
-                    </label>
-                </div>
-            )}
-            {isClient && showAgreementCheckbox && !hasScrolledToEnd && ( // Mensagem de rolar só para clientes e se o checkbox for visível
-                <p className="text-xs text-red-400 mt-2 flex items-center">
-                    <AlertTriangle className="h-3 w-3 mr-1" />
-                    Role até o final para habilitar a opção de concordar.
-                </p>
+                    <div
+                        className={`flex items-center space-x-3 pt-4 border-t border-yellow-500/10 ${hasScrolledToEnd ? '' : 'opacity-60'}`}
+                    >
+                        <Checkbox
+                            id="agreeTerms"
+                            checked={agreed}
+                            onCheckedChange={(checked) => {
+                                if (hasScrolledToEnd) handleCheckboxChange(checked === true);
+                            }}
+                            disabled={!hasScrolledToEnd}
+                            className="border-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
+                        />
+                        <label
+                            htmlFor="agreeTerms"
+                            className="text-sm font-medium text-white leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                            Eu li e concordo com os Termos e Condições.
+                        </label>
+                    </div>
+                </>
             )}
         </div>
     );

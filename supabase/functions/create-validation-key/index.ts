@@ -113,6 +113,28 @@ serve(async (req) => {
       return json200({ success: false, error: "Evento não encontrado." });
     }
 
+    const { data: featureOk, error: featureErr } = await supabaseService.rpc(
+      "company_plan_feature_enabled",
+      {
+        p_company_id: eventData.company_id,
+        p_feature_key: "validation_keys",
+      },
+    );
+    if (featureErr) {
+      console.error("[create-validation-key] company_plan_feature_enabled:", featureErr);
+      return json200({
+        success: false,
+        error: "Não foi possível validar o plano comercial da empresa.",
+      });
+    }
+    if (featureOk !== true) {
+      return json200({
+        success: false,
+        error:
+          'O recurso "Chaves de validação" não está disponível no plano comercial da sua empresa. Entre em contato com a EventFest.',
+      });
+    }
+
     const { data: userCompany, error: companyError } = await supabaseService
       .from("user_companies")
       .select("company_id")

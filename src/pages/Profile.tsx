@@ -38,6 +38,11 @@ import MultiLineEditor from '@/components/MultiLineEditor'; // Importando o edit
 
 import { useQuery } from '@tanstack/react-query'; // Importando useQuery
 
+import {
+    isSameDocument,
+    translateProfileSaveError,
+} from '@/utils/profile-documents';
+
 
 
 interface EventContract { // Definindo a interface para contratos
@@ -596,6 +601,10 @@ const Profile: React.FC = () => {
 
         const cleanCEP = values.cep ? values.cep.replace(/\D/g, '') : null;
 
+        const includeCpf = !isSameDocument(profile?.cpf, cleanCPF);
+
+        const includeRg = cleanRG != null && !isSameDocument(profile?.rg, cleanRG);
+
         
 
         const genderToSave = (values.gender === "not_specified" || !values.gender) ? null : values.gender;
@@ -624,67 +633,43 @@ const Profile: React.FC = () => {
 
             // 1. Atualizar o perfil do usuário
 
-            const { error: profileError } = await supabase
-
-                .from('profiles')
-
-                .update({ 
-
+            const profileUpdate: Record<string, unknown> = {
                     first_name: values.first_name,
-
-                    last_name: lastNameToSave, // Salvando o sobrenome
-
+                    last_name: lastNameToSave,
                     birth_date: values.birth_date,
-
                     gender: genderToSave,
-
-                    cpf: cleanCPF, 
-
-                    rg: cleanRG,
-
-                    // Salvando endereço
-
                     cep: cleanCEP,
-
                     rua: ruaToSave,
-
                     bairro: bairroToSave,
-
                     cidade: cidadeToSave,
-
                     estado: estadoToSave,
-
                     numero: numeroToSave,
-
                     complemento: complementoToSave,
-
-                    // Mantém a natureza jurídica existente (que deve ser 1 para clientes)
-
-                    natureza_juridica_id: profile.natureza_juridica_id || 1, 
-
-                    // Atualiza o ID do contrato aceito se for diferente do atual ou se o perfil ainda não tiver aceitado
-
+                    natureza_juridica_id: profile.natureza_juridica_id || 1,
                     contract_version_accepted_id:
                         clientTermsContract &&
                         agreedToTerms &&
                         clientTermsContract.id !== profile.contract_version_accepted_id
                             ? clientTermsContract.id
                             : profile.contract_version_accepted_id,
+            };
 
-                })
+            if (includeCpf) {
+                profileUpdate.cpf = cleanCPF;
+            }
+            if (includeRg) {
+                profileUpdate.rg = cleanRG;
+            }
 
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .update(profileUpdate)
                 .eq('id', session.user.id);
 
-
-
             if (profileError) {
-
-                showError("Erro ao atualizar o perfil.");
-
+                showError(`Erro ao atualizar o perfil: ${translateProfileSaveError(profileError)}`);
                 console.error("Supabase Update Error:", profileError);
-
                 return;
-
             }
 
 

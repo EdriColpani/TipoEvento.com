@@ -30,8 +30,10 @@ import {
     MANAGER_EVENT_CREATION_CONTRACT_TYPE,
 } from '@/constants/event-contracts';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
-import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
+import { isListingOnlyCompanyPlan } from '@/utils/company-billing-rules';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
+import ContractScrollHint from '@/components/ContractScrollHint';
 import { cn } from '@/lib/utils';
 import {
     getOrCreateClientSubmitId,
@@ -171,7 +173,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId);
     const { billing: companyBilling, isLoading: isLoadingCompanyBilling } = useCompanyBilling(company?.id);
     const companyBillingReady = isCompanyBillingReady(companyBilling);
-    const isListingPlan = isListingMonthlyPlan(companyBilling?.billing_plan);
+    // Plano vitrine: evento salvo com listing_only (sem venda de ingressos) — alinhado à matriz de permissões.
+    const isListingPlan = isListingOnlyCompanyPlan(companyBilling?.billing_plan);
 
     const { data: activeContract, isLoading: isLoadingContract } = useQuery<EventContract | null>({ // Adicionado useQuery para buscar contrato
         queryKey: ['activeEventContract', MANAGER_EVENT_CREATION_CONTRACT_TYPE],
@@ -367,6 +370,22 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     }, [companyBillingReady, companyBilling, setValue]);
 
     const showContractStep = Boolean(activeContract) && !companyBillingReady;
+
+    const contractScrollKey =
+        activeContract && showContractStep
+            ? `${activeContract.id}-${activeContract.version}`
+            : null;
+    const {
+        scrollRef: contractScrollRef,
+        hasScrolledToEnd: contractScrolledToEnd,
+        onScroll: onContractScroll,
+    } = useContractScrollEnd(contractScrollKey);
+
+    useEffect(() => {
+        if (showContractStep) {
+            setValue('contractAccepted', false);
+        }
+    }, [showContractStep, contractScrollKey, setValue]);
 
     useEffect(() => {
         if (isListingPlan) {
@@ -973,7 +992,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div
-                                className="prose prose-invert max-w-none max-h-[400px] overflow-y-auto p-4 border border-yellow-500/20 rounded-lg text-gray-200 break-words
+                                ref={contractScrollRef}
+                                onScroll={onContractScroll}
+                                className="prose prose-invert max-w-none max-h-[400px] overflow-y-auto overscroll-contain p-4 border border-yellow-500/20 rounded-lg text-gray-200 break-words
                                 [&_h2]:mt-8 [&_h2]:mb-4 [&_h2]:text-yellow-500/95
                                 [&_h3]:mt-6 [&_h3]:mb-3 [&_h3]:text-yellow-500/90
                                 [&_p]:my-4 [&_p]:leading-relaxed
@@ -981,15 +1002,21 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             >
                                 <div dangerouslySetInnerHTML={{ __html: processedContractContent }} />
                             </div>
+                            <ContractScrollHint visible={!contractScrolledToEnd} className="text-amber-400" />
                             <FormField
                                 control={control}
                                 name="contractAccepted"
                                 render={({ field }) => (
-                                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 mt-6">
+                                    <FormItem
+                                        className={`flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 mt-4 ${contractScrolledToEnd ? '' : 'opacity-60'}`}
+                                    >
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
-                                                onCheckedChange={field.onChange}
+                                                disabled={!contractScrolledToEnd}
+                                                onCheckedChange={(v) => {
+                                                    if (contractScrolledToEnd) field.onChange(v);
+                                                }}
                                                 className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
                                             />
                                         </FormControl>
@@ -998,7 +1025,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                 Eu li e aceito os termos do contrato acima.
                                             </FormLabel>
                                             <FormDescription className="text-gray-400 text-xs">
-                                                É obrigatório aceitar o contrato para criar um novo evento.
+                                                Role até o final do contrato para habilitar esta opção.
                                             </FormDescription>
                                         </div>
                                         <FormMessage />

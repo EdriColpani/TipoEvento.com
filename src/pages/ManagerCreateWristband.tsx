@@ -9,6 +9,7 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
+import { assertCompanyPlanFeature } from '@/utils/plan-feature-guard';
 
 interface WristbandFormData {
     eventId: string;
@@ -139,6 +140,8 @@ const ManagerCreateWristband: React.FC = () => {
         const toastId = showLoading(`Cadastrando ingresso e ${formData.quantity} registros de analytics...`);
 
         try {
+            await assertCompanyPlanFeature(company.id, 'wristbands');
+
             const baseCodeClean = formData.baseCode.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
             
             // 1. Inserir APENAS UM registro na tabela wristbands

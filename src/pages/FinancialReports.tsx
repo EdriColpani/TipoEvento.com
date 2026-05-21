@@ -338,9 +338,39 @@ const FinancialReports: React.FC = () => {
                 </div>
             )}
 
+            <Card className="bg-black border border-cyan-500/20 rounded-2xl p-5 mb-6">
+                <CardContent className="p-0 space-y-2 text-sm text-gray-300">
+                    <p className="text-cyan-400 font-semibold">Como saber se o split (duas contas) deu certo</p>
+                    <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                        <li>
+                            Abaixo, filtre <strong className="text-white">Pagas</strong> e confira a coluna{' '}
+                            <strong className="text-white">Split</strong>: deve aparecer <strong className="text-green-400">Registrado</strong>{' '}
+                            (sistema gravou comissão EventFest + líquido do gestor).
+                        </li>
+                        <li>
+                            <strong className="text-white">R$ Comissão Sistema</strong> = parte EventFest (% sobre o bruto).{' '}
+                            <strong className="text-white">Total Líquido</strong> = estimativa do que fica com o gestor após taxa MP e comissão.
+                        </li>
+                        <li>
+                            Confirme no painel Mercado Pago: na <strong className="text-white">conta do gestor</strong> o recebimento líquido;
+                            na <strong className="text-white">conta EventFest</strong> a taxa/marketplace (comissão). Use o <strong className="text-white">ID MP</strong> da linha.
+                        </li>
+                    </ol>
+                    {isAdminMaster && transactionTotals.systemCommission > 0 && (
+                        <p className="text-yellow-500/90 pt-1">
+                            Admin: soma de comissão EventFest no filtro atual ={' '}
+                            {formatCurrency(transactionTotals.systemCommission)}
+                        </p>
+                    )}
+                </CardContent>
+            </Card>
+
             <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6 mb-6">
                 <CardHeader className="p-0 mb-4">
                     <CardTitle className="text-white text-xl">Transações de Pagamento (Cliente/Gestor)</CardTitle>
+                    <p className="text-gray-500 text-sm mt-1 font-normal">
+                        Valores calculados pelo sistema após confirmação do Mercado Pago (webhook). O repasse real entre contas MP depende do vínculo marketplace.
+                    </p>
                 </CardHeader>
                 <CardContent className="p-0">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -371,6 +401,8 @@ const FinancialReports: React.FC = () => {
                                     <TableHead className="text-yellow-500">Compra</TableHead>
                                     <TableHead className="text-yellow-500">Evento</TableHead>
                                     <TableHead className="text-yellow-500">Status</TableHead>
+                                    <TableHead className="text-yellow-500">Split</TableHead>
+                                    <TableHead className="text-yellow-500">ID MP</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Valor Bruto</TableHead>
                                     <TableHead className="text-yellow-500 text-right">% MP</TableHead>
                                     <TableHead className="text-yellow-500 text-right">R$ MP</TableHead>
@@ -400,6 +432,26 @@ const FinancialReports: React.FC = () => {
                                             <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusClass(transaction.status, transaction.payment_status)}`}>
                                                 {getStatusLabel(transaction.status, transaction.payment_status)}
                                             </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            {(transaction.status === 'paid' || transaction.payment_status === 'approved') ? (
+                                                transaction.split_recorded ? (
+                                                    <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/40">
+                                                        Registrado
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40" title="Pagamento aprovado, mas split ainda não gravado — use Verificar">
+                                                        Pendente
+                                                    </span>
+                                                )
+                                            ) : (
+                                                <span className="text-gray-500 text-xs">—</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-gray-400 text-xs font-mono">
+                                            {transaction.mp_payment_id
+                                                ? `${transaction.mp_payment_id.slice(0, 10)}…`
+                                                : '—'}
                                         </TableCell>
                                         <TableCell className="text-white text-right">
                                             {formatCurrency(gross)}
@@ -439,7 +491,7 @@ const FinancialReports: React.FC = () => {
                                 ))}
                                 {transactions.length > 0 && (
                                     <TableRow className="border-yellow-500/30 bg-yellow-500/5">
-                                        <TableCell className="text-yellow-500 font-semibold" colSpan={3}>Total Geral (filtro atual)</TableCell>
+                                        <TableCell className="text-yellow-500 font-semibold" colSpan={5}>Total Geral (filtro atual)</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.gross)}</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{transactionAvgFeePct.toFixed(2)}%</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.fee)}</TableCell>
@@ -447,7 +499,7 @@ const FinancialReports: React.FC = () => {
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.systemCommission)}</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.expenses)}</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.organizerNet)}</TableCell>
-                                        <TableCell className="text-yellow-500" colSpan={2}>-</TableCell>
+                                        <TableCell className="text-yellow-500" colSpan={2}>—</TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>

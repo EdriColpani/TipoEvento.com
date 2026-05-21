@@ -19,6 +19,12 @@ import {
 } from '@/constants/billing-ui';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import {
+    formatCurrencyBrInput,
+    isValidCurrencyBr,
+    parseCurrencyBr,
+    sanitizeCurrencyBrInput,
+} from '@/utils/currency-input';
 
 interface ListingMonthlyDefaultFeeSectionProps {
     enabled: boolean;
@@ -31,16 +37,16 @@ const ListingMonthlyDefaultFeeSection: React.FC<ListingMonthlyDefaultFeeSectionP
 
     useEffect(() => {
         if (settings) {
-            setFee(String(settings.listing_monthly_default_fee));
+            setFee(formatCurrencyBrInput(settings.listing_monthly_default_fee));
         }
     }, [settings]);
 
     const handleSave = async () => {
-        const value = parseFloat(fee.replace(',', '.'));
-        if (Number.isNaN(value) || value < 0) {
-            showError('Informe um valor válido.');
+        if (!isValidCurrencyBr(fee)) {
+            showError('Informe um valor válido (ex.: 299,99).');
             return;
         }
+        const value = parseCurrencyBr(fee);
 
         setIsSaving(true);
         const toastId = showLoading('Salvando mensalidade padrão...');
@@ -82,11 +88,11 @@ const ListingMonthlyDefaultFeeSection: React.FC<ListingMonthlyDefaultFeeSectionP
                 <div className="space-y-2">
                     <Label className="text-white">Mensalidade padrão do sistema (R$)</Label>
                     <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
                         value={fee}
-                        onChange={(e) => setFee(e.target.value)}
+                        onChange={(e) => setFee(sanitizeCurrencyBrInput(e.target.value))}
                         className={billingInput}
                     />
                 </div>

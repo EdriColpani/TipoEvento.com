@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt } from 'lucide-react';
+import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield } from 'lucide-react';
+import PlanFeatureRouteGuard from '@/components/PlanFeatureRouteGuard';
+import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
+import {
+    filterNavItemsByPlanFeatures,
+    isNavPathLockedByPlan,
+    isRouteBlockedByPlan,
+    MANAGER_NAV_ITEMS,
+} from '@/constants/plan-features';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +17,15 @@ import { useProfile } from '@/hooks/use-profile';
 import { useUserType } from '@/hooks/use-user-type';
 import { showError, showSuccess } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useDevice } from '@/hooks/use-device';
+import { isCompanyBillingReady } from '@/constants/billing-plans';
+import {
+    isManagerNavItemLocked,
+    isManagerPathAllowedWithoutBilling,
+    MANAGER_BILLING_SETUP_PATH,
+    requiresManagerCompanyBillingAcceptance,
+} from '@/constants/manager-billing-gate';
 
 const ADMIN_USER_TYPE_ID = 1;
 const MANAGER_USER_TYPE_ID = 2;
@@ -65,7 +81,67 @@ const ManagerLayout: React.FC = () => {
     
     const isManagerPro = profile?.tipo_usuario_id === MANAGER_USER_TYPE_ID;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
+    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_USER_TYPE_ID;
+    const needsBillingGateCheck = isManagerPro && !isAdminMaster && !!company?.id;
+    const { billing, isLoading: isLoadingBilling } = useCompanyBilling(
+        needsBillingGateCheck ? company!.id : undefined,
+    );
+    const requiresContractAcceptance = requiresManagerCompanyBillingAcceptance(
+        isManagerPro,
+        isAdminMaster,
+        company?.id,
+        billing,
+    );
+    const billingReady = isCompanyBillingReady(billing);
+    const needsPlanFeatureCheck =
+        isManagerPro && !isAdminMaster && !!company?.id && !requiresContractAcceptance;
+    const { features: planFeatures, isLoading: isLoadingPlanFeatures } = useCompanyPlanFeatures(
+        company?.id,
+        { isAdminMaster, enabled: needsPlanFeatureCheck },
+    );
+    const billingGateToastShown = useRef(false);
+    const planFeatureRedirectShown = useRef(false);
 
+    useEffect(() => {
+        if (!requiresContractAcceptance) {
+            billingGateToastShown.current = false;
+            return;
+        }
+        if (isManagerPathAllowedWithoutBilling(location.pathname)) {
+            return;
+        }
+        if (!billingGateToastShown.current) {
+            billingGateToastShown.current = true;
+            showError(
+                'Confirme o plano e aceite o contrato da empresa na aba Plano e cobrança para acessar o painel PRO.',
+            );
+        }
+        navigate(MANAGER_BILLING_SETUP_PATH, { replace: true });
+    }, [requiresContractAcceptance, location.pathname, navigate]);
+
+    useEffect(() => {
+        if (!needsPlanFeatureCheck || isLoadingPlanFeatures) {
+            planFeatureRedirectShown.current = false;
+            return;
+        }
+        if (!isRouteBlockedByPlan(location.pathname, planFeatures, isAdminMaster, billingReady)) {
+            planFeatureRedirectShown.current = false;
+            return;
+        }
+        if (!planFeatureRedirectShown.current) {
+            planFeatureRedirectShown.current = true;
+            showError('Esta área não está disponível no plano comercial da sua empresa.');
+        }
+        navigate('/manager/dashboard', { replace: true });
+    }, [
+        needsPlanFeatureCheck,
+        isLoadingPlanFeatures,
+        location.pathname,
+        planFeatures,
+        isAdminMaster,
+        billingReady,
+        navigate,
+    ]);
 
     const handleLogout = async () => {
         try {
@@ -89,7 +165,14 @@ const ManagerLayout: React.FC = () => {
     };
 
     // Show loading spinner while session or profile/company data is being fetched
-    if (loadingSession || isLoadingProfile || isLoadingUserType || (isManagerPro && isLoadingCompany)) {
+    if (
+        loadingSession ||
+        isLoadingProfile ||
+        isLoadingUserType ||
+        (isManagerPro && isLoadingCompany) ||
+        (needsBillingGateCheck && isLoadingBilling) ||
+        (needsPlanFeatureCheck && isLoadingPlanFeatures)
+    ) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
@@ -108,7 +191,6 @@ const ManagerLayout: React.FC = () => {
     // Check if user is authorized (Admin or Manager)
     const userType = profile?.tipo_usuario_id;
     const isManager = userType === ADMIN_USER_TYPE_ID || userType === MANAGER_USER_TYPE_ID;
-    const isAdminMaster = userType === ADMIN_USER_TYPE_ID;
 
     if (!isManager) {
         // If the user is logged in but not a manager/admin (e.g., client type 3), redirect them
@@ -118,18 +200,33 @@ const ManagerLayout: React.FC = () => {
         }
     }
     
+    const navIconByPath: Record<string, React.ReactNode> = {
+        '/manager/dashboard': <Crown className="mr-2 h-4 w-4" />,
+        '/manager/events': <CalendarDays className="mr-2 h-4 w-4" />,
+        '/manager/events/create': <Plus className="mr-2 h-4 w-4" />,
+        '/manager/events/banners/create': <Image className="mr-2 h-4 w-4" />,
+        '/manager/wristbands': <QrCode className="mr-2 h-4 w-4" />,
+        '/manager/validation-keys': <Key className="mr-2 h-4 w-4" />,
+        '/manager/reports': <BarChart3 className="mr-2 h-4 w-4" />,
+        '/manager/settings': <Settings className="mr-2 h-4 w-4" />,
+    };
+
+    const filteredManagerNav = filterNavItemsByPlanFeatures(
+        MANAGER_NAV_ITEMS,
+        planFeatures,
+        isAdminMaster,
+        billingReady,
+    );
+
     const baseNavItems = [
         { path: '/', label: 'Home', icon: <User className="mr-2 h-4 w-4" /> },
-        { path: '/manager/dashboard', label: 'Dashboard PRO', icon: <Crown className="mr-2 h-4 w-4" /> },
-        { path: '/manager/events', label: 'Eventos', icon: <CalendarDays className="mr-2 h-4 w-4" /> },
-        { path: '/manager/events/create', label: 'Criar Novo Evento', icon: <Plus className="mr-2 h-4 w-4" /> },
-        { path: '/manager/events/banners/create', label: 'Criar Banner de Evento', icon: <Image className="mr-2 h-4 w-4" /> },
-        { path: '/manager/wristbands', label: 'Ingressos', icon: <QrCode className="mr-2 h-4 w-4" /> },
-        { path: '/manager/validation-keys', label: 'Chaves de Validação', icon: <Key className="mr-2 h-4 w-4" /> },
-        { path: '/manager/reports', label: 'Relatórios', icon: <BarChart3 className="mr-2 h-4 w-4" /> },
-        { path: '/manager/settings', label: 'Configurações', icon: <Settings className="mr-2 h-4 w-4" /> },
+        ...filteredManagerNav.map((item) => ({
+            path: item.path,
+            label: item.label,
+            icon: navIconByPath[item.path] ?? <Settings className="mr-2 h-4 w-4" />,
+        })),
     ];
-    
+
     let allNavItems = [...baseNavItems];
 
     // Adiciona links específicos do Admin Master
@@ -137,6 +234,21 @@ const ManagerLayout: React.FC = () => {
         allNavItems.splice(1, 0, { path: '/admin/dashboard', label: 'Dashboard Admin', icon: <Crown className="mr-2 h-4 w-4" /> });
     }
     
+    const handleNavClick = (path: string, closeMobile = false) => {
+        if (isManagerNavItemLocked(path, requiresContractAcceptance)) {
+            navigate(MANAGER_BILLING_SETUP_PATH);
+            if (closeMobile) setIsMobileMenuOpen(false);
+            return;
+        }
+        if (isNavPathLockedByPlan(path, planFeatures, isAdminMaster, billingReady)) {
+            showError('Esta opção não está disponível no plano comercial da sua empresa.');
+            if (closeMobile) setIsMobileMenuOpen(false);
+            return;
+        }
+        navigate(path);
+        if (closeMobile) setIsMobileMenuOpen(false);
+    };
+
     // FILTRAGEM: Remove o item cuja rota é a rota atual
     const navItems = allNavItems.filter(item => item.path !== location.pathname);
     
@@ -239,6 +351,13 @@ const ManagerLayout: React.FC = () => {
                                                             Planos das Empresas
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem 
+                                                            onClick={() => navigate('/admin/settings/plan-features')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/plan-features' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Shield className="mr-2 h-4 w-4" />
+                                                            Planos e permissões
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem 
                                                             onClick={() => navigate('/admin/settings/monthly-invoices')}
                                                             className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/monthly-invoices' || location.pathname === '/admin/settings/listing-monthly-billing' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
                                                         >
@@ -296,14 +415,21 @@ const ManagerLayout: React.FC = () => {
                                     }
                                     
                                     // Renderiza itens normais
+                                    const navLocked =
+                                        isManagerNavItemLocked(item.path, requiresContractAcceptance) ||
+                                        isNavPathLockedByPlan(item.path, planFeatures, isAdminMaster, billingReady);
                                     return (
-                                        <DropdownMenuItem 
+                                        <DropdownMenuItem
                                             key={item.path}
-                                            onClick={() => navigate(item.path)}
-                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === item.path ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                            disabled={navLocked}
+                                            onClick={() => handleNavClick(item.path)}
+                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === item.path ? 'bg-yellow-500/20 text-yellow-500' : ''} ${navLocked ? 'opacity-40 cursor-not-allowed' : ''}`}
                                         >
                                             {item.icon}
                                             {item.label}
+                                            {navLocked && item.path === '/manager/dashboard' ? (
+                                                <span className="ml-auto text-[10px] text-gray-500">bloqueado</span>
+                                            ) : null}
                                         </DropdownMenuItem>
                                     );
                                 })}
@@ -377,6 +503,13 @@ const ManagerLayout: React.FC = () => {
                                                                 Planos das Empresas
                                                             </button>
                                                             <button 
+                                                                onClick={() => { navigate('/admin/settings/plan-features'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Shield className="mr-2 h-4 w-4" />
+                                                                Planos e permissões
+                                                            </button>
+                                                            <button 
                                                                 onClick={() => { navigate('/admin/settings/monthly-invoices'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
                                                             >
@@ -431,11 +564,24 @@ const ManagerLayout: React.FC = () => {
                                             }
                                             
                                             // Renderiza itens normais
+                                            const navLocked =
+                                                isManagerNavItemLocked(
+                                                    item.path,
+                                                    requiresContractAcceptance,
+                                                ) ||
+                                                isNavPathLockedByPlan(
+                                                    item.path,
+                                                    planFeatures,
+                                                    isAdminMaster,
+                                                    billingReady,
+                                                );
                                             return (
-                                                <button 
+                                                <button
                                                     key={item.path}
-                                                    onClick={() => { navigate(item.path); setIsMobileMenuOpen(false); }} 
-                                                    className="flex items-center p-3 rounded-xl text-white hover:bg-yellow-500/10 transition-colors duration-200 text-lg w-full justify-start"
+                                                    type="button"
+                                                    disabled={navLocked}
+                                                    onClick={() => handleNavClick(item.path, true)}
+                                                    className={`flex items-center p-3 rounded-xl text-white transition-colors duration-200 text-lg w-full justify-start ${navLocked ? 'opacity-40 cursor-not-allowed' : 'hover:bg-yellow-500/10'}`}
                                                 >
                                                     {item.icon}
                                                     {item.label}
@@ -462,7 +608,21 @@ const ManagerLayout: React.FC = () => {
                 style={{ paddingTop: `${Math.max(headerHeight, 80)}px` }}
                 className={isMobile ? 'p-3' : isTablet ? 'p-4' : 'p-6'}
             >
-                <Outlet />
+                {requiresContractAcceptance &&
+                    isManagerPathAllowedWithoutBilling(location.pathname) && (
+                        <div className="max-w-7xl mx-auto mb-4 flex gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm">
+                            <span className="shrink-0 text-amber-400" aria-hidden>
+                                ⚠
+                            </span>
+                            <p>
+                                Para liberar o <strong>Dashboard PRO</strong> e o restante do menu, confirme o
+                                plano e aceite o contrato na aba <strong>Plano e cobrança</strong> abaixo.
+                            </p>
+                        </div>
+                    )}
+                <PlanFeatureRouteGuard>
+                    <Outlet />
+                </PlanFeatureRouteGuard>
             </main>
         </div>
     );

@@ -13,6 +13,11 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { Loader2, User, ArrowLeft } from 'lucide-react';
 import { useProfile, ProfileData } from '@/hooks/use-profile';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+    isSameDocument,
+    normalizeDocumentDigits,
+    translateProfileSaveError,
+} from '@/utils/profile-documents';
 
 const GENDER_OPTIONS = [
     "Masculino",
@@ -233,13 +238,11 @@ const ManagerIndividualProfile: React.FC = () => {
         
         const genderToSave = values.gender || null; 
 
-        const dataToSave = {
+        const dataToSave: Record<string, string | null> = {
             first_name: values.first_name || null,
-            last_name: values.last_name || null, 
+            last_name: values.last_name || null,
             birth_date: values.birth_date || null,
             gender: genderToSave,
-            cpf: cleanCPF,
-            rg: cleanRG,
             cep: cleanCEP,
             rua: values.rua || null,
             bairro: values.bairro || null,
@@ -247,8 +250,15 @@ const ManagerIndividualProfile: React.FC = () => {
             estado: values.estado || null,
             numero: values.numero || null,
             complemento: values.complemento || null,
-            // Não alteramos o tipo_usuario_id aqui, apenas atualizamos os dados
         };
+
+        // Evita UPDATE desnecessário em CPF/RG (ex.: só dígitos vs máscara) que dispara unique em outra linha
+        if (cleanCPF && !isSameDocument(profile?.cpf, cleanCPF)) {
+            dataToSave.cpf = normalizeDocumentDigits(cleanCPF);
+        }
+        if (cleanRG && !isSameDocument(profile?.rg, cleanRG)) {
+            dataToSave.rg = normalizeDocumentDigits(cleanRG);
+        }
 
         try {
             const { error } = await supabase
@@ -268,7 +278,7 @@ const ManagerIndividualProfile: React.FC = () => {
         } catch (e: any) {
             dismissToast(toastId);
             console.error("Erro ao atualizar Gestor PF:", e);
-            showError(`Falha ao atualizar perfil: ${e.message || 'Erro desconhecido'}`);
+            showError(`Falha ao atualizar perfil: ${translateProfileSaveError(e)}`);
         } finally {
             setIsSaving(false);
         }

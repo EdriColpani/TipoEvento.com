@@ -16,6 +16,8 @@ export interface ManagerTransactionData {
   system_commission_percentage: number | null;
   system_commission_amount: number | null;
   organizer_net_amount: number | null;
+  /** true quando financial_splits foi gravado (comissão + líquido gestor). */
+  split_recorded: boolean;
   created_at: string;
   paid_at: string | null;
   events: {
@@ -137,6 +139,11 @@ const fetchManagerTransactions = async (
       split?.system_commission_percentage !== null && split?.system_commission_percentage !== undefined
         ? split.system_commission_percentage
         : appliedPercentage;
+    const splitRecorded = Boolean(
+      split &&
+        (split.system_commission_amount > 0 || split.organizer_net_amount > 0),
+    );
+
     return {
       ...row,
       net_amount_after_mp: netMp,
@@ -144,6 +151,7 @@ const fetchManagerTransactions = async (
       system_commission_percentage: resolvedSystemCommissionPercentage,
       system_commission_amount: resolvedSystemCommissionAmount,
       organizer_net_amount: resolvedOrganizerNetAmount,
+      split_recorded: splitRecorded,
     };
   });
   return mapped as ManagerTransactionData[];
