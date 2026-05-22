@@ -1,14 +1,31 @@
 export const ENTRY_QR_PREFIX = 'EF1';
-export const ENTRY_QR_TTL_SECONDS = 90;
-export const ENTRY_QR_REFRESH_SECONDS = 75;
+export const ENTRY_QR_DEFAULT_TTL_SECONDS = 90;
 export const ENTRY_QR_CLOCK_SKEW_SECONDS = 10;
+export const ENTRY_QR_ALLOWED_TTLS = [60, 90, 120] as const;
+
+/** Legado — preferir normalizeEntryQrTtlSeconds. */
+export const ENTRY_QR_TTL_SECONDS = ENTRY_QR_DEFAULT_TTL_SECONDS;
+export const ENTRY_QR_REFRESH_SECONDS = entryQrRefreshSeconds(ENTRY_QR_DEFAULT_TTL_SECONDS);
 
 type EntryQrPayload = {
   aid: string;
   uid: string;
   exp: number;
   iat: number;
+  ver: number;
 };
+
+export function normalizeEntryQrTtlSeconds(raw?: number | null): number {
+  const n = Number(raw);
+  if ((ENTRY_QR_ALLOWED_TTLS as readonly number[]).includes(n)) return n;
+  return ENTRY_QR_DEFAULT_TTL_SECONDS;
+}
+
+/** Renova o QR um pouco antes de expirar (margem para fila na portaria). */
+export function entryQrRefreshSeconds(ttlSeconds: number): number {
+  const ttl = normalizeEntryQrTtlSeconds(ttlSeconds);
+  return Math.max(15, ttl - 15);
+}
 
 function getSecretBytes(): Uint8Array {
   const raw = (Deno.env.get('ENTRY_QR_SIGNING_SECRET') ?? '').trim();
@@ -61,13 +78,17 @@ async function verifySegment(message: string, signatureB64: string): Promise<boo
 export async function signEntryToken(
   analyticsId: string,
   userId: string,
+  options: { ttlSeconds?: number | null; tokenVersion?: number },
 ): Promise<{ token: string; expiresAt: string; refreshInSeconds: number; ttlSeconds: number }> {
+  const ttlSeconds = normalizeEntryQrTtlSeconds(options.ttlSeconds);
+  const tokenVersion = Math.max(0, Math.floor(options.tokenVersion ?? 0));
   const now = Math.floor(Date.now() / 1000);
   const payload: EntryQrPayload = {
     aid: analyticsId,
     uid: userId,
     iat: now,
-    exp: now + ENTRY_QR_TTL_SECONDS,
+    exp: now + ttlSeconds,
+    ver: tokenVersion,
   };
   const payloadB64 = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
   const message = `${ENTRY_QR_PREFIX}.${payloadB64}`;
@@ -75,15 +96,19 @@ export async function signEntryToken(
   return {
     token: `${message}.${sig}`,
     expiresAt: new Date(payload.exp * 1000).toISOString(),
-    refreshInSeconds: ENTRY_QR_REFRESH_SECONDS,
-    ttlSeconds: ENTRY_QR_TTL_SECONDS,
+    refreshInSeconds: entryQrRefreshSeconds(ttlSeconds),
+    ttlSeconds,
   };
 }
 
-export type EntryQrVerifyErrorCode = 'qr_expired' | 'qr_invalid' | 'qr_malformed';
+export type EntryQrVerifyErrorCode =
+  | 'qr_expired'
+  | 'qr_invalid'
+  | 'qr_malformed'
+  | 'qr_revoked';
 
 export type EntryQrVerifyResult =
-  | { ok: true; analyticsId: string; userId: string }
+  | { ok: true; analyticsId: string; userId: string; tokenVersion: number }
   | { ok: false; error_code: EntryQrVerifyErrorCode; message: string };
 
 export async function verifyEntryToken(token: string): Promise<EntryQrVerifyResult> {
@@ -127,6 +152,8 @@ export async function verifyEntryToken(token: string): Promise<EntryQrVerifyResu
     };
   }
 
+  const tokenVersion = typeof payload.ver === 'number' ? Math.floor(payload.ver) : 0;
+
   const now = Math.floor(Date.now() / 1000);
   if (payload.exp < now - ENTRY_QR_CLOCK_SKEW_SECONDS) {
     return {
@@ -136,7 +163,7 @@ export async function verifyEntryToken(token: string): Promise<EntryQrVerifyResu
     };
   }
 
-  return { ok: true, analyticsId: payload.aid, userId: payload.uid };
+  return { ok: true, analyticsId: payload.aid, userId: payload.uid, tokenVersion };
 }
 
 export function isDynamicEntryQr(code: string): boolean {

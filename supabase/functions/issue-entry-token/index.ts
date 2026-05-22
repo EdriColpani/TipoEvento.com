@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { signEntryToken } from '../_shared/entry-qr-token.ts';
+import { userOwnsAnalyticsEntry } from '../_shared/entry-qr-ownership.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,35 +13,6 @@ const supabaseService = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
 );
-
-function isPaidReceivable(r: { status?: string; payment_status?: string | null }): boolean {
-  return (
-    r.status === 'paid' ||
-    r.payment_status === 'approved' ||
-    r.payment_status === 'authorized'
-  );
-}
-
-async function userOwnsAnalytics(userId: string, analyticsId: string, clientUserId: string | null): Promise<boolean> {
-  if (clientUserId === userId) return true;
-
-  const { data: receivables, error } = await supabaseService
-    .from('receivables')
-    .select('status, payment_status, wristband_analytics_ids')
-    .eq('client_user_id', userId);
-
-  if (error) {
-    console.error('[issue-entry-token] receivables:', error);
-    return false;
-  }
-
-  for (const row of receivables ?? []) {
-    if (!isPaidReceivable(row as { status: string; payment_status: string | null })) continue;
-    const ids = (row as { wristband_analytics_ids?: string[] | null }).wristband_analytics_ids;
-    if (Array.isArray(ids) && ids.includes(analyticsId)) return true;
-  }
-  return false;
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -81,7 +53,7 @@ serve(async (req) => {
 
     const { data: wa, error: waError } = await supabaseService
       .from('wristband_analytics')
-      .select('id, status, event_type, client_user_id')
+      .select('id, status, event_type, client_user_id, entry_token_version, wristband_id')
       .eq('id', analyticsId)
       .maybeSingle();
 
@@ -114,7 +86,12 @@ serve(async (req) => {
       });
     }
 
-    const owns = await userOwnsAnalytics(user.id, analyticsId, wa.client_user_id as string | null);
+    const owns = await userOwnsAnalyticsEntry(
+      supabaseService,
+      user.id,
+      analyticsId,
+      wa.client_user_id as string | null,
+    );
     if (!owns) {
       return new Response(JSON.stringify({ error: 'Este ingresso não pertence à sua conta.' }), {
         status: 403,
@@ -122,7 +99,34 @@ serve(async (req) => {
       });
     }
 
-    const issued = await signEntryToken(analyticsId, user.id);
+    const { data: wristbandRow, error: wbError } = await supabaseService
+      .from('wristbands')
+      .select('event_id')
+      .eq('id', wa.wristband_id)
+      .maybeSingle();
+
+    if (wbError) throw wbError;
+
+    let entryQrTtlSeconds: number | null = null;
+    if (wristbandRow?.event_id) {
+      const { data: eventRow, error: evError } = await supabaseService
+        .from('events')
+        .select('entry_qr_ttl_seconds')
+        .eq('id', wristbandRow.event_id)
+        .maybeSingle();
+      if (evError) {
+        console.error('[issue-entry-token] entry_qr_ttl_seconds:', evError);
+      } else {
+        entryQrTtlSeconds = (eventRow as { entry_qr_ttl_seconds?: number } | null)?.entry_qr_ttl_seconds ?? null;
+      }
+    }
+
+    const tokenVersion = (wa as { entry_token_version?: number }).entry_token_version ?? 0;
+
+    const issued = await signEntryToken(analyticsId, user.id, {
+      ttlSeconds: entryQrTtlSeconds,
+      tokenVersion,
+    });
     return new Response(JSON.stringify(issued), { status: 200, headers: corsHeaders });
   } catch (err: unknown) {
     console.error('[issue-entry-token]', err);

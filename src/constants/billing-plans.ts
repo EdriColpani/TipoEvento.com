@@ -97,6 +97,8 @@ export interface CompanyBillingFields {
     billing_contract_id: string | null;
     billing_plan_locked_until: string | null;
     requires_billing_reacceptance: boolean;
+    listing_active_until?: string | null;
+    listing_last_payment_at?: string | null;
 }
 
 /** Empresa pode criar eventos sem passar pelo passo de contrato no formulário. */

@@ -42,3 +42,6 @@ verify_jwt = false
 
 [functions.issue-entry-token]
 verify_jwt = false
+
+[functions.revoke-entry-qr]
+verify_jwt = false
