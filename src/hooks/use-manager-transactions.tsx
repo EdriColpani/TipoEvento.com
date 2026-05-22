@@ -50,6 +50,7 @@ const fetchManagerTransactions = async (
       total_value,
       gross_amount,
       mp_fee_amount,
+      platform_fee_amount,
       net_amount_after_mp,
       created_at,
       paid_at,
@@ -126,13 +127,24 @@ const fetchManagerTransactions = async (
     const appliedPercentage = row.events?.applied_percentage !== null && row.events?.applied_percentage !== undefined
       ? Number(row.events.applied_percentage)
       : null;
+    const platformFeeStored =
+      typeof row.platform_fee_amount === 'number'
+        ? row.platform_fee_amount
+        : Number(row.platform_fee_amount ?? 0);
     const fallbackSystemCommissionAmount =
-      appliedPercentage !== null && gross > 0 ? gross * (appliedPercentage / 100) : 0;
-    const fallbackOrganizerNet = Math.max(netMp - fallbackSystemCommissionAmount, 0);
+      platformFeeStored > 0
+        ? platformFeeStored
+        : appliedPercentage !== null && gross > 0
+          ? gross * (appliedPercentage / 100)
+          : 0;
+    /** Extrato gestor = net_amount_after_mp (net_received do MP). */
+    const fallbackOrganizerNet = netMp > 0 ? netMp : Math.max(gross - fee - fallbackSystemCommissionAmount, 0);
     const resolvedSystemCommissionAmount =
-      split && split.system_commission_amount > 0 ? split.system_commission_amount : fallbackSystemCommissionAmount;
+      split && split.system_commission_amount > 0
+        ? split.system_commission_amount
+        : fallbackSystemCommissionAmount;
     const resolvedOrganizerNetAmount =
-      split && (split.organizer_net_amount > 0 || resolvedSystemCommissionAmount === 0)
+      split && split.organizer_net_amount > 0
         ? split.organizer_net_amount
         : fallbackOrganizerNet;
     const resolvedSystemCommissionPercentage =

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { resolveTicketPaymentQueryToken } from "./mp-ticket-payment.ts";
+import { extractMpPaymentFinancials } from "./mp-payment-financials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -176,12 +177,7 @@ serve(async (req) => {
       ? String(paymentPayload.order.id)
       : (paymentPayload.preference_id ? String(paymentPayload.preference_id) : null);
 
-    const grossAmount = toAmount(paymentPayload.transaction_amount);
-    const netAmount = toAmount(paymentPayload.transaction_details?.net_received_amount);
-    const feeDetails = Array.isArray(paymentPayload.fee_details) ? paymentPayload.fee_details : [];
-    const feeAmount = feeDetails.reduce((sum: number, fee: any) => sum + (toAmount(fee?.amount) ?? 0), 0);
-    const mpFeeAmount = feeAmount > 0 ? feeAmount : (grossAmount !== null && netAmount !== null ? Math.max(grossAmount - netAmount, 0) : null);
-    const netAfterMp = netAmount ?? (grossAmount !== null && mpFeeAmount !== null ? grossAmount - mpFeeAmount : null);
+    const mpFinancials = extractMpPaymentFinancials(paymentPayload as Record<string, unknown>);
 
     await supabaseService
       .from("receivables")
@@ -190,9 +186,10 @@ serve(async (req) => {
         mp_status_detail: paymentStatusDetail,
         mp_payment_id: mpPaymentId,
         mp_preference_id: mpPreferenceId,
-        gross_amount: grossAmount,
-        mp_fee_amount: mpFeeAmount,
-        net_amount_after_mp: netAfterMp,
+        gross_amount: mpFinancials.grossAmount,
+        mp_fee_amount: mpFinancials.mpFeeAmount,
+        platform_fee_amount: mpFinancials.platformFeeAmount,
+        net_amount_after_mp: mpFinancials.collectorNetAmount,
       })
       .eq("id", transactionId);
     await logPaymentEvent({
