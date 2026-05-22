@@ -348,12 +348,12 @@ const FinancialReports: React.FC = () => {
                             (sistema gravou comissão EventFest + líquido do gestor).
                         </li>
                         <li>
-                            <strong className="text-white">R$ Comissão Sistema</strong> = parte EventFest (% sobre o bruto).{' '}
-                            <strong className="text-white">Total Líquido</strong> = estimativa do que fica com o gestor após taxa MP e comissão.
+                            <strong className="text-white">R$ Comissão Sistema</strong> = valor creditado à conta EventFest (marketplace).{' '}
+                            <strong className="text-white">Recebido gestor</strong> = mesmo valor do extrato MP do gestor (net_received).
                         </li>
                         <li>
-                            Confirme no painel Mercado Pago: na <strong className="text-white">conta do gestor</strong> o recebimento líquido;
-                            na <strong className="text-white">conta EventFest</strong> a taxa/marketplace (comissão). Use o <strong className="text-white">ID MP</strong> da linha.
+                            <strong className="text-white">R$ MP</strong> = taxa de processamento do Mercado Pago (não é a comissão EventFest).{' '}
+                            Bruto ≈ Recebido gestor + Comissão + Taxa MP.
                         </li>
                     </ol>
                     {isAdminMaster && transactionTotals.systemCommission > 0 && (
@@ -369,7 +369,7 @@ const FinancialReports: React.FC = () => {
                 <CardHeader className="p-0 mb-4">
                     <CardTitle className="text-white text-xl">Transações de Pagamento (Cliente/Gestor)</CardTitle>
                     <p className="text-gray-500 text-sm mt-1 font-normal">
-                        Valores calculados pelo sistema após confirmação do Mercado Pago (webhook). O repasse real entre contas MP depende do vínculo marketplace.
+                        Valores do retorno do Mercado Pago (webhook): alinhados ao extrato de cada conta (gestor e EventFest).
                     </p>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -409,7 +409,7 @@ const FinancialReports: React.FC = () => {
                                     <TableHead className="text-yellow-500 text-right">% Comissão Sistema</TableHead>
                                     <TableHead className="text-yellow-500 text-right">R$ Comissão Sistema</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Total de Despesas</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">Total Líquido</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Recebido gestor</TableHead>
                                     <TableHead className="text-yellow-500">Data</TableHead>
                                     <TableHead className="text-yellow-500">Ação</TableHead>
                                 </TableRow>

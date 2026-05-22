@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { resolveWebhookPayment } from './mp-ticket-payment.ts';
+import { extractMpPaymentFinancials, resolveSplitAmounts } from './mp-payment-financials.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,35 +41,6 @@ async function logPaymentEvent(params: {
   if (error) {
     console.error('[MP Webhook] Failed to write payment_events log:', error);
   }
-}
-
-function toAmount(value: unknown): number | null {
-  const n = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function extractMpFinancials(mpPaymentData: Record<string, any>) {
-  const grossAmount = toAmount(mpPaymentData.transaction_amount);
-  const netFromTransactionDetails = toAmount(mpPaymentData.transaction_details?.net_received_amount);
-  const feeDetails = Array.isArray(mpPaymentData.fee_details) ? mpPaymentData.fee_details : [];
-  const feeFromDetails = feeDetails.reduce((sum: number, fee: any) => sum + (toAmount(fee?.amount) ?? 0), 0);
-
-  let mpFeeAmount: number | null = feeFromDetails > 0 ? feeFromDetails : null;
-  if (mpFeeAmount === null && grossAmount !== null && netFromTransactionDetails !== null) {
-    const derivedFee = grossAmount - netFromTransactionDetails;
-    mpFeeAmount = derivedFee >= 0 ? derivedFee : null;
-  }
-
-  let netAmountAfterMp: number | null = netFromTransactionDetails;
-  if (netAmountAfterMp === null && grossAmount !== null && mpFeeAmount !== null) {
-    netAmountAfterMp = grossAmount - mpFeeAmount;
-  }
-
-  return {
-    grossAmount,
-    mpFeeAmount,
-    netAmountAfterMp,
-  };
 }
 
 serve(async (req) => {
@@ -132,7 +104,11 @@ serve(async (req) => {
     const mpPreferenceId = mpPaymentData.order?.id
       ? String(mpPaymentData.order.id)
       : (mpPaymentData.preference_id ? String(mpPaymentData.preference_id) : null);
-    const { grossAmount, mpFeeAmount, netAmountAfterMp } = extractMpFinancials(mpPaymentData);
+    const mpFinancials = extractMpPaymentFinancials(mpPaymentData);
+    const grossAmount = mpFinancials.grossAmount;
+    const mpFeeAmount = mpFinancials.mpFeeAmount;
+    const netAmountAfterMp = mpFinancials.collectorNetAmount;
+    const platformFeeAmount = mpFinancials.platformFeeAmount;
     console.log(`[MP Webhook] Payment status from Mercado Pago API: ${paymentStatus}`);
     console.log(`[MP Webhook] Payment status_detail: ${paymentStatusDetail}`);
     console.log(`[MP Webhook] Payment ID: ${mpPaymentData.id}`);
@@ -355,6 +331,7 @@ serve(async (req) => {
                 mp_preference_id: mpPreferenceId,
                 gross_amount: grossAmount,
                 mp_fee_amount: mpFeeAmount,
+                platform_fee_amount: platformFeeAmount,
                 net_amount_after_mp: netAmountAfterMp,
                 paid_at: new Date().toISOString(),
             })
@@ -384,6 +361,7 @@ serve(async (req) => {
             stage: 'receivable_paid',
             gross_amount: grossAmount,
             mp_fee_amount: mpFeeAmount,
+            platform_fee_amount: platformFeeAmount,
             net_amount_after_mp: netAmountAfterMp,
           },
         });
@@ -409,25 +387,24 @@ serve(async (req) => {
             throw new Error(`Invalid commission percentage for event ${eventId}.`);
         }
 
-        // 6. Calcular valores financeiros com taxa do Mercado Pago
-        // Regra aplicada:
-        // - Comissão da plataforma: percentual sobre o valor bruto da venda
-        // - Líquido do organizador: líquido pós-MP menos comissão da plataforma
-        // Observação: os campos gross/mp_fee/net vêm do retorno do gateway e já
-        // foram persistidos em receivables; aqui usamos os mesmos para split.
-        const grossSaleAmount = grossAmount ?? totalValue;
-        const feeAmount = mpFeeAmount ?? Math.max(grossSaleAmount - (netAmountAfterMp ?? grossSaleAmount), 0);
-        const netAfterMpAmount = netAmountAfterMp ?? Math.max(grossSaleAmount - feeAmount, 0);
-        const platformAmount = grossSaleAmount * (appliedPercentage / 100);
-        const managerAmount = Math.max(netAfterMpAmount - platformAmount, 0);
-        
+        // 6. Split alinhado ao extrato MP: gestor = net_received; plataforma = marketplace_fee
+        const split = resolveSplitAmounts({
+          grossFallback: Number(totalValue),
+          appliedPercentage,
+          financials: mpFinancials,
+        });
+        const grossSaleAmount = split.grossSaleAmount;
+        const feeAmount = split.mpFeeAmount;
+        const platformAmount = split.platformAmount;
+        const managerAmount = split.managerAmount;
+
         console.log(`[MP Webhook] Financial Calculation for transaction ${finalTransactionId}:`);
         console.log(`  - Gross Sale Amount: R$ ${grossSaleAmount.toFixed(2)}`);
         console.log(`  - Mercado Pago Fee: R$ ${feeAmount.toFixed(2)}`);
-        console.log(`  - Net After MP: R$ ${netAfterMpAmount.toFixed(2)}`);
-        console.log(`  - Applied Percentage: ${appliedPercentage}%`);
-        console.log(`  - Platform Commission: R$ ${platformAmount.toFixed(2)}`);
-        console.log(`  - Manager Net Amount: R$ ${managerAmount.toFixed(2)}`);
+        console.log(`  - Collector net (gestor extrato): R$ ${(split.collectorNetAmount ?? managerAmount).toFixed(2)}`);
+        console.log(`  - Applied Percentage (evento): ${appliedPercentage}%`);
+        console.log(`  - Platform Commission (extrato MP): R$ ${platformAmount.toFixed(2)}`);
+        console.log(`  - Manager amount (financial_splits): R$ ${managerAmount.toFixed(2)}`);
         console.log(`  - Company ID: ${companyId}`);
 
         // 7. Registrar a divisão financeira na tabela financial_splits
@@ -593,6 +570,7 @@ serve(async (req) => {
                 mp_preference_id: mpPreferenceId,
                 gross_amount: grossAmount,
                 mp_fee_amount: mpFeeAmount,
+                platform_fee_amount: platformFeeAmount,
                 net_amount_after_mp: netAmountAfterMp,
             })
             .eq('id', finalTransactionId);
@@ -653,6 +631,7 @@ serve(async (req) => {
                 mp_preference_id: mpPreferenceId,
                 gross_amount: grossAmount,
                 mp_fee_amount: mpFeeAmount,
+                platform_fee_amount: platformFeeAmount,
                 net_amount_after_mp: netAmountAfterMp,
             })
             .eq('id', finalTransactionId);
