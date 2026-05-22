@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
+import { consolidateSplitsByTransaction, resolveReceivableFinancials } from '@/utils/resolve-receivable-financials';
 
 export interface ManagerTransactionData {
   id: string;
@@ -88,33 +89,7 @@ const fetchManagerTransactions = async (
     : { data: [], error: null };
   if (splitsError) throw splitsError;
 
-  const splitByTransaction = new Map<string, {
-    system_commission_amount: number;
-    organizer_net_amount: number;
-    system_commission_percentage: number | null;
-  }>();
-
-  (splits || []).forEach((split: any) => {
-    const key = split.transaction_id as string;
-    if (!splitByTransaction.has(key)) {
-      splitByTransaction.set(key, {
-        system_commission_amount: 0,
-        organizer_net_amount: 0,
-        system_commission_percentage: null,
-      });
-    }
-    const acc = splitByTransaction.get(key)!;
-    const platformAmount = Number(split.platform_amount ?? 0);
-    const managerAmount = Number(split.manager_amount ?? 0);
-    // Consolidação defensiva: em caso de duplicidade de registros para a mesma transação,
-    // usamos o maior valor observado de cada "lado" do split (sistema e organizador),
-    // evitando inflar o líquido por soma indevida.
-    acc.system_commission_amount = Math.max(acc.system_commission_amount, platformAmount);
-    acc.organizer_net_amount = Math.max(acc.organizer_net_amount, managerAmount);
-    if (split.applied_percentage !== null && split.applied_percentage !== undefined) {
-      acc.system_commission_percentage = Number(split.applied_percentage);
-    }
-  });
+  const splitByTransaction = consolidateSplitsByTransaction(splits || []);
 
   const mapped = (data || []).map((row: any) => {
     const gross = typeof row.gross_amount === 'number' ? row.gross_amount : Number(row.gross_amount ?? row.total_value ?? 0);
@@ -123,34 +98,12 @@ const fetchManagerTransactions = async (
       ? row.net_amount_after_mp
       : Number(row.net_amount_after_mp ?? Math.max(gross - fee, 0));
     const mp_fee_percentage = gross > 0 ? (fee / gross) * 100 : null;
+    const eventPct =
+      row.events?.applied_percentage !== null && row.events?.applied_percentage !== undefined
+        ? Number(row.events.applied_percentage)
+        : null;
+    const resolved = resolveReceivableFinancials(row, splitByTransaction.get(row.id), eventPct);
     const split = splitByTransaction.get(row.id);
-    const appliedPercentage = row.events?.applied_percentage !== null && row.events?.applied_percentage !== undefined
-      ? Number(row.events.applied_percentage)
-      : null;
-    const platformFeeStored =
-      typeof row.platform_fee_amount === 'number'
-        ? row.platform_fee_amount
-        : Number(row.platform_fee_amount ?? 0);
-    const fallbackSystemCommissionAmount =
-      platformFeeStored > 0
-        ? platformFeeStored
-        : appliedPercentage !== null && gross > 0
-          ? gross * (appliedPercentage / 100)
-          : 0;
-    /** Extrato gestor = net_amount_after_mp (net_received do MP). */
-    const fallbackOrganizerNet = netMp > 0 ? netMp : Math.max(gross - fee - fallbackSystemCommissionAmount, 0);
-    const resolvedSystemCommissionAmount =
-      split && split.system_commission_amount > 0
-        ? split.system_commission_amount
-        : fallbackSystemCommissionAmount;
-    const resolvedOrganizerNetAmount =
-      split && split.organizer_net_amount > 0
-        ? split.organizer_net_amount
-        : fallbackOrganizerNet;
-    const resolvedSystemCommissionPercentage =
-      split?.system_commission_percentage !== null && split?.system_commission_percentage !== undefined
-        ? split.system_commission_percentage
-        : appliedPercentage;
     const splitRecorded = Boolean(
       split &&
         (split.system_commission_amount > 0 || split.organizer_net_amount > 0),
@@ -160,9 +113,9 @@ const fetchManagerTransactions = async (
       ...row,
       net_amount_after_mp: netMp,
       mp_fee_percentage,
-      system_commission_percentage: resolvedSystemCommissionPercentage,
-      system_commission_amount: resolvedSystemCommissionAmount,
-      organizer_net_amount: resolvedOrganizerNetAmount,
+      system_commission_percentage: resolved.appliedPercentage,
+      system_commission_amount: resolved.systemCommission,
+      organizer_net_amount: resolved.organizerNet,
       split_recorded: splitRecorded,
     };
   });
@@ -173,11 +126,15 @@ export const useManagerTransactions = (
   userId: string | undefined,
   isAdminMaster: boolean,
   filters: ManagerTransactionFilters = {},
+  options?: { enabled?: boolean },
 ) => {
+  const enabled =
+    options?.enabled !== undefined ? options.enabled : Boolean(userId);
+
   const query = useQuery({
     queryKey: ['managerTransactions', userId, isAdminMaster, filters],
     queryFn: () => fetchManagerTransactions(userId!, isAdminMaster, filters),
-    enabled: !!userId,
+    enabled,
     staleTime: 1000 * 60,
     onError: (error) => {
       console.error('Query Error: Failed to load manager transactions.', error);

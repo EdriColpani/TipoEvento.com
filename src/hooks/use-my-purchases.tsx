@@ -14,11 +14,13 @@ export interface PurchaseData {
   net_amount_after_mp: number | null;
   created_at: string;
   paid_at: string | null;
+  wristband_analytics_ids: string[] | null;
   events: {
     id: string;
     title: string;
     date: string;
     location: string;
+    description: string | null;
   } | null;
 }
 
@@ -39,11 +41,13 @@ const fetchMyPurchases = async (userId: string): Promise<PurchaseData[]> => {
       net_amount_after_mp,
       created_at,
       paid_at,
+      wristband_analytics_ids,
       events:event_id (
         id,
         title,
         date,
-        location
+        location,
+        description
       )
     `)
     .eq('client_user_id', userId)

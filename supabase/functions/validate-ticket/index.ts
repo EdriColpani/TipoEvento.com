@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { isDynamicEntryQr, verifyEntryToken } from '../_shared/entry-qr-token.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,6 +65,91 @@ async function insertMovementIfNotDuplicate(params: {
 
   if (error) {
     console.error('[validate-ticket] erro ao registrar wristband_movement:', error);
+  }
+}
+
+type AnalyticsAccessRow = { id: string; status: string; event_type: string };
+
+/** Regras de entrada/saída por tipo de ingresso (compra = active na entrada, vira used após validar). */
+function evaluateAnalyticsAccess(
+  wa: AnalyticsAccessRow,
+  validation_type: 'entry' | 'exit',
+): { ok: boolean; message: string } {
+  const paidOrFree = wa.event_type === 'purchase' || wa.event_type === 'free_registration';
+  if (!paidOrFree) {
+    return { ok: false, message: 'Tipo de ingresso inválido.' };
+  }
+
+  if (validation_type === 'exit') {
+    const ok =
+      wa.status === 'used' ||
+      (wa.event_type === 'purchase' && wa.status === 'active');
+    return {
+      ok,
+      message: ok ? '' : 'Ingresso ainda não liberado ou inválido.',
+    };
+  }
+
+  if (wa.event_type === 'purchase') {
+    if (wa.status === 'used') {
+      return { ok: false, message: 'Ingresso já utilizado na entrada.' };
+    }
+    if (wa.status === 'active') {
+      return { ok: true, message: '' };
+    }
+    return { ok: false, message: 'Ingresso ainda não liberado ou inválido.' };
+  }
+
+  if (wa.status === 'used') {
+    return { ok: true, message: '' };
+  }
+  return { ok: false, message: 'Ingresso ainda não liberado ou inválido.' };
+}
+
+async function eventAllowsPrintedTickets(eventId: string): Promise<boolean> {
+  const { data, error } = await supabaseService
+    .from('events')
+    .select('allow_printed_tickets')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (error) {
+    console.error('[validate-ticket] allow_printed_tickets:', error);
+    return false;
+  }
+  return (data as { allow_printed_tickets?: boolean } | null)?.allow_printed_tickets === true;
+}
+
+async function rejectPrintedPurchaseIfDigitalOnly(params: {
+  eventId: string;
+  eventType: string;
+  validationType: string;
+  scannedViaDynamicQr: boolean;
+}): Promise<{ blocked: boolean; message: string; error_code: string } | null> {
+  if (
+    params.scannedViaDynamicQr ||
+    params.eventType !== 'purchase' ||
+    params.validationType !== 'entry'
+  ) {
+    return null;
+  }
+  const allowsPrinted = await eventAllowsPrintedTickets(params.eventId);
+  if (allowsPrinted) return null;
+  return {
+    blocked: true,
+    message: 'Este evento exige QR do aplicativo. Peça ao cliente para abrir o ingresso no app.',
+    error_code: 'digital_only',
+  };
+}
+
+async function markPurchaseAnalyticsUsedOnEntry(analyticsId: string): Promise<void> {
+  const { error } = await supabaseService
+    .from('wristband_analytics')
+    .update({ status: 'used' })
+    .eq('id', analyticsId)
+    .eq('event_type', 'purchase')
+    .eq('status', 'active');
+  if (error) {
+    console.error('[validate-ticket] falha ao marcar ingresso purchase como used:', error);
   }
 }
 
@@ -183,10 +269,39 @@ serve(async (req) => {
       });
     }
 
-    const codeTrim = String(wristband_code).trim();
+    let codeTrim = String(wristband_code).trim();
+    let scannedViaDynamicQr = false;
+
+    if (isDynamicEntryQr(codeTrim)) {
+      const verified = await verifyEntryToken(codeTrim);
+      if (!verified.ok) {
+        await supabaseService.from('validation_logs').insert({
+          api_key_id: apiKeyData.id,
+          wristband_code: codeTrim.slice(0, 120),
+          validation_type,
+          validation_status: 'invalid',
+          validation_message: verified.message,
+          validated_by_name: apiKeyData.name,
+          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: verified.message,
+            error_code: verified.error_code,
+            wristband_code: codeTrim.slice(0, 80),
+          }),
+          { status: 400, headers: corsHeaders },
+        );
+      }
+      codeTrim = verified.analyticsId;
+      scannedViaDynamicQr = true;
+    }
+
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-    // 5b. QR de inscrição gratuita = id de wristband_analytics (UUID)
+    // 5b. QR = id de wristband_analytics (UUID) ou resolvido de EF1
     if (uuidRe.test(codeTrim)) {
       const { data: wa, error: waErr } = await supabaseService
         .from('wristband_analytics')
@@ -222,21 +337,52 @@ serve(async (req) => {
         return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada para este evento.' }), { status: 403, headers: corsHeaders });
       }
 
-      const paidOrFree = wa.event_type === 'purchase' || wa.event_type === 'free_registration';
-      const analyticsReady =
-        wa.status === 'used' ||
-        (wa.event_type === 'purchase' && wa.status === 'active');
-      const ok = analyticsReady && paidOrFree;
-      const validationStatus = ok ? 'success' : 'not_paid';
+      const digitalOnlyBlock = await rejectPrintedPurchaseIfDigitalOnly({
+        eventId: wristbandData.event_id,
+        eventType: wa.event_type,
+        validationType: validation_type,
+        scannedViaDynamicQr,
+      });
+      if (digitalOnlyBlock) {
+        await supabaseService.from('validation_logs').insert({
+          api_key_id: apiKeyData.id,
+          event_id: wristbandData.event_id,
+          wristband_id: wristbandData.id,
+          wristband_code: codeTrim,
+          validation_type,
+          validation_status: 'invalid',
+          validation_message: digitalOnlyBlock.message,
+          validated_by_name: apiKeyData.name,
+          ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+          user_agent: req.headers.get('user-agent') || null,
+        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: digitalOnlyBlock.message,
+            error_code: digitalOnlyBlock.error_code,
+            wristband_code: codeTrim,
+          }),
+          { status: 400, headers: corsHeaders },
+        );
+      }
+
+      const access = evaluateAnalyticsAccess(wa, validation_type);
+      const ok = access.ok;
+      const validationStatus = ok ? 'success' : (wa.event_type === 'purchase' && wa.status === 'used' && validation_type === 'entry' ? 'invalid' : 'not_paid');
       const validationMessage = ok
-        ? (validation_type === 'entry' ? 'Entrada validada (inscrição gratuita).' : 'Saída registrada.')
-        : 'Ingresso ainda não liberado ou inválido.';
+        ? (validation_type === 'entry'
+          ? (wa.event_type === 'purchase'
+            ? (scannedViaDynamicQr ? 'Entrada validada (QR app).' : 'Entrada validada (ingresso impresso).')
+            : 'Entrada validada (inscrição gratuita).')
+          : 'Saída registrada.')
+        : access.message;
 
       const { data: validationLog, error: validationLogError } = await supabaseService.from('validation_logs').insert({
         api_key_id: apiKeyData.id,
         event_id: wristbandData.event_id,
         wristband_id: wristbandData.id,
-        wristband_code: wristbandData.code,
+        wristband_code: scannedViaDynamicQr ? 'EF1:dynamic' : wristbandData.code,
         validation_type,
         validation_status: validationStatus,
         validation_message: validationMessage,
@@ -257,6 +403,10 @@ serve(async (req) => {
           api_key_id: apiKeyData.id,
           movement_type: validation_type as 'entry' | 'exit',
         });
+      }
+
+      if (ok && validation_type === 'entry' && wa.event_type === 'purchase') {
+        await markPurchaseAnalyticsUsedOnEntry(wa.id);
       }
 
       // Inscrição gratuita: marcar presença e data/hora da confirmação na entrada
@@ -305,15 +455,43 @@ serve(async (req) => {
           if (apiKeyData.event_id && apiKeyData.event_id !== wristbandData.event_id) {
             return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada para este evento.' }), { status: 403, headers: corsHeaders });
           }
-          const paidOrFree = wa.event_type === 'purchase' || wa.event_type === 'free_registration';
-          const analyticsReady =
-            wa.status === 'used' ||
-            (wa.event_type === 'purchase' && wa.status === 'active');
-          const ok = analyticsReady && paidOrFree;
-          const validationStatus = ok ? 'success' : 'not_paid';
+
+          const digitalOnlyBlock = await rejectPrintedPurchaseIfDigitalOnly({
+            eventId: wristbandData.event_id,
+            eventType: wa.event_type,
+            validationType: validation_type,
+            scannedViaDynamicQr: false,
+          });
+          if (digitalOnlyBlock) {
+            await supabaseService.from('validation_logs').insert({
+              api_key_id: apiKeyData.id,
+              event_id: wristbandData.event_id,
+              wristband_id: wristbandData.id,
+              wristband_code: wa.code_wristbands,
+              validation_type,
+              validation_status: 'invalid',
+              validation_message: digitalOnlyBlock.message,
+              validated_by_name: apiKeyData.name,
+              ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+              user_agent: req.headers.get('user-agent') || null,
+            });
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: digitalOnlyBlock.message,
+                error_code: digitalOnlyBlock.error_code,
+                wristband_code: wa.code_wristbands,
+              }),
+              { status: 400, headers: corsHeaders },
+            );
+          }
+
+          const access = evaluateAnalyticsAccess(wa, validation_type);
+          const ok = access.ok;
+          const validationStatus = ok ? 'success' : (wa.event_type === 'purchase' && wa.status === 'used' && validation_type === 'entry' ? 'invalid' : 'not_paid');
           const validationMessage = ok
             ? (validation_type === 'entry' ? 'Entrada validada.' : 'Saída registrada.')
-            : 'Ingresso ainda não liberado ou inválido.';
+            : access.message;
 
           const { data: validationLog, error: validationLogError } = await supabaseService.from('validation_logs').insert({
             api_key_id: apiKeyData.id,
@@ -339,6 +517,10 @@ serve(async (req) => {
               api_key_id: apiKeyData.id,
               movement_type: validation_type as 'entry' | 'exit',
             });
+          }
+
+          if (ok && validation_type === 'entry' && wa.event_type === 'purchase') {
+            await markPurchaseAnalyticsUsedOnEntry(wa.id);
           }
 
           if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {

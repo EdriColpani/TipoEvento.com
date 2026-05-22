@@ -2,6 +2,10 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { resolveTicketPaymentQueryToken } from "./mp-ticket-payment.ts";
 import { extractMpPaymentFinancials } from "./mp-payment-financials.ts";
+import {
+  countAssignedTickets,
+  emitReceivableTicketsForPaidPurchase,
+} from "./emit-receivable-tickets.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,31 +28,67 @@ async function logPaymentEvent(params: {
   mpPreferenceId?: string | null;
   payload?: Record<string, unknown>;
 }) {
-  const { error } = await supabaseService
-    .from("payment_events")
-    .insert({
-      transaction_id: params.transactionId,
-      source: params.source,
-      payment_status: params.paymentStatus ?? null,
-      receivable_status: params.receivableStatus ?? null,
-      payment_status_detail: params.paymentStatusDetail ?? null,
-      mp_payment_id: params.mpPaymentId ?? null,
-      mp_preference_id: params.mpPreferenceId ?? null,
-      payload: params.payload ?? null,
-    });
+  const { error } = await supabaseService.from("payment_events").insert({
+    transaction_id: params.transactionId,
+    source: params.source,
+    payment_status: params.paymentStatus ?? null,
+    receivable_status: params.receivableStatus ?? null,
+    payment_status_detail: params.paymentStatusDetail ?? null,
+    mp_payment_id: params.mpPaymentId ?? null,
+    mp_preference_id: params.mpPreferenceId ?? null,
+    payload: params.payload ?? null,
+  });
 
   if (error) {
     console.error("[check-payment-status] Failed to write payment_events log:", error);
   }
 }
 
-function toAmount(value: unknown): number | null {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
 function isTerminalOrApprovedStatus(status: string | null): boolean {
   return status === "approved" || status === "authorized" || status === "rejected" || status === "cancelled";
+}
+
+function isMpApproved(status: string | null): boolean {
+  return status === "approved" || status === "authorized";
+}
+
+async function triggerWebhookReprocess(mpPaymentId: string): Promise<{
+  triggered: boolean;
+  httpStatus: number | null;
+  result: string | null;
+}> {
+  const webhookBase = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/mercadopago-webhook`;
+  const webhookUrl = `${webhookBase}?topic=payment&id=${encodeURIComponent(mpPaymentId)}`;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+  try {
+    const webhookResp = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(serviceKey ? { Authorization: `Bearer ${serviceKey}` } : {}),
+      },
+      body: JSON.stringify({
+        type: "payment",
+        data: { id: mpPaymentId },
+      }),
+    });
+    const webhookText = await webhookResp.text().catch(() => "");
+    return {
+      triggered: true,
+      httpStatus: webhookResp.status,
+      result: webhookResp.ok
+        ? "Webhook reprocessado com sucesso."
+        : `Webhook retornou ${webhookResp.status}: ${webhookText.slice(0, 500)}`,
+    };
+  } catch (reprocessError: unknown) {
+    const msg = reprocessError instanceof Error ? reprocessError.message : "erro desconhecido";
+    return {
+      triggered: true,
+      httpStatus: null,
+      result: `Falha ao reprocessar webhook: ${msg}`,
+    };
+  }
 }
 
 serve(async (req) => {
@@ -90,7 +130,9 @@ serve(async (req) => {
 
     const { data: receivable, error: receivableError } = await supabaseService
       .from("receivables")
-      .select("id, status, payment_status, mp_status_detail, mp_payment_id, mp_preference_id, client_user_id, manager_user_id")
+      .select(
+        "id, status, payment_status, mp_status_detail, mp_payment_id, mp_preference_id, client_user_id, manager_user_id",
+      )
       .eq("id", transactionId)
       .maybeSingle();
 
@@ -118,10 +160,10 @@ serve(async (req) => {
       );
     } catch (credErr) {
       const msg = credErr instanceof Error ? credErr.message : "Credencial MP indisponível.";
-      return new Response(JSON.stringify({ error: msg }), { status: 500, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: msg }), { status: 502, headers: corsHeaders });
     }
 
-    let paymentPayload: Record<string, any> | null = null;
+    let paymentPayload: Record<string, unknown> | null = null;
     if (receivable.mp_payment_id) {
       const byIdResp = await fetch(`https://api.mercadopago.com/v1/payments/${receivable.mp_payment_id}`, {
         method: "GET",
@@ -149,10 +191,10 @@ serve(async (req) => {
 
       if (!searchResp.ok) {
         const searchText = await searchResp.text();
-        return new Response(JSON.stringify({ error: "Falha ao consultar status no Mercado Pago.", details: searchText }), {
-          status: 502,
-          headers: corsHeaders,
-        });
+        return new Response(
+          JSON.stringify({ error: "Falha ao consultar status no Mercado Pago.", details: searchText.slice(0, 500) }),
+          { status: 502, headers: corsHeaders },
+        );
       }
 
       const searchJson = await searchResp.json();
@@ -165,6 +207,7 @@ serve(async (req) => {
         JSON.stringify({
           message: "Nenhum pagamento encontrado no Mercado Pago para esta transação.",
           transactionId,
+          ticketsEmitted: 0,
         }),
         { status: 200, headers: corsHeaders },
       );
@@ -173,25 +216,30 @@ serve(async (req) => {
     const paymentStatus = paymentPayload.status ? String(paymentPayload.status) : null;
     const paymentStatusDetail = paymentPayload.status_detail ? String(paymentPayload.status_detail) : null;
     const mpPaymentId = paymentPayload.id ? String(paymentPayload.id) : null;
-    const mpPreferenceId = paymentPayload.order?.id
-      ? String(paymentPayload.order.id)
+    const mpPreferenceId = paymentPayload.order && typeof paymentPayload.order === "object"
+      ? String((paymentPayload.order as { id?: string }).id ?? "")
       : (paymentPayload.preference_id ? String(paymentPayload.preference_id) : null);
 
-    const mpFinancials = extractMpPaymentFinancials(paymentPayload as Record<string, unknown>);
+    const mpFinancials = extractMpPaymentFinancials(paymentPayload);
 
-    await supabaseService
-      .from("receivables")
-      .update({
-        payment_status: paymentStatus,
-        mp_status_detail: paymentStatusDetail,
-        mp_payment_id: mpPaymentId,
-        mp_preference_id: mpPreferenceId,
-        gross_amount: mpFinancials.grossAmount,
-        mp_fee_amount: mpFinancials.mpFeeAmount,
-        platform_fee_amount: mpFinancials.platformFeeAmount,
-        net_amount_after_mp: mpFinancials.collectorNetAmount,
-      })
-      .eq("id", transactionId);
+    const updatePayload: Record<string, unknown> = {
+      payment_status: paymentStatus,
+      mp_status_detail: paymentStatusDetail,
+      mp_payment_id: mpPaymentId,
+      mp_preference_id: mpPreferenceId,
+      gross_amount: mpFinancials.grossAmount,
+      mp_fee_amount: mpFinancials.mpFeeAmount,
+      platform_fee_amount: mpFinancials.platformFeeAmount,
+      net_amount_after_mp: mpFinancials.collectorNetAmount,
+    };
+
+    if (isMpApproved(paymentStatus) && receivable.status !== "paid") {
+      updatePayload.status = "paid";
+      updatePayload.paid_at = new Date().toISOString();
+    }
+
+    await supabaseService.from("receivables").update(updatePayload).eq("id", transactionId);
+
     await logPaymentEvent({
       transactionId,
       source: "manual_check",
@@ -206,34 +254,27 @@ serve(async (req) => {
     let processingTriggered = false;
     let processingResult: string | null = null;
     let processingHttpStatus: number | null = null;
+    let ticketsEmitted = 0;
+    let ticketsExpected = 0;
 
-    // Se já está aprovado/rejeitado no MP e o status local ainda não refletiu,
-    // disparar reprocessamento usando a própria rotina oficial do webhook.
     if (isTerminalOrApprovedStatus(paymentStatus) && mpPaymentId) {
-      const webhookBase = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/mercadopago-webhook`;
-      const webhookUrl = `${webhookBase}?topic=payment&id=${encodeURIComponent(mpPaymentId)}`;
-      try {
-        const webhookResp = await fetch(webhookUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            type: "payment",
-            data: { id: mpPaymentId },
-          }),
-        });
-        processingTriggered = true;
-        processingHttpStatus = webhookResp.status;
-        const webhookText = await webhookResp.text().catch(() => "");
-        processingResult = webhookResp.ok
-          ? "Webhook reprocessado com sucesso."
-          : `Webhook retornou ${webhookResp.status}: ${webhookText}`;
-      } catch (reprocessError: any) {
-        processingTriggered = true;
-        processingResult = `Falha ao reprocessar webhook: ${reprocessError?.message || "erro desconhecido"}`;
-      }
+      const webhookRun = await triggerWebhookReprocess(mpPaymentId);
+      processingTriggered = webhookRun.triggered;
+      processingHttpStatus = webhookRun.httpStatus;
+      processingResult = webhookRun.result;
     }
+
+    if (isMpApproved(paymentStatus)) {
+      const emitResult = await emitReceivableTicketsForPaidPurchase(supabaseService, transactionId);
+      ticketsEmitted = emitResult.updated;
+      ticketsExpected = emitResult.expected;
+    }
+
+    const assignment = await countAssignedTickets(
+      supabaseService,
+      transactionId,
+      receivable.client_user_id as string,
+    );
 
     const { data: refreshedReceivable } = await supabaseService
       .from("receivables")
@@ -242,8 +283,8 @@ serve(async (req) => {
       .maybeSingle();
 
     const requiresAttention =
-      (paymentStatus === "approved" || paymentStatus === "authorized") &&
-      (refreshedReceivable?.status ?? receivable.status) !== "paid";
+      isMpApproved(paymentStatus) &&
+      (assignment.assigned < assignment.expected || (refreshedReceivable?.status ?? receivable.status) !== "paid");
 
     if (requiresAttention) {
       await logPaymentEvent({
@@ -259,6 +300,9 @@ serve(async (req) => {
           processing_triggered: processingTriggered,
           processing_result: processingResult,
           processing_http_status: processingHttpStatus,
+          tickets_emitted: ticketsEmitted,
+          tickets_expected: ticketsExpected,
+          tickets_assigned: assignment.assigned,
         },
       });
     }
@@ -272,22 +316,25 @@ serve(async (req) => {
         paymentStatusDetail,
         mpPaymentId,
         mpPreferenceId,
-        grossAmount,
-        mpFeeAmount,
-        netAmountAfterMp: netAfterMp,
+        grossAmount: mpFinancials.grossAmount,
+        mpFeeAmount: mpFinancials.mpFeeAmount,
+        netAmountAfterMp: mpFinancials.collectorNetAmount,
         processingTriggered,
         processingResult,
         processingHttpStatus,
+        ticketsEmitted,
+        ticketsExpected,
+        ticketsAssigned: assignment.assigned,
         requiresAttention,
       }),
       { status: 200, headers: corsHeaders },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[check-payment-status] Error:", error);
-    return new Response(JSON.stringify({ error: error?.message || "Internal Server Error" }), {
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: corsHeaders,
     });
   }
 });
-

@@ -39,3 +39,6 @@ verify_jwt = false
 
 [functions.mp-oauth-disconnect]
 verify_jwt = false
+
+[functions.issue-entry-token]
+verify_jwt = false

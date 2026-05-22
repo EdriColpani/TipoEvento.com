@@ -12,6 +12,7 @@ import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
+import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
@@ -47,12 +48,22 @@ const FinancialReports: React.FC = () => {
         status: transactionStatusFilter !== 'all' ? transactionStatusFilter : undefined,
     };
 
+    const reportsQueryEnabled = Boolean(
+        userId && !isLoadingProfile && profile && canAccess,
+    );
+
     const { data: reportData, isLoading: isLoadingReports, isError } = useFinancialReports(
         filters,
         userId,
         isAdminMaster || false,
+        { enabled: reportsQueryEnabled },
     );
-    const { transactions } = useManagerTransactions(userId, isAdminMaster || false, filters);
+    const { transactions } = useManagerTransactions(
+        userId,
+        isAdminMaster || false,
+        filters,
+        { enabled: reportsQueryEnabled },
+    );
 
     // Calcular totais gerais
     const totals = reportData ? {
@@ -127,22 +138,17 @@ const FinancialReports: React.FC = () => {
     const handleCheckTransactionStatus = async (transactionId: string) => {
         setCheckingTransactionId(transactionId);
         try {
-            const { data, error } = await supabase.functions.invoke('check-payment-status', {
-                body: { transactionId },
-            });
-            if (error) throw error;
-
-            const paymentStatus = data?.paymentStatus || 'desconhecido';
-            const detail = data?.paymentStatusDetail ? ` (${data.paymentStatusDetail})` : '';
-            if (data?.requiresAttention) {
-                showError(data?.processingResult || 'Pagamento aprovado no MP, mas integração local ainda não concluiu.');
+            const result = await reconcilePurchase(transactionId);
+            if (result.ok) {
+                showSuccess(result.message);
             } else {
-                showSuccess(`Consulta MP: ${paymentStatus}${detail}`);
+                showError(result.message);
             }
             setTransactionPage(1);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Erro ao verificar transação no MP:', err);
-            showError(err?.message || 'Falha ao consultar status no Mercado Pago.');
+            const msg = err instanceof Error ? err.message : 'Falha ao consultar status no Mercado Pago.';
+            showError(msg);
         } finally {
             setCheckingTransactionId(null);
         }
@@ -155,7 +161,7 @@ const FinancialReports: React.FC = () => {
         }
 
         // Criar CSV
-        const headers = ['Evento', 'Data', 'Vendas', 'Ingressos Vendidos', 'Valor Total', 'Valor Organizador', 'Comissão Sistema', '% Comissão'];
+        const headers = ['Evento', 'Data', 'Vendas', 'Ingressos Vendidos', 'Valor Total', 'Recebido gestor', 'Comissão Sistema', '% Comissão'];
         const rows = reportData.map(item => [
             item.event_title,
             formatDate(item.event_date),
@@ -317,7 +323,7 @@ const FinancialReports: React.FC = () => {
                         <CardContent className="p-0">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-gray-400 text-sm">Valor Organizadores</p>
+                                    <p className="text-gray-400 text-sm">Recebido gestor (total)</p>
                                     <p className="text-white text-2xl font-bold">{formatCurrency(totals.totalOrganizador)}</p>
                                 </div>
                                 <DollarSign className="h-8 w-8 text-green-500" />
@@ -564,7 +570,7 @@ const FinancialReports: React.FC = () => {
                                         <TableHead className="text-yellow-500 text-right">Vendas</TableHead>
                                         <TableHead className="text-yellow-500 text-right">Ingressos</TableHead>
                                         <TableHead className="text-yellow-500 text-right">Valor Total</TableHead>
-                                        <TableHead className="text-yellow-500 text-right">Valor Organizador</TableHead>
+                                        <TableHead className="text-yellow-500 text-right">Recebido gestor</TableHead>
                                         <TableHead className="text-yellow-500 text-right">Comissão Sistema</TableHead>
                                         <TableHead className="text-yellow-500">% Comissão</TableHead>
                                         <TableHead className="text-yellow-500">Ações</TableHead>

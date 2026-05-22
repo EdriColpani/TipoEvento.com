@@ -18,13 +18,17 @@ interface EventFormData {
     time: string;
     location: string;
     address: string;
-    card_image_url: string; // RENOMEADO
-    exposure_card_image_url: string; // NOVO
+    card_image_url: string;
+    exposure_card_image_url: string;
     banner_image_url: string;
     min_age: number | string;
     category: string;
     capacity: number | string;
     duration: string;
+    is_paid?: boolean;
+    allow_printed_tickets?: boolean;
+    ticket_price?: number | string | null;
+    contract_id?: string;
 }
 
 const ManagerEditEvent: React.FC = () => {
@@ -102,6 +106,10 @@ const ManagerEditEvent: React.FC = () => {
                 category: eventData.category || '',
                 capacity: eventData.capacity || 0,
                 duration: eventData.duration || '',
+                is_paid: Boolean(eventData.is_paid),
+                allow_printed_tickets: Boolean(eventData.allow_printed_tickets),
+                ticket_price: eventData.ticket_price ?? null,
+                contract_id: eventData.contract_id ?? undefined,
             });
             setIsFetching(false);
         };

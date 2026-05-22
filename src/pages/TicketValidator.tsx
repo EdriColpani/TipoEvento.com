@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, XCircle, Loader2, Key, QrCode, Scan, AlertTriangle, History, Search, Filter, Trash2, Volume2, VolumeX } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
+import { isDynamicEntryQrCode, normalizeValidatorWristbandCode } from '@/constants/entry-qr';
 import { format, isToday, isThisWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -213,6 +214,8 @@ const TicketValidator: React.FC = () => {
             return;
         }
 
+        const codeToSend = normalizeValidatorWristbandCode(code);
+
         setIsValidating(true);
         setLastResult(null);
 
@@ -234,20 +237,30 @@ const TicketValidator: React.FC = () => {
                     'x-api-key': apiKey.trim(),
                 },
                 body: JSON.stringify({
-                    wristband_code: code.trim(),
+                    wristband_code: codeToSend,
                     validation_type: validationType,
                 }),
             });
 
             const raw = await response.json();
+            const errorCode = (raw as { error_code?: string })?.error_code;
+            const serverMessage =
+                (raw as { message?: string })?.message ||
+                (raw as { error?: string })?.error;
+            const friendlyByCode: Record<string, string> = {
+                qr_expired: 'QR expirado — cliente deve abrir o ingresso no app novamente.',
+                qr_invalid: 'QR inválido ou adulterado.',
+                qr_malformed: 'QR inválido.',
+                digital_only: 'Evento só aceita QR do aplicativo do cliente.',
+            };
             const result: ValidationResult = {
                 ...(typeof raw === 'object' && raw !== null ? raw : {}),
                 message:
-                    (raw as { message?: string })?.message ||
-                    (raw as { error?: string })?.error ||
+                    serverMessage ||
+                    (errorCode && friendlyByCode[errorCode]) ||
                     (response.ok ? 'OK' : 'Falha na validação'),
                 success: Boolean((raw as { success?: boolean }).success),
-                wristband_code: (raw as { wristband_code?: string }).wristband_code ?? code.trim(),
+                wristband_code: (raw as { wristband_code?: string }).wristband_code ?? codeToSend,
                 validation_type: (raw as { validation_type?: string }).validation_type ?? validationType,
                 validated_at: (raw as { validated_at?: string }).validated_at,
                 validated_by: (raw as { validated_by?: string }).validated_by,
@@ -283,7 +296,7 @@ const TicketValidator: React.FC = () => {
                 id: `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 success: false,
                 message: errorMessage,
-                wristband_code: code,
+                wristband_code: codeToSend,
                 validation_type: validationType,
                 validated_at: new Date().toISOString(),
                 validated_by: 'Sistema',
@@ -338,7 +351,7 @@ const TicketValidator: React.FC = () => {
                 html5QrCode.stop().then(() => {
                     setIsScanning(false);
                     qrCodeScannerRef.current = null;
-                    const normalized = /^[0-9a-f-]{36}$/i.test(code) ? code : code.toUpperCase();
+                    const normalized = normalizeValidatorWristbandCode(code);
                     setWristbandCode(normalized);
                     setTimeout(() => validateTicket(normalized), 300);
                 }).catch(() => setIsScanning(false));
@@ -423,13 +436,13 @@ const TicketValidator: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white p-4">
-            <div className="max-w-2xl mx-auto">
+        <div className="min-h-screen bg-black text-white p-3 sm:p-4 overflow-x-hidden">
+            <div className="max-w-2xl mx-auto w-full min-w-0">
                 {/* Header */}
-                <div className="text-center mb-8">
-                    <div className="flex items-center justify-center mb-4">
-                        <QrCode className="h-12 w-12 text-yellow-500 mr-3" />
-                        <h1 className="text-3xl font-serif text-yellow-500">Validador de Ingressos</h1>
+                <div className="text-center mb-6 sm:mb-8">
+                    <div className="flex flex-wrap items-center justify-center gap-2 mb-3 sm:mb-4">
+                        <QrCode className="h-9 w-9 sm:h-12 sm:w-12 text-yellow-500 shrink-0" />
+                        <h1 className="text-xl sm:text-3xl font-serif text-yellow-500">Validador de Ingressos</h1>
                     </div>
                     <p className="text-gray-400">Valide ingressos de forma rápida e segura</p>
                 </div>
@@ -518,7 +531,7 @@ const TicketValidator: React.FC = () => {
 
                 {/* Card de Validação */}
                 <Card
-                    className={`bg-black border border-yellow-500/30 rounded-2xl mb-6 transition-opacity ${
+                    className={`bg-black border border-yellow-500/30 rounded-2xl mb-6 transition-opacity overflow-hidden ${
                         !keyVerified ? 'opacity-45' : ''
                     }`}
                 >
@@ -535,13 +548,13 @@ const TicketValidator: React.FC = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {/* Tipo de Validação */}
-                        <div className="flex space-x-4">
+                        <div className="flex gap-2 sm:gap-4">
                             <Button
                                 type="button"
                                 variant={validationType === 'entry' ? 'default' : 'outline'}
                                 onClick={() => setValidationType('entry')}
                                 disabled={!keyVerified}
-                                className={`flex-1 ${
+                                className={`flex-1 min-w-0 ${
                                     validationType === 'entry'
                                         ? 'bg-green-500 text-white hover:bg-green-600'
                                         : 'bg-black/60 border-yellow-500/30 text-yellow-500'
@@ -554,7 +567,7 @@ const TicketValidator: React.FC = () => {
                                 variant={validationType === 'exit' ? 'default' : 'outline'}
                                 onClick={() => setValidationType('exit')}
                                 disabled={!keyVerified}
-                                className={`flex-1 ${
+                                className={`flex-1 min-w-0 ${
                                     validationType === 'exit'
                                         ? 'bg-red-500 text-white hover:bg-red-600'
                                         : 'bg-black/60 border-yellow-500/30 text-yellow-500'
@@ -565,20 +578,27 @@ const TicketValidator: React.FC = () => {
                         </div>
 
                         {/* Campo de Código */}
-                        <form onSubmit={handleManualSubmit} className="space-y-4">
+                        <form onSubmit={handleManualSubmit} className="space-y-3 sm:space-y-4 min-w-0">
                             <Input
                                 type="text"
                                 value={wristbandCode}
-                                onChange={(e) => setWristbandCode(e.target.value.toUpperCase())}
-                                placeholder="Digite ou escaneie o código do ingresso"
-                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 text-center text-lg font-mono"
+                                onChange={(e) => {
+                                    const v = e.target.value;
+                                    setWristbandCode(
+                                        isDynamicEntryQrCode(v) || /^EF1\./i.test(v)
+                                            ? v
+                                            : v.toUpperCase(),
+                                    );
+                                }}
+                                placeholder="Código do ingresso ou escaneie o QR"
+                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 text-left sm:text-center text-xs sm:text-base font-mono break-all min-h-11 px-2 sm:px-3"
                                 autoFocus={keyVerified}
                                 disabled={!keyVerified || isValidating || isScanning}
                                 aria-disabled={!keyVerified}
                             />
 
-                            {/* Botões de Ação */}
-                            <div className="flex space-x-4">
+                            {/* Botões de Ação — coluna no celular para não cortar */}
+                            <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
                                 <Button
                                     type="submit"
                                     disabled={
@@ -588,17 +608,17 @@ const TicketValidator: React.FC = () => {
                                         !apiKey.trim() ||
                                         isScanning
                                     }
-                                    className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                                    className="w-full sm:flex-1 min-h-11 bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 shrink-0"
                                 >
                                     {isValidating ? (
                                         <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
                                             Validando...
                                         </>
                                     ) : (
                                         <>
-                                            <CheckCircle className="mr-2 h-4 w-4" />
-                                            Validar ingresso
+                                            <CheckCircle className="mr-2 h-4 w-4 shrink-0" />
+                                            <span>Validar ingresso</span>
                                         </>
                                     )}
                                 </Button>
@@ -607,19 +627,19 @@ const TicketValidator: React.FC = () => {
                                         type="button"
                                         onClick={handleScanQRCode}
                                         disabled={!keyVerified || !apiKey.trim() || isValidating}
-                                        className="bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+                                        className="w-full sm:flex-1 min-h-11 bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 shrink-0"
                                     >
-                                        <QrCode className="mr-2 h-4 w-4" />
-                                        Escanear QR
+                                        <QrCode className="mr-2 h-5 w-5 shrink-0" />
+                                        <span>Escanear QR</span>
                                     </Button>
                                 ) : (
                                     <Button
                                         type="button"
                                         onClick={stopScanning}
-                                        className="bg-red-500 text-white hover:bg-red-600"
+                                        className="w-full sm:flex-1 min-h-11 bg-red-500 text-white hover:bg-red-600 shrink-0"
                                     >
-                                        <XCircle className="mr-2 h-4 w-4" />
-                                        Parar
+                                        <XCircle className="mr-2 h-4 w-4 shrink-0" />
+                                        Parar câmera
                                     </Button>
                                 )}
                             </div>
@@ -655,15 +675,20 @@ const TicketValidator: React.FC = () => {
                                 ) : (
                                     <XCircle className="h-8 w-8 text-red-500 flex-shrink-0 mt-1" />
                                 )}
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <div className={`text-lg font-semibold mb-2 ${
                                         lastResult.success ? 'text-green-400' : 'text-red-400'
                                     }`}>
                                         {lastResult.success ? 'Validação Bem-Sucedida' : 'Validação Falhou'}
                                     </div>
-                                    <div className="text-sm text-gray-300 space-y-1">
+                                    <div className="text-sm text-gray-300 space-y-1 break-words">
                                         <p><strong>Mensagem:</strong> {lastResult.message}</p>
-                                        <p><strong>Código:</strong> <span className="font-mono text-yellow-500">{lastResult.wristband_code}</span></p>
+                                        <p className="break-all">
+                                            <strong>Código:</strong>{' '}
+                                            <span className="font-mono text-yellow-500 text-xs sm:text-sm">
+                                                {lastResult.wristband_code}
+                                            </span>
+                                        </p>
                                         <p><strong>Tipo:</strong> {lastResult.validation_type === 'entry' ? 'Entrada' : 'Saída'}</p>
                                         <p><strong>Validado por:</strong> {lastResult.validated_by}</p>
                                         <p><strong>Data/Hora:</strong> {format(new Date(lastResult.validated_at), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}</p>
@@ -675,12 +700,12 @@ const TicketValidator: React.FC = () => {
                 )}
 
                 {/* Histórico de Validações */}
-                <Card className="bg-black border border-yellow-500/30 rounded-2xl mb-6">
+                <Card className="bg-black border border-yellow-500/30 rounded-2xl mb-6 overflow-hidden">
                     <CardHeader>
-                        <CardTitle className="text-white flex items-center justify-between">
-                            <div className="flex items-center">
-                                <History className="h-5 w-5 mr-2 text-yellow-500" />
-                                Histórico de Validações
+                        <CardTitle className="text-white flex items-center justify-between gap-2 min-w-0">
+                            <div className="flex items-center min-w-0">
+                                <History className="h-5 w-5 mr-2 text-yellow-500 shrink-0" />
+                                <span className="truncate text-base sm:text-lg">Histórico de Validações</span>
                             </div>
                             {history.length > 0 && (
                                 <Button
@@ -704,8 +729,8 @@ const TicketValidator: React.FC = () => {
                                     type="text"
                                     value={historySearch}
                                     onChange={(e) => setHistorySearch(e.target.value)}
-                                    placeholder="Buscar por código ou mensagem..."
-                                    className="bg-black/60 border-yellow-500/30 text-white pl-10"
+                                    placeholder="Buscar código ou mensagem"
+                                    className="bg-black/60 border-yellow-500/30 text-white pl-10 min-w-0"
                                 />
                             </div>
                             <div className="flex gap-2">
@@ -762,15 +787,15 @@ const TicketValidator: React.FC = () => {
                                                 : 'bg-red-500/10 border-red-500/30'
                                         }`}
                                     >
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
+                                        <div className="flex items-start justify-between gap-2 min-w-0">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-start gap-2 mb-1">
                                                     {item.success ? (
-                                                        <CheckCircle className="h-4 w-4 text-green-500" />
+                                                        <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
                                                     ) : (
-                                                        <XCircle className="h-4 w-4 text-red-500" />
+                                                        <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
                                                     )}
-                                                    <span className="font-mono text-sm text-yellow-500">
+                                                    <span className="font-mono text-xs sm:text-sm text-yellow-500 break-all">
                                                         {item.wristband_code}
                                                     </span>
                                                     <span className={`text-xs px-2 py-0.5 rounded ${

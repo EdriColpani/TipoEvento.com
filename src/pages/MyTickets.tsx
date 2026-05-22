@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'; // Importando useSearchParams
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import AuthStatusMenu from '@/components/AuthStatusMenu';
 import { Input } from '@/components/ui/input';
 import { useMyTickets, TicketData } from '@/hooks/use-my-tickets';
+import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { useMyPurchases } from '@/hooks/use-my-purchases';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Calendar, MapPin, QrCode, History } from 'lucide-react';
@@ -12,6 +13,12 @@ import { showSuccess, showError } from '@/utils/toast'; // Importando showSucces
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { useQueryClient } from '@tanstack/react-query'; // Importando useQueryClient
 import QrCodeModal from '@/components/QrCodeModal';
+import PurchaseTicketsPanel from '@/components/PurchaseTicketsPanel';
+import {
+    isPurchasePaidForEmission,
+    isTicketActiveForDisplay,
+    isTicketEmittedForPurchase,
+} from '@/utils/ticket-display-status';
 
 interface TicketCardProps {
     ticket: TicketData;
@@ -51,7 +58,10 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
     // Por enquanto, exibimos 1x e o preço unitário.
     const totalValue = unitPrice; 
 
-    const isActive = ticket.status === 'active' || ticket.status === 'pending'; // Considera 'pending' como ativo para visualização
+    const isActive = isTicketActiveForDisplay(ticket);
+    const awaitingEmission =
+        ticket.status === 'pending' &&
+        (ticket.event_type === 'checkout_pending' || !ticket.event_data?.transaction_id);
 
     return (
         <Card className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-4 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0 hover:border-yellow-500/60 transition-all duration-300">
@@ -64,7 +74,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                         {eventName}
                     </CardTitle>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusClasses[ticket.status]}`}>
-                        {statusText[ticket.status]}
+                        {awaitingEmission ? 'Emitindo' : statusText[ticket.status]}
                     </span>
                 </div>
                 <p className="text-gray-400 text-sm">{ticketType} (1x)</p>
@@ -88,10 +98,14 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                 <Button 
                     className="bg-yellow-500 text-black hover:bg-yellow-600 transition-all duration-300 cursor-pointer px-4 sm:px-6 text-sm sm:text-base"
                     onClick={() => setQrOpen(true)}
-                    disabled={!isActive}
+                    disabled={!isActive || awaitingEmission}
                 >
                     <QrCode className="mr-2 h-4 w-4" />
-                    {isActive ? 'Ver QR Code' : 'Ingresso Inativo'}
+                    {awaitingEmission
+                        ? 'Aguardando emissão'
+                        : isActive
+                          ? 'Ver QR Code'
+                          : 'Ingresso Inativo'}
                 </Button>
             </div>
             <QrCodeModal
@@ -99,8 +113,12 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                 onClose={() => setQrOpen(false)}
                 eventName={eventName}
                 eventDate={eventDetails?.date || ''}
-                wristbandCode={(ticket.code_wristbands && ticket.code_wristbands.trim()) || ticket.id}
-                scanValue={ticket.id}
+                wristbandCode={ticket.wristbands?.access_type || 'Ingresso'}
+                mode={ticket.event_type === 'purchase' ? 'dynamic' : 'static'}
+                analyticsId={ticket.event_type === 'purchase' ? ticket.id : undefined}
+                scanValue={ticket.event_type !== 'purchase' ? ticket.id : undefined}
+                singleUseNotice
+                autoCloseSeconds={120}
             />
         </Card>
     );
@@ -116,6 +134,7 @@ const MyTickets: React.FC = () => {
     const [checkingPurchaseId, setCheckingPurchaseId] = useState<string | null>(null);
     const [purchaseStatusFilter, setPurchaseStatusFilter] = useState<'all' | 'pending' | 'paid' | 'failed'>('all');
     const [purchasePage, setPurchasePage] = useState(1);
+    const reconciledPurchaseIdsRef = React.useRef<Set<string>>(new Set());
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -128,11 +147,11 @@ const MyTickets: React.FC = () => {
     const { purchases } = useMyPurchases(userId);
     
     const reconcilePurchaseOnReturn = async (transactionId: string) => {
-        const { data, error } = await supabase.functions.invoke('check-payment-status', {
-            body: { transactionId },
-        });
-        if (error) throw error;
-        return data;
+        const result = await reconcilePurchase(transactionId);
+        if (!result.ok) {
+            throw new Error(result.message);
+        }
+        return { paymentStatus: result.paymentStatus, receivableStatus: 'paid' };
     };
 
     // NOVO: Lógica para processar os parâmetros de retorno do Mercado Pago
@@ -182,6 +201,65 @@ const MyTickets: React.FC = () => {
         };
     }, [searchParams, setSearchParams, queryClient, userId]); // Dependências atualizadas
 
+    const isPurchaseEmissionComplete = (purchase: { wristband_analytics_ids?: string[] | null }, ticketList: TicketData[]) => {
+        const ids = purchase.wristband_analytics_ids ?? [];
+        if (ids.length === 0) return false;
+        return ids.every((id) => {
+            const t = ticketList.find((x) => x.id === id);
+            return t && isTicketEmittedForPurchase(t);
+        });
+    };
+
+    useEffect(() => {
+        if (!userId || isLoading || !purchases.length) return;
+
+        const pendingEmission = purchases.filter((p) => {
+            if (!isPurchasePaidForEmission(p)) return false;
+            if (reconciledPurchaseIdsRef.current.has(p.id)) return false;
+            return !isPurchaseEmissionComplete(p, tickets);
+        });
+
+        if (pendingEmission.length === 0) return;
+
+        let cancelled = false;
+        (async () => {
+            for (const purchase of pendingEmission.slice(0, 3)) {
+                if (cancelled) break;
+                try {
+                    const result = await reconcilePurchase(purchase.id);
+                    if (!result.ok) {
+                        console.warn('Auto-emissão:', purchase.id, result.message);
+                    }
+                } catch (err) {
+                    console.warn('Auto-emissão de ingresso:', purchase.id, err);
+                } finally {
+                    reconciledPurchaseIdsRef.current.add(purchase.id);
+                }
+            }
+            if (!cancelled) {
+                queryClient.invalidateQueries({ queryKey: ['myTickets', userId] });
+                queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userId, isLoading, purchases, tickets, queryClient]);
+
+    const ticketsByPurchaseId = useMemo(() => {
+        const map = new Map<string, TicketData[]>();
+        for (const purchase of purchases) {
+            const ids = purchase.wristband_analytics_ids ?? [];
+            if (ids.length === 0) continue;
+            const linked = tickets.filter((t) => ids.includes(t.id));
+            if (linked.length > 0) {
+                map.set(purchase.id, linked);
+            }
+        }
+        return map;
+    }, [purchases, tickets]);
+
     if (loadingSession || isLoading) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center pt-20">
@@ -209,8 +287,8 @@ const MyTickets: React.FC = () => {
         );
     }
 
-    const activeTickets = tickets.filter(t => t.status === 'active' || t.status === 'pending'); // Inclui 'pending' nos ativos
-    const pastTickets = tickets.filter(t => t.status !== 'active' && t.status !== 'pending'); // Exclui 'pending' dos passados
+    const activeTickets = tickets.filter(isTicketActiveForDisplay);
+    const pastTickets = tickets.filter((t) => !isTicketActiveForDisplay(t));
     const purchasesWithUiStatus = purchases.map((p) => {
         const resolvedStatus =
             p.status === 'paid' || p.payment_status === 'approved' || p.payment_status === 'authorized'
@@ -226,9 +304,18 @@ const MyTickets: React.FC = () => {
     const safePurchasePage = Math.min(purchasePage, totalPurchasePages);
     const recentPurchases = filteredPurchases.slice((safePurchasePage - 1) * purchasePageSize, safePurchasePage * purchasePageSize);
 
-    const getPurchaseStatusText = (status: string, paymentStatus: string | null) => {
+    const getPurchaseStatusText = (
+        status: string,
+        paymentStatus: string | null,
+        purchase: { wristband_analytics_ids?: string[] | null },
+    ) => {
+        const paidLike =
+            status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized';
+        if (paidLike && !isPurchaseEmissionComplete(purchase, tickets)) {
+            return 'Pago (emitindo ingresso)';
+        }
         if (paymentStatus === 'approved' && status !== 'paid') return 'Pago (aguardando emissão)';
-        if (status === 'paid' || paymentStatus === 'approved' || paymentStatus === 'authorized') return 'Pago';
+        if (paidLike) return 'Pago';
         if (status === 'failed' || paymentStatus === 'rejected' || paymentStatus === 'cancelled') return 'Falhou';
         if (paymentStatus === 'in_process') return 'Em processamento';
         return 'Pendente';
@@ -247,27 +334,20 @@ const MyTickets: React.FC = () => {
     const handleCheckPurchaseStatus = async (transactionId: string) => {
         setCheckingPurchaseId(transactionId);
         try {
-            const { data, error } = await supabase.functions.invoke('check-payment-status', {
-                body: { transactionId },
-            });
-
-            if (error) {
-                throw error;
-            }
-
-            const paymentStatus = data?.paymentStatus || 'desconhecido';
-            const detail = data?.paymentStatusDetail ? ` (${data.paymentStatusDetail})` : '';
-            if (data?.requiresAttention) {
-                showError(data?.processingResult || 'Pagamento aprovado no MP, mas integração local ainda não concluiu.');
+            const result = await reconcilePurchase(transactionId);
+            if (result.ok) {
+                showSuccess(result.message);
             } else {
-                showSuccess(`Status atualizado: ${paymentStatus}${detail}`);
+                showError(result.message);
             }
-            queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
-            queryClient.invalidateQueries({ queryKey: ['myTickets', userId] });
+            reconciledPurchaseIdsRef.current.delete(transactionId);
+            await queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
+            await queryClient.invalidateQueries({ queryKey: ['myTickets', userId] });
             setPurchasePage(1);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Erro ao verificar status de pagamento:', err);
-            showError(err?.message || 'Falha ao verificar status no Mercado Pago.');
+            const msg = err instanceof Error ? err.message : 'Falha ao verificar status no Mercado Pago.';
+            showError(msg);
         } finally {
             setCheckingPurchaseId(null);
         }
@@ -313,9 +393,35 @@ const MyTickets: React.FC = () => {
                     </Button>
                 </div>
 
-                <div className="space-y-10 sm:space-y-12">
+                <div className="space-y-8 sm:space-y-10">
+                    {/* Ingressos Ativos — primeiro, com scroll próprio */}
+                    <section>
+                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-4 border-b border-yellow-500/30 pb-3 flex items-center">
+                            <i className="fas fa-ticket-alt mr-3 text-yellow-500"></i>
+                            Ingressos Ativos ({activeTickets.length})
+                        </h2>
+                        {activeTickets.length > 0 ? (
+                            <div className="max-h-[min(55vh,28rem)] overflow-y-auto overscroll-contain pr-1 sm:pr-2 space-y-4 rounded-xl border border-yellow-500/20 bg-black/40 p-3 sm:p-4 [scrollbar-width:thin] [scrollbar-color:rgb(234,179,8)_transparent]">
+                                {activeTickets.map((ticket) => (
+                                    <TicketCard key={ticket.id} ticket={ticket} />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center p-8 sm:p-12 bg-black/60 border border-yellow-500/30 rounded-2xl">
+                                <i className="fas fa-calendar-plus text-5xl sm:text-6xl text-gray-600 mb-4"></i>
+                                <p className="text-gray-400 text-base sm:text-lg">Você não possui ingressos ativos no momento.</p>
+                                <Button
+                                    onClick={() => navigate('/')}
+                                    className="mt-6 bg-yellow-500 text-black hover:bg-yellow-600"
+                                >
+                                    Explorar Eventos
+                                </Button>
+                            </div>
+                        )}
+                    </section>
+
                     <div>
-                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-6 border-b border-yellow-500/30 pb-3 flex items-center">
+                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-4 border-b border-yellow-500/30 pb-3 flex items-center">
                             <i className="fas fa-receipt mr-3 text-yellow-500"></i>
                             Minhas Compras ({filteredPurchases.length})
                         </h2>
@@ -326,7 +432,7 @@ const MyTickets: React.FC = () => {
                             <Button variant={purchaseStatusFilter === 'failed' ? 'default' : 'outline'} size="sm" onClick={() => { setPurchaseStatusFilter('failed'); setPurchasePage(1); }} className={purchaseStatusFilter === 'failed' ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'}>Falhas</Button>
                         </div>
                         {recentPurchases.length > 0 ? (
-                            <div className="space-y-4">
+                            <div className="max-h-[min(50vh,26rem)] overflow-y-auto overscroll-contain pr-1 sm:pr-2 space-y-4 rounded-xl border border-yellow-500/20 bg-black/40 p-3 sm:p-4 [scrollbar-width:thin] [scrollbar-color:rgb(234,179,8)_transparent]">
                                 {recentPurchases.map((purchase) => (
                                     <Card key={purchase.id} className="bg-black/80 border border-yellow-500/30 rounded-2xl p-4 sm:p-5">
                                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -336,7 +442,7 @@ const MyTickets: React.FC = () => {
                                                         {purchase.events?.title || 'Evento'}
                                                     </p>
                                                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getPurchaseStatusClass(purchase.status, purchase.payment_status)}`}>
-                                                        {getPurchaseStatusText(purchase.status, purchase.payment_status)}
+                                                        {getPurchaseStatusText(purchase.status, purchase.payment_status, purchase)}
                                                     </span>
                                                 </div>
                                                 <p className="text-sm text-gray-400">Compra #{purchase.id.slice(0, 8)}...</p>
@@ -369,6 +475,11 @@ const MyTickets: React.FC = () => {
                                                 </Button>
                                             </div>
                                         </div>
+                                        <PurchaseTicketsPanel
+                                            purchase={purchase}
+                                            tickets={ticketsByPurchaseId.get(purchase.id) ?? []}
+                                            isPaid={purchase.resolvedStatus === 'paid'}
+                                        />
                                     </Card>
                                 ))}
                             </div>
@@ -402,48 +513,22 @@ const MyTickets: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Ingressos Ativos */}
-                    <div>
-                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-6 border-b border-yellow-500/30 pb-3 flex items-center">
-                            <i className="fas fa-ticket-alt mr-3 text-yellow-500"></i>
-                            Ingressos Ativos ({activeTickets.length})
-                        </h2>
-                        {activeTickets.length > 0 ? (
-                            <div className="space-y-6">
-                                {activeTickets.map(ticket => (
-                                    <TicketCard key={ticket.id} ticket={ticket} />
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center p-8 sm:p-12 bg-black/60 border border-yellow-500/30 rounded-2xl">
-                                <i className="fas fa-calendar-plus text-5xl sm:text-6xl text-gray-600 mb-4"></i>
-                                <p className="text-gray-400 text-base sm:text-lg">Você não possui ingressos ativos no momento.</p>
-                                <Button 
-                                    onClick={() => navigate('/')}
-                                    className="mt-6 bg-yellow-500 text-black hover:bg-yellow-600"
-                                >
-                                    Explorar Eventos
-                                </Button>
-                            </div>
-                        )}
-                    </div>
-
                     {/* Histórico de Ingressos */}
-                    <div>
-                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-6 border-b border-yellow-500/30 pb-3 flex items-center">
+                    <section>
+                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-4 border-b border-yellow-500/30 pb-3 flex items-center">
                             <History className="mr-3 h-6 w-6 text-yellow-500" />
                             Histórico de Ingressos ({pastTickets.length})
                         </h2>
                         {pastTickets.length > 0 ? (
-                            <div className="space-y-6">
-                                {pastTickets.map(ticket => (
+                            <div className="max-h-[min(45vh,24rem)] overflow-y-auto overscroll-contain pr-1 sm:pr-2 space-y-4 rounded-xl border border-yellow-500/20 bg-black/40 p-3 sm:p-4 [scrollbar-width:thin] [scrollbar-color:rgb(234,179,8)_transparent]">
+                                {pastTickets.map((ticket) => (
                                     <TicketCard key={ticket.id} ticket={ticket} />
                                 ))}
                             </div>
                         ) : (
                             <p className="text-gray-400 p-4 text-base">Nenhum ingresso no histórico.</p>
                         )}
-                    </div>
+                    </section>
                 </div>
             </main>
         </div>
