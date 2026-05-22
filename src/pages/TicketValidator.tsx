@@ -17,6 +17,10 @@ interface ValidationResult {
     validation_type: string;
     validated_at: string;
     validated_by: string;
+    holder_name?: string | null;
+    holder_email_hint?: string | null;
+    access_type?: string | null;
+    scanned_via?: 'app' | 'printed' | null;
 }
 
 type HistoryFilter = 'all' | 'today' | 'week' | 'success' | 'error';
@@ -264,6 +268,10 @@ const TicketValidator: React.FC = () => {
                 validation_type: (raw as { validation_type?: string }).validation_type ?? validationType,
                 validated_at: (raw as { validated_at?: string }).validated_at,
                 validated_by: (raw as { validated_by?: string }).validated_by,
+                holder_name: (raw as { holder_name?: string }).holder_name ?? null,
+                holder_email_hint: (raw as { holder_email_hint?: string }).holder_email_hint ?? null,
+                access_type: (raw as { access_type?: string }).access_type ?? null,
+                scanned_via: (raw as { scanned_via?: 'app' | 'printed' }).scanned_via ?? null,
             } as ValidationResult;
 
             // Adiciona ID e timestamp se não vier do servidor
@@ -689,6 +697,28 @@ const TicketValidator: React.FC = () => {
                                                 {lastResult.wristband_code}
                                             </span>
                                         </p>
+                                        {lastResult.success && lastResult.holder_name && (
+                                            <p className="text-green-300/90 border border-green-500/30 rounded-lg p-2 mt-2">
+                                                <strong>Titular:</strong> {lastResult.holder_name}
+                                                {lastResult.holder_email_hint && (
+                                                    <span className="block text-xs text-gray-400 mt-1">
+                                                        E-mail: {lastResult.holder_email_hint}
+                                                    </span>
+                                                )}
+                                                <span className="block text-xs text-gray-500 mt-1">
+                                                    Confira documento se necessário.
+                                                </span>
+                                            </p>
+                                        )}
+                                        {lastResult.access_type && (
+                                            <p><strong>Ingresso:</strong> {lastResult.access_type}</p>
+                                        )}
+                                        {lastResult.scanned_via && (
+                                            <p>
+                                                <strong>Canal:</strong>{' '}
+                                                {lastResult.scanned_via === 'app' ? 'QR do aplicativo' : 'Ingresso impresso'}
+                                            </p>
+                                        )}
                                         <p><strong>Tipo:</strong> {lastResult.validation_type === 'entry' ? 'Entrada' : 'Saída'}</p>
                                         <p><strong>Validado por:</strong> {lastResult.validated_by}</p>
                                         <p><strong>Data/Hora:</strong> {format(new Date(lastResult.validated_at), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}</p>
