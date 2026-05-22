@@ -86,11 +86,13 @@ const ManagerLayout: React.FC = () => {
     const { billing, isLoading: isLoadingBilling } = useCompanyBilling(
         needsBillingGateCheck ? company!.id : undefined,
     );
+    const billingLoaded = !needsBillingGateCheck || !isLoadingBilling;
     const requiresContractAcceptance = requiresManagerCompanyBillingAcceptance(
         isManagerPro,
         isAdminMaster,
         company?.id,
         billing,
+        billingLoaded,
     );
     const billingReady = isCompanyBillingReady(billing);
     const needsPlanFeatureCheck =
@@ -103,7 +105,7 @@ const ManagerLayout: React.FC = () => {
     const planFeatureRedirectShown = useRef(false);
 
     useEffect(() => {
-        if (!requiresContractAcceptance) {
+        if (!billingLoaded || !requiresContractAcceptance) {
             billingGateToastShown.current = false;
             return;
         }
@@ -117,7 +119,7 @@ const ManagerLayout: React.FC = () => {
             );
         }
         navigate(MANAGER_BILLING_SETUP_PATH, { replace: true });
-    }, [requiresContractAcceptance, location.pathname, navigate]);
+    }, [billingLoaded, requiresContractAcceptance, location.pathname, navigate]);
 
     useEffect(() => {
         if (!needsPlanFeatureCheck || isLoadingPlanFeatures) {

@@ -48,9 +48,53 @@ serve(async (req) => {
     );
   }
 
+  // Application ID numérico — não confundir com Public Key (APP_USR-…) nem Access Token
+  if (!/^\d{6,20}$/.test(clientId)) {
+    return new Response(
+      JSON.stringify({
+        error:
+          'MP_OAUTH_CLIENT_ID inválido: use o Número da aplicação (Application ID) em Developers → Detalhes da aplicação, não a Public Key nem o Access Token.',
+      }),
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  let redirectParsed: URL;
+  try {
+    redirectParsed = new URL(redirectUri);
+  } catch {
+    return new Response(
+      JSON.stringify({ error: 'MP_OAUTH_REDIRECT_URI deve ser uma URL absoluta https válida.' }),
+      { status: 400, headers: corsHeaders },
+    );
+  }
+  if (redirectParsed.protocol !== 'https:') {
+    return new Response(
+      JSON.stringify({ error: 'MP_OAUTH_REDIRECT_URI deve usar HTTPS (ex.: callback do Supabase).' }),
+      { status: 400, headers: corsHeaders },
+    );
+  }
+  const expectedCallback = '/functions/v1/mp-oauth-callback';
+  const pathNorm = redirectParsed.pathname.replace(/\/+$/, '');
+  if (pathNorm !== expectedCallback) {
+    return new Response(
+      JSON.stringify({
+        error: `MP_OAUTH_REDIRECT_URI deve ser: https://SEU_PROJECT.supabase.co${expectedCallback}`,
+        hint: 'Cadastre a mesma URL em Mercado Pago → Developers → Redirect URLs.',
+      }),
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  const usePkce = (Deno.env.get('MP_OAUTH_USE_PKCE') ?? 'true').trim().toLowerCase() !== 'false';
+
   const state = randomState();
-  const codeVerifier = randomVerifier();
-  const codeChallenge = await sha256Challenge(codeVerifier);
+  let codeVerifier: string | null = null;
+  let codeChallenge: string | null = null;
+  if (usePkce) {
+    codeVerifier = randomVerifier();
+    codeChallenge = await sha256Challenge(codeVerifier);
+  }
 
   const supabaseService = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -61,7 +105,7 @@ serve(async (req) => {
   const { error: insertErr } = await supabaseService.from('mp_oauth_states').insert({
     state,
     user_id: user.id,
-    code_verifier: codeVerifier,
+    code_verifier: codeVerifier ?? '',
   });
   if (insertErr) {
     return new Response(JSON.stringify({ error: insertErr.message }), { status: 500, headers: corsHeaders });
@@ -73,10 +117,12 @@ serve(async (req) => {
   authUrl.searchParams.set('platform_id', 'mp');
   authUrl.searchParams.set('state', state);
   authUrl.searchParams.set('redirect_uri', redirectUri);
-  authUrl.searchParams.set('code_challenge', codeChallenge);
-  authUrl.searchParams.set('code_challenge_method', 'S256');
+  if (usePkce && codeChallenge) {
+    authUrl.searchParams.set('code_challenge', codeChallenge);
+    authUrl.searchParams.set('code_challenge_method', 'S256');
+  }
 
-  return new Response(JSON.stringify({ authorizationUrl: authUrl.toString(), state }), {
+  return new Response(JSON.stringify({ authorizationUrl: authUrl.toString(), state, pkce: usePkce }), {
     status: 200,
     headers: corsHeaders,
   });

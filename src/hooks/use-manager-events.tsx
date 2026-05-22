@@ -10,6 +10,8 @@ export interface ManagerEvent {
     is_active: boolean;
     date: string;
     company_id: string;
+    /** Preenchido só para Admin Master (lista global). */
+    company_name?: string | null;
 }
 
 /**
@@ -46,6 +48,30 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
     if (!isAdminMaster) {
         rows = dedupeGestorRows(rows);
     }
+
+    let companyNameById: Record<string, string> = {};
+    if (isAdminMaster) {
+        const ids = [
+            ...new Set(
+                rows.map((r) => r.company_id).filter((id): id is string => typeof id === 'string' && id !== ''),
+            ),
+        ];
+        if (ids.length > 0) {
+            const { data: companies, error: coErr } = await supabase
+                .from('companies')
+                .select('id, corporate_name, trade_name')
+                .in('id', ids);
+            if (!coErr && companies) {
+                companyNameById = Object.fromEntries(
+                    companies.map((c) => [
+                        c.id as string,
+                        String(c.trade_name || c.corporate_name || '').trim(),
+                    ]),
+                );
+            }
+        }
+    }
+
     const sorted = [...rows].sort((a, b) => {
         const tb = new Date(b.created_at).getTime();
         const ta = new Date(a.created_at).getTime();
@@ -55,14 +81,20 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
         return (a.title || '').localeCompare(b.title || '', 'pt-BR', { sensitivity: 'base' });
     });
 
-    return sorted.map((e) => ({
-        id: e.id,
-        title: e.title,
-        is_draft: Boolean(e.is_draft ?? false),
-        is_active: e.is_active !== false,
-        date: e.date ?? '',
-        company_id: e.company_id ?? '',
-    }));
+    return sorted.map((e) => {
+        const companyId = e.company_id ?? '';
+        const companyName =
+            isAdminMaster && companyId ? companyNameById[companyId] || null : undefined;
+        return {
+            id: e.id,
+            title: e.title,
+            is_draft: Boolean(e.is_draft ?? false),
+            is_active: e.is_active !== false,
+            date: e.date ?? '',
+            company_id: companyId,
+            company_name: companyName,
+        };
+    });
 };
 
 export const useManagerEvents = (

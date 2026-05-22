@@ -24,7 +24,9 @@ export function requiresManagerCompanyBillingAcceptance(
     isAdminMaster: boolean,
     companyId: string | undefined,
     billing: CompanyBillingFields | null | undefined,
+    /** false enquanto o plano/contrato ainda está sendo carregado — evita redirecionar indevidamente */
+    billingLoaded = true,
 ): boolean {
-    if (isAdminMaster || !isManagerPro || !companyId) return false;
+    if (isAdminMaster || !isManagerPro || !companyId || !billingLoaded) return false;
     return !isCompanyBillingReady(billing);
 }

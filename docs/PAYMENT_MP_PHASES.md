@@ -1,5 +1,7 @@
 # Pagamentos Mercado Pago — fases
 
+> **Retomar trabalho:** checklist operacional em [CHECKPOINT_PAGAMENTOS_MP.md](./CHECKPOINT_PAGAMENTOS_MP.md).
+
 ## Implementado
 
 | Fase | Descrição |
