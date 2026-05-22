@@ -5,7 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input"; 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Loader2, QrCode, Tag, Clock, AlertTriangle, CheckCircle, XCircle, RefreshCw, Search, Save, DollarSign } from 'lucide-react';
+import { ArrowLeft, Loader2, QrCode, Tag, Clock, AlertTriangle, CheckCircle, XCircle, RefreshCw, Search, Save, DollarSign, Printer } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from '@/components/ui/dialog';
+import PrintableTicketSheet from '@/components/PrintableTicketSheet';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,7 +27,7 @@ interface WristbandDetails {
     status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending'; // NOVO: Adicionado 'pending'
     created_at: string;
     manager_user_id: string;
-    events: { title: string; date: string } | null;
+    events: { title: string; date: string; allow_printed_tickets?: boolean } | null;
     company_id: string;
     event_id: string; // Adicionando event_id para uso na lógica de atualização em massa
     price: number; // NOVO: Preço da pulseira
@@ -52,7 +60,7 @@ const fetchWristbandData = async (id: string): Promise<{ details: WristbandDetai
         .from('wristbands')
         .select(`
             id, code, access_type, status, created_at, manager_user_id, company_id, event_id, price,
-            events!event_id (title, date)
+            events!event_id (title, date, allow_printed_tickets)
         `)
         .eq('id', id)
         .single();
@@ -134,6 +142,7 @@ const ManagerManageWristband: React.FC = () => {
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isQrCodeModalOpen, setIsQrCodeModalOpen] = useState(false);
+    const [printEntry, setPrintEntry] = useState<AnalyticsEntry | null>(null);
     const [selectedAnalyticsEntry, setSelectedAnalyticsEntry] = useState<AnalyticsEntry | null>(null); 
 
     useEffect(() => {
@@ -469,7 +478,13 @@ const ManagerManageWristband: React.FC = () => {
                         <CardDescription className="text-gray-400 text-sm mb-4">
                             Rastreamento de entradas, saídas e mudanças de status.
                         </CardDescription>
-                        
+                        {details.events?.allow_printed_tickets && (
+                            <p className="text-sm text-blue-200/90 mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
+                                Evento com <strong>ingresso impresso + app</strong>: use Imprimir para QR fixo no
+                                papel; o cliente usa QR dinâmico no celular na portaria.
+                            </p>
+                        )}
+
                         {/* Campo de Pesquisa */}
                         <div className="relative mb-6">
                             <Input 
@@ -530,17 +545,31 @@ const ManagerManageWristband: React.FC = () => {
                                                         {new Date(entry.created_at).toLocaleString('pt-BR')}
                                                     </TableCell>
                                                     <TableCell className="text-right py-3">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 h-8 px-3"
-                                                            onClick={() => {
-                                                                setSelectedAnalyticsEntry(entry);
-                                                                setIsQrCodeModalOpen(true);
-                                                            }}
-                                                        >
-                                                            <QrCode className="h-4 w-4" />
-                                                        </Button>
+                                                        <div className="flex justify-end gap-1">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 h-8 px-2"
+                                                                title="Ver QR fixo (impresso/portaria)"
+                                                                onClick={() => {
+                                                                    setSelectedAnalyticsEntry(entry);
+                                                                    setIsQrCodeModalOpen(true);
+                                                                }}
+                                                            >
+                                                                <QrCode className="h-4 w-4" />
+                                                            </Button>
+                                                            {details.events?.allow_printed_tickets && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 h-8 px-2"
+                                                                    title="Imprimir ingresso"
+                                                                    onClick={() => setPrintEntry(entry)}
+                                                                >
+                                                                    <Printer className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
                                                 </TableRow>
                                             );
@@ -560,8 +589,29 @@ const ManagerManageWristband: React.FC = () => {
                     eventDate={details.events?.date || ''}
                     wristbandCode={selectedAnalyticsEntry.code_wristbands || details.code}
                     scanValue={selectedAnalyticsEntry.id}
+                    singleUseNotice
                 />
             )}
+
+            <Dialog open={Boolean(printEntry)} onOpenChange={(open) => !open && setPrintEntry(null)}>
+                <DialogContent className="bg-black/95 border border-yellow-500/30 text-white max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-yellow-400">Imprimir ingresso</DialogTitle>
+                        <DialogDescription className="text-gray-400">
+                            QR fixo para leitura na portaria (modo impresso).
+                        </DialogDescription>
+                    </DialogHeader>
+                    {printEntry && (
+                        <PrintableTicketSheet
+                            eventName={details.events?.title || 'Evento'}
+                            eventDate={details.events?.date || ''}
+                            accessType={details.access_type}
+                            wristbandCode={printEntry.code_wristbands || details.code}
+                            scanValue={printEntry.id}
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

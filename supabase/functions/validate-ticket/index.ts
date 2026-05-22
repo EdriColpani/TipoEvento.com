@@ -141,6 +141,43 @@ async function rejectPrintedPurchaseIfDigitalOnly(params: {
   };
 }
 
+async function resolveTicketHolder(clientUserId: string | null): Promise<{
+  holder_name: string | null;
+  holder_email_hint: string | null;
+}> {
+  if (!clientUserId) {
+    return { holder_name: null, holder_email_hint: null };
+  }
+
+  const { data: profile } = await supabaseService
+    .from('profiles')
+    .select('first_name, last_name')
+    .eq('id', clientUserId)
+    .maybeSingle();
+
+  const name = [profile?.first_name, profile?.last_name]
+    .filter((p) => typeof p === 'string' && p.trim())
+    .join(' ')
+    .trim();
+
+  let emailHint: string | null = null;
+  try {
+    const { data: authUser } = await supabaseService.auth.admin.getUserById(clientUserId);
+    const email = authUser?.user?.email ?? null;
+    if (email && email.includes('@')) {
+      const [local, domain] = email.split('@');
+      emailHint = local.length <= 2 ? `${local}***@${domain}` : `${local.slice(0, 2)}***@${domain}`;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    holder_name: name || null,
+    holder_email_hint: emailHint,
+  };
+}
+
 async function markPurchaseAnalyticsUsedOnEntry(analyticsId: string): Promise<void> {
   const { error } = await supabaseService
     .from('wristband_analytics')
@@ -305,7 +342,7 @@ serve(async (req) => {
     if (uuidRe.test(codeTrim)) {
       const { data: wa, error: waErr } = await supabaseService
         .from('wristband_analytics')
-        .select('id, status, event_type, wristband_id, code_wristbands')
+        .select('id, status, event_type, wristband_id, code_wristbands, client_user_id')
         .eq('id', codeTrim)
         .single();
 
@@ -421,17 +458,26 @@ serve(async (req) => {
         }
       }
 
+      const holder =
+        ok && wa.event_type === 'purchase'
+          ? await resolveTicketHolder((wa as { client_user_id?: string | null }).client_user_id ?? null)
+          : { holder_name: null, holder_email_hint: null };
+
       return new Response(JSON.stringify({
         success: ok,
         message: validationMessage,
-        wristband_code: wristbandData.code,
+        wristband_code: scannedViaDynamicQr ? (wa.code_wristbands || codeTrim.slice(0, 12)) : (wa.code_wristbands || wristbandData.code),
         analytics_id: wa.id,
         validation_type,
         wristband_status: wristbandData.status,
         event_id: wristbandData.event_id,
+        access_type: wristbandData.access_type,
         validated_at: new Date().toISOString(),
         validated_by: apiKeyData.name,
         inscription_confirmed: ok && validation_type === 'entry' && wa.event_type === 'free_registration',
+        scanned_via: wa.event_type === 'purchase' ? (scannedViaDynamicQr ? 'app' : 'printed') : null,
+        holder_name: holder.holder_name,
+        holder_email_hint: holder.holder_email_hint,
       }), { status: ok ? 200 : 400, headers: corsHeaders });
     }
 
@@ -440,7 +486,7 @@ serve(async (req) => {
       const codeUpper = codeTrim.toUpperCase();
       const { data: wa, error: waErr } = await supabaseService
         .from('wristband_analytics')
-        .select('id, status, event_type, wristband_id, code_wristbands')
+        .select('id, status, event_type, wristband_id, code_wristbands, client_user_id')
         .eq('code_wristbands', codeUpper)
         .single();
 
@@ -531,6 +577,11 @@ serve(async (req) => {
               .eq('event_id', wristbandData.event_id);
           }
 
+          const holderBase =
+            ok && wa.event_type === 'purchase'
+              ? await resolveTicketHolder((wa as { client_user_id?: string | null }).client_user_id ?? null)
+              : { holder_name: null, holder_email_hint: null };
+
           return new Response(JSON.stringify({
             success: ok,
             message: validationMessage,
@@ -539,9 +590,13 @@ serve(async (req) => {
             validation_type,
             wristband_status: wristbandData.status,
             event_id: wristbandData.event_id,
+            access_type: wristbandData.access_type,
             validated_at: new Date().toISOString(),
             validated_by: apiKeyData.name,
             inscription_confirmed: ok && validation_type === 'entry' && wa.event_type === 'free_registration',
+            scanned_via: wa.event_type === 'purchase' ? 'printed' : null,
+            holder_name: holderBase.holder_name,
+            holder_email_hint: holderBase.holder_email_hint,
           }), { status: ok ? 200 : 400, headers: corsHeaders });
         }
       }

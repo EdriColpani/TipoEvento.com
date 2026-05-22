@@ -214,3 +214,19 @@ body {
   --tw-shadow-color: rgb(59 130 246 / 0.2) !important;
   --tw-shadow: var(--tw-shadow-colored) !important;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-ticket,
+  #printable-ticket * {
+    visibility: visible;
+  }
+  #printable-ticket {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
