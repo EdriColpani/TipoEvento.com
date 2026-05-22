@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, FileEdit, QrCode } from 'lucide-react';
+import { Plus, Search, Loader2, FileEdit, QrCode, Building2 } from 'lucide-react';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { supabase } from '@/integrations/supabase/client';
 import DeleteEventDialog from '@/components/DeleteEventDialog';
@@ -149,7 +149,15 @@ const ManagerEventsList: React.FC = () => {
                                             onClick={() => handleRowClick(event.id)}
                                         >
                                             <TableCell className="py-4">
-                                                <div className="text-white font-medium truncate max-w-[400px]">{event.title}</div>
+                                                <div className="text-white font-medium truncate max-w-[400px]">
+                                                    {event.title}
+                                                </div>
+                                                {isAdminMaster && event.company_name && (
+                                                    <div className="mt-1 flex items-center gap-1.5 text-xs text-cyan-300/90 truncate max-w-[400px]">
+                                                        <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                                        <span>{event.company_name}</span>
+                                                    </div>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-center py-4">
                                                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusClasses}`}>

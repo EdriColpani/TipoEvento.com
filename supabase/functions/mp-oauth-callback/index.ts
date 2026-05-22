@@ -56,17 +56,22 @@ serve(async (req) => {
     return redirectToApp({ mp_oauth: 'error', mp_message: 'state_expired' });
   }
 
+  const tokenBody: Record<string, string> = {
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  };
+  const verifier = String(pending.code_verifier ?? '').trim();
+  if (verifier.length > 0) {
+    tokenBody.code_verifier = verifier;
+  }
+
   const tokenRes = await fetch('https://api.mercadopago.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: redirectUri,
-      code_verifier: pending.code_verifier,
-    }),
+    body: JSON.stringify(tokenBody),
   });
 
   if (!tokenRes.ok) {

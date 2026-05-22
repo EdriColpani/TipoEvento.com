@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { resolveClientPostLoginPath } from '@/utils/safe-login-redirect';
+import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
@@ -61,7 +62,7 @@ const Login: React.FC = () => {
                     redirectPath = '/admin/dashboard';
                 } else if (userType === 2) {
                     successMessage = "Login de Gestor PRO realizado com sucesso!";
-                    redirectPath = '/manager/dashboard';
+                    redirectPath = await resolveManagerPostLoginPath(user.id);
                 } else if (userType === 3) {
                     successMessage = "Login de Cliente realizado com sucesso!";
                     // UX: cliente volta ao site (ou à página em que estava antes do login)

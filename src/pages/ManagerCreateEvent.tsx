@@ -22,6 +22,7 @@ const ManagerCreateEvent: React.FC = () => {
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId || undefined);
     const { billing, isLoading: isLoadingBilling } = useCompanyBilling(company?.id);
+    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
     const billingReady = isCompanyBillingReady(billing);
     const needsBillingConfirm = !isAdminMaster && !!company?.id && !isLoadingBilling && !billingReady;
     const [showWristbandModal, setShowWristbandModal] = useState(false);
@@ -42,8 +43,6 @@ const ManagerCreateEvent: React.FC = () => {
             if (uid) clearManagerCreateEventSession(uid);
         };
     }, []);
-
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
 
     const handleSaveSuccess = (id: string) => {
         setNewEventId(id);

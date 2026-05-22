@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 
 export interface MaskedPaymentSettings {
     configured: boolean;
@@ -40,7 +41,7 @@ export async function startMpOAuthConnect(): Promise<string> {
         headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (error) throw new Error(error.message || 'Erro ao iniciar conexão MP.');
+    if (error) throw new Error(await parseEdgeFunctionError(error, data));
     const payload = data as { authorizationUrl?: string; error?: string };
     if (payload?.error) throw new Error(payload.error);
     if (!payload?.authorizationUrl) throw new Error('URL de autorização não retornada.');
@@ -56,7 +57,7 @@ export async function disconnectMpOAuth(): Promise<void> {
         headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (error) throw new Error(error.message || 'Erro ao desconectar.');
+    if (error) throw new Error(await parseEdgeFunctionError(error, data));
     const payload = data as { error?: string };
     if (payload?.error) throw new Error(payload.error);
 }
