@@ -79,6 +79,8 @@ const eventFormSchema = z.object({
     capacity: z.string().regex(/^[1-9]\d*$/, "A capacidade deve ser um número inteiro positivo."),
     duration: z.string().min(1, "A duração é obrigatória."),
     is_paid: z.boolean().default(false),
+    /** Evento pago: permite validar ingresso impresso (QR fixo) além do QR dinâmico do app */
+    allow_printed_tickets: z.boolean().default(false),
     ticket_price: z.string().optional().refine(val => {
         if (val === undefined || val === '') return true; // Permite vazio se não for pago
         return /^[0-9]+([,.][0-9]{1,2})?$/.test(val.replace('.', '').replace(',', '.'));
@@ -163,6 +165,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
     const [useTurmas, setUseTurmas] = useState(false);
+    const [editPricingLoading, setEditPricingLoading] = useState(Boolean(eventId));
     const [turmasDraft, setTurmasDraft] = useState<Array<{ id?: string; nome: string; capacity: string }>>([
         { nome: 'Turma 1', capacity: '50' },
         { nome: 'Turma 2', capacity: '50' },
@@ -293,6 +296,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             capacity: initialData?.capacity?.toString() || '',
             duration: initialData?.duration || '',
             is_paid: initialData?.is_paid || false,
+            allow_printed_tickets: initialData?.allow_printed_tickets ?? false,
             ticket_price: initialData?.ticket_price?.toString().replace('.', ',') || '',
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
             batches: initialData?.batches?.map((batch) => ({
@@ -334,9 +338,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     // Atualiza o número de lotes dinamicamente
     useEffect(() => {
-        if (isPaid) {
-            const currentBatches = methods.getValues('batches') || [];
-            if (numBatches > currentBatches.length) {
+        if (!isPaid || editPricingLoading) return;
+        const currentBatches = methods.getValues('batches') || [];
+        if (numBatches > currentBatches.length) {
                 // Adiciona novos lotes
                 const newBatches = Array.from({ length: numBatches - currentBatches.length }, (_, i) => ({
                     name: `Lote ${currentBatches.length + i + 1}`,
@@ -346,12 +350,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     end_date: undefined,
                 }));
                 setValue('batches', [...currentBatches, ...newBatches]);
-            } else if (numBatches < currentBatches.length) {
-                // Remove lotes excedentes
-                setValue('batches', currentBatches.slice(0, numBatches));
-            }
+        } else if (numBatches < currentBatches.length) {
+            setValue('batches', currentBatches.slice(0, numBatches));
         }
-    }, [numBatches, isPaid, methods, setValue]);
+    }, [numBatches, isPaid, editPricingLoading, methods, setValue]);
 
     // Se estiver editando um evento e já tiver um contract_id, marcar como aceito
     useEffect(() => {
@@ -492,6 +494,98 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
         loadTurmas();
     }, [eventId]);
+
+    useEffect(() => {
+        const loadEventEditExtras = async () => {
+            if (!eventId) {
+                setEditPricingLoading(false);
+                return;
+            }
+            setEditPricingLoading(true);
+            try {
+                const { data: event, error: eventError } = await supabase
+                    .from('events')
+                    .select(
+                        'is_paid, allow_printed_tickets, ticket_price, contract_id, capacity, date',
+                    )
+                    .eq('id', eventId)
+                    .maybeSingle();
+
+                if (eventError || !event) return;
+
+                setValue('is_paid', Boolean(event.is_paid));
+                setValue('allow_printed_tickets', Boolean(event.allow_printed_tickets));
+
+                if (event.contract_id) {
+                    setValue('contract_id', event.contract_id);
+                    setValue('contractAccepted', true);
+                }
+
+                if (event.ticket_price != null && event.ticket_price !== '') {
+                    const priceNum = Number(event.ticket_price);
+                    if (!Number.isNaN(priceNum)) {
+                        setValue('ticket_price', priceNum.toFixed(2).replace('.', ','));
+                    }
+                }
+
+                if (!event.is_paid) return;
+
+                const { data: batches, error: batchError } = await supabase
+                    .from('event_batches')
+                    .select('name, quantity, price, start_date, end_date')
+                    .eq('event_id', eventId)
+                    .order('start_date', { ascending: true });
+
+                if (batchError && batchError.code !== 'PGRST205') {
+                    console.error('Erro ao carregar lotes do evento:', batchError);
+                    return;
+                }
+
+                const formatPriceBr = (price: unknown) => {
+                    const n = typeof price === 'number' ? price : parseFloat(String(price ?? ''));
+                    if (Number.isNaN(n)) return '';
+                    return n.toFixed(2).replace('.', ',');
+                };
+
+                if (batches && batches.length > 0) {
+                    const mapped = batches.map((b, idx) => ({
+                        name: (b.name as string)?.trim() || `Lote ${idx + 1}`,
+                        quantity: String(b.quantity ?? ''),
+                        price: formatPriceBr(b.price),
+                        start_date: parseEventLocalDay(String(b.start_date ?? '')) ?? undefined,
+                        end_date: parseEventLocalDay(String(b.end_date ?? '')) ?? undefined,
+                    }));
+                    setValue('num_batches', String(mapped.length));
+                    setValue('batches', mapped);
+                    methods.clearErrors('batches');
+                    return;
+                }
+
+                // Eventos pagos antigos sem registros em event_batches
+                const eventDate = event.date ? parseEventLocalDay(String(event.date)) : undefined;
+                const fallbackQty = String(event.capacity ?? methods.getValues('capacity') ?? '1');
+                setValue('num_batches', '1');
+                setValue('batches', [
+                    {
+                        name: 'Lote 1',
+                        quantity: fallbackQty,
+                        price:
+                            event.ticket_price != null
+                                ? formatPriceBr(event.ticket_price)
+                                : '',
+                        start_date: eventDate,
+                        end_date: eventDate,
+                    },
+                ]);
+                methods.clearErrors('batches');
+            } catch (e) {
+                console.error('Erro ao carregar dados de edição do evento:', e);
+            } finally {
+                setEditPricingLoading(false);
+            }
+        };
+        loadEventEditExtras();
+    }, [eventId, setValue, methods]);
 
     // AGORA PODEMOS FAZER OS RETURNS CONDICIONAIS
     // Garante que o userId esteja disponível para ImageUploadPicker
@@ -708,6 +802,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 capacity: Number(values.capacity),
                 duration: values.duration,
                 is_paid: effectiveIsPaid,
+                allow_printed_tickets: effectiveIsPaid ? Boolean(values.allow_printed_tickets) : false,
                 listing_only: isListingPlan,
                 total_tickets: isListingPlan ? Number(values.capacity) : totalTickets,
                 ticket_price: effectiveIsPaid ? ticketPriceForEvent : null,
@@ -1363,6 +1458,39 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             <CardDescription className="text-gray-400">Defina os preços e organize os ingressos em lotes.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {editPricingLoading && (
+                                <div className="flex items-center justify-center gap-2 py-8 text-gray-400">
+                                    <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
+                                    <span>Carregando lotes e configurações de ingresso…</span>
+                                </div>
+                            )}
+                            {!editPricingLoading && isPaid && (
+                                <FormField
+                                    control={control}
+                                    name="allow_printed_tickets"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 bg-black/40">
+                                            <FormControl>
+                                                <Checkbox
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                    className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
+                                                />
+                                            </FormControl>
+                                            <div className="space-y-1 leading-none">
+                                                <FormLabel className="text-white">
+                                                    Permitir ingresso impresso na portaria
+                                                </FormLabel>
+                                                <FormDescription className="text-gray-400 text-xs">
+                                                    Marcado: o leitor aceita QR fixo (impresso) e QR dinâmico do app.
+                                                    Desmarcado: somente QR do aplicativo do cliente (mais seguro).
+                                                </FormDescription>
+                                            </div>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
                             {!isPaid && (
                                 <div className="text-center py-8">
                                     <p className="text-gray-400 mb-4">Evento Gratuito. Você pode limitar as inscrições por turma.</p>
@@ -1465,7 +1593,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                 </div>
                             )}
 
-                            {isPaid && (
+                            {!editPricingLoading && isPaid && (
                                 <>
                                     <FormField
                                         control={control}

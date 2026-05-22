@@ -1,5 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import {
+    consolidateSplitsByTransaction,
+    resolveReceivableFinancials,
+} from '@/utils/resolve-receivable-financials';
 
 export interface FinancialReportData {
     event_id: string;
@@ -8,6 +12,7 @@ export interface FinancialReportData {
     quantidade_vendas: number;
     quantidade_ingressos_vendidos: number;
     valor_total_vendido: number;
+    /** Soma do "Recebido gestor" por transação (alinhado à tabela de transações). */
     valor_liquido_organizador: number;
     comissao_total_sistema: number;
     percentual_comissao_medio: number;
@@ -29,13 +34,18 @@ const fetchFinancialReports = async (
         .select(`
             id,
             total_value,
+            gross_amount,
+            mp_fee_amount,
+            net_amount_after_mp,
+            platform_fee_amount,
             created_at,
             event_id,
             wristband_analytics_ids,
             events!inner (
                 id,
                 title,
-                date
+                date,
+                applied_percentage
             )
         `);
 
@@ -43,17 +53,14 @@ const fetchFinancialReports = async (
         query = query.eq('manager_user_id', userId);
     }
 
-    // Aplicar filtro de evento
     if (filters.eventId) {
         query = query.eq('event_id', filters.eventId);
     }
 
-    // Aplicar filtro de data
     if (filters.startDate) {
         query = query.gte('created_at', filters.startDate);
     }
     if (filters.endDate) {
-        // Adicionar 23:59:59 ao final do dia
         const endDateWithTime = new Date(filters.endDate);
         endDateWithTime.setHours(23, 59, 59, 999);
         query = query.lte('created_at', endDateWithTime.toISOString());
@@ -66,7 +73,6 @@ const fetchFinancialReports = async (
     if (receivablesError) throw receivablesError;
     if (!receivables) return [];
 
-    // Agrupar por evento e calcular totais
     const eventMap = new Map<string, {
         event_id: string;
         event_title: string;
@@ -87,9 +93,8 @@ const fetchFinancialReports = async (
         eventMap.get(eventId)!.receivables.push(r);
     });
 
-    // Buscar financial_splits para cada transação
     const transactionIds = receivables.map((r: any) => r.id);
-    
+
     const { data: financialSplits, error: splitsError } = await supabase
         .from('financial_splits')
         .select('transaction_id, platform_amount, manager_amount, applied_percentage')
@@ -97,35 +102,38 @@ const fetchFinancialReports = async (
 
     if (splitsError) throw splitsError;
 
-    // Contar ingressos vendidos diretamente dos receivables (wristband_analytics_ids é um array)
-    // Não precisamos buscar analytics separadamente, podemos contar o tamanho do array
+    const splitByTransaction = consolidateSplitsByTransaction(financialSplits || []);
 
-    // Calcular totais por evento
     const reportData: FinancialReportData[] = [];
 
     eventMap.forEach((eventData, eventId) => {
         const eventTransactions = eventData.receivables;
-        const eventTransactionIds = eventTransactions.map((t: any) => t.id);
 
-        // Calcular valores financeiros
-        const eventSplits = financialSplits?.filter(fs => eventTransactionIds.includes(fs.transaction_id)) || [];
-        
-        const valorTotalVendido = eventTransactions.reduce((sum: number, t: any) => sum + (t.total_value || 0), 0);
-        const valorLiquidoOrganizador = eventSplits
-            .filter(fs => fs.manager_amount > 0)
-            .reduce((sum: number, fs: any) => sum + (fs.manager_amount || 0), 0);
-        const comissaoTotalSistema = eventSplits
-            .filter(fs => fs.platform_amount > 0)
-            .reduce((sum: number, fs: any) => sum + (fs.platform_amount || 0), 0);
-        
-        const percentuais = eventSplits
-            .filter(fs => fs.applied_percentage !== null && fs.applied_percentage !== undefined)
-            .map(fs => Number(fs.applied_percentage));
-        const percentualMedio = percentuais.length > 0
-            ? percentuais.reduce((sum, p) => sum + p, 0) / percentuais.length
-            : 0;
+        let valorTotalVendido = 0;
+        let valorLiquidoOrganizador = 0;
+        let comissaoTotalSistema = 0;
 
-        // Contar ingressos vendidos (somar o tamanho dos arrays wristband_analytics_ids de cada transação)
+        for (const t of eventTransactions) {
+            const eventPct =
+                t.events?.applied_percentage !== null &&
+                t.events?.applied_percentage !== undefined
+                    ? Number(t.events.applied_percentage)
+                    : null;
+            const resolved = resolveReceivableFinancials(
+                t,
+                splitByTransaction.get(t.id),
+                eventPct,
+            );
+            valorTotalVendido += resolved.gross;
+            valorLiquidoOrganizador += resolved.organizerNet;
+            comissaoTotalSistema += resolved.systemCommission;
+        }
+
+        const percentualMedio =
+            valorTotalVendido > 0
+                ? (comissaoTotalSistema / valorTotalVendido) * 100
+                : 0;
+
         const quantidadeIngressosVendidos = eventTransactions.reduce((sum: number, t: any) => {
             const analyticsIds = t.wristband_analytics_ids || [];
             return sum + analyticsIds.length;
@@ -151,11 +159,16 @@ export const useFinancialReports = (
     filters: FinancialReportFilters = {},
     userId?: string,
     isAdminMaster: boolean = false,
+    options?: { enabled?: boolean },
 ) => {
+    const enabled =
+        options?.enabled !== undefined
+            ? options.enabled
+            : Boolean(userId && (isAdminMaster || !!userId));
+
     return useQuery({
         queryKey: ['financial-reports', filters, userId, isAdminMaster],
         queryFn: () => fetchFinancialReports(filters, userId, isAdminMaster),
-        enabled: !!userId || isAdminMaster,
+        enabled,
     });
 };
-
