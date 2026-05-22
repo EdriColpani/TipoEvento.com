@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ENTRY_QR_ALLOWED_TTLS, ENTRY_QR_TTL_LABELS } from '@/constants/entry-qr';
-import { categories } from '@/data/events';
+import CompanyEventCategoryField from '@/components/CompanyEventCategoryField';
 import { normalizeContractContentForDisplay } from '@/utils/contractContent';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -1374,24 +1374,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     control={control}
                                     name="category"
                                     render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel className="text-white">Categoria</FormLabel>
-                                            <Select onValueChange={field.onChange} value={field.value}>
-                                                <FormControl>
-                                                    <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500">
-                                                        <SelectValue placeholder="Selecione uma categoria" />
-                                                    </SelectTrigger>
-                                                </FormControl>
-                                                <SelectContent className="bg-black border border-yellow-500/30 text-white">
-                                                    {categories.map((cat) => (
-                                                        <SelectItem key={cat.id} value={cat.name} className="hover:bg-yellow-500/10">
-                                                            {cat.name}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                        </FormItem>
+                                        <CompanyEventCategoryField
+                                            companyId={company?.id}
+                                            value={field.value}
+                                            onChange={field.onChange}
+                                        />
                                     )}
                                 />
                             </div>
