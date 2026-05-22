@@ -21,6 +21,9 @@ import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
+import { useListingSubscription } from '@/hooks/use-listing-subscription';
+import { useQueryClient } from '@tanstack/react-query';
+import { format as formatDateFns, parseISO } from 'date-fns';
 
 const STATUS_LABELS: Record<ListingChargeStatus, string> = {
     pending: 'Pendente',
@@ -55,9 +58,14 @@ const ManagerListingMonthlyBilling: React.FC = () => {
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
     const isListingPlan = isListingMonthlyPlan(billing?.billing_plan);
 
+    const queryClient = useQueryClient();
     const { charges, isLoading, isError, invalidate } = useListingMonthlyCharges(
         !!company?.id && isListingPlan,
         company?.id,
+    );
+    const { data: subscription, isLoading: loadingSubscription } = useListingSubscription(
+        company?.id,
+        billing?.billing_plan ?? null,
     );
 
     useEffect(() => {
@@ -66,6 +74,10 @@ const ManagerListingMonthlyBilling: React.FC = () => {
         if (status === 'success') {
             showSuccess('Pagamento recebido. A confirmação pode levar alguns instantes.');
             invalidate();
+            if (company?.id) {
+                queryClient.invalidateQueries({ queryKey: ['listingSubscription', company.id] });
+                queryClient.invalidateQueries({ queryKey: ['companyBilling', company.id] });
+            }
         } else if (status === 'pending') {
             showSuccess('Pagamento pendente. Você será notificado quando for confirmado.');
         } else if (status === 'failure') {
@@ -153,6 +165,63 @@ const ManagerListingMonthlyBilling: React.FC = () => {
                     Voltar
                 </Button>
             </div>
+
+            {subscription && subscription.phase !== 'not_applicable' && (
+                <Card
+                    className={`mb-6 border ${
+                        subscription.phase === 'past_due'
+                            ? 'border-red-500/50 bg-red-950/30'
+                            : subscription.phase === 'due_today'
+                              ? 'border-orange-500/40 bg-orange-950/20'
+                              : subscription.phase === 'expiring_soon'
+                                ? 'border-amber-500/40 bg-amber-950/20'
+                                : 'border-green-500/30 bg-green-950/20'
+                    }`}
+                >
+                    <CardHeader className="pb-2">
+                        <CardDescription className="text-gray-400">Assinatura (30 dias)</CardDescription>
+                        <CardTitle className="text-white text-lg">
+                            {loadingSubscription
+                                ? 'Carregando…'
+                                : subscription.phase === 'active'
+                                  ? 'Ativa'
+                                  : subscription.phase === 'past_due'
+                                    ? 'Vencida'
+                                    : subscription.phase === 'due_today'
+                                      ? 'Vence hoje'
+                                      : 'Vence em breve'}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm text-gray-300 space-y-1">
+                        {subscription.message && <p>{subscription.message}</p>}
+                        {billing?.listing_active_until && (
+                            <p>
+                                Válido até:{' '}
+                                <strong className="text-yellow-500">
+                                    {(() => {
+                                        try {
+                                            return formatDateFns(
+                                                parseISO(billing.listing_active_until),
+                                                'dd/MM/yyyy',
+                                                { locale: ptBR },
+                                            );
+                                        } catch {
+                                            return new Date(billing.listing_active_until).toLocaleDateString(
+                                                'pt-BR',
+                                            );
+                                        }
+                                    })()}
+                                </strong>
+                            </p>
+                        )}
+                        {subscription.days_left != null && subscription.days_left > 0 && (
+                            <p className="text-gray-500 text-xs">
+                                {subscription.days_left} dia(s) restante(s).
+                            </p>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             <Card className="bg-black border-yellow-500/30 mb-6">
                 <CardHeader className="pb-2">

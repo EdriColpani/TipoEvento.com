@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
-import { ENTRY_QR_REFRESH_MS } from '@/constants/entry-qr';
+import { entryQrRefreshMs, ENTRY_QR_REFRESH_MS } from '@/constants/entry-qr';
 
 export type EntryQrTokenData = {
     token: string;
@@ -28,8 +28,15 @@ export function useEntryQrToken(analyticsId: string | undefined, enabled: boolea
         queryKey: ['entryQrToken', analyticsId],
         queryFn: () => fetchEntryQrToken(analyticsId!),
         enabled: Boolean(enabled && analyticsId),
-        refetchInterval: enabled ? ENTRY_QR_REFRESH_MS : false,
-        staleTime: 60_000,
+        refetchInterval: (query) => {
+            if (!enabled) return false;
+            const ttl = query.state.data?.ttlSeconds;
+            if (ttl) return entryQrRefreshMs(ttl);
+            const refreshSec = query.state.data?.refreshInSeconds;
+            if (refreshSec) return refreshSec * 1000;
+            return ENTRY_QR_REFRESH_MS;
+        },
+        staleTime: 30_000,
         retry: 2,
     });
 }

@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { isDynamicEntryQr, verifyEntryToken } from '../_shared/entry-qr-token.ts';
+import { userOwnsAnalyticsEntry } from '../_shared/entry-qr-ownership.ts';
+import { eventListingSubscriptionBlocks } from '../_shared/listing-subscription-guard.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,29 +70,61 @@ async function insertMovementIfNotDuplicate(params: {
   }
 }
 
-type AnalyticsAccessRow = { id: string; status: string; event_type: string };
+type AnalyticsAccessRow = {
+  id: string;
+  status: string;
+  event_type: string;
+  client_user_id?: string | null;
+};
+
+/** Compra online, checkout legado ou lote do gestor (creation = impresso/portaria). */
+function isPurchaseLikeEventType(eventType: string): boolean {
+  return eventType === 'purchase' || eventType === 'checkout_pending' || eventType === 'creation';
+}
+
+/** Normaliza checkout_pending/creation vendido → purchase (corrige dados antigos). */
+async function ensurePurchaseEventType(wa: AnalyticsAccessRow): Promise<AnalyticsAccessRow> {
+  if (wa.event_type === 'purchase' || wa.event_type === 'free_registration') return wa;
+  if (
+    isPurchaseLikeEventType(wa.event_type) &&
+    (wa.status === 'active' || wa.status === 'used' || wa.status === 'pending')
+  ) {
+    const { error } = await supabaseService
+      .from('wristband_analytics')
+      .update({ event_type: 'purchase' })
+      .eq('id', wa.id);
+    if (error) {
+      console.error('[validate-ticket] ensurePurchaseEventType:', error);
+    } else {
+      return { ...wa, event_type: 'purchase' };
+    }
+  }
+  return wa;
+}
 
 /** Regras de entrada/saída por tipo de ingresso (compra = active na entrada, vira used após validar). */
 function evaluateAnalyticsAccess(
   wa: AnalyticsAccessRow,
   validation_type: 'entry' | 'exit',
 ): { ok: boolean; message: string } {
-  const paidOrFree = wa.event_type === 'purchase' || wa.event_type === 'free_registration';
-  if (!paidOrFree) {
+  const isFree = wa.event_type === 'free_registration';
+  const isPaid = isPurchaseLikeEventType(wa.event_type);
+
+  if (!isFree && !isPaid) {
     return { ok: false, message: 'Tipo de ingresso inválido.' };
   }
 
   if (validation_type === 'exit') {
     const ok =
       wa.status === 'used' ||
-      (wa.event_type === 'purchase' && wa.status === 'active');
+      (isPaid && wa.status === 'active');
     return {
       ok,
       message: ok ? '' : 'Ingresso ainda não liberado ou inválido.',
     };
   }
 
-  if (wa.event_type === 'purchase') {
+  if (isPaid) {
     if (wa.status === 'used') {
       return { ok: false, message: 'Ingresso já utilizado na entrada.' };
     }
@@ -124,10 +158,11 @@ async function rejectPrintedPurchaseIfDigitalOnly(params: {
   eventType: string;
   validationType: string;
   scannedViaDynamicQr: boolean;
+  clientUserId?: string | null;
 }): Promise<{ blocked: boolean; message: string; error_code: string } | null> {
   if (
     params.scannedViaDynamicQr ||
-    params.eventType !== 'purchase' ||
+    !isPurchaseLikeEventType(params.eventType) ||
     params.validationType !== 'entry'
   ) {
     return null;
@@ -141,17 +176,38 @@ async function rejectPrintedPurchaseIfDigitalOnly(params: {
   };
 }
 
+function maskCpfHint(cpf: string | null | undefined): string | null {
+  if (!cpf) return null;
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11) return null;
+  return `***.***.***-${digits.slice(9)}`;
+}
+
+async function eventShowsValidatorHolder(eventId: string): Promise<boolean> {
+  const { data, error } = await supabaseService
+    .from('events')
+    .select('validator_show_holder')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (error) {
+    console.error('[validate-ticket] validator_show_holder:', error);
+    return true;
+  }
+  return (data as { validator_show_holder?: boolean } | null)?.validator_show_holder !== false;
+}
+
 async function resolveTicketHolder(clientUserId: string | null): Promise<{
   holder_name: string | null;
   holder_email_hint: string | null;
+  holder_cpf_hint: string | null;
 }> {
   if (!clientUserId) {
-    return { holder_name: null, holder_email_hint: null };
+    return { holder_name: null, holder_email_hint: null, holder_cpf_hint: null };
   }
 
   const { data: profile } = await supabaseService
     .from('profiles')
-    .select('first_name, last_name')
+    .select('first_name, last_name, cpf')
     .eq('id', clientUserId)
     .maybeSingle();
 
@@ -175,19 +231,60 @@ async function resolveTicketHolder(clientUserId: string | null): Promise<{
   return {
     holder_name: name || null,
     holder_email_hint: emailHint,
+    holder_cpf_hint: maskCpfHint((profile as { cpf?: string } | null)?.cpf),
   };
+}
+
+async function resolveHolderForValidation(
+  eventId: string,
+  clientUserId: string | null,
+  includePurchaseLike: boolean,
+): Promise<{
+  holder_name: string | null;
+  holder_email_hint: string | null;
+  holder_cpf_hint: string | null;
+}> {
+  if (!includePurchaseLike || !clientUserId) {
+    return { holder_name: null, holder_email_hint: null, holder_cpf_hint: null };
+  }
+  const show = await eventShowsValidatorHolder(eventId);
+  if (!show) {
+    return { holder_name: null, holder_email_hint: null, holder_cpf_hint: null };
+  }
+  return resolveTicketHolder(clientUserId);
+}
+
+async function bumpEntryTokenVersion(analyticsId: string): Promise<void> {
+  const { data: row, error: readErr } = await supabaseService
+    .from('wristband_analytics')
+    .select('entry_token_version')
+    .eq('id', analyticsId)
+    .maybeSingle();
+  if (readErr || !row) {
+    console.error('[validate-ticket] bumpEntryTokenVersion read:', readErr);
+    return;
+  }
+  const next = ((row as { entry_token_version?: number }).entry_token_version ?? 0) + 1;
+  const { error } = await supabaseService
+    .from('wristband_analytics')
+    .update({ entry_token_version: next })
+    .eq('id', analyticsId);
+  if (error) {
+    console.error('[validate-ticket] bumpEntryTokenVersion:', error);
+  }
 }
 
 async function markPurchaseAnalyticsUsedOnEntry(analyticsId: string): Promise<void> {
   const { error } = await supabaseService
     .from('wristband_analytics')
-    .update({ status: 'used' })
+    .update({ status: 'used', event_type: 'purchase' })
     .eq('id', analyticsId)
-    .eq('event_type', 'purchase')
+    .in('event_type', ['purchase', 'checkout_pending', 'creation'])
     .eq('status', 'active');
   if (error) {
     console.error('[validate-ticket] falha ao marcar ingresso purchase como used:', error);
   }
+  await bumpEntryTokenVersion(analyticsId);
 }
 
 serve(async (req) => {
@@ -235,6 +332,21 @@ serve(async (req) => {
         status: 403, 
         headers: corsHeaders 
       });
+    }
+
+    const listingBlock = await eventListingSubscriptionBlocks(
+      supabaseService,
+      apiKeyData.event_id as string | null,
+    );
+    if (listingBlock.blocked) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: listingBlock.message,
+          error_code: 'subscription_lapsed',
+        }),
+        { status: 403, headers: corsHeaders },
+      );
     }
 
     // 4. Verificar se a chave não expirou
@@ -332,6 +444,83 @@ serve(async (req) => {
           { status: 400, headers: corsHeaders },
         );
       }
+
+      const { data: versionRow, error: versionErr } = await supabaseService
+        .from('wristband_analytics')
+        .select('entry_token_version')
+        .eq('id', verified.analyticsId)
+        .maybeSingle();
+
+      if (versionErr) {
+        console.error('[validate-ticket] entry_token_version:', versionErr);
+      } else {
+        const currentVersion = (versionRow as { entry_token_version?: number } | null)?.entry_token_version ?? 0;
+        if (verified.tokenVersion !== currentVersion) {
+          const revokedMsg =
+            'QR revogado. Peça ao cliente para abrir o ingresso no app novamente.';
+          await supabaseService.from('validation_logs').insert({
+            api_key_id: apiKeyData.id,
+            wristband_code: codeTrim.slice(0, 120),
+            validation_type,
+            validation_status: 'invalid',
+            validation_message: revokedMsg,
+            validated_by_name: apiKeyData.name,
+            ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+            user_agent: req.headers.get('user-agent') || null,
+          });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: revokedMsg,
+              error_code: 'qr_revoked',
+              wristband_code: codeTrim.slice(0, 80),
+            }),
+            { status: 400, headers: corsHeaders },
+          );
+        }
+      }
+
+      const { data: ownerRow, error: ownerErr } = await supabaseService
+        .from('wristband_analytics')
+        .select('client_user_id')
+        .eq('id', verified.analyticsId)
+        .maybeSingle();
+
+      if (ownerErr) {
+        console.error('[validate-ticket] owner check:', ownerErr);
+      } else {
+        const clientUserId = (ownerRow as { client_user_id?: string | null } | null)?.client_user_id ?? null;
+        const ownerOk = await userOwnsAnalyticsEntry(
+          supabaseService,
+          verified.userId,
+          verified.analyticsId,
+          clientUserId,
+        );
+        if (!ownerOk) {
+          const ownerMsg =
+            'QR não pertence ao titular deste ingresso. Peça ao comprador para abrir o ingresso na própria conta.';
+          await supabaseService.from('validation_logs').insert({
+            api_key_id: apiKeyData.id,
+            wristband_code: codeTrim.slice(0, 120),
+            validation_type,
+            validation_status: 'invalid',
+            validation_message: ownerMsg,
+            validated_by_name: apiKeyData.name,
+            ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+            user_agent: req.headers.get('user-agent') || null,
+          });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: ownerMsg,
+              error_code: 'qr_owner_mismatch',
+              wristband_code: codeTrim.slice(0, 80),
+            }),
+            { status: 403, headers: corsHeaders },
+          );
+        }
+      }
+
       codeTrim = verified.analyticsId;
       scannedViaDynamicQr = true;
     }
@@ -374,11 +563,16 @@ serve(async (req) => {
         return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada para este evento.' }), { status: 403, headers: corsHeaders });
       }
 
+      const waNormalized = await ensurePurchaseEventType(
+        wa as AnalyticsAccessRow & { client_user_id?: string | null },
+      );
+
       const digitalOnlyBlock = await rejectPrintedPurchaseIfDigitalOnly({
         eventId: wristbandData.event_id,
-        eventType: wa.event_type,
+        eventType: waNormalized.event_type,
         validationType: validation_type,
         scannedViaDynamicQr,
+        clientUserId: (waNormalized as { client_user_id?: string | null }).client_user_id,
       });
       if (digitalOnlyBlock) {
         await supabaseService.from('validation_logs').insert({
@@ -404,12 +598,18 @@ serve(async (req) => {
         );
       }
 
-      const access = evaluateAnalyticsAccess(wa, validation_type);
+      const access = evaluateAnalyticsAccess(waNormalized, validation_type);
       const ok = access.ok;
-      const validationStatus = ok ? 'success' : (wa.event_type === 'purchase' && wa.status === 'used' && validation_type === 'entry' ? 'invalid' : 'not_paid');
+      const validationStatus = ok
+        ? 'success'
+        : (isPurchaseLikeEventType(waNormalized.event_type) &&
+            waNormalized.status === 'used' &&
+            validation_type === 'entry'
+          ? 'invalid'
+          : 'not_paid');
       const validationMessage = ok
         ? (validation_type === 'entry'
-          ? (wa.event_type === 'purchase'
+          ? (isPurchaseLikeEventType(waNormalized.event_type)
             ? (scannedViaDynamicQr ? 'Entrada validada (QR app).' : 'Entrada validada (ingresso impresso).')
             : 'Entrada validada (inscrição gratuita).')
           : 'Saída registrada.')
@@ -442,12 +642,16 @@ serve(async (req) => {
         });
       }
 
-      if (ok && validation_type === 'entry' && wa.event_type === 'purchase') {
-        await markPurchaseAnalyticsUsedOnEntry(wa.id);
+      if (
+        ok &&
+        validation_type === 'entry' &&
+        isPurchaseLikeEventType(waNormalized.event_type)
+      ) {
+        await markPurchaseAnalyticsUsedOnEntry(waNormalized.id);
       }
 
       // Inscrição gratuita: marcar presença e data/hora da confirmação na entrada
-      if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
+      if (ok && validation_type === 'entry' && waNormalized.event_type === 'free_registration') {
         const { error: regErr } = await supabaseService
           .from('event_registrations')
           .update({ confirmed: true, confirmed_at: new Date().toISOString() })
@@ -458,26 +662,35 @@ serve(async (req) => {
         }
       }
 
-      const holder =
-        ok && wa.event_type === 'purchase'
-          ? await resolveTicketHolder((wa as { client_user_id?: string | null }).client_user_id ?? null)
-          : { holder_name: null, holder_email_hint: null };
+      const holder = ok
+        ? await resolveHolderForValidation(
+          wristbandData.event_id,
+          waNormalized.client_user_id ?? null,
+          isPurchaseLikeEventType(waNormalized.event_type),
+        )
+        : { holder_name: null, holder_email_hint: null, holder_cpf_hint: null };
 
       return new Response(JSON.stringify({
         success: ok,
         message: validationMessage,
-        wristband_code: scannedViaDynamicQr ? (wa.code_wristbands || codeTrim.slice(0, 12)) : (wa.code_wristbands || wristbandData.code),
-        analytics_id: wa.id,
+        wristband_code: scannedViaDynamicQr
+          ? (waNormalized.code_wristbands || codeTrim.slice(0, 12))
+          : (waNormalized.code_wristbands || wristbandData.code),
+        analytics_id: waNormalized.id,
         validation_type,
         wristband_status: wristbandData.status,
         event_id: wristbandData.event_id,
         access_type: wristbandData.access_type,
         validated_at: new Date().toISOString(),
         validated_by: apiKeyData.name,
-        inscription_confirmed: ok && validation_type === 'entry' && wa.event_type === 'free_registration',
-        scanned_via: wa.event_type === 'purchase' ? (scannedViaDynamicQr ? 'app' : 'printed') : null,
+        inscription_confirmed: ok && validation_type === 'entry' && waNormalized.event_type === 'free_registration',
+        scanned_via: isPurchaseLikeEventType(waNormalized.event_type)
+          ? (scannedViaDynamicQr ? 'app' : 'printed')
+          : null,
         holder_name: holder.holder_name,
         holder_email_hint: holder.holder_email_hint,
+        holder_cpf_hint: holder.holder_cpf_hint,
+        show_holder_check: Boolean(holder.holder_name),
       }), { status: ok ? 200 : 400, headers: corsHeaders });
     }
 
@@ -502,11 +715,14 @@ serve(async (req) => {
             return new Response(JSON.stringify({ success: false, error: 'API Key não autorizada para este evento.' }), { status: 403, headers: corsHeaders });
           }
 
+          const waNormalized = await ensurePurchaseEventType(wa as AnalyticsAccessRow);
+
           const digitalOnlyBlock = await rejectPrintedPurchaseIfDigitalOnly({
             eventId: wristbandData.event_id,
-            eventType: wa.event_type,
+            eventType: waNormalized.event_type,
             validationType: validation_type,
             scannedViaDynamicQr: false,
+            clientUserId: waNormalized.client_user_id,
           });
           if (digitalOnlyBlock) {
             await supabaseService.from('validation_logs').insert({
@@ -532,11 +748,21 @@ serve(async (req) => {
             );
           }
 
-          const access = evaluateAnalyticsAccess(wa, validation_type);
+          const access = evaluateAnalyticsAccess(waNormalized, validation_type);
           const ok = access.ok;
-          const validationStatus = ok ? 'success' : (wa.event_type === 'purchase' && wa.status === 'used' && validation_type === 'entry' ? 'invalid' : 'not_paid');
+          const validationStatus = ok
+            ? 'success'
+            : (isPurchaseLikeEventType(waNormalized.event_type) &&
+                waNormalized.status === 'used' &&
+                validation_type === 'entry'
+              ? 'invalid'
+              : 'not_paid');
           const validationMessage = ok
-            ? (validation_type === 'entry' ? 'Entrada validada.' : 'Saída registrada.')
+            ? (validation_type === 'entry'
+              ? (isPurchaseLikeEventType(waNormalized.event_type)
+                ? 'Entrada validada (ingresso impresso).'
+                : 'Entrada validada (inscrição gratuita).')
+              : 'Saída registrada.')
             : access.message;
 
           const { data: validationLog, error: validationLogError } = await supabaseService.from('validation_logs').insert({
@@ -565,38 +791,47 @@ serve(async (req) => {
             });
           }
 
-          if (ok && validation_type === 'entry' && wa.event_type === 'purchase') {
-            await markPurchaseAnalyticsUsedOnEntry(wa.id);
+          if (
+            ok &&
+            validation_type === 'entry' &&
+            isPurchaseLikeEventType(waNormalized.event_type)
+          ) {
+            await markPurchaseAnalyticsUsedOnEntry(waNormalized.id);
           }
 
-          if (ok && validation_type === 'entry' && wa.event_type === 'free_registration') {
+          if (ok && validation_type === 'entry' && waNormalized.event_type === 'free_registration') {
             await supabaseService
               .from('event_registrations')
               .update({ confirmed: true, confirmed_at: new Date().toISOString() })
-              .eq('qr_code', wa.id)
+              .eq('qr_code', waNormalized.id)
               .eq('event_id', wristbandData.event_id);
           }
 
-          const holderBase =
-            ok && wa.event_type === 'purchase'
-              ? await resolveTicketHolder((wa as { client_user_id?: string | null }).client_user_id ?? null)
-              : { holder_name: null, holder_email_hint: null };
+          const holderBase = ok
+            ? await resolveHolderForValidation(
+              wristbandData.event_id,
+              waNormalized.client_user_id ?? null,
+              isPurchaseLikeEventType(waNormalized.event_type),
+            )
+            : { holder_name: null, holder_email_hint: null, holder_cpf_hint: null };
 
           return new Response(JSON.stringify({
             success: ok,
             message: validationMessage,
             wristband_code: wa.code_wristbands,
-            analytics_id: wa.id,
+            analytics_id: waNormalized.id,
             validation_type,
             wristband_status: wristbandData.status,
             event_id: wristbandData.event_id,
             access_type: wristbandData.access_type,
             validated_at: new Date().toISOString(),
             validated_by: apiKeyData.name,
-            inscription_confirmed: ok && validation_type === 'entry' && wa.event_type === 'free_registration',
-            scanned_via: wa.event_type === 'purchase' ? 'printed' : null,
+            inscription_confirmed: ok && validation_type === 'entry' && waNormalized.event_type === 'free_registration',
+            scanned_via: isPurchaseLikeEventType(waNormalized.event_type) ? 'printed' : null,
             holder_name: holderBase.holder_name,
             holder_email_hint: holderBase.holder_email_hint,
+            holder_cpf_hint: holderBase.holder_cpf_hint,
+            show_holder_check: Boolean(holderBase.holder_name),
           }), { status: ok ? 200 : 400, headers: corsHeaders });
         }
       }

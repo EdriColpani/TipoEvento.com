@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { Loader2, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
 import { useEntryQrToken } from '@/hooks/use-entry-qr-token';
-import { ENTRY_QR_TTL_SECONDS } from '@/constants/entry-qr';
+import { ENTRY_QR_DEFAULT_TTL_SECONDS } from '@/constants/entry-qr';
 
 interface QrCodeModalProps {
     isOpen: boolean;
@@ -63,7 +63,8 @@ const QrCodeModal: React.FC<QrCodeModalProps> = ({
             ? format(new Date(eventDate), 'dd/MM/yyyy')
             : '—';
 
-    const [secondsLeft, setSecondsLeft] = useState(ENTRY_QR_TTL_SECONDS);
+    const displayTtl = tokenData?.ttlSeconds ?? ENTRY_QR_DEFAULT_TTL_SECONDS;
+    const [secondsLeft, setSecondsLeft] = useState(ENTRY_QR_DEFAULT_TTL_SECONDS);
 
     useEffect(() => {
         if (!isOpen || !autoCloseSeconds) return;
@@ -173,7 +174,7 @@ const QrCodeModal: React.FC<QrCodeModalProps> = ({
                                 <strong>Uso único na entrada:</strong> após a primeira leitura na portaria este
                                 ingresso não aceita nova entrada.
                                 {isDynamic
-                                    ? ` O QR renova a cada ${ENTRY_QR_TTL_SECONDS}s — capturas antigas não funcionam.`
+                                    ? ` O QR renova automaticamente (válido por ~${displayTtl}s) — capturas antigas não funcionam.`
                                     : ' Não compartilhe capturas de tela.'}
                                 {autoCloseSeconds > 0 ? ` Este painel fecha em ${autoCloseSeconds}s.` : ''}
                             </p>

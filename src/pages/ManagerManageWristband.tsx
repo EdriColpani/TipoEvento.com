@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input"; 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Loader2, QrCode, Tag, Clock, AlertTriangle, CheckCircle, XCircle, RefreshCw, Search, Save, DollarSign, Printer } from 'lucide-react';
+import { ArrowLeft, Loader2, QrCode, Tag, Clock, AlertTriangle, CheckCircle, XCircle, RefreshCw, Search, Save, DollarSign, Printer, ShieldOff } from 'lucide-react';
+import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 import {
     Dialog,
     DialogContent,
@@ -143,7 +144,40 @@ const ManagerManageWristband: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isQrCodeModalOpen, setIsQrCodeModalOpen] = useState(false);
     const [printEntry, setPrintEntry] = useState<AnalyticsEntry | null>(null);
-    const [selectedAnalyticsEntry, setSelectedAnalyticsEntry] = useState<AnalyticsEntry | null>(null); 
+    const [selectedAnalyticsEntry, setSelectedAnalyticsEntry] = useState<AnalyticsEntry | null>(null);
+    const [revokingAnalyticsId, setRevokingAnalyticsId] = useState<string | null>(null);
+
+    const canRevokeAppQr = (entry: AnalyticsEntry) =>
+        entry.status === 'active' &&
+        ['purchase', 'checkout_pending', 'creation'].includes(entry.event_type);
+
+    const handleRevokeAppQr = async (entry: AnalyticsEntry) => {
+        if (!canRevokeAppQr(entry)) return;
+        const confirmed = window.confirm(
+            'Invalidar o QR do aplicativo deste ingresso?\n\nO cliente precisará abrir o ingresso no app de novo. O ingresso impresso (se houver) continua com o QR fixo até ser usado na entrada.',
+        );
+        if (!confirmed) return;
+
+        setRevokingAnalyticsId(entry.id);
+        const toastId = showLoading('Invalidando QR do app…');
+        try {
+            const { data, error } = await supabase.functions.invoke('revoke-entry-qr', {
+                body: { analyticsId: entry.id },
+            });
+            if (error) {
+                throw new Error(await parseEdgeFunctionError(error, data));
+            }
+            showSuccess(
+                (data as { message?: string })?.message ?? 'QR do aplicativo invalidado.',
+            );
+            await invalidate();
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Não foi possível invalidar o QR.');
+        } finally {
+            dismissToast(toastId);
+            setRevokingAnalyticsId(null);
+        }
+    };
 
     useEffect(() => {
         if (data?.details) {
@@ -567,6 +601,22 @@ const ManagerManageWristband: React.FC = () => {
                                                                     onClick={() => setPrintEntry(entry)}
                                                                 >
                                                                     <Printer className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                            {canRevokeAppQr(entry) && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="bg-black/60 border-orange-500/40 text-orange-400 hover:bg-orange-500/10 h-8 px-2"
+                                                                    title="Invalidar QR do app (screenshot/compartilhamento)"
+                                                                    disabled={revokingAnalyticsId === entry.id}
+                                                                    onClick={() => handleRevokeAppQr(entry)}
+                                                                >
+                                                                    {revokingAnalyticsId === entry.id ? (
+                                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    ) : (
+                                                                        <ShieldOff className="h-4 w-4" />
+                                                                    )}
                                                                 </Button>
                                                             )}
                                                         </div>

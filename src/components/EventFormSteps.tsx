@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ENTRY_QR_ALLOWED_TTLS, ENTRY_QR_TTL_LABELS } from '@/constants/entry-qr';
 import { categories } from '@/data/events';
 import { normalizeContractContentForDisplay } from '@/utils/contractContent';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
@@ -81,6 +82,8 @@ const eventFormSchema = z.object({
     is_paid: z.boolean().default(false),
     /** Evento pago: permite validar ingresso impresso (QR fixo) além do QR dinâmico do app */
     allow_printed_tickets: z.boolean().default(false),
+    entry_qr_ttl_seconds: z.enum(['60', '90', '120']).default('90'),
+    validator_show_holder: z.boolean().default(true),
     ticket_price: z.string().optional().refine(val => {
         if (val === undefined || val === '') return true; // Permite vazio se não for pago
         return /^[0-9]+([,.][0-9]{1,2})?$/.test(val.replace('.', '').replace(',', '.'));
@@ -297,6 +300,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             duration: initialData?.duration || '',
             is_paid: initialData?.is_paid || false,
             allow_printed_tickets: initialData?.allow_printed_tickets ?? false,
+            entry_qr_ttl_seconds: (['60', '90', '120'] as const).includes(
+                String(initialData?.entry_qr_ttl_seconds ?? '90') as '60' | '90' | '120',
+            )
+                ? (String(initialData?.entry_qr_ttl_seconds) as '60' | '90' | '120')
+                : '90',
+            validator_show_holder: initialData?.validator_show_holder ?? true,
             ticket_price: initialData?.ticket_price?.toString().replace('.', ',') || '',
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
             batches: initialData?.batches?.map((batch) => ({
@@ -506,7 +515,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 const { data: event, error: eventError } = await supabase
                     .from('events')
                     .select(
-                        'is_paid, allow_printed_tickets, ticket_price, contract_id, capacity, date',
+                        'is_paid, allow_printed_tickets, entry_qr_ttl_seconds, validator_show_holder, ticket_price, contract_id, capacity, date',
                     )
                     .eq('id', eventId)
                     .maybeSingle();
@@ -515,6 +524,15 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                 setValue('is_paid', Boolean(event.is_paid));
                 setValue('allow_printed_tickets', Boolean(event.allow_printed_tickets));
+                const ttl = Number((event as { entry_qr_ttl_seconds?: number }).entry_qr_ttl_seconds);
+                setValue(
+                    'entry_qr_ttl_seconds',
+                    ttl === 60 || ttl === 120 ? String(ttl) : '90',
+                );
+                setValue(
+                    'validator_show_holder',
+                    (event as { validator_show_holder?: boolean }).validator_show_holder !== false,
+                );
 
                 if (event.contract_id) {
                     setValue('contract_id', event.contract_id);
@@ -803,6 +821,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 duration: values.duration,
                 is_paid: effectiveIsPaid,
                 allow_printed_tickets: effectiveIsPaid ? Boolean(values.allow_printed_tickets) : false,
+                entry_qr_ttl_seconds: effectiveIsPaid ? Number(values.entry_qr_ttl_seconds) : 90,
+                validator_show_holder: effectiveIsPaid ? Boolean(values.validator_show_holder) : false,
                 listing_only: isListingPlan,
                 total_tickets: isListingPlan ? Number(values.capacity) : totalTickets,
                 ticket_price: effectiveIsPaid ? ticketPriceForEvent : null,
@@ -1465,31 +1485,92 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                 </div>
                             )}
                             {!editPricingLoading && isPaid && (
-                                <FormField
-                                    control={control}
-                                    name="allow_printed_tickets"
-                                    render={({ field }) => (
-                                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 bg-black/40">
-                                            <FormControl>
-                                                <Checkbox
-                                                    checked={field.value}
-                                                    onCheckedChange={field.onChange}
-                                                    className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
-                                                />
-                                            </FormControl>
-                                            <div className="space-y-1 leading-none">
+                                <div className="space-y-4">
+                                    <FormField
+                                        control={control}
+                                        name="allow_printed_tickets"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 bg-black/40">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
+                                                    />
+                                                </FormControl>
+                                                <div className="space-y-1 leading-none">
+                                                    <FormLabel className="text-white">
+                                                        Permitir ingresso impresso na portaria
+                                                    </FormLabel>
+                                                    <FormDescription className="text-gray-400 text-xs">
+                                                        Marcado: o leitor aceita QR fixo (impresso) e QR dinâmico do app.
+                                                        Desmarcado: somente QR do aplicativo do cliente (mais seguro).
+                                                    </FormDescription>
+                                                </div>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={control}
+                                        name="entry_qr_ttl_seconds"
+                                        render={({ field }) => (
+                                            <FormItem className="rounded-md border border-yellow-500/30 p-4 bg-black/40">
                                                 <FormLabel className="text-white">
-                                                    Permitir ingresso impresso na portaria
+                                                    Validade do QR no aplicativo
                                                 </FormLabel>
-                                                <FormDescription className="text-gray-400 text-xs">
-                                                    Marcado: o leitor aceita QR fixo (impresso) e QR dinâmico do app.
-                                                    Desmarcado: somente QR do aplicativo do cliente (mais seguro).
+                                                <FormDescription className="text-gray-400 text-xs mb-2">
+                                                    Tempo que cada QR dinâmico permanece válido na portaria. O app renova
+                                                    automaticamente antes de expirar.
                                                 </FormDescription>
-                                            </div>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
+                                                <Select value={field.value} onValueChange={field.onChange}>
+                                                    <FormControl>
+                                                        <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500">
+                                                            <SelectValue placeholder="Selecione o tempo" />
+                                                        </SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                                        {ENTRY_QR_ALLOWED_TTLS.map((ttl) => (
+                                                            <SelectItem
+                                                                key={ttl}
+                                                                value={String(ttl)}
+                                                                className="hover:bg-yellow-500/10"
+                                                            >
+                                                                {ENTRY_QR_TTL_LABELS[ttl]}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={control}
+                                        name="validator_show_holder"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 bg-black/40">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
+                                                    />
+                                                </FormControl>
+                                                <div className="space-y-1 leading-none">
+                                                    <FormLabel className="text-white">
+                                                        Exibir titular no validador (portaria)
+                                                    </FormLabel>
+                                                    <FormDescription className="text-gray-400 text-xs">
+                                                        Após leitura OK, o operador vê nome e CPF parcial para conferir
+                                                        documento. Desmarque se não quiser exibir dados na portaria.
+                                                    </FormDescription>
+                                                </div>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
                             )}
                             {!isPaid && (
                                 <div className="text-center py-8">

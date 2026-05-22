@@ -26,6 +26,14 @@ import {
     MANAGER_BILLING_SETUP_PATH,
     requiresManagerCompanyBillingAcceptance,
 } from '@/constants/manager-billing-gate';
+import {
+    isManagerPathAllowedWhenListingPastDue,
+    listingSubscriptionBlocksOperations,
+    MANAGER_LISTING_RENEWAL_PATH,
+} from '@/constants/listing-subscription';
+import { useListingSubscription } from '@/hooks/use-listing-subscription';
+import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
+import ListingSubscriptionBanner from '@/components/ListingSubscriptionBanner';
 
 const ADMIN_USER_TYPE_ID = 1;
 const MANAGER_USER_TYPE_ID = 2;
@@ -103,6 +111,15 @@ const ManagerLayout: React.FC = () => {
     );
     const billingGateToastShown = useRef(false);
     const planFeatureRedirectShown = useRef(false);
+    const listingGateToastShown = useRef(false);
+
+    const isListingPlan = isListingMonthlyPlan(billing?.billing_plan ?? null);
+    const { data: listingSubscription, isLoading: isLoadingListingSubscription } = useListingSubscription(
+        company?.id,
+        billing?.billing_plan ?? null,
+    );
+    const listingPhase = listingSubscription?.phase ?? 'not_applicable';
+    const listingPastDue = listingSubscriptionBlocksOperations(listingPhase);
 
     useEffect(() => {
         if (!billingLoaded || !requiresContractAcceptance) {
@@ -145,6 +162,37 @@ const ManagerLayout: React.FC = () => {
         navigate,
     ]);
 
+    useEffect(() => {
+        if (
+            isAdminMaster ||
+            !isManagerPro ||
+            !isListingPlan ||
+            isLoadingListingSubscription ||
+            !listingPastDue
+        ) {
+            listingGateToastShown.current = false;
+            return;
+        }
+        if (isManagerPathAllowedWhenListingPastDue(location.pathname)) {
+            return;
+        }
+        if (!listingGateToastShown.current) {
+            listingGateToastShown.current = true;
+            showError(
+                'Assinatura vencida. Renove a mensalidade para liberar o painel (relatórios e pagamento continuam disponíveis).',
+            );
+        }
+        navigate(MANAGER_LISTING_RENEWAL_PATH, { replace: true });
+    }, [
+        isAdminMaster,
+        isManagerPro,
+        isListingPlan,
+        isLoadingListingSubscription,
+        listingPastDue,
+        location.pathname,
+        navigate,
+    ]);
+
     const handleLogout = async () => {
         try {
             const { error } = await supabase.auth.signOut({ scope: 'local' });
@@ -173,7 +221,8 @@ const ManagerLayout: React.FC = () => {
         isLoadingUserType ||
         (isManagerPro && isLoadingCompany) ||
         (needsBillingGateCheck && isLoadingBilling) ||
-        (needsPlanFeatureCheck && isLoadingPlanFeatures)
+        (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
+        (isListingPlan && isLoadingListingSubscription)
     ) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -213,12 +262,18 @@ const ManagerLayout: React.FC = () => {
         '/manager/settings': <Settings className="mr-2 h-4 w-4" />,
     };
 
-    const filteredManagerNav = filterNavItemsByPlanFeatures(
+    let filteredManagerNav = filterNavItemsByPlanFeatures(
         MANAGER_NAV_ITEMS,
         planFeatures,
         isAdminMaster,
         billingReady,
     );
+
+    if (listingPastDue && !isAdminMaster) {
+        filteredManagerNav = filteredManagerNav.filter((item) =>
+            item.path.startsWith('/manager/reports'),
+        );
+    }
 
     const baseNavItems = [
         { path: '/', label: 'Home', icon: <User className="mr-2 h-4 w-4" /> },
@@ -239,6 +294,16 @@ const ManagerLayout: React.FC = () => {
     const handleNavClick = (path: string, closeMobile = false) => {
         if (isManagerNavItemLocked(path, requiresContractAcceptance)) {
             navigate(MANAGER_BILLING_SETUP_PATH);
+            if (closeMobile) setIsMobileMenuOpen(false);
+            return;
+        }
+        if (
+            listingPastDue &&
+            !isAdminMaster &&
+            !isManagerPathAllowedWhenListingPastDue(path)
+        ) {
+            showError('Assinatura vencida. Renove em Mensalidade de divulgação.');
+            navigate(MANAGER_LISTING_RENEWAL_PATH);
             if (closeMobile) setIsMobileMenuOpen(false);
             return;
         }
@@ -606,8 +671,22 @@ const ManagerLayout: React.FC = () => {
                     </div>
                 </div>
             </header>
+            {isListingPlan && !isAdminMaster && listingSubscription && (
+                <div
+                    className="fixed left-0 right-0 z-[105]"
+                    style={{ top: `${Math.max(headerHeight, 64)}px` }}
+                >
+                    <ListingSubscriptionBanner
+                        phase={listingSubscription.phase}
+                        message={listingSubscription.message}
+                        listingActiveUntil={listingSubscription.listing_active_until}
+                    />
+                </div>
+            )}
             <main
-                style={{ paddingTop: `${Math.max(headerHeight, 80)}px` }}
+                style={{
+                    paddingTop: `${Math.max(headerHeight, 80) + (isListingPlan && listingSubscription?.phase !== 'active' && listingSubscription?.phase !== 'not_applicable' ? 88 : 0)}px`,
+                }}
                 className={isMobile ? 'p-3' : isTablet ? 'p-4' : 'p-6'}
             >
                 {requiresContractAcceptance &&

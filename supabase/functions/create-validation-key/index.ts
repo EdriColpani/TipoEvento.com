@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { companyListingSubscriptionBlocks } from "../_shared/listing-subscription-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,6 +134,14 @@ serve(async (req) => {
         error:
           'O recurso "Chaves de validação" não está disponível no plano comercial da sua empresa. Entre em contato com a EventFest.',
       });
+    }
+
+    const listingBlock = await companyListingSubscriptionBlocks(
+      supabaseService,
+      eventData.company_id as string,
+    );
+    if (listingBlock.blocked) {
+      return json200({ success: false, error: listingBlock.message });
     }
 
     const { data: userCompany, error: companyError } = await supabaseService

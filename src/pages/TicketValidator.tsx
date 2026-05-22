@@ -19,6 +19,8 @@ interface ValidationResult {
     validated_by: string;
     holder_name?: string | null;
     holder_email_hint?: string | null;
+    holder_cpf_hint?: string | null;
+    show_holder_check?: boolean;
     access_type?: string | null;
     scanned_via?: 'app' | 'printed' | null;
 }
@@ -253,9 +255,14 @@ const TicketValidator: React.FC = () => {
                 (raw as { error?: string })?.error;
             const friendlyByCode: Record<string, string> = {
                 qr_expired: 'QR expirado — cliente deve abrir o ingresso no app novamente.',
+                qr_revoked: 'QR revogado — cliente deve abrir o ingresso no app novamente.',
+                qr_owner_mismatch:
+                    'QR não é do titular — peça ao comprador abrir o ingresso na própria conta do app.',
                 qr_invalid: 'QR inválido ou adulterado.',
                 qr_malformed: 'QR inválido.',
                 digital_only: 'Evento só aceita QR do aplicativo do cliente.',
+                subscription_lapsed:
+                    'Assinatura do evento vencida. O gestor deve renovar a mensalidade no painel PRO.',
             };
             const result: ValidationResult = {
                 ...(typeof raw === 'object' && raw !== null ? raw : {}),
@@ -270,6 +277,8 @@ const TicketValidator: React.FC = () => {
                 validated_by: (raw as { validated_by?: string }).validated_by,
                 holder_name: (raw as { holder_name?: string }).holder_name ?? null,
                 holder_email_hint: (raw as { holder_email_hint?: string }).holder_email_hint ?? null,
+                holder_cpf_hint: (raw as { holder_cpf_hint?: string }).holder_cpf_hint ?? null,
+                show_holder_check: Boolean((raw as { show_holder_check?: boolean }).show_holder_check),
                 access_type: (raw as { access_type?: string }).access_type ?? null,
                 scanned_via: (raw as { scanned_via?: 'app' | 'printed' }).scanned_via ?? null,
             } as ValidationResult;
@@ -697,18 +706,31 @@ const TicketValidator: React.FC = () => {
                                                 {lastResult.wristband_code}
                                             </span>
                                         </p>
-                                        {lastResult.success && lastResult.holder_name && (
-                                            <p className="text-green-300/90 border border-green-500/30 rounded-lg p-2 mt-2">
-                                                <strong>Titular:</strong> {lastResult.holder_name}
-                                                {lastResult.holder_email_hint && (
-                                                    <span className="block text-xs text-gray-400 mt-1">
-                                                        E-mail: {lastResult.holder_email_hint}
-                                                    </span>
+                                        {lastResult.success &&
+                                            lastResult.validation_type === 'entry' &&
+                                            lastResult.holder_name && (
+                                            <div className="mt-3 rounded-lg border-2 border-amber-500/60 bg-amber-500/10 p-3 text-amber-100">
+                                                <p className="text-sm font-semibold text-amber-300 uppercase tracking-wide mb-2">
+                                                    Conferir titular
+                                                </p>
+                                                <p className="text-base font-medium text-white">
+                                                    {lastResult.holder_name}
+                                                </p>
+                                                {lastResult.holder_cpf_hint && (
+                                                    <p className="text-sm mt-1">
+                                                        <strong>CPF:</strong>{' '}
+                                                        <span className="font-mono">{lastResult.holder_cpf_hint}</span>
+                                                    </p>
                                                 )}
-                                                <span className="block text-xs text-gray-500 mt-1">
-                                                    Confira documento se necessário.
-                                                </span>
-                                            </p>
+                                                {lastResult.holder_email_hint && (
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        E-mail: {lastResult.holder_email_hint}
+                                                    </p>
+                                                )}
+                                                <p className="text-xs text-amber-200/80 mt-2">
+                                                    Compare com documento oficial antes de liberar a entrada.
+                                                </p>
+                                            </div>
                                         )}
                                         {lastResult.access_type && (
                                             <p><strong>Ingresso:</strong> {lastResult.access_type}</p>

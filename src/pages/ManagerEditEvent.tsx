@@ -27,6 +27,8 @@ interface EventFormData {
     duration: string;
     is_paid?: boolean;
     allow_printed_tickets?: boolean;
+    entry_qr_ttl_seconds?: number;
+    validator_show_holder?: boolean;
     ticket_price?: number | string | null;
     contract_id?: string;
 }
