@@ -1698,6 +1698,24 @@ const Profile: React.FC = () => {
 
                                                         </Button>
 
+                                                        <Button
+
+                                                            type="button"
+
+                                                            onClick={() => navigate('/wallet')}
+
+                                                            variant="outline"
+
+                                                            className="flex-1 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 transition-all duration-300 cursor-pointer"
+
+                                                        >
+
+                                                            <i className="fas fa-wallet mr-2"></i>
+
+                                                            Carteira EventFest
+
+                                                        </Button>
+
                                                     </div>
 
                                                 )}

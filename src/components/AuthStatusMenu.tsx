@@ -155,6 +155,13 @@ const AuthStatusMenu: React.FC = () => {
                             <i className="fas fa-ticket-alt mr-2"></i>
                             Meus Ingressos
                         </DropdownMenuItem>
+                        <DropdownMenuItem 
+                            onClick={() => navigate('/wallet')} 
+                            className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
+                        >
+                            <i className="fas fa-wallet mr-2"></i>
+                            Carteira EventFest
+                        </DropdownMenuItem>
                         
                         {/* NOVO: Cadastrar Eventos para Clientes (Tipo 3) */}
                         {isClient && (

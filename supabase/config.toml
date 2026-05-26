@@ -25,6 +25,24 @@ verify_jwt = false
 [functions.create-listing-monthly-checkout]
 verify_jwt = false
 
+[functions.create-credit-checkout]
+verify_jwt = false
+
+[functions.credit-spend]
+verify_jwt = false
+
+[functions.issue-wallet-qr-token]
+verify_jwt = false
+
+[functions.resolve-wallet-qr]
+verify_jwt = false
+
+[functions.credit-spend-pdv]
+verify_jwt = false
+
+[functions.manager-credit-payout]
+verify_jwt = false
+
 [functions.save-manager-payment-settings]
 verify_jwt = false
 

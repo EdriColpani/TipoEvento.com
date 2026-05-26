@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import AuthStatusMenu from '@/components/AuthStatusMenu';
 import { Input } from '@/components/ui/input';
 import { useEventDetails, EventDetailsData, TicketType } from '@/hooks/use-event-details';
-import { Loader2, ShoppingCart } from 'lucide-react';
+import { Loader2, ShoppingCart, Wallet } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast'; // Importando showLoading/dismissToast
 import { useAuthRedirect } from '@/hooks/use-auth-redirect';
@@ -13,6 +14,10 @@ import { supabase } from '@/integrations/supabase/client'; // Importando supabas
 import { FunctionsHttpError } from '@supabase/supabase-js'; // Importando o tipo de erro específico
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
+import {
+    fetchEventCreditEligibility,
+    startCreditSpendCheckout,
+} from '@/utils/credit-spend-checkout';
 
 // Tipos de dados para os itens de compra
 interface PurchaseItem {
@@ -41,7 +46,42 @@ const EventDetails: React.FC = () => {
     const { isAuthenticated, redirectToLogin } = useAuthRedirect();
     
     const [selectedTickets, setSelectedTickets] = useState<{ [key: string]: number }>({});
-    const [isProcessing, setIsProcessing] = useState(false); // Novo estado para o spinner
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [isCreditProcessing, setIsCreditProcessing] = useState(false);
+
+    const creditBalanceQuery = useQuery({
+        queryKey: ['client-credit-balance-event', id],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('get_client_credit_balance');
+            if (error) throw error;
+            return data as { balance?: number; status?: string };
+        },
+        enabled: isAuthenticated && !!id,
+        staleTime: 30_000,
+    });
+
+    const creditEligibilityQuery = useQuery({
+        queryKey: ['event-credit-eligibility', id],
+        queryFn: () => fetchEventCreditEligibility(id!),
+        enabled: !!id,
+        staleTime: 60_000,
+    });
+
+    const creditWalletMetaQuery = useQuery({
+        queryKey: ['credit-wallet-status-event'],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('get_credit_wallet_status');
+            if (error) throw error;
+            return data as { biometric_threshold?: number };
+        },
+        enabled: isAuthenticated,
+        staleTime: 60_000,
+    });
+
+    const creditBalance = Number(creditBalanceQuery.data?.balance ?? 0);
+    const creditWalletStatus = creditBalanceQuery.data?.status ?? 'active';
+    const creditEligible = creditEligibilityQuery.data?.eligible === true
+        && details?.event.credit_consumption_enabled === true;
 
     const handleTicketChange = (ticketId: string, quantity: number) => {
         setSelectedTickets(prev => ({
@@ -61,34 +101,10 @@ const EventDetails: React.FC = () => {
     const getTotalTickets = () => {
         return Object.values(selectedTickets).reduce((total, quantity) => total + quantity, 0);
     };
-    
-    const handleCheckout = async () => {
-        if (details && !details.event.is_active) {
-            showError('Este evento não está disponível para novas compras.');
-            return;
-        }
-        if (details && !isEventOpenForNewSales(details.event.date, details.event.time)) {
-            showError('O prazo para compra de ingressos deste evento foi encerrado.');
-            return;
-        }
 
-        const totalTickets = getTotalTickets();
-        
-        if (totalTickets === 0) {
-            showError("Selecione pelo menos um ingresso para prosseguir.");
-            return;
-        }
-        
-        if (!isAuthenticated) {
-            showError("Você precisa estar logado para comprar ingressos.");
-            redirectToLogin();
-            return;
-        }
-        
-        if (!details || !id) return;
-
-        // 1. Preparar itens de compra
-        const purchaseItems: PurchaseItem[] = details.ticketTypes
+    const getPurchaseItems = (): PurchaseItem[] => {
+        if (!details) return [];
+        return details.ticketTypes
             .filter(ticket => selectedTickets[ticket.id] > 0)
             .map(ticket => ({
                 ticketTypeId: ticket.id,
@@ -96,7 +112,40 @@ const EventDetails: React.FC = () => {
                 price: ticket.price,
                 name: ticket.name,
             }));
-            
+    };
+
+    const validatePurchaseContext = (): boolean => {
+        if (details && !details.event.is_active) {
+            showError('Este evento não está disponível para novas compras.');
+            return false;
+        }
+        if (details && !isEventOpenForNewSales(details.event.date, details.event.time)) {
+            showError('O prazo para compra de ingressos deste evento foi encerrado.');
+            return false;
+        }
+        if (getTotalTickets() === 0) {
+            showError('Selecione pelo menos um ingresso para prosseguir.');
+            return false;
+        }
+        if (!isAuthenticated) {
+            showError('Você precisa estar logado para comprar ingressos.');
+            redirectToLogin();
+            return false;
+        }
+        if (!details || !id) return false;
+        return true;
+    };
+
+    const totalPrice = getTotalPrice();
+    const canPayWithCredit = creditEligible
+        && creditWalletStatus === 'active'
+        && creditBalance >= totalPrice
+        && totalPrice > 0;
+    
+    const handleCheckout = async () => {
+        if (!validatePurchaseContext()) return;
+
+        const purchaseItems = getPurchaseItems();
         if (purchaseItems.length === 0) {
             showError("Nenhum item selecionado para a compra.");
             return;
@@ -216,6 +265,53 @@ const EventDetails: React.FC = () => {
             showError(error.message || "Ocorreu um erro inesperado. Tente novamente.");
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handleCreditCheckout = async () => {
+        if (!validatePurchaseContext()) return;
+
+        const purchaseItems = getPurchaseItems();
+        if (purchaseItems.length === 0) {
+            showError('Nenhum item selecionado para a compra.');
+            return;
+        }
+
+        if (!creditEligible) {
+            showError(creditEligibilityQuery.data?.reason || 'Pagamento com crédito indisponível para este evento.');
+            return;
+        }
+
+        if (creditWalletStatus !== 'active') {
+            showError('Sua carteira EventFest não está ativa.');
+            return;
+        }
+
+        if (creditBalance < totalPrice) {
+            showError(`Saldo insuficiente. Você tem ${getPriceDisplay(creditBalance)} e o total é ${getPriceDisplay(totalPrice)}.`);
+            return;
+        }
+
+        setIsCreditProcessing(true);
+        const toastId = showLoading('Processando pagamento com crédito EventFest...');
+
+        try {
+            const result = await startCreditSpendCheckout(id!, purchaseItems, {
+                biometricThreshold: Number(creditWalletMetaQuery.data?.biometric_threshold ?? 200),
+            });
+            dismissToast(toastId);
+            showSuccess(
+                result.duplicate
+                    ? 'Compra já havia sido processada. Seus ingressos estão disponíveis.'
+                    : 'Ingressos adquiridos com crédito EventFest!',
+            );
+            navigate(`/tickets?status=success&credit_spend_id=${result.spendOrderId}`);
+        } catch (error: unknown) {
+            dismissToast(toastId);
+            const message = error instanceof Error ? error.message : 'Erro ao pagar com crédito.';
+            showError(message);
+        } finally {
+            setIsCreditProcessing(false);
         }
     };
 
@@ -467,7 +563,7 @@ const EventDetails: React.FC = () => {
                                                             <button
                                                                 onClick={() => handleTicketChange(ticket.id, (selectedTickets[ticket.id] || 0) - 1)}
                                                                 className="w-7 h-7 sm:w-8 sm:h-8 bg-yellow-500/20 border border-yellow-500/40 rounded-full flex items-center justify-center text-yellow-500 hover:bg-yellow-500/30 transition-all duration-300 cursor-pointer"
-                                                                disabled={ticket.available === 0 || (selectedTickets[ticket.id] || 0) === 0 || isProcessing || salesClosed}
+                                                                disabled={ticket.available === 0 || (selectedTickets[ticket.id] || 0) === 0 || isProcessing || isCreditProcessing || salesClosed}
                                                             >
                                                                 <i className="fas fa-minus text-xs"></i>
                                                             </button>
@@ -477,7 +573,7 @@ const EventDetails: React.FC = () => {
                                                             <button
                                                                 onClick={() => handleTicketChange(ticket.id, (selectedTickets[ticket.id] || 0) + 1)}
                                                                 className="w-7 h-7 sm:w-8 sm:h-8 bg-yellow-500/20 border border-yellow-500/40 rounded-full flex items-center justify-center text-yellow-500 hover:bg-yellow-500/30 transition-all duration-300 cursor-pointer"
-                                                                disabled={(selectedTickets[ticket.id] || 0) >= ticket.available || isProcessing || salesClosed}
+                                                                disabled={(selectedTickets[ticket.id] || 0) >= ticket.available || isProcessing || isCreditProcessing || salesClosed}
                                                             >
                                                                 <i className="fas fa-plus text-xs"></i>
                                                             </button>
@@ -505,7 +601,7 @@ const EventDetails: React.FC = () => {
                                             </div>
                                             <Button 
                                                 onClick={handleCheckout}
-                                                disabled={isProcessing || getTotalTickets() === 0 || salesClosed}
+                                                disabled={isProcessing || isCreditProcessing || getTotalTickets() === 0 || salesClosed}
                                                 className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 sm:py-4 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
                                             >
                                                 {isProcessing ? (
@@ -513,8 +609,57 @@ const EventDetails: React.FC = () => {
                                                 ) : (
                                                     <ShoppingCart className="h-5 w-5 mr-2" />
                                                 )}
-                                                {isProcessing ? 'Processando...' : 'Comprar Ingressos'}
+                                                {isProcessing ? 'Processando...' : 'Comprar com Mercado Pago'}
                                             </Button>
+                                            {creditEligible && (
+                                                <div className="mt-4 space-y-3">
+                                                    <div className="flex items-center justify-between text-sm text-gray-300 px-1">
+                                                        <span className="flex items-center gap-2">
+                                                            <Wallet className="h-4 w-4 text-yellow-500" />
+                                                            Saldo EventFest
+                                                        </span>
+                                                        <span className="font-semibold text-yellow-500">
+                                                            {creditBalanceQuery.isLoading
+                                                                ? '...'
+                                                                : getPriceDisplay(creditBalance)}
+                                                        </span>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={handleCreditCheckout}
+                                                        disabled={
+                                                            isProcessing
+                                                            || isCreditProcessing
+                                                            || getTotalTickets() === 0
+                                                            || salesClosed
+                                                            || !canPayWithCredit
+                                                        }
+                                                        className="w-full border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 py-3 sm:py-4 text-base sm:text-lg font-semibold disabled:opacity-50"
+                                                    >
+                                                        {isCreditProcessing ? (
+                                                            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                                        ) : (
+                                                            <Wallet className="h-5 w-5 mr-2" />
+                                                        )}
+                                                        {isCreditProcessing
+                                                            ? 'Processando...'
+                                                            : 'Pagar com crédito EventFest'}
+                                                    </Button>
+                                                    {creditEligible && creditBalance < totalPrice && totalPrice > 0 && (
+                                                        <p className="text-xs text-gray-400 text-center">
+                                                            Saldo insuficiente para este pedido.{' '}
+                                                            <button
+                                                                type="button"
+                                                                className="text-yellow-500 underline hover:text-yellow-400"
+                                                                onClick={() => navigate('/wallet')}
+                                                            >
+                                                                Recarregar carteira
+                                                            </button>
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
                                         </>
                                     )}
                                     <div className="mt-6 p-4 bg-black/40 rounded-xl">

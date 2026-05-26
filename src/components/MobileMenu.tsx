@@ -142,6 +142,14 @@ const MobileMenu: React.FC = () => {
                                 <i className="fas fa-ticket-alt mr-3 w-5"></i>
                                 Meus Ingressos
                             </Button>
+                            <Button 
+                                onClick={() => handleNavigation('/wallet')}
+                                variant="ghost"
+                                className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
+                            >
+                                <i className="fas fa-wallet mr-3 w-5"></i>
+                                Carteira EventFest
+                            </Button>
                             {isManager && (
                                 <Button 
                                     onClick={() => handleNavigation('/manager/dashboard')}

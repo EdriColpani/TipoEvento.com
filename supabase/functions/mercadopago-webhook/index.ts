@@ -134,6 +134,42 @@ serve(async (req) => {
     }
 
     const LISTING_CHARGE_PREFIX = 'listing_charge:';
+    const CREDIT_TOPUP_PREFIX = 'credit_topup:';
+
+    if (externalReference.startsWith(CREDIT_TOPUP_PREFIX)) {
+        const topupOrderId = externalReference.slice(CREDIT_TOPUP_PREFIX.length);
+        console.log(`[MP Webhook] Credit top-up: ${topupOrderId}, status=${paymentStatus}`);
+
+        if (paymentStatus === 'approved' || paymentStatus === 'authorized') {
+            const { data: settleData, error: settleErr } = await supabaseService.rpc('credit_topup_settle', {
+                p_topup_order_id: topupOrderId,
+                p_mp_payment_id: mpPaymentId,
+                p_mp_fee_amount: mpFeeAmount ?? 0,
+                p_net_cash_received: netAmountAfterMp,
+                p_payment_status: paymentStatus,
+            });
+            if (settleErr) {
+                console.error('[MP Webhook] credit_topup_settle:', settleErr);
+                return new Response(JSON.stringify({ error: settleErr.message }), {
+                    status: 500,
+                    headers: corsHeaders,
+                });
+            }
+            console.log('[MP Webhook] credit_topup_settle result:', settleData);
+        } else {
+            await supabaseService
+                .from('credit_topup_orders')
+                .update({ status: 'failed', updated_at: new Date().toISOString() })
+                .eq('id', topupOrderId)
+                .eq('status', 'pending');
+        }
+
+        return new Response(JSON.stringify({ received: true, type: 'credit_topup' }), {
+            status: 200,
+            headers: corsHeaders,
+        });
+    }
+
     if (externalReference.startsWith(LISTING_CHARGE_PREFIX)) {
         const listingChargeId = externalReference.slice(LISTING_CHARGE_PREFIX.length);
         console.log(`[MP Webhook] Listing monthly charge payment: ${listingChargeId}, status=${paymentStatus}`);

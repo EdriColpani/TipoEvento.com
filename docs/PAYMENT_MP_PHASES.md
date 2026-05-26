@@ -23,7 +23,7 @@
 | **Assinatura recorrente** | Mensalidade vitrine via MP Preapproval / assinatura automática. |
 | **Cobrança comissão consolidada** | Fatura mensal da comissão se split MP falhar (fallback). |
 | **Painel admin comissões MP** | Extrato EventFest vs `financial_splits` reconciliado. |
-| **Consumo / créditos** | Plano consumo completo (fase produto). |
+| **Consumo / créditos** | Fase 1: recarga MP + carteira `/wallet` + extrato (`20260620120000_client_credit_wallet_v31.sql`, `create-credit-checkout`). Spend/PDV: pendente. |
 | **OAuth PKCE obrigatório no painel MP** | Habilitar fluxo PKCE na aplicação MP (recomendado produção). |
 
 ## Secrets Supabase (Edge Functions)

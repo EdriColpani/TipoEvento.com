@@ -1,8 +1,8 @@
 {
   "name": "EventFest",
   "short_name": "EventFest",
-  "description": "EventFest — eventos, ingressos e validação",
-  "start_url": "/validator",
+  "description": "EventFest — eventos, ingressos, carteira de crédito e validação",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#eab308",
@@ -21,9 +21,33 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["utilities", "business"],
+  "categories": ["utilities", "business", "finance"],
   "screenshots": [],
   "shortcuts": [
+    {
+      "name": "Carteira EventFest",
+      "short_name": "Carteira",
+      "description": "Saldo, recarga e QR para PDV",
+      "url": "/wallet",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Meus ingressos",
+      "short_name": "Ingressos",
+      "description": "Ingressos comprados",
+      "url": "/tickets",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
     {
       "name": "Validador",
       "short_name": "Validar",
@@ -38,4 +62,3 @@
     }
   ]
 }
-

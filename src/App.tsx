@@ -21,6 +21,11 @@ import ManagerNotifications from "./pages/ManagerNotifications";
 import ManagerAdvancedSettings from "./pages/ManagerAdvancedSettings";
 import ManagerDatabaseBackup from "./pages/ManagerDatabaseBackup"; 
 import ManagerPaymentSettings from "./pages/ManagerPaymentSettings"; 
+import ManagerCreditEstablishments from "./pages/ManagerCreditEstablishments";
+import ManagerCreditPdv from "./pages/ManagerCreditPdv";
+import ManagerCreditSpendsReport from "./pages/ManagerCreditSpendsReport";
+import ManagerCreditSettlements from "./pages/ManagerCreditSettlements";
+import AdminCreditReports from "./pages/AdminCreditReports";
 import ManagerCreateWristband from "./pages/ManagerCreateWristband"; 
 import ManagerWristbandsList from "./pages/ManagerWristbandsList"; 
 import ManagerManageWristband from "./pages/ManagerManageWristband";
@@ -60,6 +65,7 @@ import AudienceReports from "./pages/AudienceReports"; // NOVO
 import ManagerValidationKeys from "./pages/ManagerValidationKeys"; // NOVO
 import TicketValidator from "./pages/TicketValidator"; // NOVO
 import RegistrationsReports from "./pages/RegistrationsReports";
+import ClientCreditWallet from "./pages/ClientCreditWallet";
 
 const queryClient = new QueryClient();
 
@@ -81,6 +87,7 @@ const App = () => (
             <Route path="forgot-password" element={<ForgotPassword />} />
             <Route path="profile" element={<Profile />} />
             <Route path="tickets" element={<MyTickets />} />
+            <Route path="wallet" element={<ClientCreditWallet />} />
           </Route>
 
           {/* Reset fora do ClientLayout: evita header “já logado” na sessão de recovery */}
@@ -117,6 +124,8 @@ const App = () => (
             <Route path="/manager/reports/registrations" element={<RegistrationsReports />} />
             <Route path="/manager/reports/wristband-movements" element={<WristbandMovementsReports />} />
             <Route path="/manager/reports/listing-monthly" element={<ManagerListingMonthlyBilling />} />
+            <Route path="/manager/reports/credit-spends" element={<ManagerCreditSpendsReport />} />
+            <Route path="/manager/credit/settlements" element={<ManagerCreditSettlements />} />
             <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />
             <Route path="/manager/settings/company-profile" element={<ManagerCompanyProfile />} />
@@ -124,6 +133,8 @@ const App = () => (
             <Route path="/manager/settings/notifications" element={<ManagerNotifications />} />
             <Route path="/manager/settings/payment" element={<ManagerPaymentSettings />} />
             <Route path="/manager/settings/history" element={<ManagerSettingsHistory />} />
+            <Route path="/manager/credit/establishments" element={<ManagerCreditEstablishments />} />
+            <Route path="/manager/credit/pdv" element={<ManagerCreditPdv />} />
           </Route>
           
           {/* Admin Master Routes (tipo_usuario_id = 1) */}
@@ -138,6 +149,7 @@ const App = () => (
                 <Route path="/admin/settings/plan-features" element={<AdminPlanFeatures />} />
                 <Route path="/admin/settings/monthly-invoices" element={<AdminListingMonthlyBilling />} />
                 <Route path="/admin/settings/listing-monthly-billing" element={<AdminListingMonthlyRedirect />} />
+                <Route path="/admin/settings/credit-reports" element={<AdminCreditReports />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 

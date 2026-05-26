@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2, Wallet } from 'lucide-react';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { EMPTY_ADMIN_METRICS, useAdminDashboardStats } from '@/hooks/use-admin-dashboard-stats';
 import { showError } from '@/utils/toast';
@@ -218,6 +218,14 @@ const AdminDashboard: React.FC = () => {
                     </div>
 
                     <div className="mt-8 space-y-4">
+                        <Button
+                            type="button"
+                            onClick={() => navigate('/admin/settings/credit-reports')}
+                            className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 transition-all duration-300 cursor-pointer flex items-center justify-center text-sm sm:text-base"
+                        >
+                            <Wallet className="h-4 w-4 mr-2" />
+                            Relatórios Créditos EventFest
+                        </Button>
                         <Button
                             type="button"
                             onClick={() => navigate('/manager/settings/advanced')}

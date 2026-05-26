@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -11,6 +11,7 @@ import SalesLineChart from '@/components/SalesLineChart';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
+import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
 import { isPlanFeatureEnabled, type PlanFeatureKey } from '@/constants/plan-features';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 
@@ -120,6 +121,10 @@ const ManagerReports: React.FC = () => {
             (isAdminMaster || billingReady),
     );
 
+    const showCreditReport =
+        (isAdminMaster || companyAllowsCreditConsumption(billing?.billing_plan)) &&
+        (isAdminMaster || billingReady);
+
     return (
         <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-8">
@@ -137,7 +142,7 @@ const ManagerReports: React.FC = () => {
                 </Button>
             </div>
 
-            {visibleReports.length === 0 ? (
+            {visibleReports.length === 0 && !showCreditReport ? (
                 <p className="text-gray-400 text-sm mb-8">
                     Nenhum relatório disponível no plano comercial da sua empresa.
                 </p>
@@ -152,6 +157,22 @@ const ManagerReports: React.FC = () => {
                             onClick={() => navigate(card.path)}
                         />
                     ))}
+                    {showCreditReport && (
+                        <>
+                            <ReportCard
+                                icon={<Wallet className="h-6 w-6 text-yellow-500" />}
+                                title="Consumos via crédito"
+                                description="Recebimentos via carteira EventFest na sua empresa (ingressos e PDV)."
+                                onClick={() => navigate('/manager/reports/credit-spends')}
+                            />
+                            <ReportCard
+                                icon={<Banknote className="h-6 w-6 text-yellow-500" />}
+                                title="Repasses de crédito"
+                                description="Liquidações em retenção, liberadas e payouts registrados."
+                                onClick={() => navigate('/manager/credit/settlements')}
+                            />
+                        </>
+                    )}
                 </div>
             )}
             
