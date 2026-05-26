@@ -53,3 +53,7 @@ export async function getManagerMpAccessToken(
 export function isListingChargeReference(externalReference: string | null): boolean {
   return typeof externalReference === 'string' && externalReference.startsWith('listing_charge:');
 }
+
+export function isCreditTopupReference(externalReference: string | null): boolean {
+  return typeof externalReference === 'string' && externalReference.startsWith('credit_topup:');
+}

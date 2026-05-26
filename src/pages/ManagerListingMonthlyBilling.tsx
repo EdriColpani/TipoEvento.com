@@ -23,7 +23,6 @@ import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { useListingSubscription } from '@/hooks/use-listing-subscription';
 import { useQueryClient } from '@tanstack/react-query';
-import { format as formatDateFns, parseISO } from 'date-fns';
 
 const STATUS_LABELS: Record<ListingChargeStatus, string> = {
     pending: 'Pendente',
@@ -200,7 +199,7 @@ const ManagerListingMonthlyBilling: React.FC = () => {
                                 <strong className="text-yellow-500">
                                     {(() => {
                                         try {
-                                            return formatDateFns(
+                                            return format(
                                                 parseISO(billing.listing_active_until),
                                                 'dd/MM/yyyy',
                                                 { locale: ptBR },

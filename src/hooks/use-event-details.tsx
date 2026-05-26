@@ -24,6 +24,8 @@ export interface EventData {
     is_active: boolean;
     /** true = apenas divulgação; sem venda de ingressos pela plataforma. */
     listing_only: boolean;
+    /** Aceita pagamento com crédito EventFest (rede). */
+    credit_consumption_enabled: boolean;
 
     // Dados do Organizador (JOIN)
     companies: {
@@ -54,7 +56,7 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     const { data: eventDataRaw, error: eventError } = await supabase
         .from('events')
         .select(`
-            id, title, description, date, time, location, address, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid
+            id, title, description, date, time, location, address, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid, credit_consumption_enabled
         `)
         .eq('id', eventId)
         .maybeSingle();
@@ -174,6 +176,8 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
         min_price_wristband_id: minPriceWristbandId,
         is_active: (eventDataRaw as { is_active?: boolean }).is_active !== false,
         listing_only: (eventDataRaw as { listing_only?: boolean }).listing_only === true,
+        credit_consumption_enabled:
+            (eventDataRaw as { credit_consumption_enabled?: boolean }).credit_consumption_enabled === true,
         exposure_card_image_url: eventDataRaw.exposure_card_image_url || null, // Mapeando o novo campo
         banner_image_url: eventDataRaw.banner_image_url || null,
         companies: corporateName ? { corporate_name: corporateName } : null,

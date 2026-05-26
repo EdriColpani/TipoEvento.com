@@ -29,6 +29,7 @@ interface EventFormData {
     allow_printed_tickets?: boolean;
     entry_qr_ttl_seconds?: number;
     validator_show_holder?: boolean;
+    credit_consumption_enabled?: boolean;
     ticket_price?: number | string | null;
     contract_id?: string;
 }
@@ -110,6 +111,7 @@ const ManagerEditEvent: React.FC = () => {
                 duration: eventData.duration || '',
                 is_paid: Boolean(eventData.is_paid),
                 allow_printed_tickets: Boolean(eventData.allow_printed_tickets),
+                credit_consumption_enabled: Boolean(eventData.credit_consumption_enabled),
                 ticket_price: eventData.ticket_price ?? null,
                 contract_id: eventData.contract_id ?? undefined,
             });

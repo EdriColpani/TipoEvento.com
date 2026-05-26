@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings, User, Building, Bell, CreditCard, History, Loader2 } from 'lucide-react';
+import { Settings, User, Building, Bell, CreditCard, History, Loader2, Store, ShoppingBag, Banknote } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
 
 const MANAGER_PRO_USER_TYPE_ID = 2;
 
@@ -11,6 +14,8 @@ const ManagerSettings: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const { company } = useManagerCompany(userId);
+    const { billing } = useCompanyBilling(company?.id);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -20,6 +25,7 @@ const ManagerSettings: React.FC = () => {
 
     const isManagerPro = profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
     const isAdminMaster = profile?.tipo_usuario_id === 1;
+    const showCreditOptions = companyAllowsCreditConsumption(billing?.billing_plan);
 
     let settingsOptions = [
         { 
@@ -52,6 +58,29 @@ const ManagerSettings: React.FC = () => {
             description: "Dados corporativos, plano, credenciais Mercado Pago de ingressos.",
             path: "/manager/settings/company-profile",
         });
+    }
+
+    if (isManagerPro && showCreditOptions) {
+        settingsOptions.push(
+            {
+                icon: <Store className="h-6 w-6 text-yellow-500" />,
+                title: "Estabelecimentos (crédito)",
+                description: "Cadastre bares e lojas que aceitam crédito EventFest.",
+                path: "/manager/credit/establishments",
+            },
+            {
+                icon: <ShoppingBag className="h-6 w-6 text-yellow-500" />,
+                title: "PDV — Crédito EventFest",
+                description: "Cobrar consumo escaneando o QR da carteira do cliente.",
+                path: "/manager/credit/pdv",
+            },
+            {
+                icon: <Banknote className="h-6 w-6 text-yellow-500" />,
+                title: "Repasses — Crédito",
+                description: "Liquidações liberadas e registro de payout ao gestor.",
+                path: "/manager/credit/settlements",
+            },
+        );
     }
 
     if (isLoadingProfile) {

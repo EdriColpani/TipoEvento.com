@@ -22,4 +22,9 @@ export function isListingOnlyCompanyPlan(plan: BillingPlanCode | string | null |
     return plan === 'listing_monthly' || plan === 'consumption_or_license';
 }
 
+/** Plano habilita consumo / carteira EventFest (ingressos e PDV). */
+export function companyAllowsCreditConsumption(plan: BillingPlanCode | string | null | undefined): boolean {
+    return isHybridPlan(plan) || isConsumptionOrLicensePlan(plan);
+}
+
 export const DEFAULT_LISTING_MONTHLY_FEE = 199.9;

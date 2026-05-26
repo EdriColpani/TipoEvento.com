@@ -31,7 +31,7 @@ import {
     MANAGER_EVENT_CREATION_CONTRACT_TYPE,
 } from '@/constants/event-contracts';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
-import { isListingOnlyCompanyPlan } from '@/utils/company-billing-rules';
+import { isHybridPlan, isConsumptionOrLicensePlan, isListingOnlyCompanyPlan } from '@/utils/company-billing-rules';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
@@ -84,6 +84,7 @@ const eventFormSchema = z.object({
     allow_printed_tickets: z.boolean().default(false),
     entry_qr_ttl_seconds: z.enum(['60', '90', '120']).default('90'),
     validator_show_holder: z.boolean().default(true),
+    credit_consumption_enabled: z.boolean().default(false),
     ticket_price: z.string().optional().refine(val => {
         if (val === undefined || val === '') return true; // Permite vazio se não for pago
         return /^[0-9]+([,.][0-9]{1,2})?$/.test(val.replace('.', '').replace(',', '.'));
@@ -181,6 +182,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const companyBillingReady = isCompanyBillingReady(companyBilling);
     // Plano vitrine: evento salvo com listing_only (sem venda de ingressos) — alinhado à matriz de permissões.
     const isListingPlan = isListingOnlyCompanyPlan(companyBilling?.billing_plan);
+    const supportsCreditConsumption =
+        isHybridPlan(companyBilling?.billing_plan) || isConsumptionOrLicensePlan(companyBilling?.billing_plan);
 
     const { data: activeContract, isLoading: isLoadingContract } = useQuery<EventContract | null>({ // Adicionado useQuery para buscar contrato
         queryKey: ['activeEventContract', MANAGER_EVENT_CREATION_CONTRACT_TYPE],
@@ -306,6 +309,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 ? (String(initialData?.entry_qr_ttl_seconds) as '60' | '90' | '120')
                 : '90',
             validator_show_holder: initialData?.validator_show_holder ?? true,
+            credit_consumption_enabled: initialData?.credit_consumption_enabled ?? false,
             ticket_price: initialData?.ticket_price?.toString().replace('.', ',') || '',
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
             batches: initialData?.batches?.map((batch) => ({
@@ -515,7 +519,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 const { data: event, error: eventError } = await supabase
                     .from('events')
                     .select(
-                        'is_paid, allow_printed_tickets, entry_qr_ttl_seconds, validator_show_holder, ticket_price, contract_id, capacity, date',
+                        'is_paid, allow_printed_tickets, entry_qr_ttl_seconds, validator_show_holder, credit_consumption_enabled, ticket_price, contract_id, capacity, date',
                     )
                     .eq('id', eventId)
                     .maybeSingle();
@@ -532,6 +536,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 setValue(
                     'validator_show_holder',
                     (event as { validator_show_holder?: boolean }).validator_show_holder !== false,
+                );
+                setValue(
+                    'credit_consumption_enabled',
+                    (event as { credit_consumption_enabled?: boolean }).credit_consumption_enabled === true,
                 );
 
                 if (event.contract_id) {
@@ -823,6 +831,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 allow_printed_tickets: effectiveIsPaid ? Boolean(values.allow_printed_tickets) : false,
                 entry_qr_ttl_seconds: effectiveIsPaid ? Number(values.entry_qr_ttl_seconds) : 90,
                 validator_show_holder: effectiveIsPaid ? Boolean(values.validator_show_holder) : false,
+                credit_consumption_enabled:
+                    supportsCreditConsumption ? Boolean(values.credit_consumption_enabled) : false,
                 listing_only: isListingPlan,
                 total_tickets: isListingPlan ? Number(values.capacity) : totalTickets,
                 ticket_price: effectiveIsPaid ? ticketPriceForEvent : null,
@@ -1267,6 +1277,33 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     )}
                                 />
                             </div>
+                            {supportsCreditConsumption && (
+                                <FormField
+                                    control={control}
+                                    name="credit_consumption_enabled"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 bg-black/40">
+                                            <FormControl>
+                                                <Checkbox
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                    className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
+                                                />
+                                            </FormControl>
+                                            <div className="space-y-1 leading-none">
+                                                <FormLabel className="text-white">
+                                                    Aceitar pagamento com crédito EventFest
+                                                </FormLabel>
+                                                <FormDescription className="text-gray-400 text-xs">
+                                                    Clientes podem comprar ingressos deste evento usando saldo da carteira
+                                                    EventFest (rede de parceiros).
+                                                </FormDescription>
+                                            </div>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
                         </CardContent>
                     </Card>
                 )}
