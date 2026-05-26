@@ -24,6 +24,7 @@ import ManagerPaymentSettings from "./pages/ManagerPaymentSettings";
 import ManagerCreditEstablishments from "./pages/ManagerCreditEstablishments";
 import ManagerCreditPdv from "./pages/ManagerCreditPdv";
 import ManagerCreditSpendsReport from "./pages/ManagerCreditSpendsReport";
+import ManagerCreditAccountingReport from "./pages/ManagerCreditAccountingReport";
 import ManagerCreditSettlements from "./pages/ManagerCreditSettlements";
 import AdminCreditReports from "./pages/AdminCreditReports";
 import ManagerCreateWristband from "./pages/ManagerCreateWristband"; 
@@ -125,6 +126,7 @@ const App = () => (
             <Route path="/manager/reports/wristband-movements" element={<WristbandMovementsReports />} />
             <Route path="/manager/reports/listing-monthly" element={<ManagerListingMonthlyBilling />} />
             <Route path="/manager/reports/credit-spends" element={<ManagerCreditSpendsReport />} />
+            <Route path="/manager/reports/credit-accounting" element={<ManagerCreditAccountingReport />} />
             <Route path="/manager/credit/settlements" element={<ManagerCreditSettlements />} />
             <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />

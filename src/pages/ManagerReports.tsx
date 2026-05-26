@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -11,9 +11,9 @@ import SalesLineChart from '@/components/SalesLineChart';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
-import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
 import { isPlanFeatureEnabled, type PlanFeatureKey } from '@/constants/plan-features';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 
 const ReportCard: React.FC<{ icon: React.ReactNode, title: string, description: string, onClick: () => void }> = ({ icon, title, description, onClick }) => (
     <Card 
@@ -115,15 +115,14 @@ const ManagerReports: React.FC = () => {
         enabled: isManagerPro && !isAdminMaster && !!company?.id,
     });
     const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData(userId, isAdminMaster || false);
+    const creditAccess = useCreditReportsAccess(userId);
 
     const visibleReports = REPORT_CARDS.filter((card) =>
         isPlanFeatureEnabled(features, card.featureKey, isAdminMaster) &&
             (isAdminMaster || billingReady),
     );
 
-    const showCreditReport =
-        (isAdminMaster || companyAllowsCreditConsumption(billing?.billing_plan)) &&
-        (isAdminMaster || billingReady);
+    const showCreditReport = creditAccess.showCreditReportCards;
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -170,6 +169,22 @@ const ManagerReports: React.FC = () => {
                                 title="Repasses de crédito"
                                 description="Liquidações em retenção, liberadas e payouts registrados."
                                 onClick={() => navigate('/manager/credit/settlements')}
+                            />
+                            <ReportCard
+                                icon={<FileSpreadsheet className="h-6 w-6 text-yellow-500" />}
+                                title="Relatório contábil (créditos)"
+                                description={
+                                    creditAccess.isAdminMaster
+                                        ? 'Toda a rede EventFest — recargas, consumos e estornos (CSV para contador).'
+                                        : 'Recargas originadas na empresa, consumos recebidos e repasses — exportável CSV.'
+                                }
+                                onClick={() =>
+                                    creditAccess.isAdminMaster
+                                        ? navigate('/admin/settings/credit-reports', {
+                                              state: { creditTab: 'accounting' },
+                                          })
+                                        : navigate('/manager/reports/credit-accounting')
+                                }
                             />
                         </>
                     )}

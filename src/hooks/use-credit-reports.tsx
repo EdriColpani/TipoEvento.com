@@ -214,6 +214,142 @@ export type CreditRefundCaseRow = {
     completed_at: string | null;
 };
 
+export type CreditAccountingRow = {
+    transaction_at: string;
+    row_kind: string;
+    company_id: string;
+    company_name: string | null;
+    origin_company_id: string | null;
+    origin_company_name: string | null;
+    receiver_company_id: string | null;
+    receiver_company_name: string | null;
+    client_user_id: string;
+    reference_type: string;
+    reference_id: string;
+    spend_order_id: string | null;
+    gross_amount: number;
+    platform_amount: number;
+    manager_amount: number;
+    mp_fee_amount: number | null;
+    credit_granted_amount: number | null;
+    net_cash_received: number | null;
+    disbursement_status: string | null;
+    mp_transfer_id: string | null;
+    event_title: string | null;
+    channel: string | null;
+    public_description: string | null;
+    is_cross_company: boolean;
+};
+
+export type CreditAccountingSummary = {
+    topup_count?: number;
+    topup_gross?: number;
+    topup_mp_fees?: number;
+    topup_credit_granted?: number;
+    spend_count?: number;
+    spend_gross?: number;
+    platform_commission?: number;
+    manager_net?: number;
+    refund_count?: number;
+    refund_total?: number;
+    cross_spend_count?: number;
+    total_rows?: number;
+};
+
+export type CreditAccountingFilters = {
+    startDate?: string | null;
+    endDate?: string | null;
+    companyId?: string | null;
+};
+
+const ACCOUNTING_PAGE_SIZE = 500;
+const ACCOUNTING_EXPORT_MAX = 5000;
+
+async function fetchAllAccountingRows(
+    rpcName: 'list_manager_credit_accounting_report' | 'list_admin_credit_accounting_report',
+    params: Record<string, unknown>,
+): Promise<CreditAccountingRow[]> {
+    const all: CreditAccountingRow[] = [];
+    let offset = 0;
+
+    while (offset < ACCOUNTING_EXPORT_MAX) {
+        const { data, error } = await supabase.rpc(rpcName, {
+            ...params,
+            p_limit: ACCOUNTING_PAGE_SIZE,
+            p_offset: offset,
+        });
+        if (error) throw error;
+
+        const items = ((data as { items?: CreditAccountingRow[] })?.items ?? []) as CreditAccountingRow[];
+        all.push(...items);
+        if (items.length < ACCOUNTING_PAGE_SIZE) break;
+        offset += ACCOUNTING_PAGE_SIZE;
+    }
+
+    return all;
+}
+
+export function useManagerCreditAccountingReport(
+    companyId: string | undefined,
+    filters: CreditAccountingFilters,
+) {
+    return useQuery({
+        queryKey: ['managerCreditAccounting', companyId, filters.startDate, filters.endDate],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('list_manager_credit_accounting_report', {
+                p_company_id: companyId,
+                p_start_date: filters.startDate || null,
+                p_end_date: filters.endDate || null,
+                p_limit: 200,
+                p_offset: 0,
+            });
+            if (error) throw error;
+            return data as { items: CreditAccountingRow[]; summary: CreditAccountingSummary };
+        },
+        enabled: !!companyId,
+        staleTime: 30_000,
+    });
+}
+
+export async function fetchManagerCreditAccountingExport(
+    companyId: string,
+    filters: CreditAccountingFilters,
+): Promise<CreditAccountingRow[]> {
+    return fetchAllAccountingRows('list_manager_credit_accounting_report', {
+        p_company_id: companyId,
+        p_start_date: filters.startDate || null,
+        p_end_date: filters.endDate || null,
+    });
+}
+
+export function useAdminCreditAccountingReport(filters: CreditAccountingFilters) {
+    return useQuery({
+        queryKey: ['adminCreditAccounting', filters.companyId, filters.startDate, filters.endDate],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('list_admin_credit_accounting_report', {
+                p_company_id: filters.companyId || null,
+                p_start_date: filters.startDate || null,
+                p_end_date: filters.endDate || null,
+                p_limit: 200,
+                p_offset: 0,
+            });
+            if (error) throw error;
+            return data as { items: CreditAccountingRow[]; summary: CreditAccountingSummary };
+        },
+        staleTime: 30_000,
+    });
+}
+
+export async function fetchAdminCreditAccountingExport(
+    filters: CreditAccountingFilters,
+): Promise<CreditAccountingRow[]> {
+    return fetchAllAccountingRows('list_admin_credit_accounting_report', {
+        p_company_id: filters.companyId || null,
+        p_start_date: filters.startDate || null,
+        p_end_date: filters.endDate || null,
+    });
+}
+
 export function useAdminCreditRefundCases() {
     return useQuery({
         queryKey: ['adminCreditRefunds'],

@@ -27,4 +27,13 @@ export function companyAllowsCreditConsumption(plan: BillingPlanCode | string | 
     return isHybridPlan(plan) || isConsumptionOrLicensePlan(plan);
 }
 
+/** Gestor pode ver relatórios de crédito (plano ou módulo global ativo no admin). */
+export function managerCanViewCreditReports(
+    plan: BillingPlanCode | string | null | undefined,
+    creditModuleGloballyEnabled: boolean,
+): boolean {
+    return companyAllowsCreditConsumption(plan)
+        || (plan === 'ticket_commission' && creditModuleGloballyEnabled);
+}
+
 export const DEFAULT_LISTING_MONTHLY_FEE = 199.9;
