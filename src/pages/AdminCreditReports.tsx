@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, Loader2, Wallet, Scale, MapPin, Shield, Undo2 } from 'lucide-react';
+import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -51,12 +53,39 @@ function settlementStatusLabel(s: string): string {
 
 const AdminCreditReports: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const queryClient = useQueryClient();
-    const [tab, setTab] = useState('liability');
+    const initialTab =
+        (location.state as { creditTab?: string } | null)?.creditTab === 'accounting'
+            ? 'accounting'
+            : 'liability';
+    const [tab, setTab] = useState(initialTab);
     const [refundUserId, setRefundUserId] = useState('');
     const [refundAmount, setRefundAmount] = useState('');
     const [refundReason, setRefundReason] = useState('');
     const [refunding, setRefunding] = useState(false);
+    const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { data } = await supabase
+                .from('companies')
+                .select('id, corporate_name')
+                .order('corporate_name');
+            if (!cancelled && data) {
+                setCompanies(
+                    data.map((c) => ({
+                        id: c.id as string,
+                        name: String(c.corporate_name ?? c.id),
+                    })),
+                );
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const recon = useAdminCreditReconciliation();
     const commission = useAdminCreditCommissionReport();
@@ -128,6 +157,9 @@ const AdminCreditReports: React.FC = () => {
                     </TabsTrigger>
                     <TabsTrigger value="refunds" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
                         <Undo2 className="h-4 w-4 mr-1" /> Estornos
+                    </TabsTrigger>
+                    <TabsTrigger value="accounting" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                        <FileSpreadsheet className="h-4 w-4 mr-1" /> Contábil
                     </TabsTrigger>
                 </TabsList>
 
@@ -406,6 +438,10 @@ const AdminCreditReports: React.FC = () => {
                             )}
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                <TabsContent value="accounting">
+                    <CreditAccountingReportPanel mode="admin" companies={companies} />
                 </TabsContent>
             </Tabs>
         </div>

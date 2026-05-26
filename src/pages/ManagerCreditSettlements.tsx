@@ -12,10 +12,8 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
-import { useManagerCompany } from '@/hooks/use-manager-company';
-import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useManagerCreditSettlements } from '@/hooks/use-credit-reports';
-import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
+import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 import { retryFailedCreditDisbursements } from '@/utils/credit-manager-payout';
 import { showError, showSuccess } from '@/utils/toast';
 
@@ -42,11 +40,8 @@ const ManagerCreditSettlements: React.FC = () => {
     const [userId, setUserId] = useState<string | undefined>();
     const [retrying, setRetrying] = useState(false);
 
-    const { company } = useManagerCompany(userId);
-    const { billing } = useCompanyBilling(company?.id);
-    const { data, isLoading, refetch } = useManagerCreditSettlements(company?.id);
-
-    const supportsCredit = companyAllowsCreditConsumption(billing?.billing_plan);
+    const access = useCreditReportsAccess(userId);
+    const { data, isLoading, refetch } = useManagerCreditSettlements(access.company?.id);
     const failedTotal = Number(data?.summary?.failed ?? 0);
     const paidTotal = Number(data?.summary?.paid ?? 0);
 
@@ -55,10 +50,10 @@ const ManagerCreditSettlements: React.FC = () => {
     }, []);
 
     const handleRetryFailed = async () => {
-        if (!company?.id) return;
+        if (!access.company?.id) return;
         setRetrying(true);
         try {
-            const result = await retryFailedCreditDisbursements(company.id);
+            const result = await retryFailedCreditDisbursements(access.company.id);
             if (result.succeeded > 0) {
                 showSuccess(`${result.succeeded} repasse(s) reprocessado(s) com sucesso.`);
             } else if (result.retried === 0) {
@@ -74,10 +69,10 @@ const ManagerCreditSettlements: React.FC = () => {
         }
     };
 
-    if (!supportsCredit) {
+    if (!access.canAccessManagerCreditReports) {
         return (
             <div className="max-w-3xl mx-auto text-center py-16 text-gray-400">
-                Plano não habilita repasses de crédito.
+                Módulo de créditos não disponível para sua conta.
                 <Button variant="outline" className="mt-4 block mx-auto" onClick={() => navigate('/manager/settings')}>
                     Voltar
                 </Button>

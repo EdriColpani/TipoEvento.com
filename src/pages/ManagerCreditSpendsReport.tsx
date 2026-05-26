@@ -12,10 +12,8 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
-import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerCreditSpends } from '@/hooks/use-credit-reports';
-import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
-import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 
 function money(v: number | null | undefined): string {
     return Number(v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -25,11 +23,8 @@ const ManagerCreditSpendsReport: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>();
 
-    const { company } = useManagerCompany(userId);
-    const { billing } = useCompanyBilling(company?.id);
-    const { data: items, isLoading, isError } = useManagerCreditSpends(company?.id);
-
-    const supportsCredit = companyAllowsCreditConsumption(billing?.billing_plan);
+    const access = useCreditReportsAccess(userId);
+    const { data: items, isLoading, isError } = useManagerCreditSpends(access.company?.id);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
@@ -45,10 +40,10 @@ const ManagerCreditSpendsReport: React.FC = () => {
         { gross: 0, platform: 0, manager: 0 },
     );
 
-    if (!supportsCredit) {
+    if (!access.canAccessManagerCreditReports && !access.canAccessAdminCreditReports) {
         return (
             <div className="max-w-4xl mx-auto text-center py-16 text-gray-400">
-                Plano não inclui relatório de créditos.
+                Módulo de créditos não disponível para sua conta.
                 <Button variant="outline" className="mt-4 block mx-auto" onClick={() => navigate('/manager/reports')}>
                     Voltar
                 </Button>
