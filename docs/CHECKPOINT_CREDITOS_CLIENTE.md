@@ -1,7 +1,7 @@
 # Checkpoint — Créditos cliente / Carteira EventFest Rede
 
-**Atualizado:** 2026-05-19  
-**Status:** ✅ **Fases 1–7 no código** — aplicar migration Fase 7 no SQL Editor (se ainda não aplicada)  
+**Atualizado:** 2026-05-27 (tarde)  
+**Status:** ✅ **Fases 1–8 no código** — aplicar migrations **7–10** no SQL Editor se ainda não aplicadas  
 **Versão do plano:** 3.1  
 **Branch de trabalho:** conferir `git branch` (ex. `evento`)
 
@@ -16,23 +16,45 @@
 
 ---
 
-## Onde paramos (resumo da sessão)
+## Onde paramos (resumo da sessão — 27/05 tarde)
 
-### Feito no repositório
+### Feito hoje no repositório
 
-- [x] Plano v3.1 (carteira universal, extrato, taxa MP, validação fee)
-- [x] Migration `20260620120000_client_credit_wallet_v31.sql` (com bootstrap se schema incompleto)
-- [x] Edge `create-credit-checkout` + handler `credit_topup:` no `mercadopago-webhook`
-- [x] Front: `/wallet`, hook, checkout util
-- [x] Rollback manual: `supabase/scripts/rollback_20260620120000_client_credit_wallet_v31.sql`
-- [x] Fix deploy Edge: módulos locais `mp-token-resolver.ts` / `mp-credential-crypto.ts` na pasta da function
+- [x] **Upgrade plano consumo** — `ticket_plus_consumption` e `consumption_or_license` com `selectableByGestor: true` (`billing-plans.ts`)
+- [x] Migration `20260630120000_billing_plan_upgrade_consumption.sql` — RPC `billing_plan_selectable_by_gestor()` inclui os 4 planos
+- [x] **Carteira sempre visível** — migration `20260629120000_credit_wallet_client_visible.sql` (saldo/extrato/rede sem módulo; recarga só com módulo)
+- [x] Fix tela branca `/wallet` — `topupPausedMessage` (era `moduleMessage` indefinido)
+- [x] Fix header cortando título — `ClientLayout.tsx` padding-top no `main`
+- [x] Doc operacional: roteiro pós-upgrade plano **% ingresso + consumo** (neste checkpoint)
 
-### Operacional (você)
+### Sessão anterior (19/05) — já no código
 
-- [ ] Migration aplicada no **projeto Supabase correto** (não no banco errado)
-- [ ] Se rodou no banco errado → executar **rollback** lá primeiro
-- [ ] `supabase functions deploy create-credit-checkout mercadopago-webhook`
-- [ ] Teste recarga + extrato em `/wallet`
+- [x] **Fase 8** — relatórios contábeis + export CSV (gestor + admin)
+- [x] `docs/CHECKLIST_HOMOLOGACAO_CREDITOS.md` — roteiro E2E
+- [x] Fix acesso relatórios + admin Contábil rede completa
+- [x] Patch `company_allows_credit_consumption` (comissão + módulo global)
+
+### Já estava pronto (Fases 1–7)
+
+- [x] Carteira, recarga MP, spend ingresso, PDV, repasse MP imediato, estornos, PWA, biometria
+- [x] Admin: passivo, comissões, cross-empresa, auditoria, repasses, estornos
+
+### Operacional (você — retomar à noite)
+
+- [ ] Migrations no SQL Editor (ordem, se faltar): **7 → 8 → 9 → 10**
+  - `20260627120000_credit_phase7_mobile_wallet.sql`
+  - `20260628120000_credit_phase8_accounting_reports.sql`
+  - `20260629120000_credit_wallet_client_visible.sql`
+  - `20260630120000_billing_plan_upgrade_consumption.sql`
+- [ ] **Ligar módulo global** (obrigatório para recarga + PDV):
+  - **UI:** Admin Master → **Configurações Admin** → **Preços e comissões** (`/admin/settings/pricing`) → aba **Ingresso + consumo** → marcar *“Liberar módulo de consumo no plano híbrido (piloto)”* → **Salvar**
+  - **Ou SQL:** `UPDATE system_billing_settings SET hybrid_consumption_module_enabled = true WHERE id = 1;`
+  - ⚠️ **Não** está em “Planos das Empresas” nem “Planos e permissões”
+- [ ] Gestor: plano **% ingresso + consumo** aceito; **MP conectado** (Perfil da Empresa → Ingressos MP)
+- [ ] Evento pago: checkbox **“Aceitar pagamento com crédito EventFest”**
+- [ ] Cadastrar estabelecimentos: `/manager/credit/establishments`
+- [ ] Homologação E2E: `docs/CHECKLIST_HOMOLOGACAO_CREDITOS.md`
+- [ ] Deploy Edge se ainda não fez Fase 6: `credit-spend`, `credit-spend-pdv`, `manager-credit-payout`
 
 ---
 
@@ -57,21 +79,67 @@ No **certo**, após migration:
 SELECT to_regclass('public.credit_topup_orders');  -- deve existir
 
 UPDATE public.system_billing_settings
-SET consumption_module_enabled = true
+SET hybrid_consumption_module_enabled = true
 WHERE id = 1;
+-- (alternativa: consumption_module_enabled = true — qualquer uma liga credit_module_globally_enabled)
 ```
+
+---
+
+## Plano % ingresso + consumo — roteiro pós-upgrade
+
+| Passo | O quê |
+|-------|--------|
+| 1 | Empresa com plano `ticket_plus_consumption` aceito (Configurações → Empresa → Plano) |
+| 2 | Admin: módulo global ligado (ver acima — **Preços e comissões**) |
+| 3 | Gestor: Mercado Pago OAuth em Perfil da Empresa |
+| 4 | Evento: **Aceitar pagamento com crédito EventFest** |
+| 5 | `/manager/credit/establishments` — bar/lojas ativos |
+| 6 | Dia do evento: cliente `/wallet` (recarga + QR) → gestor `/manager/credit/pdv` |
+
+**Fluxo:** recarga → ingresso com crédito → bar (PDV) → opcional pizzaria **outra empresa** (cross-parceiro).
+
+**Não existe** cardápio digital para o cliente escolher produto sozinho — consumo é via **PDV operado pelo gestor**.
+
+---
+
+## Ligar módulo global (referência rápida)
+
+| Onde **não** é | Onde **é** |
+|----------------|------------|
+| Planos das Empresas | **Preços e comissões** → `/admin/settings/pricing` |
+| Planos e permissões | Aba **Ingresso + consumo** (híbrido) ou **Consumo / licença** |
+| Relatórios de crédito | Checkbox + **Salvar** (Admin Master) |
+
+Função no banco: `credit_module_globally_enabled()` = `consumption_module_enabled OR hybrid_consumption_module_enabled`.
 
 ---
 
 ## Checklist deploy (banco correto)
 
-### Fases 1–6 já aplicadas — só Fase 7 (mobile / PWA carteira)
+### Fases 1–6 já aplicadas — Fases 7–10 (mobile + contábil + carteira visível + upgrade plano)
 
-**Não use `supabase db push`**. SQL Editor:
+**Não use `supabase db push`**. SQL Editor — **nesta ordem**:
 
-`supabase/migrations/20260627120000_credit_phase7_mobile_wallet.sql`
+1. `supabase/migrations/20260627120000_credit_phase7_mobile_wallet.sql`
+2. `supabase/migrations/20260628120000_credit_phase8_accounting_reports.sql`
+3. `supabase/migrations/20260629120000_credit_wallet_client_visible.sql`
+4. `supabase/migrations/20260630120000_billing_plan_upgrade_consumption.sql`
 
 Sem deploy obrigatório de Edge (redeploy `credit-spend` se quiser canal `app` no remoto).
+
+**Rotas novas (front):**
+
+| Quem | Onde |
+|------|------|
+| Gestor | `/manager/reports/credit-accounting` |
+| Admin | `/admin/settings/credit-reports` → aba **Contábil** |
+
+---
+
+### Só Fase 7 (se 8 já aplicada)
+
+`supabase/migrations/20260627120000_credit_phase7_mobile_wallet.sql`
 
 ---
 
@@ -138,7 +206,27 @@ supabase functions deploy create-credit-checkout mercadopago-webhook credit-spen
 
 ---
 
-## Fases — o que falta (retomar à noite)
+## Fases — status
+
+### Fase 8 — Relatórios contábeis (CSV)
+
+- [x] RPC `list_manager_credit_accounting_report` (recargas origem + consumos receptor, por empresa)
+- [x] RPC `list_admin_credit_accounting_report` (rede inteira + estornos; filtro empresa opcional)
+- [x] UI gestor `/manager/reports/credit-accounting` + export CSV
+- [x] UI admin aba **Contábil** + export CSV
+- [x] Hook `useCreditReportsAccess` + `managerCanViewCreditReports`
+- [ ] **Testar** após migration 8 no banco certo
+- [ ] Pendente jurídico: NF, ISS, layout fiscal formal (ver `PLANO_CREDITOS_CLIENTE_JURIDICO.md`)
+
+### Próximo passo sugerido à noite
+
+1. Aplicar migrations **7–10** (SQL Editor) se faltarem
+2. Ligar módulo em **Preços e comissões** → aba **Ingresso + consumo** (ou SQL acima)
+3. Confirmar gestor: MP + estabelecimentos + evento com crédito
+4. Rodar homologação: `CHECKLIST_HOMOLOGACAO_CREDITOS.md`
+5. Ajustar `credit_mp_fee_estimate_pct` / comissão se `fee_validation_ok` falhar na recarga R$ 250
+
+---
 
 ### Fase 1 — fechar validação (se ainda não testou)
 
@@ -199,6 +287,14 @@ supabase functions deploy create-credit-checkout mercadopago-webhook credit-spen
 - [x] Migration `credit_spend_biometric_threshold` + `get_credit_wallet_status` estendido
 - [x] Doc `docs/WALLET_INSTALAR_CELULAR.md`
 
+### Biometria (config)
+
+| O quê | Onde |
+|--------|------|
+| Limite R$ (global) | `system_billing_settings.credit_spend_biometric_threshold` (default 200; `0` = desliga) |
+| Cliente ativar Face ID | `/wallet` → Confirmação biométrica |
+| Sem tela admin do threshold | só SQL por enquanto |
+
 ---
 
 ## Arquivos principais (mapa rápido)
@@ -231,7 +327,19 @@ src/pages/AdminCreditReports.tsx
 src/pages/ManagerCreditSpendsReport.tsx
 src/pages/ManagerCreditSettlements.tsx
 src/hooks/use-credit-reports.tsx
+src/hooks/use-credit-reports-access.tsx
 src/utils/credit-manager-payout.ts
+supabase/migrations/20260627120000_credit_phase7_mobile_wallet.sql
+supabase/migrations/20260628120000_credit_phase8_accounting_reports.sql
+supabase/migrations/20260629120000_credit_wallet_client_visible.sql
+supabase/migrations/20260630120000_billing_plan_upgrade_consumption.sql
+src/constants/billing-plans.ts
+src/components/layouts/ClientLayout.tsx
+src/components/CreditAccountingReportPanel.tsx
+src/pages/ManagerCreditAccountingReport.tsx
+src/utils/export-credit-accounting-csv.ts
+docs/CHECKLIST_HOMOLOGACAO_CREDITOS.md
+docs/WALLET_INSTALAR_CELULAR.md
 ```
 
 ---
@@ -248,7 +356,7 @@ src/utils/credit-manager-payout.ts
 
 ## Retomar no Cursor (copiar à noite)
 
-> Retomar créditos conforme `docs/CHECKPOINT_CREDITOS_CLIENTE.md`. Fase 1 já validada no banco certo: [sim/não]. Implementar **Fase 2** (ou 3 se preferir ingresso com crédito).
+> Retomar créditos conforme `docs/CHECKPOINT_CREDITOS_CLIENTE.md`. Plano gestor: **% ingresso + consumo** (`ticket_plus_consumption`). Migrations 7–10 no banco certo: [sim/não]. Módulo global ligado em **Admin → Preços e comissões** → aba **Ingresso + consumo**: [sim/não]. Próximo: MP gestor + evento com crédito + estabelecimentos → homologação E2E (`docs/CHECKLIST_HOMOLOGACAO_CREDITOS.md`). `CREDIT_MP_SIMULATE_DISBURSE=true` em dev se MP real ainda não estiver.
 
 ---
 
@@ -256,6 +364,8 @@ src/utils/credit-manager-payout.ts
 
 | Data | Nota |
 |------|------|
+| 2026-05-27 (tarde) | Upgrade plano consumo (gestor); carteira visível sem módulo; fix `/wallet` + layout; doc caminho admin **Preços e comissões** |
+| 2026-05-19 (noite) | **Fase 8** contábil + CSV; checklist homologação; fix acesso gestor/admin relatórios |
 | 2026-05-19 | Arquitetura v3; pausa assessoria |
 | 2026-05-20 | v3.1 + código Fase 1; rollback script; fix Edge `_shared`; migration bootstrap sem FK events |
 | 2026-05-19 | **Fase 6.1** — repasse MP imediato no spend, rollback, extrato comissão/repasse |

@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export type CreditWalletStatus = {
     module_enabled: boolean;
+    wallet_visible?: boolean;
     can_topup: boolean;
     can_use: boolean;
     consumption_commission_pct: number;
@@ -12,6 +13,22 @@ export type CreditWalletStatus = {
     mobile_wallet_ready?: boolean;
     message: string | null;
 };
+
+function normalizeWalletStatus(raw: unknown): CreditWalletStatus {
+    const row = (raw ?? {}) as Record<string, unknown>;
+    const moduleEnabled = row.module_enabled === true;
+    return {
+        module_enabled: moduleEnabled,
+        wallet_visible: row.wallet_visible !== false,
+        can_topup: row.can_topup === true,
+        can_use: row.can_use === true || moduleEnabled,
+        consumption_commission_pct: Number(row.consumption_commission_pct ?? 0),
+        biometric_threshold: row.biometric_threshold != null ? Number(row.biometric_threshold) : undefined,
+        biometric_enabled: row.biometric_enabled === true,
+        mobile_wallet_ready: row.mobile_wallet_ready !== false,
+        message: typeof row.message === 'string' ? row.message : null,
+    };
+}
 
 export type CreditAcceptanceEvent = {
     event_id: string;
@@ -42,7 +59,7 @@ export type CreditAcceptanceNetwork = {
 async function fetchWalletStatus(): Promise<CreditWalletStatus> {
     const { data, error } = await supabase.rpc('get_credit_wallet_status');
     if (error) throw error;
-    return data as CreditWalletStatus;
+    return normalizeWalletStatus(data);
 }
 
 async function fetchAcceptanceNetwork(): Promise<CreditAcceptanceNetwork> {
