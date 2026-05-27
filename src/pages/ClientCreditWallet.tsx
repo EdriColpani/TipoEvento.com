@@ -42,9 +42,7 @@ const ClientCreditWallet: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const { balance, isLoading, ledger, refresh, status: accountStatus } = useClientCreditWallet();
     const { data: walletStatus, isLoading: statusLoading } = useCreditWalletStatus();
-    const { data: network, isLoading: networkLoading } = useCreditAcceptanceNetwork(
-        walletStatus?.module_enabled !== false,
-    );
+    const { data: network, isLoading: networkLoading } = useCreditAcceptanceNetwork(true);
     const [customAmount, setCustomAmount] = useState('');
     const [isPaying, setIsPaying] = useState(false);
     const [walletQrOpen, setWalletQrOpen] = useState(false);
@@ -100,8 +98,12 @@ const ClientCreditWallet: React.FC = () => {
         }
     }, [returnStatus, topupId, refresh, clearReturnParams]);
 
-    const canTopup = walletStatus?.can_topup !== false && accountStatus === 'active';
-    const moduleMessage = walletStatus?.message;
+    const moduleGloballyOn = walletStatus?.module_enabled === true;
+    const hasWalletActivity = balance > 0 || ledger.length > 0;
+    const canTopup = moduleGloballyOn && walletStatus?.can_topup !== false && accountStatus === 'active';
+    const topupPausedMessage =
+        walletStatus?.message ||
+        'Novas recargas estão pausadas. Seu saldo e extrato continuam disponíveis.';
 
     const networkEmpty =
         !networkLoading &&
@@ -110,7 +112,7 @@ const ClientCreditWallet: React.FC = () => {
 
     const handleTopup = async (amount: number) => {
         if (!canTopup) {
-            showError(moduleMessage || 'Recarga de créditos indisponível no momento.');
+            showError(topupPausedMessage);
             return;
         }
         if (amount < 10 || amount > 10000) {
@@ -149,15 +151,16 @@ const ClientCreditWallet: React.FC = () => {
 
     const acceptanceHint = useMemo(() => {
         if (networkLoading) return null;
-        if (!walletStatus?.module_enabled) return moduleMessage;
         if (networkEmpty) {
             return 'Nenhum evento ou estabelecimento parceiro habilitado ainda. Novos pontos aparecerão aqui.';
         }
         return null;
-    }, [networkLoading, walletStatus, networkEmpty, moduleMessage]);
+    }, [networkLoading, networkEmpty]);
 
     return (
-        <div className={`min-h-screen bg-black text-white px-4 py-8 max-w-2xl mx-auto ${isMobile ? 'pb-28' : ''}`}>
+        <div
+            className={`min-h-[calc(100vh-4.75rem)] md:min-h-[calc(100vh-6rem)] bg-black text-white px-4 pt-4 pb-8 max-w-2xl mx-auto ${isMobile ? 'pb-28' : ''}`}
+        >
             <div className="flex items-center gap-3 mb-6">
                 <Wallet className="h-8 w-8 text-yellow-500" />
                 <div>
@@ -176,17 +179,6 @@ const ClientCreditWallet: React.FC = () => {
                     <AlertTitle className="text-yellow-400">Confirmando pagamento</AlertTitle>
                     <AlertDescription className="text-gray-300">
                         Aguardando confirmação do Mercado Pago. Seu saldo será atualizado em instantes.
-                    </AlertDescription>
-                </Alert>
-            )}
-
-            {!statusLoading && walletStatus && !walletStatus.module_enabled && (
-                <Alert className="mb-6 border-amber-500/40 bg-amber-500/10">
-                    <AlertTriangle className="h-4 w-4 text-amber-400" />
-                    <AlertTitle className="text-amber-400">Módulo em preparação</AlertTitle>
-                    <AlertDescription className="text-gray-300">
-                        {moduleMessage ||
-                            'O módulo de créditos EventFest ainda não está disponível nesta plataforma.'}
                     </AlertDescription>
                 </Alert>
             )}
@@ -224,7 +216,7 @@ const ClientCreditWallet: React.FC = () => {
                         <RefreshCw className={`h-4 w-4 mr-1 ${isPolling ? 'animate-spin' : ''}`} />
                         Atualizar
                     </Button>
-                    {canTopup && accountStatus === 'active' && walletStatus?.module_enabled !== false && (
+                    {canTopup && accountStatus === 'active' && (
                         <Button
                             type="button"
                             variant="outline"
@@ -270,6 +262,9 @@ const ClientCreditWallet: React.FC = () => {
                         <p className="text-gray-500 text-sm text-center py-4">{acceptanceHint}</p>
                     ) : (
                         <>
+                            {!moduleGloballyOn && network?.message && (
+                                <p className="text-amber-400/90 text-xs mb-3">{network.message}</p>
+                            )}
                             {(network?.events?.length ?? 0) > 0 && (
                                 <div>
                                     <p className="text-xs text-yellow-500/80 uppercase tracking-wide mb-2 flex items-center gap-1">
@@ -335,6 +330,18 @@ const ClientCreditWallet: React.FC = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    {!statusLoading && !moduleGloballyOn && (
+                        <Alert className="border-amber-500/40 bg-amber-500/10">
+                            <AlertTriangle className="h-4 w-4 text-amber-400" />
+                            <AlertTitle className="text-amber-400 text-sm">Recargas pausadas</AlertTitle>
+                            <AlertDescription className="text-gray-300 text-sm">
+                                {topupPausedMessage}
+                                {hasWalletActivity
+                                    ? ' Você pode usar o saldo atual nos parceiros da rede.'
+                                    : ''}
+                            </AlertDescription>
+                        </Alert>
+                    )}
                     <div className="flex flex-wrap gap-2">
                         {PRESET_AMOUNTS.map((amt) => (
                             <Button

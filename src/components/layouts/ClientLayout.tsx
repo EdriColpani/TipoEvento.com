@@ -78,7 +78,7 @@ const ClientLayout: React.FC = () => {
                     </div>
                 </div>
             </header>
-            <main className={isMobile ? 'pt-[44px]' : 'pt-[45px]'}>
+            <main className={isMobile ? 'pt-[4.75rem]' : 'pt-24'}>
                 <ScrollToTop />
                 <Outlet />
             </main>

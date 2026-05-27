@@ -47,16 +47,16 @@ export const BILLING_PLANS: BillingPlanDefinition[] = [
         code: 'ticket_plus_consumption',
         label: '% ingresso + consumo interno',
         description:
-            'Venda de ingressos (faixas de comissão) + módulo de consumo interno quando liberado pelo admin. Contratação via Admin Master.',
-        selectableByGestor: false,
+            'Venda de ingressos (faixas de comissão) + módulo de consumo interno quando liberado no contrato e configurações.',
+        selectableByGestor: true,
         contractType: 'ticket_plus_consumption',
     },
     {
         code: 'consumption_or_license',
         label: 'Consumo / licença / mensal',
         description:
-            'Divulgação de eventos; consumo por créditos/licença quando o módulo estiver ativo. Contratação via Admin Master.',
-        selectableByGestor: false,
+            'Divulgação de eventos; consumo por créditos/licença quando o módulo estiver ativo no contrato.',
+        selectableByGestor: true,
         contractType: 'consumption_or_license',
     },
 ];
