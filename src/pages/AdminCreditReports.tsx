@@ -18,6 +18,8 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import {
+    useAdminCreditFinancialPosition,
+    useAdminCreditMpReconciliationIssues,
     useAdminCreditAuditLog,
     useAdminCreditCommissionReport,
     useAdminCreditCrossCompanyFlows,
@@ -65,6 +67,10 @@ const AdminCreditReports: React.FC = () => {
     const [refundReason, setRefundReason] = useState('');
     const [refunding, setRefunding] = useState(false);
     const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
+    const [positionStartDate, setPositionStartDate] = useState('');
+    const [positionEndDate, setPositionEndDate] = useState('');
+    const [mpIssuesStartDate, setMpIssuesStartDate] = useState('');
+    const [mpIssuesEndDate, setMpIssuesEndDate] = useState('');
 
     useEffect(() => {
         let cancelled = false;
@@ -88,6 +94,8 @@ const AdminCreditReports: React.FC = () => {
     }, []);
 
     const recon = useAdminCreditReconciliation();
+    const position = useAdminCreditFinancialPosition(positionStartDate || null, positionEndDate || null);
+    const mpIssues = useAdminCreditMpReconciliationIssues(mpIssuesStartDate || null, mpIssuesEndDate || null);
     const commission = useAdminCreditCommissionReport();
     const cross = useAdminCreditCrossCompanyFlows();
     const audit = useAdminCreditAuditLog();
@@ -160,6 +168,12 @@ const AdminCreditReports: React.FC = () => {
                     </TabsTrigger>
                     <TabsTrigger value="accounting" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
                         <FileSpreadsheet className="h-4 w-4 mr-1" /> Contábil
+                    </TabsTrigger>
+                    <TabsTrigger value="position" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                        Posição financeira
+                    </TabsTrigger>
+                    <TabsTrigger value="mp-recon" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                        Conciliação MP
                     </TabsTrigger>
                 </TabsList>
 
@@ -442,6 +456,200 @@ const AdminCreditReports: React.FC = () => {
 
                 <TabsContent value="accounting">
                     <CreditAccountingReportPanel mode="admin" companies={companies} />
+                </TabsContent>
+
+                <TabsContent value="position">
+                    <Card className="bg-black border-yellow-500/30 mb-4">
+                        <CardHeader>
+                            <CardTitle className="text-white">Posição Financeira Consolidada</CardTitle>
+                            <CardDescription className="text-gray-400">
+                                Visão gerencial separando crédito de cliente, receita de comissão e custos MP.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                                <Label className="text-gray-300">Início</Label>
+                                <Input
+                                    type="date"
+                                    value={positionStartDate}
+                                    onChange={(e) => setPositionStartDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-gray-300">Fim</Label>
+                                <Input
+                                    type="date"
+                                    value={positionEndDate}
+                                    onChange={(e) => setPositionEndDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                            <div className="text-xs text-gray-500 flex items-end pb-2">
+                                Deixe em branco para visão acumulada.
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-black border-yellow-500/30">
+                        <CardHeader>
+                            <CardTitle className="text-white">Resumo gerencial</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {position.isLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                                    <Metric
+                                        label="Passivo atual (crédito cliente)"
+                                        value={money(position.data?.client_credit?.liability_now)}
+                                    />
+                                    <Metric
+                                        label="Σ saldos carteiras (clientes)"
+                                        value={money(position.data?.client_credit?.wallet_balances)}
+                                    />
+                                    <Metric
+                                        label="Passivo esperado (período)"
+                                        value={money(position.data?.client_credit?.expected_liability_from_period)}
+                                    />
+
+                                    <Metric
+                                        label="Receita comissão EventFest"
+                                        value={money(position.data?.platform_revenue?.platform_commission)}
+                                    />
+                                    <Metric
+                                        label="Consumo bruto (gross)"
+                                        value={money(position.data?.platform_revenue?.spend_gross)}
+                                    />
+                                    <Metric
+                                        label="Repasse líquido gestores"
+                                        value={money(position.data?.platform_revenue?.manager_net)}
+                                    />
+
+                                    <Metric
+                                        label="Taxas MP (recarga)"
+                                        value={money(position.data?.mp_costs?.topup_mp_fees)}
+                                    />
+                                    <Metric
+                                        label="Caixa líquido MP (recarga)"
+                                        value={money(position.data?.mp_costs?.topup_net_cash)}
+                                    />
+                                    <Metric
+                                        label="Transferido MP para gestores"
+                                        value={money(position.data?.mp_costs?.mp_disbursed_total)}
+                                    />
+
+                                    <Metric
+                                        label="Falha de disbursement MP"
+                                        value={money(position.data?.mp_costs?.mp_disbursed_failed)}
+                                        ok={Number(position.data?.mp_costs?.mp_disbursed_failed ?? 0) === 0}
+                                    />
+                                    <Metric
+                                        label="Caixa operacional disponível"
+                                        value={money(position.data?.managerial_position?.available_operational_cash)}
+                                    />
+                                    <Metric
+                                        label="Posição estimada carteira MP"
+                                        value={money(position.data?.managerial_position?.estimated_mp_wallet_position)}
+                                    />
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="mp-recon">
+                    <Card className="bg-black border-yellow-500/30 mb-4">
+                        <CardHeader>
+                            <CardTitle className="text-white">Conciliação MP — Divergências</CardTitle>
+                            <CardDescription className="text-gray-400">
+                                Itens com potencial risco financeiro/fiscal: faltantes, pendências e falhas.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                                <Label className="text-gray-300">Início</Label>
+                                <Input
+                                    type="date"
+                                    value={mpIssuesStartDate}
+                                    onChange={(e) => setMpIssuesStartDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-gray-300">Fim</Label>
+                                <Input
+                                    type="date"
+                                    value={mpIssuesEndDate}
+                                    onChange={(e) => setMpIssuesEndDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-black border-yellow-500/30">
+                        <CardHeader>
+                            <CardTitle className="text-white">Resumo de risco</CardTitle>
+                            <CardDescription className="text-gray-400">
+                                Priorize correção dos itens de severidade alta.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {mpIssues.isLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                            ) : (
+                                <>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-sm">
+                                        <Metric label="Total divergências" value={String(mpIssues.data?.summary?.total_issues ?? 0)} />
+                                        <Metric label="Severidade alta" value={String(mpIssues.data?.summary?.high_severity ?? 0)} />
+                                        <Metric label="Severidade média" value={String(mpIssues.data?.summary?.medium_severity ?? 0)} />
+                                        <Metric label="Divergências de recarga" value={String(mpIssues.data?.summary?.topup_issues ?? 0)} />
+                                        <Metric label="Divergências de spend/repasse" value={String(mpIssues.data?.summary?.spend_issues ?? 0)} />
+                                    </div>
+
+                                    <div className="overflow-x-auto max-h-[32rem]">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="border-yellow-500/20">
+                                                    <TableHead className="text-yellow-500">Data</TableHead>
+                                                    <TableHead className="text-yellow-500">Severidade</TableHead>
+                                                    <TableHead className="text-yellow-500">Tipo</TableHead>
+                                                    <TableHead className="text-yellow-500">Empresa</TableHead>
+                                                    <TableHead className="text-yellow-500 text-right">Valor</TableHead>
+                                                    <TableHead className="text-yellow-500">Referência</TableHead>
+                                                    <TableHead className="text-yellow-500">Detalhes</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {(mpIssues.data?.items ?? []).map((row) => (
+                                                    <TableRow key={`${row.reference_type}-${row.reference_id}-${row.issue_type}`} className="border-yellow-500/10">
+                                                        <TableCell className="text-gray-400 text-xs whitespace-nowrap">
+                                                            {dt(row.created_at)}
+                                                        </TableCell>
+                                                        <TableCell className={`text-xs ${row.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`}>
+                                                            {row.severity === 'high' ? 'Alta' : row.severity}
+                                                        </TableCell>
+                                                        <TableCell className="text-gray-300 text-xs">{row.issue_type}</TableCell>
+                                                        <TableCell className="text-gray-300 text-xs">{row.company_name ?? '—'}</TableCell>
+                                                        <TableCell className="text-right text-yellow-400 text-xs">
+                                                            {row.amount != null ? money(Number(row.amount)) : '—'}
+                                                        </TableCell>
+                                                        <TableCell className="text-gray-500 text-xs font-mono truncate max-w-[12rem]">
+                                                            {row.reference_type}:{row.reference_id}
+                                                        </TableCell>
+                                                        <TableCell className="text-gray-300 text-xs max-w-sm">
+                                                            {row.details}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </>
+                            )}
+                        </CardContent>
+                    </Card>
                 </TabsContent>
             </Tabs>
         </div>

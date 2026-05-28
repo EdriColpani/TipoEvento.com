@@ -16,6 +16,13 @@ import { showSuccess, showError } from '@/utils/toast'; // Importando toast
 
 const EVENTS_PER_PAGE = 12;
 
+function formatPhoneBR(raw: string | null | undefined): string {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    if (digits.length === 11) return digits.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    if (digits.length === 10) return digits.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    return raw ? String(raw) : 'Não informado';
+}
+
 export interface AdvancedFiltersState {
     price: { gratuito: boolean; ate100: boolean; range100_300: boolean; acima300: boolean };
     time: { manha: boolean; tarde: boolean; noite: boolean };
@@ -90,6 +97,12 @@ const Index: React.FC = () => {
     const [cityFilter, setCityFilter] = useState('');
     const [dateFilter, setDateFilter] = useState('');
     const [filters, setFilters] = useState<AdvancedFiltersState>(defaultFilters);
+    const [contactPhone, setContactPhone] = useState<string>('Não informado');
+    const [contactCompanyName, setContactCompanyName] = useState<string>('EventFest');
+    const [contactName, setContactName] = useState('');
+    const [contactFormPhone, setContactFormPhone] = useState('');
+    const [contactMessage, setContactMessage] = useState('');
+    const [sendingContact, setSendingContact] = useState(false);
 
     const filteredEvents = React.useMemo(() => {
         let list = allEvents;
@@ -145,6 +158,18 @@ const Index: React.FC = () => {
         });
     }, []);
 
+    useEffect(() => {
+        supabase
+            .rpc('get_public_contact_info')
+            .then(({ data, error }) => {
+                if (error) return;
+                const payload = (data ?? {}) as { phone?: string | null; company_name?: string | null };
+                setContactPhone(formatPhoneBR(payload.phone ?? null));
+                if (payload.company_name) setContactCompanyName(payload.company_name);
+            })
+            .catch(() => {});
+    }, []);
+
     const handleEventClick = (event: PublicEvent) => {
         navigate(`/events/${event.id}`);
     };
@@ -183,6 +208,38 @@ const Index: React.FC = () => {
                     behavior: 'smooth'
                 });
             }
+        }
+    };
+
+    const handleSendContact = async () => {
+        if (!contactName.trim()) {
+            showError('Informe seu nome.');
+            return;
+        }
+        if (contactFormPhone.replace(/\D/g, '').length < 10) {
+            showError('Informe um telefone válido.');
+            return;
+        }
+        if (!contactMessage.trim() || contactMessage.trim().length < 5) {
+            showError('Escreva uma mensagem com pelo menos 5 caracteres.');
+            return;
+        }
+        setSendingContact(true);
+        try {
+            const { error } = await supabase.rpc('create_public_contact_message', {
+                p_name: contactName.trim(),
+                p_phone: contactFormPhone,
+                p_message: contactMessage.trim(),
+            });
+            if (error) throw error;
+            showSuccess('Mensagem enviada. Nossa equipe entrará em contato.');
+            setContactName('');
+            setContactFormPhone('');
+            setContactMessage('');
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Não foi possível enviar a mensagem.');
+        } finally {
+            setSendingContact(false);
         }
     };
 
@@ -531,8 +588,54 @@ const Index: React.FC = () => {
                     </Button>
                 </div>
             </section>
-            <footer id="contato" className={`bg-black border-t border-yellow-500/20 ${isMobile ? 'py-8 px-3' : 'py-12 sm:py-16 px-4 sm:px-6'}`}>
+            <footer id="contato" className={`bg-black border-t border-yellow-500/20 scroll-mt-28 ${isMobile ? 'py-8 px-3' : 'py-12 sm:py-16 px-4 sm:px-6'}`}>
                 <div className="max-w-7xl mx-auto">
+                    <div className="mb-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <Card className="bg-black/60 border border-yellow-500/30 rounded-2xl">
+                            <div className="p-6">
+                                <h3 className="text-xl text-yellow-500 font-semibold mb-2">Contato</h3>
+                                <p className="text-gray-300 text-sm mb-4">
+                                    Atendimento oficial {contactCompanyName}. Fale com nosso time pelo telefone abaixo
+                                    ou envie uma mensagem pelo formulário.
+                                </p>
+                                <p className="text-white text-lg font-medium">
+                                    Telefone: <span className="text-yellow-500">{contactPhone}</span>
+                                </p>
+                            </div>
+                        </Card>
+                        <Card className="bg-black/60 border border-yellow-500/30 rounded-2xl">
+                            <div className="p-6 space-y-3">
+                                <h3 className="text-xl text-yellow-500 font-semibold">Deixe sua mensagem</h3>
+                                <Input
+                                    value={contactName}
+                                    onChange={(e) => setContactName(e.target.value)}
+                                    placeholder="Seu nome"
+                                    className="bg-black/60 border-yellow-500/30 text-white"
+                                />
+                                <Input
+                                    value={contactFormPhone}
+                                    onChange={(e) => setContactFormPhone(e.target.value)}
+                                    placeholder="Seu telefone"
+                                    className="bg-black/60 border-yellow-500/30 text-white"
+                                />
+                                <textarea
+                                    value={contactMessage}
+                                    onChange={(e) => setContactMessage(e.target.value)}
+                                    placeholder="Digite sua mensagem"
+                                    className="w-full min-h-[110px] rounded-md bg-black/60 border border-yellow-500/30 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
+                                />
+                                <Button
+                                    type="button"
+                                    onClick={handleSendContact}
+                                    disabled={sendingContact}
+                                    className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                >
+                                    {sendingContact ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                                    Enviar mensagem
+                                </Button>
+                            </div>
+                        </Card>
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
                         <div className="col-span-2 md:col-span-1">
                             <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold mb-4">
@@ -555,7 +658,7 @@ const Index: React.FC = () => {
                             <h4 className="text-white font-semibold mb-4 text-base sm:text-lg">Suporte</h4>
                             <ul className="space-y-2 text-sm">
                                 <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Central de Ajuda</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Contato</a></li>
+                                <li><a href="/#contato" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Contato</a></li>
                                 <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">FAQ</a></li>
                                 <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Feedback</a></li>
                             </ul>
