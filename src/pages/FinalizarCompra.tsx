@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { showError } from '@/utils/toast';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import EventLocationMap from '@/components/EventLocationMap';
 
 // Helper function to get the minimum price display
 const getMinPriceDisplay = (price: number | null): string => {
@@ -124,9 +125,23 @@ const FinalizarCompra: React.FC = () => {
             </section>
             
             {/* Conteúdo principal da finalização de compra */}
-            <main className="py-12 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto">
-                <h2 className="text-3xl font-serif text-white mb-8">Finalizar Compra</h2>
-                <p className="text-gray-400">Conteúdo do checkout será implementado aqui.</p>
+            <main className="py-12 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto space-y-10">
+                <div>
+                    <h2 className="text-3xl font-serif text-white mb-2">Finalizar Compra</h2>
+                    <p className="text-gray-400">Conteúdo do checkout será implementado aqui.</p>
+                </div>
+
+                <section className="max-w-3xl">
+                    <h3 className="text-xl font-serif text-yellow-500 mb-4">Localização do evento</h3>
+                    <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
+                        <EventLocationMap
+                            location={event.location}
+                            address={event.address}
+                            lat={event.address_lat}
+                            lng={event.address_lng}
+                        />
+                    </div>
+                </section>
             </main>
         </div>
     );
