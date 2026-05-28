@@ -12,13 +12,31 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    AlertDialog,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCreditEstablishments } from '@/hooks/use-credit-establishments';
+import { useCreditEstablishmentProducts } from '@/hooks/use-credit-establishment-products';
 import { isHybridPlan, isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 import { showError, showSuccess } from '@/utils/toast';
+import { issueCreditMenuToken } from '@/hooks/use-credit-menu';
+import QRCode from 'react-qr-code';
+import {
+    confirmManagerCreditConsumptionIntent,
+    updateManagerCreditConsumptionIntentStatus,
+    useManagerCreditConsumptionIntents,
+    type CreditConsumptionIntentStatus,
+} from '@/hooks/use-credit-consumption-intents';
 
 type CartLine = {
     id: string;
@@ -48,11 +66,26 @@ const ManagerCreditPdv: React.FC = () => {
     const [productName, setProductName] = useState('');
     const [quantity, setQuantity] = useState('1');
     const [unitPrice, setUnitPrice] = useState('');
+    const [selectedCatalogProductId, setSelectedCatalogProductId] = useState('none');
     const [charging, setCharging] = useState(false);
+    const [menuQrOpen, setMenuQrOpen] = useState(false);
+    const [menuQrUrl, setMenuQrUrl] = useState('');
+    const [menuQrLoading, setMenuQrLoading] = useState(false);
+    const [intentsStatusFilter, setIntentsStatusFilter] = useState<'all' | CreditConsumptionIntentStatus>('all');
+    const [updatingIntentId, setUpdatingIntentId] = useState<string | null>(null);
+    const [expandedHistoryByIntent, setExpandedHistoryByIntent] = useState<Record<string, boolean>>({});
+    const [historyPeriodFilter, setHistoryPeriodFilter] = useState<'all' | 'today' | '7d' | '30d'>('7d');
+    const [historyOperatorFilter, setHistoryOperatorFilter] = useState<string>('all');
 
     const { company } = useManagerCompany(userId);
     const { billing } = useCompanyBilling(company?.id);
     const { data, isLoading } = useCreditEstablishments(company?.id);
+    const { data: productsData, isLoading: loadingProducts } = useCreditEstablishmentProducts(
+        company?.id,
+        establishmentId || undefined,
+    );
+    const { data: intentsData, isLoading: loadingIntents, invalidate: invalidateIntents } =
+        useManagerCreditConsumptionIntents(company?.id, intentsStatusFilter);
 
     const supportsCredit =
         isHybridPlan(billing?.billing_plan) || isConsumptionOrLicensePlan(billing?.billing_plan);
@@ -66,6 +99,10 @@ const ManagerCreditPdv: React.FC = () => {
         () => cart.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
         [cart],
     );
+    const activeProducts = useMemo(
+        () => (productsData?.items ?? []).filter((p) => p.active),
+        [productsData?.items],
+    );
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
@@ -76,6 +113,10 @@ const ManagerCreditPdv: React.FC = () => {
             setEstablishmentId(activeEstablishments[0].id);
         }
     }, [activeEstablishments, establishmentId]);
+
+    useEffect(() => {
+        setSelectedCatalogProductId('none');
+    }, [establishmentId]);
 
     const resolveClient = async () => {
         if (!establishmentId || !walletToken.trim()) {
@@ -117,6 +158,29 @@ const ManagerCreditPdv: React.FC = () => {
         setProductName('');
         setQuantity('1');
         setUnitPrice('');
+    };
+
+    const addCatalogLine = () => {
+        if (selectedCatalogProductId === 'none') {
+            showError('Selecione um produto do catálogo.');
+            return;
+        }
+        const product = activeProducts.find((p) => p.id === selectedCatalogProductId);
+        if (!product) {
+            showError('Produto não encontrado.');
+            return;
+        }
+        const qty = Number(quantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+            showError('Quantidade inválida.');
+            return;
+        }
+        setCart((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), productName: product.name, quantity: qty, unitPrice: Number(product.unit_price) },
+        ]);
+        setQuantity('1');
+        setSelectedCatalogProductId('none');
     };
 
     const removeLine = (id: string) => setCart((prev) => prev.filter((l) => l.id !== id));
@@ -163,6 +227,117 @@ const ManagerCreditPdv: React.FC = () => {
         }
     };
 
+    const openMenuQr = async () => {
+        if (!establishmentId) {
+            showError('Selecione o PDV para gerar o QR de balcão.');
+            return;
+        }
+        setMenuQrLoading(true);
+        try {
+            const issued = await issueCreditMenuToken(establishmentId);
+            const origin = window.location.origin;
+            const url = `${origin}/wallet/consumo?m=${encodeURIComponent(issued.token)}`;
+            setMenuQrUrl(url);
+            setMenuQrOpen(true);
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Erro ao gerar QR do balcão.');
+        } finally {
+            setMenuQrLoading(false);
+        }
+    };
+
+    const formatIntentStatus = (status: CreditConsumptionIntentStatus) => {
+        if (status === 'new') return 'Novo';
+        if (status === 'in_preparation') return 'Em preparo';
+        if (status === 'ready_for_pickup') return 'Pronto';
+        if (status === 'completed') return 'Concluído';
+        if (status === 'cancelled') return 'Cancelado';
+        return 'Expirado';
+    };
+
+    const formatHistorySource = (source: string) => {
+        if (source === 'manager_panel') return 'Painel gestor';
+        if (source === 'customer_app') return 'App cliente';
+        if (source === 'customer_web') return 'Web cliente';
+        if (source === 'system') return 'Sistema';
+        return source;
+    };
+
+    const toggleIntentHistory = (intentId: string) => {
+        setExpandedHistoryByIntent((prev) => ({ ...prev, [intentId]: !prev[intentId] }));
+    };
+
+    const availableHistoryOperators = useMemo(() => {
+        const labels = new Set<string>();
+        for (const intent of intentsData?.items ?? []) {
+            for (const step of intent.status_history ?? []) {
+                if (step.changed_by_label) labels.add(step.changed_by_label);
+            }
+        }
+        return Array.from(labels).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }, [intentsData?.items]);
+
+    const filterHistorySteps = (
+        steps: Array<{
+            id: string;
+            from_status: string | null;
+            to_status: string;
+            source: string;
+            notes: string | null;
+            created_at: string;
+            changed_by_user_id: string | null;
+            changed_by_label: string;
+        }>,
+    ) => {
+        const now = Date.now();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        return steps.filter((step) => {
+            const createdAt = new Date(step.created_at).getTime();
+            if (Number.isNaN(createdAt)) return false;
+
+            if (historyPeriodFilter === 'today' && createdAt < today.getTime()) return false;
+            if (historyPeriodFilter === '7d' && now - createdAt > 7 * 24 * 60 * 60 * 1000) return false;
+            if (historyPeriodFilter === '30d' && now - createdAt > 30 * 24 * 60 * 60 * 1000) return false;
+
+            if (historyOperatorFilter !== 'all' && step.changed_by_label !== historyOperatorFilter) return false;
+
+            return true;
+        });
+    };
+
+    const setIntentStatus = async (intentId: string, status: 'in_preparation' | 'ready_for_pickup' | 'cancelled') => {
+        if (!company?.id) return;
+        setUpdatingIntentId(intentId);
+        try {
+            await updateManagerCreditConsumptionIntentStatus({
+                companyId: company.id,
+                intentId,
+                status,
+            });
+            showSuccess('Status do pedido atualizado.');
+            invalidateIntents();
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Erro ao atualizar pedido.');
+        } finally {
+            setUpdatingIntentId(null);
+        }
+    };
+
+    const confirmIntentPayment = async (intentId: string) => {
+        setUpdatingIntentId(intentId);
+        try {
+            await confirmManagerCreditConsumptionIntent({ intentId });
+            showSuccess('Pedido cobrado com crédito EventFest.');
+            invalidateIntents();
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Erro ao cobrar pedido.');
+        } finally {
+            setUpdatingIntentId(null);
+        }
+    };
+
     if (!supportsCredit) {
         return (
             <div className="max-w-3xl mx-auto text-center py-16 text-gray-400">
@@ -200,16 +375,28 @@ const ManagerCreditPdv: React.FC = () => {
                             .
                         </p>
                     ) : (
-                        <Select value={establishmentId} onValueChange={setEstablishmentId}>
-                            <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
-                                <SelectValue placeholder="Selecione o PDV" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-black border-yellow-500/30 text-white">
-                                {activeEstablishments.map((e) => (
-                                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <>
+                            <Select value={establishmentId} onValueChange={setEstablishmentId}>
+                                <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
+                                    <SelectValue placeholder="Selecione o PDV" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                    {activeEstablishments.map((e) => (
+                                        <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="border-yellow-500/40 text-yellow-500"
+                                onClick={openMenuQr}
+                                disabled={menuQrLoading}
+                            >
+                                {menuQrLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                                Exibir QR do balcão (cardápio)
+                            </Button>
+                        </>
                     )}
                 </CardContent>
             </Card>
@@ -249,6 +436,50 @@ const ManagerCreditPdv: React.FC = () => {
                     <CardTitle className="text-white text-lg">Produtos</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                    <div className="rounded-lg border border-yellow-500/20 p-3 space-y-2">
+                        <Label className="text-gray-400 text-xs">Adicionar do catálogo</Label>
+                        {loadingProducts ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />
+                        ) : activeProducts.length === 0 ? (
+                            <p className="text-xs text-amber-400">
+                                Sem produtos no catálogo deste PDV. Você ainda pode digitar manualmente abaixo.
+                            </p>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div className="sm:col-span-2">
+                                    <Select value={selectedCatalogProductId} onValueChange={setSelectedCatalogProductId}>
+                                        <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
+                                            <SelectValue placeholder="Selecione um produto" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                            <SelectItem value="none">Selecione...</SelectItem>
+                                            {activeProducts.map((p) => (
+                                                <SelectItem key={p.id} value={p.id}>
+                                                    {p.name} — {formatMoney(Number(p.unit_price))}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label className="text-gray-400 text-xs">Qtd</Label>
+                                    <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} className="bg-black/60 border-yellow-500/30 text-white" />
+                                </div>
+                            </div>
+                        )}
+                        <Button
+                            variant="outline"
+                            className="border-yellow-500/40 text-yellow-500"
+                            onClick={addCatalogLine}
+                            disabled={activeProducts.length === 0}
+                        >
+                            Adicionar do catálogo
+                        </Button>
+                    </div>
+
+                    <div className="border-t border-yellow-500/20 pt-3">
+                        <Label className="text-gray-400 text-xs">Adicionar item manual</Label>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div className="sm:col-span-1">
                             <Label className="text-gray-400 text-xs">Nome</Label>
@@ -299,6 +530,211 @@ const ManagerCreditPdv: React.FC = () => {
             <Button variant="ghost" className="mt-4 text-gray-400" onClick={() => navigate('/manager/credit/establishments')}>
                 <ArrowLeft className="h-4 w-4 mr-1" /> Estabelecimentos
             </Button>
+
+            <Card className="bg-black border-yellow-500/30 mt-6">
+                <CardHeader>
+                    <CardTitle className="text-white text-lg">Painel de atendimento</CardTitle>
+                    <CardDescription className="text-gray-400">
+                        Pedidos criados no cardápio do cliente. A cobrança é a etapa terminal.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="max-w-xs">
+                        <Select value={intentsStatusFilter} onValueChange={(v) => setIntentsStatusFilter(v as 'all' | CreditConsumptionIntentStatus)}>
+                            <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
+                                <SelectValue placeholder="Filtrar status" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                <SelectItem value="all">Todos</SelectItem>
+                                <SelectItem value="new">Novo</SelectItem>
+                                <SelectItem value="in_preparation">Em preparo</SelectItem>
+                                <SelectItem value="ready_for_pickup">Pronto</SelectItem>
+                                <SelectItem value="completed">Concluído</SelectItem>
+                                <SelectItem value="cancelled">Cancelado</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl">
+                        <Select value={historyPeriodFilter} onValueChange={(v) => setHistoryPeriodFilter(v as 'all' | 'today' | '7d' | '30d')}>
+                            <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
+                                <SelectValue placeholder="Período do histórico" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                <SelectItem value="all">Histórico: todo período</SelectItem>
+                                <SelectItem value="today">Histórico: hoje</SelectItem>
+                                <SelectItem value="7d">Histórico: últimos 7 dias</SelectItem>
+                                <SelectItem value="30d">Histórico: últimos 30 dias</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Select value={historyOperatorFilter} onValueChange={setHistoryOperatorFilter}>
+                            <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
+                                <SelectValue placeholder="Operador" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                <SelectItem value="all">Operador: todos</SelectItem>
+                                {availableHistoryOperators.map((label) => (
+                                    <SelectItem key={label} value={label}>
+                                        {label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {loadingIntents ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-yellow-500" />
+                    ) : (intentsData?.items?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-gray-500">Nenhum pedido no filtro selecionado.</p>
+                    ) : (
+                        <ul className="space-y-3">
+                            {intentsData!.items.map((intent) => (
+                                <li key={intent.id} className="border border-yellow-500/20 rounded-xl p-3 space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="text-white text-sm">
+                                            {intent.establishment_name} · {formatMoney(Number(intent.gross_amount))}
+                                        </p>
+                                        <span className="text-xs text-yellow-500">{formatIntentStatus(intent.status)}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                        {new Date(intent.created_at).toLocaleString('pt-BR')} · biometria{' '}
+                                        {intent.biometric_required
+                                            ? intent.biometric_confirmed ? 'confirmada' : 'pendente'
+                                            : 'não exigida'}
+                                    </p>
+                                    {intent.status_history?.[0] ? (
+                                        <p className="text-xs text-gray-500">
+                                            Última transição: {formatIntentStatus(intent.status_history[0].to_status as CreditConsumptionIntentStatus)} ·{' '}
+                                            {intent.status_history[0].changed_by_label} ·{' '}
+                                            {new Date(intent.status_history[0].created_at).toLocaleString('pt-BR')}
+                                        </p>
+                                    ) : null}
+                                    {(intent.status_history?.length ?? 0) > 0 && (
+                                        <div className="rounded-lg border border-yellow-500/20 bg-black/40">
+                                            <button
+                                                type="button"
+                                                className="w-full text-left px-3 py-2 text-xs text-yellow-500 hover:bg-yellow-500/10 transition-colors"
+                                                onClick={() => toggleIntentHistory(intent.id)}
+                                            >
+                                                {expandedHistoryByIntent[intent.id] ? 'Ocultar' : 'Mostrar'} histórico completo
+                                                {' '}({intent.status_history.length})
+                                            </button>
+                                            {expandedHistoryByIntent[intent.id] && (
+                                                <ul className="px-3 pb-3 space-y-2">
+                                                    {filterHistorySteps(intent.status_history ?? []).length === 0 ? (
+                                                        <li className="text-xs text-gray-500 py-1">
+                                                            Nenhuma transição para os filtros selecionados.
+                                                        </li>
+                                                    ) : filterHistorySteps(intent.status_history ?? []).map((step) => (
+                                                        <li
+                                                            key={step.id}
+                                                            className="border-l-2 border-yellow-500/30 pl-3 py-1 text-xs"
+                                                        >
+                                                            <p className="text-gray-200">
+                                                                <span className="text-yellow-500">
+                                                                    {step.from_status
+                                                                        ? `${formatIntentStatus(step.from_status as CreditConsumptionIntentStatus)} -> `
+                                                                        : ''}
+                                                                    {formatIntentStatus(step.to_status as CreditConsumptionIntentStatus)}
+                                                                </span>
+                                                            </p>
+                                                            <p className="text-gray-500">
+                                                                {new Date(step.created_at).toLocaleString('pt-BR')} ·{' '}
+                                                                {step.changed_by_label} · {formatHistorySource(step.source)}
+                                                            </p>
+                                                            {step.notes ? (
+                                                                <p className="text-gray-500 mt-0.5">{step.notes}</p>
+                                                            ) : null}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                    )}
+                                    <ul className="text-xs text-gray-300 space-y-1">
+                                        {(intent.items ?? []).map((item) => (
+                                            <li key={`${intent.id}-${item.product_id}`}>
+                                                {item.quantity}x {item.product_name}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    {intent.status !== 'completed' && intent.status !== 'cancelled' && (
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="border-yellow-500/40 text-yellow-500"
+                                                onClick={() => setIntentStatus(intent.id, 'in_preparation')}
+                                                disabled={updatingIntentId === intent.id}
+                                            >
+                                                Em preparo
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="border-yellow-500/40 text-yellow-500"
+                                                onClick={() => setIntentStatus(intent.id, 'ready_for_pickup')}
+                                                disabled={updatingIntentId === intent.id}
+                                            >
+                                                Pronto
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="border-red-500/40 text-red-400"
+                                                onClick={() => setIntentStatus(intent.id, 'cancelled')}
+                                                disabled={updatingIntentId === intent.id}
+                                            >
+                                                Cancelar
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                                onClick={() => confirmIntentPayment(intent.id)}
+                                                disabled={
+                                                    updatingIntentId === intent.id
+                                                    || (intent.biometric_required && !intent.biometric_confirmed)
+                                                }
+                                            >
+                                                Cobrar agora
+                                            </Button>
+                                        </div>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </CardContent>
+            </Card>
+
+            <AlertDialog open={menuQrOpen} onOpenChange={setMenuQrOpen}>
+                <AlertDialogContent className="bg-black border border-yellow-500/40 text-white max-w-sm">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-yellow-500">QR do balcão</AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-400">
+                            Cliente escaneia e abre o cardápio no celular.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="flex flex-col items-center gap-3 py-1">
+                        {menuQrUrl ? (
+                            <>
+                                <div className="bg-white p-3 rounded-lg">
+                                    <QRCode value={menuQrUrl} size={220} />
+                                </div>
+                                <p className="text-xs text-gray-500 text-center break-all">
+                                    {menuQrUrl}
+                                </p>
+                            </>
+                        ) : (
+                            <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
+                        )}
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-transparent border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10">
+                            Fechar
+                        </AlertDialogCancel>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

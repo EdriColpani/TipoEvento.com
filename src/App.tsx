@@ -67,6 +67,7 @@ import ManagerValidationKeys from "./pages/ManagerValidationKeys"; // NOVO
 import TicketValidator from "./pages/TicketValidator"; // NOVO
 import RegistrationsReports from "./pages/RegistrationsReports";
 import ClientCreditWallet from "./pages/ClientCreditWallet";
+import ClientCreditMenu from "./pages/ClientCreditMenu";
 
 const queryClient = new QueryClient();
 
@@ -89,6 +90,7 @@ const App = () => (
             <Route path="profile" element={<Profile />} />
             <Route path="tickets" element={<MyTickets />} />
             <Route path="wallet" element={<ClientCreditWallet />} />
+            <Route path="wallet/consumo" element={<ClientCreditMenu />} />
           </Route>
 
           {/* Reset fora do ClientLayout: evita header “já logado” na sessão de recovery */}

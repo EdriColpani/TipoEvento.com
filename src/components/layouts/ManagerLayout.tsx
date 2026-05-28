@@ -32,7 +32,7 @@ import {
     MANAGER_LISTING_RENEWAL_PATH,
 } from '@/constants/listing-subscription';
 import { useListingSubscription } from '@/hooks/use-listing-subscription';
-import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
+import { companyAllowsCreditConsumption, isListingMonthlyPlan } from '@/utils/company-billing-rules';
 import ListingSubscriptionBanner from '@/components/ListingSubscriptionBanner';
 
 const ADMIN_USER_TYPE_ID = 1;
@@ -258,6 +258,7 @@ const ManagerLayout: React.FC = () => {
         '/manager/events/banners/create': <Image className="mr-2 h-4 w-4" />,
         '/manager/wristbands': <QrCode className="mr-2 h-4 w-4" />,
         '/manager/validation-keys': <Key className="mr-2 h-4 w-4" />,
+        '/manager/credit/pdv': <CreditCard className="mr-2 h-4 w-4" />,
         '/manager/reports': <BarChart3 className="mr-2 h-4 w-4" />,
         '/manager/settings': <Settings className="mr-2 h-4 w-4" />,
     };
@@ -273,6 +274,32 @@ const ManagerLayout: React.FC = () => {
         filteredManagerNav = filteredManagerNav.filter((item) =>
             item.path.startsWith('/manager/reports'),
         );
+    }
+
+    const canShowCreditPdvNav = companyAllowsCreditConsumption(billing?.billing_plan ?? null);
+    if (canShowCreditPdvNav) {
+        const pdvItem = {
+            path: '/manager/credit/pdv',
+            label: 'PDV',
+            featureKey: 'reports' as const,
+        };
+        const alreadyHasPdv = filteredManagerNav.some((item) => item.path === pdvItem.path);
+        if (!alreadyHasPdv) {
+            const validationIndex = filteredManagerNav.findIndex(
+                (item) => item.path === '/manager/validation-keys',
+            );
+            const reportsIndex = filteredManagerNav.findIndex(
+                (item) => item.path === '/manager/reports',
+            );
+
+            if (validationIndex >= 0) {
+                filteredManagerNav.splice(validationIndex + 1, 0, pdvItem);
+            } else if (reportsIndex >= 0) {
+                filteredManagerNav.splice(reportsIndex, 0, pdvItem);
+            } else {
+                filteredManagerNav.push(pdvItem);
+            }
+        }
     }
 
     const baseNavItems = [
