@@ -9,6 +9,7 @@ import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { useMyPurchases } from '@/hooks/use-my-purchases';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Calendar, MapPin, QrCode, History } from 'lucide-react';
+import EventLocationLinks from '@/components/EventLocationLinks';
 import { showSuccess, showError } from '@/utils/toast'; // Importando showSuccess/showError
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { useQueryClient } from '@tanstack/react-query'; // Importando useQueryClient
@@ -48,6 +49,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
     const ticketType = ticket.wristbands?.access_type || 'Tipo Desconhecido';
     const eventName = eventDetails?.title || 'Evento Desconhecido';
     const eventLocation = eventDetails?.location || 'Local Desconhecido';
+    const eventAddress = eventDetails?.address ?? null;
     const eventDate = eventDetails?.date
         ? formatEventDateForDisplay(eventDetails.date) || 'Data Desconhecida'
         : 'Data Desconhecida';
@@ -78,16 +80,29 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                     </span>
                 </div>
                 <p className="text-gray-400 text-sm">{ticketType} (1x)</p>
-                <div className="flex flex-wrap items-center space-x-4 sm:space-x-6 text-xs sm:text-sm text-gray-300 pt-2">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-gray-300 pt-2">
                     <div className="flex items-center">
                         <Calendar className="text-yellow-500 mr-2 h-4 w-4" />
                         <span>{eventDate}</span>
                     </div>
-                    <div className="flex items-center">
-                        <MapPin className="text-yellow-500 mr-2 h-4 w-4" />
-                        <span>{eventLocation}</span>
+                    <div className="flex items-center min-w-0">
+                        <MapPin className="text-yellow-500 mr-2 h-4 w-4 shrink-0" />
+                        <span className="truncate">{eventLocation}</span>
                     </div>
                 </div>
+                {Boolean(
+                    (eventDetails?.location ?? '').trim() ||
+                    (eventAddress ?? '').trim() ||
+                    eventDetails?.address_lat != null,
+                ) && (
+                    <EventLocationLinks
+                        className="pt-1"
+                        location={eventLocation}
+                        address={eventAddress}
+                        lat={eventDetails?.address_lat}
+                        lng={eventDetails?.address_lng}
+                    />
+                )}
             </div>
             
             <div className="w-full md:w-auto flex flex-row md:flex-col items-center md:items-end justify-between pt-4 md:pt-0 border-t border-yellow-500/20 md:border-t-0">

@@ -36,6 +36,7 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
 import EventLocationFormFields from '@/components/EventLocationFormFields';
+import { resolveEventGeoOnSave } from '@/utils/google-maps';
 import { cn } from '@/lib/utils';
 import {
     getOrCreateClientSubmitId,
@@ -819,16 +820,27 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 ? 'Evento criado com sucesso e publicado!'
                 : 'Evento criado com sucesso e enviado para aprovação!';
 
+            const resolvedGeo = await resolveEventGeoOnSave({
+                address: values.address,
+                location: values.location,
+                address_lat: values.address_lat ?? null,
+                address_lng: values.address_lng ?? null,
+                address_place_id: values.address_place_id ?? null,
+            });
+
             const eventData: Record<string, unknown> = {
                 title: values.title,
                 description: values.description,
                 date: format(values.date!, 'yyyy-MM-dd'),
                 time: values.time ? values.time.slice(0, 5) : null,
                 location: values.location,
-                address: values.address,
-                address_lat: values.address_lat ?? null,
-                address_lng: values.address_lng ?? null,
-                address_place_id: values.address_place_id?.trim() || null,
+                address: resolvedGeo.address,
+                address_lat: resolvedGeo.address_lat ?? null,
+                address_lng: resolvedGeo.address_lng ?? null,
+                address_place_id:
+                    typeof resolvedGeo.address_place_id === 'string'
+                        ? resolvedGeo.address_place_id.trim() || null
+                        : resolvedGeo.address_place_id ?? null,
                 image_url: values.card_image_url || '',
                 card_image_url: values.card_image_url,
                 exposure_card_image_url: values.exposure_card_image_url,

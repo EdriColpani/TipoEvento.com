@@ -103,6 +103,9 @@ const PurchaseTicketsPanel: React.FC<PurchaseTicketsPanelProps> = ({
                 title={event?.title || 'Evento'}
                 date={event?.date}
                 location={event?.location}
+                address={event?.address}
+                address_lat={event?.address_lat}
+                address_lng={event?.address_lng}
                 description={event?.description}
             />
 

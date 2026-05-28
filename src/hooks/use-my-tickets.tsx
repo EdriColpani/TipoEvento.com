@@ -23,6 +23,9 @@ export interface TicketData {
             id: string;
             title: string;
             location: string;
+            address?: string | null;
+            address_lat?: number | null;
+            address_lng?: number | null;
             date: string;
         } | null;
     } | null;
@@ -37,6 +40,9 @@ type EventInfo = {
     title: string;
     location: string;
     date: string;
+    address?: string | null;
+    address_lat?: number | null;
+    address_lng?: number | null;
 };
 
 function normalizeEvent(raw: unknown): EventInfo | null {
@@ -48,6 +54,9 @@ function normalizeEvent(raw: unknown): EventInfo | null {
         title: String(e.title),
         location: String(e.location ?? ''),
         date: String(e.date ?? ''),
+        address: e.address != null ? String(e.address) : null,
+        address_lat: e.address_lat != null ? Number(e.address_lat) : null,
+        address_lng: e.address_lng != null ? Number(e.address_lng) : null,
     };
 }
 
@@ -143,7 +152,7 @@ async function fetchViaQueries(userId: string): Promise<TicketData[]> {
             status,
             payment_status,
             wristband_analytics_ids,
-            events:event_id (id, title, location, date)
+            events:event_id (id, title, location, address, address_lat, address_lng, date)
         `)
         .eq('client_user_id', userId);
 

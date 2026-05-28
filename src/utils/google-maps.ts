@@ -130,3 +130,65 @@ export function loadGoogleMapsPlaces(): Promise<void> {
 
   return loadPromise;
 }
+
+export interface GeocodedAddress {
+  address: string;
+  lat: number;
+  lng: number;
+  placeId: string | null;
+}
+
+/** Geocodifica endereço digitado manualmente (Geocoding API via JS). */
+export async function geocodeBrazilAddress(query: string): Promise<GeocodedAddress | null> {
+  const trimmed = query.trim();
+  if (!trimmed || !isGoogleMapsConfigured()) return null;
+
+  await loadGoogleMapsPlaces();
+  if (!google.maps?.Geocoder) return null;
+
+  const geocoder = new google.maps.Geocoder();
+
+  return new Promise((resolve) => {
+    geocoder.geocode({ address: trimmed, componentRestrictions: { country: 'BR' } }, (results, status) => {
+      if (status !== 'OK' || !results?.[0]?.geometry?.location) {
+        resolve(null);
+        return;
+      }
+      const best = results[0];
+      resolve({
+        address: best.formatted_address?.trim() || trimmed,
+        lat: best.geometry!.location!.lat(),
+        lng: best.geometry!.location!.lng(),
+        placeId: best.place_id ?? null,
+      });
+    });
+  });
+}
+
+export interface EventGeoValues {
+  address: string;
+  location?: string | null;
+  address_lat?: number | null;
+  address_lng?: number | null;
+  address_place_id?: string | null;
+}
+
+/** Preenche lat/lng ao salvar se o gestor digitou endereço sem escolher sugestão do Places. */
+export async function resolveEventGeoOnSave(values: EventGeoValues): Promise<EventGeoValues> {
+  if (!isGoogleMapsConfigured()) return values;
+  if (!values.address?.trim()) return values;
+  if (values.address_lat != null && values.address_lng != null) return values;
+
+  const geocoded = await geocodeBrazilAddress(
+    buildMapSearchQuery({ address: values.address, location: values.location }),
+  );
+  if (!geocoded) return values;
+
+  return {
+    ...values,
+    address: geocoded.address,
+    address_lat: geocoded.lat,
+    address_lng: geocoded.lng,
+    address_place_id: geocoded.placeId ?? values.address_place_id ?? null,
+  };
+}
