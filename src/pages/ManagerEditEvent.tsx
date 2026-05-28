@@ -18,6 +18,9 @@ interface EventFormData {
     time: string;
     location: string;
     address: string;
+    address_lat?: number | null;
+    address_lng?: number | null;
+    address_place_id?: string | null;
     card_image_url: string;
     exposure_card_image_url: string;
     banner_image_url: string;
@@ -102,6 +105,9 @@ const ManagerEditEvent: React.FC = () => {
                 time: eventData.time || '',
                 location: eventData.location || '',
                 address: eventData.address || '',
+                address_lat: eventData.address_lat ?? null,
+                address_lng: eventData.address_lng ?? null,
+                address_place_id: eventData.address_place_id ?? null,
                 card_image_url: eventData.image_url || '',
                 exposure_card_image_url: eventData.exposure_card_image_url || '',
                 banner_image_url: eventData.banner_image_url || '',

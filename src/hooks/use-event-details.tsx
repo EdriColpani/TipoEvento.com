@@ -11,6 +11,9 @@ export interface EventData {
     time: string;
     location: string;
     address: string;
+    address_lat: number | null;
+    address_lng: number | null;
+    address_place_id: string | null;
     image_url: string; // Imagem do Card Principal (770x450)
     exposure_card_image_url: string | null; // NOVO: Imagem do Card de Exposição (400x200)
     banner_image_url: string | null; // Banner da tela do evento (900x500)
@@ -56,7 +59,7 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     const { data: eventDataRaw, error: eventError } = await supabase
         .from('events')
         .select(`
-            id, title, description, date, time, location, address, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid, credit_consumption_enabled
+            id, title, description, date, time, location, address, address_lat, address_lng, address_place_id, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid, credit_consumption_enabled
         `)
         .eq('id', eventId)
         .maybeSingle();

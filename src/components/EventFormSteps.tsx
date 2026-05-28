@@ -35,6 +35,7 @@ import { isHybridPlan, isConsumptionOrLicensePlan, isListingOnlyCompanyPlan } fr
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
+import EventLocationFormFields from '@/components/EventLocationFormFields';
 import { cn } from '@/lib/utils';
 import {
     getOrCreateClientSubmitId,
@@ -72,6 +73,9 @@ const eventFormSchema = z.object({
     time: z.string().min(1, "A hora do evento é obrigatória."),
     location: z.string().min(3, "O local deve ter pelo menos 3 caracteres.").max(100, "O local não pode exceder 100 caracteres."),
     address: z.string().min(5, "O endereço deve ter pelo menos 5 caracteres.").max(200, "O endereço não pode exceder 200 caracteres."),
+    address_lat: z.number().nullable().optional(),
+    address_lng: z.number().nullable().optional(),
+    address_place_id: z.string().max(255).nullable().optional(),
     card_image_url: z.string().url("URL da imagem do card inválida."),
     exposure_card_image_url: z.string().url("URL da imagem de exposição inválida."),
     banner_image_url: z.string().url("URL da imagem do banner inválida."),
@@ -294,6 +298,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             time: initialData?.time || '',
             location: initialData?.location || '',
             address: initialData?.address || '',
+            address_lat: initialData?.address_lat ?? null,
+            address_lng: initialData?.address_lng ?? null,
+            address_place_id: initialData?.address_place_id ?? null,
             card_image_url: initialData?.card_image_url || '',
             exposure_card_image_url: initialData?.exposure_card_image_url || '',
             banner_image_url: initialData?.banner_image_url || '',
@@ -819,6 +826,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 time: values.time ? values.time.slice(0, 5) : null,
                 location: values.location,
                 address: values.address,
+                address_lat: values.address_lat ?? null,
+                address_lng: values.address_lng ?? null,
+                address_place_id: values.address_place_id?.trim() || null,
                 image_url: values.card_image_url || '',
                 card_image_url: values.card_image_url,
                 exposure_card_image_url: values.exposure_card_image_url,
@@ -1241,42 +1251,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     )}
                                 />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField
-                                    control={control}
-                                    name="location"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel className="text-white">Local do Evento</FormLabel>
-                                            <FormControl>
-                                                <Input 
-                                                    placeholder="Ex: Arena Music Hall" 
-                                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                                    {...field} 
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                <FormField
-                                    control={control}
-                                    name="address"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel className="text-white">Endereço Completo</FormLabel>
-                                            <FormControl>
-                                                <Input 
-                                                    placeholder="Ex: Av. Principal, 123 - Centro" 
-                                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                                    {...field} 
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
+                            <EventLocationFormFields />
                             {supportsCreditConsumption && (
                                 <FormField
                                     control={control}
