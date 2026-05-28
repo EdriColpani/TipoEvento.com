@@ -20,6 +20,9 @@ export interface PurchaseData {
     title: string;
     date: string;
     location: string;
+    address: string | null;
+    address_lat: number | null;
+    address_lng: number | null;
     description: string | null;
   } | null;
 }
@@ -47,6 +50,9 @@ const fetchMyPurchases = async (userId: string): Promise<PurchaseData[]> => {
         title,
         date,
         location,
+        address,
+        address_lat,
+        address_lng,
         description
       )
     `)
