@@ -18,6 +18,7 @@ import {
     fetchEventCreditEligibility,
     startCreditSpendCheckout,
 } from '@/utils/credit-spend-checkout';
+import EventLocationMap from '@/components/EventLocationMap';
 
 // Tipos de dados para os itens de compra
 interface PurchaseItem {
@@ -510,19 +511,12 @@ const EventDetails: React.FC = () => {
                             <div>
                                 <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-4 sm:mb-6">Localização</h3>
                                 <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
-                                    <div className="flex items-start space-x-4 mb-6">
-                                        <i className="fas fa-map-marker-alt text-yellow-500 text-xl mt-1 flex-shrink-0"></i>
-                                        <div>
-                                            <h4 className="text-white font-semibold text-base sm:text-lg mb-2">{event.location}</h4>
-                                            <p className="text-gray-300 text-sm sm:text-base">{event.address}</p>
-                                        </div>
-                                    </div>
-                                    <div className="bg-black/40 rounded-xl h-48 sm:h-64 flex items-center justify-center">
-                                        <div className="text-center">
-                                            <i className="fas fa-map text-yellow-500 text-3xl sm:text-4xl mb-4"></i>
-                                            <p className="text-gray-400 text-sm">Mapa interativo em breve</p>
-                                        </div>
-                                    </div>
+                                    <EventLocationMap
+                                        location={event.location}
+                                        address={event.address}
+                                        lat={event.address_lat}
+                                        lng={event.address_lng}
+                                    />
                                 </div>
                             </div>
                         </div>
