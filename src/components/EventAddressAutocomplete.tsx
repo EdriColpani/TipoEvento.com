@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { isGoogleMapsConfigured, loadGoogleMapsPlaces } from '@/utils/google-maps';
 
@@ -32,6 +33,10 @@ function detachAutocompleteListener(listener: google.maps.MapsEventListener | nu
   }
 }
 
+/**
+ * Google Places Autocomplete + digitação manual.
+ * Input não controlado pelo React enquanto o autocomplete está ativo (evita bloquear teclas).
+ */
 const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
   value,
   onChange,
@@ -45,8 +50,10 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
   const lastSelectedAddressRef = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
   const onPlaceSelectRef = useRef(onPlaceSelect);
+  const onGeoClearRef = useRef(onGeoClear);
   const [mapsReady, setMapsReady] = useState(false);
   const [mapsError, setMapsError] = useState<string | null>(null);
+  const [manualMode, setManualMode] = useState(!isGoogleMapsConfigured());
   const mapsConfigured = isGoogleMapsConfigured();
 
   useEffect(() => {
@@ -58,7 +65,21 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
   }, [onPlaceSelect]);
 
   useEffect(() => {
-    if (!mapsConfigured || disabled) return;
+    onGeoClearRef.current = onGeoClear;
+  }, [onGeoClear]);
+
+  /** Sincroniza valor vindo do formulário (ex.: carregar evento) sem sobrescrever enquanto digita. */
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || document.activeElement === el) return;
+    const next = value ?? '';
+    if (el.value !== next) {
+      el.value = next;
+    }
+  }, [value]);
+
+  useEffect(() => {
+    if (!mapsConfigured || disabled || manualMode) return;
 
     let cancelled = false;
 
@@ -72,6 +93,7 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
       .catch((err: unknown) => {
         if (!cancelled) {
           setMapsReady(false);
+          setManualMode(true);
           setMapsError(err instanceof Error ? err.message : 'Não foi possível carregar o Google Maps.');
         }
       });
@@ -79,10 +101,10 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfigured, disabled]);
+  }, [mapsConfigured, disabled, manualMode]);
 
   useEffect(() => {
-    if (!mapsReady || !inputRef.current || disabled || !mapsConfigured) return;
+    if (manualMode || !mapsReady || !inputRef.current || disabled || !mapsConfigured) return;
 
     let listener: google.maps.MapsEventListener | null = null;
     let autocomplete: google.maps.places.Autocomplete | null = null;
@@ -93,6 +115,7 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
           'Google Places indisponível. Verifique a chave da API e os referrers autorizados no Google Cloud.',
         );
         setMapsReady(false);
+        setManualMode(true);
         return;
       }
 
@@ -111,6 +134,7 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
 
         const venueName = inferVenueName(place);
         lastSelectedAddressRef.current = formatted;
+        if (inputRef.current) inputRef.current.value = formatted;
         onChangeRef.current(formatted);
         onPlaceSelectRef.current({
           address: formatted,
@@ -122,6 +146,7 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
       });
     } catch (err: unknown) {
       setMapsReady(false);
+      setManualMode(true);
       setMapsError(
         err instanceof Error
           ? err.message
@@ -135,56 +160,95 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
       autocomplete = null;
       listener = null;
     };
-  }, [mapsReady, disabled, mapsConfigured]);
+  }, [mapsReady, disabled, mapsConfigured, manualMode]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
-    onChange(next);
+    onChangeRef.current(next);
     if (lastSelectedAddressRef.current && next.trim() !== lastSelectedAddressRef.current) {
       lastSelectedAddressRef.current = null;
-      onGeoClear?.();
+      onGeoClearRef.current?.();
     }
   };
 
-  const autocompleteUnavailable = Boolean(mapsError);
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    onChangeRef.current(e.target.value);
+  };
+
+  const enableGoogleSearch = () => {
+    setManualMode(false);
+    setMapsError(null);
+    setMapsReady(false);
+  };
+
+  const inputClass =
+    inputClassName ??
+    'bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500';
 
   return (
     <div className="space-y-1">
       <Input
         ref={inputRef}
-        value={value}
+        defaultValue={value}
         onChange={handleInputChange}
+        onBlur={handleBlur}
         disabled={disabled}
         placeholder={
-          mapsConfigured && !autocompleteUnavailable
-            ? placeholder
-            : 'Ex: Rua Principal, 123 - Centro, Cidade - UF'
+          manualMode || !mapsConfigured
+            ? 'Ex: Rua Principal, 123 - Centro, Cidade - UF'
+            : placeholder
         }
         autoComplete="off"
-        className={
-          inputClassName ??
-          'bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500'
-        }
+        className={inputClass}
       />
-      {mapsConfigured && !mapsReady && !mapsError && (
+
+      {mapsConfigured && !manualMode && !mapsReady && !mapsError && (
         <p className="text-xs text-gray-500 flex items-center gap-1">
           <Loader2 className="h-3 w-3 animate-spin" />
           Carregando busca de endereço…
         </p>
       )}
+
       {mapsError && (
         <p className="text-xs text-amber-500/90">
-          {mapsError} Você ainda pode digitar o endereço manualmente.
+          {mapsError} Digite o endereço manualmente e use &quot;Confirmar no mapa&quot; abaixo.
         </p>
       )}
-      {mapsConfigured && mapsReady && !mapsError && (
+
+      {mapsConfigured && !manualMode && mapsReady && !mapsError && (
         <p className="text-xs text-gray-500">
-          Selecione uma sugestão do Google para fixar o ponto no mapa.
+          Digite normalmente e escolha uma sugestão do Google, ou{' '}
+          <button
+            type="button"
+            className="text-yellow-500/90 underline underline-offset-2 hover:text-yellow-400"
+            onClick={() => setManualMode(true)}
+          >
+            digitar sem Google
+          </button>
+          .
         </p>
       )}
+
+      {mapsConfigured && manualMode && (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs text-gray-500">
+            Modo manual: digite o endereço completo e clique em &quot;Confirmar no mapa&quot;.
+          </p>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs text-yellow-500"
+            onClick={enableGoogleSearch}
+          >
+            Usar busca Google
+          </Button>
+        </div>
+      )}
+
       {!mapsConfigured && (
         <p className="text-xs text-gray-500">
-          Sem chave do Google Maps: digite o endereço completo manualmente.
+          Sem chave do Google Maps: digite o endereço completo e use &quot;Confirmar no mapa&quot;.
         </p>
       )}
     </div>

@@ -109,7 +109,7 @@ const EventLocationFormFields: React.FC = () => {
               </FormControl>
               {isGoogleMapsConfigured() && (
                 <FormDescription className="text-gray-500 text-xs">
-                  Busque e selecione o endereço na lista do Google.
+                  Digite o endereço, escolha uma sugestão do Google ou use modo manual + &quot;Confirmar no mapa&quot;.
                 </FormDescription>
               )}
               <FormMessage />
