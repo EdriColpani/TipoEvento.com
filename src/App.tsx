@@ -59,6 +59,7 @@ import AdminListingMonthlyRedirect from "./pages/AdminListingMonthlyRedirect";
 import AdminEventContracts from "./pages/AdminEventContracts"; // NOVO
 import AdminCompaniesBilling from "./pages/AdminCompaniesBilling";
 import AdminListingMonthlyBilling from "./pages/AdminListingMonthlyBilling";
+import AdminContactMessages from "./pages/AdminContactMessages";
 import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
 import SalesReports from "./pages/SalesReports"; // NOVO
 import EventReports from "./pages/EventsReports"; // NOVO
@@ -154,6 +155,7 @@ const App = () => (
                 <Route path="/admin/settings/monthly-invoices" element={<AdminListingMonthlyBilling />} />
                 <Route path="/admin/settings/listing-monthly-billing" element={<AdminListingMonthlyRedirect />} />
                 <Route path="/admin/settings/credit-reports" element={<AdminCreditReports />} />
+                <Route path="/admin/settings/contact-messages" element={<AdminContactMessages />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 

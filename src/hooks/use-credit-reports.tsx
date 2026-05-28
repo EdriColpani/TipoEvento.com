@@ -16,6 +16,55 @@ export type CreditLiabilityReconciliation = {
     expected_liability_from_topups?: number;
 };
 
+export type AdminCreditMpIssue = {
+    created_at: string;
+    issue_type: string;
+    severity: 'high' | 'medium' | 'low' | string;
+    reference_type: string;
+    reference_id: string;
+    client_user_id: string | null;
+    company_id: string | null;
+    company_name: string | null;
+    amount: number | null;
+    status: string | null;
+    details: string;
+};
+
+export type AdminCreditMpIssueSummary = {
+    total_issues?: number;
+    high_severity?: number;
+    medium_severity?: number;
+    topup_issues?: number;
+    spend_issues?: number;
+};
+
+export type AdminCreditFinancialPosition = {
+    period?: {
+        start_date?: string | null;
+        end_date?: string | null;
+    };
+    client_credit?: {
+        liability_now?: number;
+        wallet_balances?: number;
+        expected_liability_from_period?: number;
+    };
+    platform_revenue?: {
+        platform_commission?: number;
+        spend_gross?: number;
+        manager_net?: number;
+    };
+    mp_costs?: {
+        topup_mp_fees?: number;
+        topup_net_cash?: number;
+        mp_disbursed_total?: number;
+        mp_disbursed_failed?: number;
+    };
+    managerial_position?: {
+        available_operational_cash?: number;
+        estimated_mp_wallet_position?: number;
+    };
+};
+
 export type CreditCommissionRow = {
     company_id: string;
     company_name: string;
@@ -61,6 +110,38 @@ export function useAdminCreditReconciliation() {
             return data as CreditLiabilityReconciliation;
         },
         staleTime: 30_000,
+    });
+}
+
+export function useAdminCreditFinancialPosition(startDate?: string | null, endDate?: string | null) {
+    return useQuery({
+        queryKey: ['adminCreditFinancialPosition', startDate, endDate],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('get_admin_credit_financial_position', {
+                p_start_date: startDate || null,
+                p_end_date: endDate || null,
+            });
+            if (error) throw error;
+            return data as AdminCreditFinancialPosition;
+        },
+        staleTime: 30_000,
+    });
+}
+
+export function useAdminCreditMpReconciliationIssues(startDate?: string | null, endDate?: string | null) {
+    return useQuery({
+        queryKey: ['adminCreditMpReconciliationIssues', startDate, endDate],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('list_admin_credit_mp_reconciliation_issues', {
+                p_start_date: startDate || null,
+                p_end_date: endDate || null,
+                p_limit: 400,
+                p_offset: 0,
+            });
+            if (error) throw error;
+            return data as { items: AdminCreditMpIssue[]; summary: AdminCreditMpIssueSummary };
+        },
+        staleTime: 20_000,
     });
 }
 
