@@ -21,6 +21,17 @@ interface EventAddressAutocompleteProps {
   inputClassName?: string;
 }
 
+function detachAutocompleteListener(listener: google.maps.MapsEventListener | null | undefined): void {
+  if (!listener) return;
+  if (typeof listener.remove === 'function') {
+    listener.remove();
+    return;
+  }
+  if (typeof google.maps?.event?.removeListener === 'function') {
+    google.maps.event.removeListener(listener);
+  }
+}
+
 const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
   value,
   onChange,
@@ -31,11 +42,20 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
   inputClassName,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const lastSelectedAddressRef = useRef<string | null>(null);
+  const onChangeRef = useRef(onChange);
+  const onPlaceSelectRef = useRef(onPlaceSelect);
   const [mapsReady, setMapsReady] = useState(false);
   const [mapsError, setMapsError] = useState<string | null>(null);
   const mapsConfigured = isGoogleMapsConfigured();
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    onPlaceSelectRef.current = onPlaceSelect;
+  }, [onPlaceSelect]);
 
   useEffect(() => {
     if (!mapsConfigured || disabled) return;
@@ -44,10 +64,14 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
 
     loadGoogleMapsPlaces()
       .then(() => {
-        if (!cancelled) setMapsReady(true);
+        if (!cancelled) {
+          setMapsReady(true);
+          setMapsError(null);
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
+          setMapsReady(false);
           setMapsError(err instanceof Error ? err.message : 'Não foi possível carregar o Google Maps.');
         }
       });
@@ -60,37 +84,58 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
   useEffect(() => {
     if (!mapsReady || !inputRef.current || disabled || !mapsConfigured) return;
 
-    const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: 'br' },
-      fields: ['formatted_address', 'geometry', 'place_id', 'name', 'address_components'],
-    });
+    let listener: google.maps.MapsEventListener | null = null;
+    let autocomplete: google.maps.places.Autocomplete | null = null;
 
-    const listener: google.maps.MapsEventListener = autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      const lat = place.geometry?.location?.lat();
-      const lng = place.geometry?.location?.lng();
-      const formatted = place.formatted_address?.trim();
-      if (lat == null || lng == null || !formatted) return;
+    try {
+      if (!google.maps?.places?.Autocomplete) {
+        setMapsError(
+          'Google Places indisponível. Verifique a chave da API e os referrers autorizados no Google Cloud.',
+        );
+        setMapsReady(false);
+        return;
+      }
 
-      const venueName = inferVenueName(place);
-      lastSelectedAddressRef.current = formatted;
-      onChange(formatted);
-      onPlaceSelect({
-        address: formatted,
-        lat,
-        lng,
-        placeId: place.place_id ?? null,
-        venueName,
+      autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
+        componentRestrictions: { country: 'br' },
+        fields: ['formatted_address', 'geometry', 'place_id', 'name', 'address_components'],
       });
-    });
 
-    autocompleteRef.current = autocomplete;
+      listener = autocomplete.addListener('place_changed', () => {
+        if (!autocomplete) return;
+        const place = autocomplete.getPlace();
+        const lat = place.geometry?.location?.lat();
+        const lng = place.geometry?.location?.lng();
+        const formatted = place.formatted_address?.trim();
+        if (lat == null || lng == null || !formatted) return;
+
+        const venueName = inferVenueName(place);
+        lastSelectedAddressRef.current = formatted;
+        onChangeRef.current(formatted);
+        onPlaceSelectRef.current({
+          address: formatted,
+          lat,
+          lng,
+          placeId: place.place_id ?? null,
+          venueName,
+        });
+      });
+    } catch (err: unknown) {
+      setMapsReady(false);
+      setMapsError(
+        err instanceof Error
+          ? err.message
+          : 'Erro ao iniciar autocomplete do Google Maps. Digite o endereço manualmente.',
+      );
+      return;
+    }
 
     return () => {
-      listener.remove();
-      autocompleteRef.current = null;
+      detachAutocompleteListener(listener);
+      autocomplete = null;
+      listener = null;
     };
-  }, [mapsReady, disabled, mapsConfigured, onChange, onPlaceSelect]);
+  }, [mapsReady, disabled, mapsConfigured]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
@@ -101,6 +146,8 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
     }
   };
 
+  const autocompleteUnavailable = Boolean(mapsError);
+
   return (
     <div className="space-y-1">
       <Input
@@ -109,7 +156,7 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
         onChange={handleInputChange}
         disabled={disabled}
         placeholder={
-          mapsConfigured
+          mapsConfigured && !autocompleteUnavailable
             ? placeholder
             : 'Ex: Rua Principal, 123 - Centro, Cidade - UF'
         }
@@ -125,8 +172,12 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
           Carregando busca de endereço…
         </p>
       )}
-      {mapsError && <p className="text-xs text-amber-500/90">{mapsError}</p>}
-      {mapsConfigured && mapsReady && (
+      {mapsError && (
+        <p className="text-xs text-amber-500/90">
+          {mapsError} Você ainda pode digitar o endereço manualmente.
+        </p>
+      )}
+      {mapsConfigured && mapsReady && !mapsError && (
         <p className="text-xs text-gray-500">
           Selecione uma sugestão do Google para fixar o ponto no mapa.
         </p>

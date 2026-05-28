@@ -47,6 +47,34 @@ export function buildGoogleMapsDirectionsUrl(params: EventMapQuery): string | nu
 
 let loadPromise: Promise<void> | null = null;
 
+function placesAutocompleteAvailable(): boolean {
+  return Boolean(window.google?.maps?.places?.Autocomplete);
+}
+
+function waitForPlacesAutocomplete(timeoutMs = 8000): Promise<void> {
+  if (placesAutocompleteAvailable()) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const check = () => {
+      if (placesAutocompleteAvailable()) {
+        resolve();
+        return;
+      }
+      if (Date.now() - started >= timeoutMs) {
+        reject(
+          new Error(
+            'Google Places indisponível. Verifique VITE_GOOGLE_MAPS_API_KEY, billing e referrers HTTP no Google Cloud.',
+          ),
+        );
+        return;
+      }
+      window.setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
 export function loadGoogleMapsPlaces(): Promise<void> {
   if (typeof window === 'undefined') {
     return Promise.reject(new Error('Google Maps só está disponível no navegador.'));
@@ -54,16 +82,39 @@ export function loadGoogleMapsPlaces(): Promise<void> {
   if (!GOOGLE_MAPS_API_KEY) {
     return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY não configurada.'));
   }
-  if (window.google?.maps?.places) {
+  if (placesAutocompleteAvailable()) {
     return Promise.resolve();
   }
   if (loadPromise) return loadPromise;
 
   loadPromise = new Promise((resolve, reject) => {
+    const finishOk = () => {
+      waitForPlacesAutocomplete()
+        .then(resolve)
+        .catch((err) => {
+          loadPromise = null;
+          reject(err);
+        });
+    };
+    const finishErr = (message: string) => {
+      loadPromise = null;
+      reject(new Error(message));
+    };
+
     const existing = document.querySelector<HTMLScriptElement>('script[data-google-maps-loader]');
     if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('Falha ao carregar Google Maps.')));
+      if (placesAutocompleteAvailable()) {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', finishOk, { once: true });
+      existing.addEventListener('error', () => finishErr('Falha ao carregar Google Maps.'), { once: true });
+      void waitForPlacesAutocomplete()
+        .then(resolve)
+        .catch((err) => {
+          loadPromise = null;
+          reject(err);
+        });
       return;
     }
 
@@ -72,8 +123,8 @@ export function loadGoogleMapsPlaces(): Promise<void> {
     script.async = true;
     script.defer = true;
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=pt-BR&region=BR`;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Falha ao carregar Google Maps.'));
+    script.onload = finishOk;
+    script.onerror = () => finishErr('Falha ao carregar Google Maps.');
     document.head.appendChild(script);
   });
 
