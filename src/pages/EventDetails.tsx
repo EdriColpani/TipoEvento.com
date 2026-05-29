@@ -499,12 +499,12 @@ const EventDetails: React.FC = () => {
                                 </div>
                             </div>
                             
-                            {event.highlights.length > 0 && (
-                                <div>
-                                    <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-4 sm:mb-6">
-                                        Destaques do Evento
-                                    </h3>
-                                    <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
+                            <div>
+                                <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-4 sm:mb-6">
+                                    Destaques do Evento
+                                </h3>
+                                <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
+                                    {event.highlights.length > 0 ? (
                                         <ul className="space-y-3">
                                             {event.highlights.map((highlight, index) => (
                                                 <li
@@ -519,9 +519,14 @@ const EventDetails: React.FC = () => {
                                                 </li>
                                             ))}
                                         </ul>
-                                    </div>
+                                    ) : (
+                                        <p className="text-gray-400 text-sm sm:text-base">
+                                            O organizador ainda não cadastrou destaques para este evento. Consulte a
+                                            descrição em &quot;Sobre o evento&quot; acima.
+                                        </p>
+                                    )}
                                 </div>
-                            )}
+                            </div>
                             <div>
                                 <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-4 sm:mb-6">Localização</h3>
                                 <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">

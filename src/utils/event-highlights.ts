@@ -22,10 +22,59 @@ export function parseHighlightsText(text: string | null | undefined): string[] {
     return unique;
 }
 
+/**
+ * Normaliza o valor vindo do Supabase/Postgres (text[], text com JSON, etc.).
+ */
+export function parseHighlightsFromDb(value: unknown): string[] {
+    if (value == null) return [];
+
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => {
+                if (typeof item === 'string') return item.trim();
+                if (item != null) return String(item).trim();
+                return '';
+            })
+            .filter(Boolean);
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return [];
+
+        if (trimmed.startsWith('[')) {
+            try {
+                return parseHighlightsFromDb(JSON.parse(trimmed) as unknown);
+            } catch {
+                /* fallthrough */
+            }
+        }
+
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            const pgArrayInner = trimmed.slice(1, -1);
+            if (pgArrayInner) {
+                return pgArrayInner
+                    .split(',')
+                    .map((part) => part.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''))
+                    .filter(Boolean);
+            }
+            return [];
+        }
+
+        return trimmed
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+    }
+
+    return [];
+}
+
 /** Converte array do banco em texto para o textarea do gestor. */
-export function highlightsToText(highlights: string[] | null | undefined): string {
-    if (!highlights?.length) return '';
-    return highlights.join('\n');
+export function highlightsToText(highlights: unknown): string {
+    const items = parseHighlightsFromDb(highlights);
+    if (!items.length) return '';
+    return items.join('\n');
 }
 
 export function validateHighlightsText(text: string | null | undefined): string | null {

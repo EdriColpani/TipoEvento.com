@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
+import { parseHighlightsFromDb } from '@/utils/event-highlights';
 
 // Estrutura de dados do Evento (simplificada)
 export interface EventData {
@@ -57,13 +58,34 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
 
     // 1. Buscar detalhes do Evento (sem o JOIN de companies primeiro para evitar erro PGRST201)
     // Vamos buscar a empresa separadamente se necessário
-    const { data: eventDataRaw, error: eventError } = await supabase
-        .from('events')
-        .select(`
+    const eventSelectWithHighlights = `
             id, title, description, highlights, date, time, location, address, address_lat, address_lng, address_place_id, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid, credit_consumption_enabled
-        `)
+        `;
+    const eventSelectLegacy = `
+            id, title, description, date, time, location, address, address_lat, address_lng, address_place_id, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid, credit_consumption_enabled
+        `;
+
+    let eventDataRaw: Record<string, unknown> | null = null;
+    let eventError: { code?: string; message?: string; details?: string; hint?: string } | null = null;
+
+    const primary = await supabase
+        .from('events')
+        .select(eventSelectWithHighlights)
         .eq('id', eventId)
         .maybeSingle();
+
+    eventDataRaw = primary.data as Record<string, unknown> | null;
+    eventError = primary.error;
+
+    if (eventError?.message?.includes('highlights')) {
+        const fallback = await supabase
+            .from('events')
+            .select(eventSelectLegacy)
+            .eq('id', eventId)
+            .maybeSingle();
+        eventDataRaw = fallback.data as Record<string, unknown> | null;
+        eventError = fallback.error;
+    }
 
     if (eventError) {
         if (eventError.code === 'PGRST116') { // No rows found
@@ -174,10 +196,9 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     }
     
     // 5. Combinar dados
-    const rawHighlights = (eventDataRaw as { highlights?: string[] | null }).highlights;
-    const highlights = Array.isArray(rawHighlights)
-        ? rawHighlights.filter((h): h is string => typeof h === 'string' && h.trim() !== '')
-        : [];
+    const highlights = parseHighlightsFromDb(
+        (eventDataRaw as { highlights?: unknown }).highlights,
+    );
 
     const event: EventData = {
         ...eventDataRaw,
