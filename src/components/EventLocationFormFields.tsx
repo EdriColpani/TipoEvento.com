@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import EventAddressAutocomplete from '@/components/EventAddressAutocomplete';
 import EventLocationMap from '@/components/EventLocationMap';
+import { cn, outlineBtnDarkClass } from '@/lib/utils';
 import {
   buildMapSearchQuery,
   geocodeBrazilAddress,
+  GOOGLE_MAPS_SETUP_HINT,
   isGoogleMapsConfigured,
+  subscribeGoogleMapsAuthFailure,
 } from '@/utils/google-maps';
 import { Loader2, MapPin } from 'lucide-react';
 import { showError } from '@/utils/toast';
@@ -25,6 +28,12 @@ const EventLocationFormFields: React.FC = () => {
   const showPreview = Boolean((address ?? '').trim().length >= 5);
   const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
   const [geocoding, setGeocoding] = useState(false);
+  const [mapsAuthBlocked, setMapsAuthBlocked] = useState(false);
+
+  useEffect(() => {
+    if (!isGoogleMapsConfigured()) return;
+    return subscribeGoogleMapsAuthFailure(setMapsAuthBlocked);
+  }, []);
 
   const clearGeo = () => {
     setValue('address_lat', null, { shouldDirty: true });
@@ -64,6 +73,15 @@ const EventLocationFormFields: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {mapsAuthBlocked && (
+        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-3 text-sm text-red-200/95">
+          <p className="font-medium text-red-300">Google Maps bloqueou esta chave neste site (ApiTargetBlockedMapError).</p>
+          <p className="mt-1 text-xs text-red-200/80">{GOOGLE_MAPS_SETUP_HINT}</p>
+          <p className="mt-2 text-xs text-gray-400">
+            Você ainda pode digitar o endereço manualmente e salvar o evento.
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField
           control={control}
@@ -129,7 +147,7 @@ const EventLocationFormFields: React.FC = () => {
             variant="outline"
             disabled={geocoding}
             onClick={() => void handleConfirmOnMap()}
-            className="border-amber-500/40 text-amber-200 hover:bg-amber-500/10 shrink-0"
+            className={cn(outlineBtnDarkClass, 'shrink-0')}
           >
             {geocoding ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />

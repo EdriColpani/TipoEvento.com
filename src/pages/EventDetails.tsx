@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import AuthStatusMenu from '@/components/AuthStatusMenu';
 import { Input } from '@/components/ui/input';
 import { useEventDetails, EventDetailsData, TicketType } from '@/hooks/use-event-details';
-import { Loader2, ShoppingCart, Wallet } from 'lucide-react';
+import { Check, Loader2, ShoppingCart, Wallet } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast'; // Importando showLoading/dismissToast
 import { useAuthRedirect } from '@/hooks/use-auth-redirect';
@@ -499,15 +499,29 @@ const EventDetails: React.FC = () => {
                                 </div>
                             </div>
                             
-                            <div>
-                                <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-4 sm:mb-6">Destaques do Evento</h3>
-                                <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
-                                    <div className="text-gray-400">
-                                        {/* Placeholder para destaques, pois não temos este campo no DB */}
-                                        <p>Destaques não disponíveis no momento. Consulte a descrição.</p>
+                            {event.highlights.length > 0 && (
+                                <div>
+                                    <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-4 sm:mb-6">
+                                        Destaques do Evento
+                                    </h3>
+                                    <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
+                                        <ul className="space-y-3">
+                                            {event.highlights.map((highlight, index) => (
+                                                <li
+                                                    key={`${index}-${highlight}`}
+                                                    className="flex items-start gap-3 text-gray-200 text-sm sm:text-base"
+                                                >
+                                                    <Check
+                                                        className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5"
+                                                        aria-hidden
+                                                    />
+                                                    <span>{highlight}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                             <div>
                                 <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-4 sm:mb-6">Localização</h3>
                                 <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
@@ -629,7 +643,7 @@ const EventDetails: React.FC = () => {
                                                             || salesClosed
                                                             || !canPayWithCredit
                                                         }
-                                                        className="w-full border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 py-3 sm:py-4 text-base sm:text-lg font-semibold disabled:opacity-50"
+                                                        className="w-full bg-black/60 border-yellow-500/50 text-white hover:bg-yellow-500/10 hover:text-yellow-500 py-3 sm:py-4 text-base sm:text-lg font-semibold disabled:opacity-50"
                                                     >
                                                         {isCreditProcessing ? (
                                                             <Loader2 className="h-5 w-5 animate-spin mr-2" />

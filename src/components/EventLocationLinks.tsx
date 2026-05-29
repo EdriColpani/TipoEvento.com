@@ -6,7 +6,7 @@ import {
   buildGoogleMapsOpenUrl,
   type EventMapQuery,
 } from '@/utils/google-maps';
-import { cn } from '@/lib/utils';
+import { cn, outlineBtnDarkClass } from '@/lib/utils';
 
 export interface EventLocationLinksProps extends EventMapQuery {
   className?: string;
@@ -31,10 +31,10 @@ const EventLocationLinks: React.FC<EventLocationLinksProps> = ({
 
   if (!openUrl && !directionsUrl) return null;
 
-  const btnClass =
-    size === 'sm'
-      ? 'h-8 px-2.5 text-xs border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10'
-      : 'border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10';
+  const btnClass = cn(
+    outlineBtnDarkClass,
+    size === 'sm' && 'h-8 px-2.5 text-xs',
+  );
 
   return (
     <div className={cn('flex flex-wrap gap-2', className)}>

@@ -7,6 +7,7 @@ export interface EventData {
     id: string;
     title: string;
     description: string;
+    highlights: string[];
     date: string;
     time: string;
     location: string;
@@ -59,7 +60,7 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     const { data: eventDataRaw, error: eventError } = await supabase
         .from('events')
         .select(`
-            id, title, description, date, time, location, address, address_lat, address_lng, address_place_id, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid, credit_consumption_enabled
+            id, title, description, highlights, date, time, location, address, address_lat, address_lng, address_place_id, image_url, exposure_card_image_url, banner_image_url, min_age, category, capacity, duration, company_id, is_active, listing_only, is_paid, credit_consumption_enabled
         `)
         .eq('id', eventId)
         .maybeSingle();
@@ -173,8 +174,14 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     }
     
     // 5. Combinar dados
+    const rawHighlights = (eventDataRaw as { highlights?: string[] | null }).highlights;
+    const highlights = Array.isArray(rawHighlights)
+        ? rawHighlights.filter((h): h is string => typeof h === 'string' && h.trim() !== '')
+        : [];
+
     const event: EventData = {
         ...eventDataRaw,
+        highlights,
         min_price: minPrice,
         min_price_wristband_id: minPriceWristbandId,
         is_active: (eventDataRaw as { is_active?: boolean }).is_active !== false,
