@@ -46,6 +46,20 @@ export function buildGoogleMapsDirectionsUrl(params: EventMapQuery): string | nu
 }
 
 let loadPromise: Promise<void> | null = null;
+let loadCorePromise: Promise<void> | null = null;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      window.setTimeout(() => resolve(fallback), timeoutMs);
+    }),
+  ]);
+}
+
+function mapsCoreAvailable(): boolean {
+  return Boolean(window.google?.maps);
+}
 
 function placesAutocompleteAvailable(): boolean {
   return Boolean(window.google?.maps?.places?.Autocomplete);
@@ -122,13 +136,73 @@ export function loadGoogleMapsPlaces(): Promise<void> {
     script.dataset.googleMapsLoader = 'true';
     script.async = true;
     script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=pt-BR&region=BR`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=pt-BR&region=BR&loading=async`;
     script.onload = finishOk;
     script.onerror = () => finishErr('Falha ao carregar Google Maps.');
     document.head.appendChild(script);
   });
 
   return loadPromise;
+}
+
+/** Carrega Maps JS sem exigir Places (geocoding / embed). */
+export function loadGoogleMapsCore(): Promise<void> {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Google Maps só está disponível no navegador.'));
+  }
+  if (!GOOGLE_MAPS_API_KEY) {
+    return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY não configurada.'));
+  }
+  if (mapsCoreAvailable()) {
+    return Promise.resolve();
+  }
+  if (loadCorePromise) return loadCorePromise;
+
+  loadCorePromise = new Promise((resolve, reject) => {
+    const finishOk = () => {
+      const started = Date.now();
+      const check = () => {
+        if (mapsCoreAvailable()) {
+          resolve();
+          return;
+        }
+        if (Date.now() - started >= 6000) {
+          loadCorePromise = null;
+          reject(new Error('Google Maps indisponível (timeout).'));
+          return;
+        }
+        window.setTimeout(check, 100);
+      };
+      check();
+    };
+    const finishErr = (message: string) => {
+      loadCorePromise = null;
+      reject(new Error(message));
+    };
+
+    const existing = document.querySelector<HTMLScriptElement>('script[data-google-maps-loader]');
+    if (existing) {
+      if (mapsCoreAvailable()) {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', finishOk, { once: true });
+      existing.addEventListener('error', () => finishErr('Falha ao carregar Google Maps.'), { once: true });
+      void finishOk();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.dataset.googleMapsLoader = 'true';
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}&libraries=places&language=pt-BR&region=BR&loading=async`;
+    script.onload = finishOk;
+    script.onerror = () => finishErr('Falha ao carregar Google Maps.');
+    document.head.appendChild(script);
+  });
+
+  return loadCorePromise;
 }
 
 export interface GeocodedAddress {
@@ -143,12 +217,17 @@ export async function geocodeBrazilAddress(query: string): Promise<GeocodedAddre
   const trimmed = query.trim();
   if (!trimmed || !isGoogleMapsConfigured()) return null;
 
-  await loadGoogleMapsPlaces();
+  try {
+    await withTimeout(loadGoogleMapsCore(), 6000, undefined);
+  } catch {
+    return null;
+  }
+
   if (!google.maps?.Geocoder) return null;
 
   const geocoder = new google.maps.Geocoder();
 
-  return new Promise((resolve) => {
+  const geocodePromise = new Promise<GeocodedAddress | null>((resolve) => {
     geocoder.geocode({ address: trimmed, componentRestrictions: { country: 'BR' } }, (results, status) => {
       if (status !== 'OK' || !results?.[0]?.geometry?.location) {
         resolve(null);
@@ -163,6 +242,8 @@ export async function geocodeBrazilAddress(query: string): Promise<GeocodedAddre
       });
     });
   });
+
+  return withTimeout(geocodePromise, 6000, null);
 }
 
 export interface EventGeoValues {
@@ -179,16 +260,22 @@ export async function resolveEventGeoOnSave(values: EventGeoValues): Promise<Eve
   if (!values.address?.trim()) return values;
   if (values.address_lat != null && values.address_lng != null) return values;
 
-  const geocoded = await geocodeBrazilAddress(
-    buildMapSearchQuery({ address: values.address, location: values.location }),
-  );
-  if (!geocoded) return values;
+  try {
+    const geocoded = await withTimeout(
+      geocodeBrazilAddress(buildMapSearchQuery({ address: values.address, location: values.location })),
+      7000,
+      null,
+    );
+    if (!geocoded) return values;
 
-  return {
-    ...values,
-    address: geocoded.address,
-    address_lat: geocoded.lat,
-    address_lng: geocoded.lng,
-    address_place_id: geocoded.placeId ?? values.address_place_id ?? null,
-  };
+    return {
+      ...values,
+      address: geocoded.address,
+      address_lat: geocoded.lat,
+      address_lng: geocoded.lng,
+      address_place_id: geocoded.placeId ?? values.address_place_id ?? null,
+    };
+  } catch {
+    return values;
+  }
 }
