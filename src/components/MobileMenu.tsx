@@ -9,6 +9,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useUserType } from '@/hooks/use-user-type'; // Importando novo hook
 import { showSuccess, showError } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company'; // NOVO: Importando hook da empresa
+import { useLandingUiOptional } from '@/contexts/LandingUiContext';
 
 const MANAGER_USER_TYPE_ID = 2;
 
@@ -45,7 +46,7 @@ const MobileMenu: React.FC = () => {
     // NOVO: Busca dados da empresa se for Gestor PRO (tipo 2)
     const isManagerPro = profile?.tipo_usuario_id === MANAGER_USER_TYPE_ID;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
-
+    const landingUi = useLandingUiOptional();
 
     const handleNavigation = (path: string, loginReturnTo?: string) => {
         setIsOpen(false);
@@ -198,7 +199,13 @@ const MobileMenu: React.FC = () => {
                             <a 
                                 key={item.path}
                                 href={item.path}
-                                onClick={() => setIsOpen(false)}
+                                onClick={(e) => {
+                                    if (item.path === '/#contato' && landingUi) {
+                                        e.preventDefault();
+                                        landingUi.openContact();
+                                    }
+                                    setIsOpen(false);
+                                }}
                                 className="flex items-center p-3 rounded-xl text-white hover:bg-yellow-500/10 transition-colors duration-200"
                             >
                                 <i className={`${item.icon} mr-4 text-yellow-500 w-5`}></i>

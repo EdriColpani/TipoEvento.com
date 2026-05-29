@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { categories } from '@/data/events';
+import { cn } from '@/lib/utils';
+import {
+    buildLandingCategoryCards,
+    categoriesMatch,
+} from '@/utils/landing-categories';
 import AuthStatusMenu from '@/components/AuthStatusMenu';
 import { Input } from "@/components/ui/input";
 import MobileMenu from '@/components/MobileMenu';
@@ -13,6 +17,9 @@ import { useDevice } from '@/hooks/use-device';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import Carousel3D from '@/components/Carousel3D'; // Importando o novo carrossel
 import { showSuccess, showError } from '@/utils/toast'; // Importando toast
+import { useLandingUi } from '@/contexts/LandingUiContext';
+import LandingContactPanel from '@/components/landing/LandingContactPanel';
+import LandingFooter from '@/components/landing/LandingFooter';
 
 const EVENTS_PER_PAGE = 12;
 
@@ -103,6 +110,8 @@ const Index: React.FC = () => {
     const [contactFormPhone, setContactFormPhone] = useState('');
     const [contactMessage, setContactMessage] = useState('');
     const [sendingContact, setSendingContact] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const { contactOpen } = useLandingUi();
 
     const filteredEvents = React.useMemo(() => {
         let list = allEvents;
@@ -116,7 +125,7 @@ const Index: React.FC = () => {
             );
         }
         if (categoryFilter) {
-            list = list.filter((e) => (e.category || '').toLowerCase() === categoryFilter.toLowerCase());
+            list = list.filter((e) => categoriesMatch(e.category || '', categoryFilter));
         }
         if (cityFilter) {
             list = list.filter((e) => (e.location || '').toLowerCase().includes(cityFilter.toLowerCase()));
@@ -149,7 +158,19 @@ const Index: React.FC = () => {
         return applyAdvancedFilters(list, filters);
     }, [allEvents, searchTerm, categoryFilter, cityFilter, dateFilter, filters]);
 
-    const [currentPage, setCurrentPage] = useState(1);
+    const categoryCards = React.useMemo(
+        () => buildLandingCategoryCards(allEvents),
+        [allEvents],
+    );
+
+    const handleCategoryCardClick = (categoryName: string) => {
+        setCategoryFilter((prev) => (categoriesMatch(prev, categoryName) ? '' : categoryName));
+        setCurrentPage(1);
+        window.setTimeout(() => {
+            document.getElementById('eventos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
+    };
+
     const totalPages = Math.max(1, Math.ceil(filteredEvents.length / EVENTS_PER_PAGE));
 
     useEffect(() => {
@@ -292,7 +313,13 @@ const Index: React.FC = () => {
                 <Carousel3D />
             </section>
             
-            <section id="eventos" className={`bg-black ${isMobile ? 'py-8 px-3' : isTablet ? 'py-12 px-4' : 'py-12 sm:py-20 px-4 sm:px-6'}`}>
+            <section
+                id="eventos"
+                className={cn(
+                    'bg-black scroll-mt-28',
+                    isMobile ? 'py-8 px-3' : isTablet ? 'py-12 px-4' : 'py-12 sm:py-20 px-4 sm:px-6',
+                )}
+            >
                 <div className="max-w-7xl mx-auto">
                     <div className={`text-center ${isMobile ? 'mb-6' : 'mb-10 sm:mb-16'}`}>
                         <h2 className={`font-serif text-yellow-500 mb-4 ${isMobile ? 'text-2xl' : 'text-3xl sm:text-5xl'}`}>Lista de Eventos</h2>
@@ -320,11 +347,11 @@ const Index: React.FC = () => {
                                     className="bg-black/60 border border-yellow-500/30 rounded-xl px-4 sm:px-6 py-3 sm:py-4 text-white focus:border-yellow-500 focus:outline-none cursor-pointer text-sm sm:text-base"
                                 >
                                     <option value="">Todas as Categorias</option>
-                                    <option value="musica">Música</option>
-                                    <option value="negocios">Negócios</option>
-                                    <option value="arte">Arte</option>
-                                    <option value="gastronomia">Gastronomia</option>
-                                    <option value="tecnologia">Tecnologia</option>
+                                    {categoryCards.map((cat) => (
+                                        <option key={String(cat.id)} value={cat.name}>
+                                            {cat.name}
+                                        </option>
+                                    ))}
                                 </select>
                                 <select
                                     value={cityFilter}
@@ -559,19 +586,50 @@ const Index: React.FC = () => {
                         <div className="w-16 sm:w-24 h-px bg-yellow-500 mx-auto"></div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6">
-                        {categories.map((category) => (
-                            <div
-                                key={category.id}
-                                className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-4 sm:p-6 text-center hover:border-yellow-500/60 hover:shadow-lg hover:shadow-yellow-500/20 transition-all duration-300 cursor-pointer hover:scale-105"
-                            >
-                                <div className="text-3xl sm:text-4xl text-yellow-500 mb-2 sm:mb-4">
-                                    <i className={category.icon}></i>
-                                </div>
-                                <h3 className="text-white font-semibold text-sm sm:text-base mb-1">{category.name}</h3>
-                                <span className="text-gray-400 text-xs sm:text-sm">{category.count} eventos</span>
-                            </div>
-                        ))}
+                        {categoryCards.map((category) => {
+                            const isActive = categoriesMatch(categoryFilter, category.name);
+                            const countLabel =
+                                category.count === 1 ? '1 evento' : `${category.count} eventos`;
+                            return (
+                                <button
+                                    key={category.id}
+                                    type="button"
+                                    onClick={() => handleCategoryCardClick(category.name)}
+                                    aria-pressed={isActive}
+                                    className={cn(
+                                        'bg-black/60 backdrop-blur-sm border rounded-2xl p-4 sm:p-6 text-center transition-all duration-300 cursor-pointer hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400',
+                                        isActive
+                                            ? 'border-cyan-400 shadow-lg shadow-cyan-500/25 scale-105'
+                                            : 'border-yellow-500/30 hover:border-yellow-500/60 hover:shadow-lg hover:shadow-yellow-500/20',
+                                    )}
+                                >
+                                    <div className="text-3xl sm:text-4xl text-yellow-500 mb-2 sm:mb-4">
+                                        <i className={category.icon} aria-hidden />
+                                    </div>
+                                    <h3 className="text-white font-semibold text-sm sm:text-base mb-1">
+                                        {category.name}
+                                    </h3>
+                                    <span className="text-gray-400 text-xs sm:text-sm">{countLabel}</span>
+                                </button>
+                            );
+                        })}
                     </div>
+                    {categoryFilter ? (
+                        <p className="text-center text-gray-400 text-sm mt-6">
+                            Filtrando por{' '}
+                            <span className="text-cyan-400 font-medium">{categoryFilter}</span>.{' '}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setCategoryFilter('');
+                                    setCurrentPage(1);
+                                }}
+                                className="text-yellow-500 hover:text-cyan-300 underline underline-offset-2"
+                            >
+                                Ver todos os eventos
+                            </button>
+                        </p>
+                    ) : null}
                 </div>
             </section>
             <section className={isMobile ? 'py-8 px-3' : 'py-12 sm:py-20 px-4 sm:px-6'}>
@@ -588,106 +646,37 @@ const Index: React.FC = () => {
                     </Button>
                 </div>
             </section>
-            <footer id="contato" className={`bg-black border-t border-yellow-500/20 scroll-mt-28 ${isMobile ? 'py-8 px-3' : 'py-12 sm:py-16 px-4 sm:px-6'}`}>
+            <footer
+                id="contato"
+                className={`bg-black border-t border-yellow-500/20 scroll-mt-28 ${isMobile ? 'py-8 px-3' : 'py-12 sm:py-16 px-4 sm:px-6'}`}
+            >
                 <div className="max-w-7xl mx-auto">
-                    <div className="mb-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <Card className="bg-black/60 border border-yellow-500/30 rounded-2xl">
-                            <div className="p-6">
-                                <h3 className="text-xl text-yellow-500 font-semibold mb-2">Contato</h3>
-                                <p className="text-gray-300 text-sm mb-4">
-                                    Atendimento oficial {contactCompanyName}. Fale com nosso time pelo telefone abaixo
-                                    ou envie uma mensagem pelo formulário.
-                                </p>
-                                <p className="text-white text-lg font-medium">
-                                    Telefone: <span className="text-yellow-500">{contactPhone}</span>
-                                </p>
-                            </div>
-                        </Card>
-                        <Card className="bg-black/60 border border-yellow-500/30 rounded-2xl">
-                            <div className="p-6 space-y-3">
-                                <h3 className="text-xl text-yellow-500 font-semibold">Deixe sua mensagem</h3>
-                                <Input
-                                    value={contactName}
-                                    onChange={(e) => setContactName(e.target.value)}
-                                    placeholder="Seu nome"
-                                    className="bg-black/60 border-yellow-500/30 text-white"
-                                />
-                                <Input
-                                    value={contactFormPhone}
-                                    onChange={(e) => setContactFormPhone(e.target.value)}
-                                    placeholder="Seu telefone"
-                                    className="bg-black/60 border-yellow-500/30 text-white"
-                                />
-                                <textarea
-                                    value={contactMessage}
-                                    onChange={(e) => setContactMessage(e.target.value)}
-                                    placeholder="Digite sua mensagem"
-                                    className="w-full min-h-[110px] rounded-md bg-black/60 border border-yellow-500/30 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
-                                />
-                                <Button
-                                    type="button"
-                                    onClick={handleSendContact}
-                                    disabled={sendingContact}
-                                    className="bg-yellow-500 text-black hover:bg-yellow-600"
-                                >
-                                    {sendingContact ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                                    Enviar mensagem
-                                </Button>
-                            </div>
-                        </Card>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
-                        <div className="col-span-2 md:col-span-1">
-                            <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold mb-4">
-                                EventFest
-                            </div>
-                            <p className="text-gray-400 text-sm leading-relaxed">
-                                A plataforma que faz tudo acontecer.
-                            </p>
-                        </div>
-                        <div>
-                            <h4 className="text-white font-semibold mb-4 text-base sm:text-lg">Links Úteis</h4>
-                            <ul className="space-y-2 text-sm">
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Sobre Nós</a></li>
-                                <li><a href="#" className="text-400 hover:text-yellow-500 transition-colors cursor-pointer">Como Funciona</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Termos de Uso</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Privacidade</a></li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="text-white font-semibold mb-4 text-base sm:text-lg">Suporte</h4>
-                            <ul className="space-y-2 text-sm">
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Central de Ajuda</a></li>
-                                <li><a href="/#contato" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Contato</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">FAQ</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Feedback</a></li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="text-white font-semibold mb-4 text-base sm:text-lg">Redes Sociais</h4>
-                            <div className="flex space-x-4">
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-instagram text-xl sm:text-2xl"></i>
-                                </a>
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-facebook text-xl sm:text-2xl"></i>
-                                </a>
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-twitter text-xl sm:text-2xl"></i>
-                                </a>
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-linkedin text-xl sm:text-2xl"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="border-t border-yellow-500/20 pt-6 text-center">
-                        <p className="text-gray-400 text-sm">
-                            © 2025 EventFest. Todos os direitos reservados.
+                    <LandingContactPanel
+                        contactPhone={contactPhone}
+                        contactCompanyName={contactCompanyName}
+                        contactName={contactName}
+                        setContactName={setContactName}
+                        contactFormPhone={contactFormPhone}
+                        setContactFormPhone={setContactFormPhone}
+                        contactMessage={contactMessage}
+                        setContactMessage={setContactMessage}
+                        sendingContact={sendingContact}
+                        onSendContact={handleSendContact}
+                        isMobile={isMobile}
+                    />
+                    {!contactOpen && (
+                        <p className="text-center text-gray-500 text-sm mb-6">
+                            Clique em <span className="text-cyan-400">Contato</span> no menu para abrir o
+                            formulário e telefone de atendimento.
                         </p>
+                    )}
+                    <LandingFooter isMobile={isMobile} />
+                    <div className="border-t border-yellow-500/20 pt-6 text-center">
+                        <p className="text-gray-400 text-sm">© 2025 EventFest. Todos os direitos reservados.</p>
                     </div>
                 </div>
             </footer>
+
         </div>
     );
 };
