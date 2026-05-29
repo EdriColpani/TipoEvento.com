@@ -117,6 +117,11 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Links usados como botão (asChild): não herdar cor de link do navegador */
+  a.inline-flex.no-underline {
+    text-decoration: none;
+  }
 }
 
 .line-clamp-2 {

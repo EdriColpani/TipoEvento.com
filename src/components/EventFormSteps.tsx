@@ -43,6 +43,20 @@ import {
     persistManagerCreateEventDraftId,
     readManagerCreateEventDraftId,
 } from '@/utils/manager-create-event-session';
+import {
+    MAX_EVENT_HIGHLIGHTS,
+    parseHighlightsText,
+    validateHighlightsText,
+} from '@/utils/event-highlights';
+import { useEventEditSalesGuard } from '@/hooks/use-event-edit-sales-guard';
+import {
+    batchesDifferFromSnapshot,
+    salesGuardLockedMessage,
+    snapshotBatchesForLock,
+    turmasDifferFromSnapshot,
+    type LockedBatchSnapshot,
+    type LockedTurmaSnapshot,
+} from '@/utils/event-edit-sales-guard';
 
 interface EventContract {
     id: string;
@@ -68,6 +82,8 @@ interface CommissionRange {
 const eventFormSchema = z.object({
     title: z.string().min(3, "O título deve ter pelo menos 3 caracteres.").max(100, "O título não pode exceder 100 caracteres."),
     description: z.string().min(10, "A descrição deve ter pelo menos 10 caracteres.").max(1000, "A descrição não pode exceder 1000 caracteres."),
+    /** Textarea: um destaque por linha (opcional). */
+    highlights_text: z.string().max(2000, "Destaques: texto muito longo.").optional().default(''),
     date: z.date({ required_error: "A data do evento é obrigatória." }),
     // Deixamos o <input type=\"time\" garantir o formato HH:MM
     // Aqui só exigimos que o campo não esteja vazio
@@ -109,10 +125,12 @@ const eventFormSchema = z.object({
     })).optional(),
     contractAccepted: z.boolean().default(false),
     contract_id: z.string().optional(), // Para armazenar o ID do contrato aceito
-}).refine((data) => {
-    // Validação condicional: só exige contrato se o evento for pago
-    return true;
-}, { message: "Validação de contrato" }).superRefine((data, ctx) => {
+}).superRefine((data, ctx) => {
+    const highlightsErr = validateHighlightsText(data.highlights_text);
+    if (highlightsErr) {
+        ctx.addIssue({ code: 'custom', message: highlightsErr, path: ['highlights_text'] });
+    }
+}).superRefine((data, ctx) => {
     // Só valida lotes quando o evento é pago; evento gratuito ignora batches
     if (!data.is_paid) return;
     if (!data.batches || data.batches.length === 0) {
@@ -175,6 +193,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const [userId, setUserId] = useState<string | null>(propUserId || null);
     const [useTurmas, setUseTurmas] = useState(false);
     const [editPricingLoading, setEditPricingLoading] = useState(Boolean(eventId));
+    const lockedBatchesRef = useRef<LockedBatchSnapshot[] | null>(null);
+    const lockedTurmasRef = useRef<LockedTurmaSnapshot[] | null>(null);
+    const lockedIsPaidRef = useRef<boolean | null>(null);
+    const { data: salesGuard } = useEventEditSalesGuard(eventId);
+    const ticketsLocked = Boolean(eventId && salesGuard?.has_sales);
     const [turmasDraft, setTurmasDraft] = useState<Array<{ id?: string; nome: string; capacity: string }>>([
         { nome: 'Turma 1', capacity: '50' },
         { nome: 'Turma 2', capacity: '50' },
@@ -295,6 +318,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         defaultValues: {
             title: initialData?.title || '',
             description: initialData?.description || '',
+            highlights_text: initialData?.highlights_text ?? '',
             date: initialData?.date ?? undefined,
             time: initialData?.time || '',
             location: initialData?.location || '',
@@ -359,7 +383,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     // Atualiza o número de lotes dinamicamente
     useEffect(() => {
-        if (!isPaid || editPricingLoading) return;
+        if (!isPaid || editPricingLoading || ticketsLocked) return;
         const currentBatches = methods.getValues('batches') || [];
         if (numBatches > currentBatches.length) {
                 // Adiciona novos lotes
@@ -374,7 +398,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         } else if (numBatches < currentBatches.length) {
             setValue('batches', currentBatches.slice(0, numBatches));
         }
-    }, [numBatches, isPaid, editPricingLoading, methods, setValue]);
+    }, [numBatches, isPaid, editPricingLoading, ticketsLocked, methods, setValue]);
 
     // Se estiver editando um evento e já tiver um contract_id, marcar como aceito
     useEffect(() => {
@@ -494,6 +518,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         capacity: Number(t.capacity ?? 0),
                     }));
                     setOriginalTurmas(normalized);
+                    lockedTurmasRef.current = normalized.map((t) => ({
+                        nome: t.nome,
+                        capacity: t.capacity,
+                    }));
                     setTurmasDraft(
                         normalized.map((t) => ({
                             id: t.id,
@@ -503,6 +531,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     );
                 } else {
                     setOriginalTurmas([]);
+                    lockedTurmasRef.current = [];
                     setTurmasDraft([
                         { nome: 'Turma 1', capacity: '50' },
                         { nome: 'Turma 2', capacity: '50' },
@@ -534,7 +563,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                 if (eventError || !event) return;
 
-                setValue('is_paid', Boolean(event.is_paid));
+                const eventIsPaid = Boolean(event.is_paid);
+                lockedIsPaidRef.current = eventIsPaid;
+                setValue('is_paid', eventIsPaid);
                 setValue('allow_printed_tickets', Boolean(event.allow_printed_tickets));
                 const ttl = Number((event as { entry_qr_ttl_seconds?: number }).entry_qr_ttl_seconds);
                 setValue(
@@ -591,6 +622,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     }));
                     setValue('num_batches', String(mapped.length));
                     setValue('batches', mapped);
+                    lockedBatchesRef.current = snapshotBatchesForLock(mapped);
                     methods.clearErrors('batches');
                     return;
                 }
@@ -599,7 +631,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 const eventDate = event.date ? parseEventLocalDay(String(event.date)) : undefined;
                 const fallbackQty = String(event.capacity ?? methods.getValues('capacity') ?? '1');
                 setValue('num_batches', '1');
-                setValue('batches', [
+                const fallbackBatches = [
                     {
                         name: 'Lote 1',
                         quantity: fallbackQty,
@@ -610,7 +642,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         start_date: eventDate,
                         end_date: eventDate,
                     },
-                ]);
+                ];
+                setValue('batches', fallbackBatches);
+                lockedBatchesRef.current = snapshotBatchesForLock(fallbackBatches);
                 methods.clearErrors('batches');
             } catch (e) {
                 console.error('Erro ao carregar dados de edição do evento:', e);
@@ -712,6 +746,47 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         if (!companyBillingReady && profile?.tipo_usuario_id === 2 && company?.id) {
             showError("Confirme o plano e o contrato em Configurações → Perfil da Empresa → Plano e cobrança antes de criar eventos.");
             return;
+        }
+
+        if (ticketsLocked && salesGuard && eventId) {
+            const lockedPaid = lockedIsPaidRef.current ?? Boolean(initialData?.is_paid);
+            if (values.is_paid !== lockedPaid) {
+                showError(
+                    'Não é possível alterar se o evento é pago ou gratuito após haver vendas ou inscrições.',
+                );
+                setCurrentStep(showContractStep ? 3 : 2);
+                return;
+            }
+            if (
+                values.is_paid &&
+                lockedBatchesRef.current &&
+                batchesDifferFromSnapshot(values.batches, lockedBatchesRef.current)
+            ) {
+                showError(
+                    'Lotes, preços e quantidades não podem ser alterados após ingressos vendidos. Atualize apenas local, endereço, imagens e descrição.',
+                );
+                setCurrentStep(showContractStep ? 4 : 3);
+                return;
+            }
+            if (
+                !values.is_paid &&
+                useTurmas &&
+                lockedTurmasRef.current &&
+                turmasDifferFromSnapshot(turmasDraft, lockedTurmasRef.current)
+            ) {
+                showError(
+                    'Turmas e capacidades não podem ser alteradas após inscrições no evento gratuito.',
+                );
+                setCurrentStep(showContractStep ? 4 : 3);
+                return;
+            }
+            if (Number(values.capacity) < salesGuard.min_capacity) {
+                showError(
+                    `A capacidade não pode ser menor que ${salesGuard.min_capacity} (ingressos já vendidos ou inscritos).`,
+                );
+                setCurrentStep(showContractStep ? 3 : 2);
+                return;
+            }
         }
 
         if (submitInFlightRef.current) {
@@ -831,6 +906,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             const eventData: Record<string, unknown> = {
                 title: values.title,
                 description: values.description,
+                highlights: parseHighlightsText(values.highlights_text),
                 date: format(values.date!, 'yyyy-MM-dd'),
                 time: values.time ? values.time.slice(0, 5) : null,
                 location: values.location,
@@ -869,6 +945,13 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             };
             if (clientSubmitId) {
                 eventData.client_submit_id = clientSubmitId;
+            }
+
+            // Com vendas, não sobrescreve totais/preço/tipo no registro do evento (lotes não são recriados).
+            if (persistenceEventId && ticketsLocked) {
+                delete eventData.total_tickets;
+                delete eventData.ticket_price;
+                delete eventData.is_paid;
             }
 
             let newEventId = persistenceEventId;
@@ -926,8 +1009,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 }
             }
 
-            // Lógica para lotes (se for pago)
-            if (effectiveIsPaid && newEventId && values.batches) {
+            // Lógica para lotes (se for pago) — não recria lotes se já houve vendas
+            const skipBatchRewrite =
+                Boolean(eventId && salesGuard?.has_sales && lockedBatchesRef.current);
+            if (effectiveIsPaid && newEventId && values.batches && !skipBatchRewrite) {
                 try {
                     // Exclui lotes antigos para recriar (simples para este exemplo, considerar updates mais complexos para produção)
                     const { error: deleteError } = await supabase
@@ -962,14 +1047,22 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         // Não damos dismiss aqui, pois o principal já faz
                         // showSuccess("Lotes do evento salvos com sucesso!");
                     }
-                } catch (batchError) {
+                } catch (batchError: unknown) {
                     console.error("Erro ao salvar lotes do evento:", batchError);
-                    // Não derruba o fluxo de criação do evento se só os lotes falharem
+                    const msg =
+                        batchError && typeof batchError === 'object' && 'message' in batchError
+                            ? String((batchError as { message?: string }).message)
+                            : 'Erro desconhecido';
+                    showError(
+                        `Evento salvo, mas os lotes de ingressos não foram gravados: ${msg}. ` +
+                            'Se for erro de permissão (RLS), aplique a migration event_batches_rls no Supabase.',
+                    );
                 }
             }
 
-            // Lógica para turmas (somente eventos gratuitos)
-            if (!effectiveIsPaid && newEventId) {
+            // Lógica para turmas (somente eventos gratuitos) — não reestrutura se já houve inscrições
+            const skipTurmaRewrite = Boolean(eventId && salesGuard?.has_sales);
+            if (!effectiveIsPaid && newEventId && !skipTurmaRewrite) {
                 try {
                     // Normaliza draft para comparar e persistir.
                     const normalizedDraft = turmasDraft
@@ -1226,6 +1319,30 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     </FormItem>
                                 )}
                             />
+                            <FormField
+                                control={control}
+                                name="highlights_text"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-white">
+                                            Destaques do evento (opcional)
+                                        </FormLabel>
+                                        <FormControl>
+                                            <Textarea
+                                                placeholder={'Um item por linha. Ex.:\nArtista principal confirmado\nOpen bar\nEstacionamento gratuito'}
+                                                rows={4}
+                                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                        <FormDescription className="text-gray-500 text-xs">
+                                            Aparecem como lista na página pública do evento. Máximo{' '}
+                                            {MAX_EVENT_HIGHLIGHTS} itens, um por linha.
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <FormField
                                     control={control}
@@ -1420,10 +1537,15 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                     {...field} 
                                                     onChange={e => field.onChange(e.target.value)}
-                                                    min={1}
+                                                    min={ticketsLocked && salesGuard ? salesGuard.min_capacity : 1}
                                                 />
                                             </FormControl>
-                                            <FormDescription className="text-gray-500 text-xs">Número total de ingressos disponíveis para o evento.</FormDescription>
+                                            <FormDescription className="text-gray-500 text-xs">
+                                                Número total de ingressos disponíveis para o evento.
+                                                {ticketsLocked && salesGuard
+                                                    ? ` Mínimo permitido: ${salesGuard.min_capacity} (já vendidos/inscritos).`
+                                                    : ''}
+                                            </FormDescription>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -1451,16 +1573,21 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     Plano de <strong>divulgação</strong>: evento em modo vitrine, sem venda de ingressos pela plataforma.
                                 </div>
                             )}
+                            {ticketsLocked && salesGuard && (
+                                <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-100 mb-4">
+                                    {salesGuardLockedMessage(salesGuard)}
+                                </div>
+                            )}
                             <FormField
                                 control={control}
                                 name="is_paid"
                                 render={({ field }) => (
-                                    <FormItem className={`flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 ${isListingPlan ? 'opacity-50' : ''}`}>
+                                    <FormItem className={`flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 ${isListingPlan || ticketsLocked ? 'opacity-50' : ''}`}>
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                disabled={isListingPlan}
+                                                disabled={isListingPlan || ticketsLocked}
                                                 className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
                                             />
                                         </FormControl>
@@ -1489,6 +1616,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             <CardDescription className="text-gray-400">Defina os preços e organize os ingressos em lotes.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {ticketsLocked && salesGuard && !editPricingLoading && (
+                                <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-100">
+                                    {salesGuardLockedMessage(salesGuard)}
+                                </div>
+                            )}
                             {editPricingLoading && (
                                 <div className="flex items-center justify-center gap-2 py-8 text-gray-400">
                                     <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
@@ -1592,6 +1724,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                             <Checkbox
                                                 checked={useTurmas}
                                                 onCheckedChange={(val) => setUseTurmas(Boolean(val))}
+                                                disabled={ticketsLocked}
                                                 className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black mt-1"
                                             />
                                             <div className="space-y-1 leading-none">
@@ -1612,6 +1745,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                 type="button"
                                                                 variant="destructive"
                                                                 className="h-8 px-3 rounded-lg"
+                                                                disabled={ticketsLocked}
                                                                 onClick={() => {
                                                                     if (turmasDraft.length <= 1) {
                                                                         showError('Você precisa manter pelo menos 1 turma.');
@@ -1630,6 +1764,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                 <FormLabel className="text-white">Nome</FormLabel>
                                                                 <Input
                                                                     value={t.nome}
+                                                                    disabled={ticketsLocked}
                                                                     onChange={(e) => {
                                                                         const v = e.target.value;
                                                                         setTurmasDraft((prev) =>
@@ -1645,6 +1780,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                     type="number"
                                                                     value={t.capacity}
                                                                     min={0}
+                                                                    disabled={ticketsLocked}
                                                                     onChange={(e) => {
                                                                         const v = e.target.value;
                                                                         setTurmasDraft((prev) =>
@@ -1664,6 +1800,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                 <div className="flex justify-center">
                                                     <Button
                                                         type="button"
+                                                        disabled={ticketsLocked}
                                                         onClick={() => {
                                                             setTurmasDraft((prev) => [
                                                                 ...prev,
@@ -1698,6 +1835,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                         type="number" 
                                                         placeholder="1" 
                                                         className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
+                                                        disabled={ticketsLocked}
                                                         {...field} 
                                                         onChange={e => field.onChange(e.target.value)} 
                                                         min={1}
@@ -1723,6 +1861,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                 <Input 
                                                                     placeholder="Ex: Lote Promocional" 
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
+                                                                    disabled={ticketsLocked}
                                                                     {...field} 
                                                                 />
                                                             </FormControl>
@@ -1741,6 +1880,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                     type="number" 
                                                                     placeholder="Ex: 100" 
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
+                                                                    disabled={ticketsLocked}
                                                                     {...field} 
                                                                     onChange={e => field.onChange(e.target.value)} 
                                                                     min={1}
@@ -1760,6 +1900,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                 <Input 
                                                                     placeholder="Ex: 50,00" 
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
+                                                                    disabled={ticketsLocked}
                                                                     {...field} 
                                                                     onChange={e => field.onChange(e.target.value.replace('.', ',') )}
                                                                     min="0"
@@ -1781,7 +1922,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                 <DatePicker 
                                                                     date={field.value} 
                                                                     setDate={field.onChange} 
-                                                                    placeholder="Data de Início" 
+                                                                    placeholder="Data de Início"
+                                                                    disabled={ticketsLocked}
                                                                 />
                                                             </FormControl>
                                                             <FormMessage />
@@ -1798,7 +1940,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                 <DatePicker 
                                                                     date={field.value} 
                                                                     setDate={field.onChange} 
-                                                                    placeholder="Data de Término" 
+                                                                    placeholder="Data de Término"
+                                                                    disabled={ticketsLocked}
                                                                 />
                                                             </FormControl>
                                                             <FormMessage />

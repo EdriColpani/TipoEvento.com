@@ -59,4 +59,6 @@ interface Window {
   google?: {
     maps: typeof google.maps;
   };
+  gm_authFailure?: () => void;
+  __gmAuthFailureInstalled?: boolean;
 }

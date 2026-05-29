@@ -8,6 +8,7 @@ import {
   isGoogleMapsConfigured,
   type EventMapQuery,
 } from '@/utils/google-maps';
+import { outlineBtnDarkClass } from '@/lib/utils';
 
 export interface EventLocationMapProps {
   location: string;
@@ -94,7 +95,7 @@ const EventLocationMap: React.FC<EventLocationMapProps> = ({
             <Button
               type="button"
               variant="outline"
-              className="border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10"
+              className={outlineBtnDarkClass}
               asChild
             >
               <a href={openUrl} target="_blank" rel="noopener noreferrer">
@@ -107,7 +108,7 @@ const EventLocationMap: React.FC<EventLocationMapProps> = ({
             <Button
               type="button"
               variant="outline"
-              className="border-yellow-500/30 text-gray-200 hover:bg-white/5"
+              className={outlineBtnDarkClass}
               asChild
             >
               <a href={directionsUrl} target="_blank" rel="noopener noreferrer">

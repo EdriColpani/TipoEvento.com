@@ -6,6 +6,7 @@ import { showError } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import EventFormSteps from '@/components/EventFormSteps';
 import { parseEventLocalDay } from '@/utils/format-event-date';
+import { highlightsToText } from '@/utils/event-highlights';
 import { useProfile } from '@/hooks/use-profile';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
@@ -14,6 +15,7 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 interface EventFormData {
     title: string;
     description: string;
+    highlights_text?: string;
     date: Date | undefined;
     time: string;
     location: string;
@@ -101,6 +103,9 @@ const ManagerEditEvent: React.FC = () => {
             setInitialEventData({
                 title: eventData.title || '',
                 description: eventData.description || '',
+                highlights_text: highlightsToText(
+                    (eventData as { highlights?: string[] | null }).highlights,
+                ),
                 date: eventData.date ? parseEventLocalDay(eventData.date) ?? undefined : undefined,
                 time: eventData.time || '',
                 location: eventData.location || '',

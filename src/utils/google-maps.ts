@@ -1,8 +1,47 @@
 export const GOOGLE_MAPS_API_KEY =
   (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined)?.trim() || undefined;
 
+/** Instruções exibidas quando a chave existe mas o Google bloqueia (ApiTargetBlockedMapError). */
+export const GOOGLE_MAPS_SETUP_HINT =
+  'No Google Cloud: habilite Maps JavaScript API, Places API, Geocoding API e Maps Embed API; ' +
+  'na chave, use restrição por referenciador HTTP com https://eventfest.com.br/* e billing ativo.';
+
+let mapsAuthFailed = false;
+const authFailureListeners = new Set<(failed: boolean) => void>();
+
+function notifyAuthFailureListeners() {
+  authFailureListeners.forEach((cb) => cb(mapsAuthFailed));
+}
+
+/** Registra callback do Google quando a chave/domínio é rejeitado (gm_authFailure). */
+export function installGoogleMapsAuthFailureHandler(): void {
+  if (typeof window === 'undefined') return;
+  const w = window as Window & { gm_authFailure?: () => void };
+  if (w.__gmAuthFailureInstalled) return;
+  w.__gmAuthFailureInstalled = true;
+  w.gm_authFailure = () => {
+    mapsAuthFailed = true;
+    notifyAuthFailureListeners();
+  };
+}
+
+export function subscribeGoogleMapsAuthFailure(listener: (failed: boolean) => void): () => void {
+  installGoogleMapsAuthFailureHandler();
+  authFailureListeners.add(listener);
+  listener(mapsAuthFailed);
+  return () => authFailureListeners.delete(listener);
+}
+
+export function isGoogleMapsAuthFailed(): boolean {
+  return mapsAuthFailed;
+}
+
 export function isGoogleMapsConfigured(): boolean {
   return Boolean(GOOGLE_MAPS_API_KEY);
+}
+
+if (typeof window !== 'undefined') {
+  installGoogleMapsAuthFailureHandler();
 }
 
 export interface EventMapQuery {
