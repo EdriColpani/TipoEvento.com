@@ -104,7 +104,7 @@ const ManagerEditEvent: React.FC = () => {
                 title: eventData.title || '',
                 description: eventData.description || '',
                 highlights_text: highlightsToText(
-                    (eventData as { highlights?: string[] | null }).highlights,
+                    (eventData as { highlights?: unknown }).highlights,
                 ),
                 date: eventData.date ? parseEventLocalDay(eventData.date) ?? undefined : undefined,
                 time: eventData.time || '',
