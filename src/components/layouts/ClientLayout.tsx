@@ -4,6 +4,32 @@ import AuthStatusMenu from '@/components/AuthStatusMenu';
 import MobileMenu from '@/components/MobileMenu';
 import ScrollToTop from '@/components/ScrollToTop';
 import { useDevice } from '@/hooks/use-device';
+import { LandingUiProvider, useLandingUi, useLandingUiOptional } from '@/contexts/LandingUiContext';
+import LandingModals from '@/components/landing/LandingModals';
+
+const ClientLandingModalsHost: React.FC = () => {
+    const { activeModal, closeModal } = useLandingUi();
+    return <LandingModals activeModal={activeModal} onClose={closeModal} />;
+};
+
+const ClientLayoutNav: React.FC<{ isLandingPage: boolean }> = ({ isLandingPage }) => {
+    const landingUi = useLandingUiOptional();
+
+    const handleContatoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        if (!landingUi) return;
+        e.preventDefault();
+        landingUi.openContact();
+    };
+
+    return (
+        <>
+            <a href="/#home" className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'}`}>Home</a>
+            <a href="/#eventos" className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'}`}>Eventos</a>
+            <a href="/#categorias" className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'}`}>Categorias</a>
+            <a href="/#contato" onClick={handleContatoClick} className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'} ${landingUi?.contactOpen ? 'text-cyan-400' : ''}`} aria-expanded={landingUi?.contactOpen}>Contato</a>
+        </>
+    );
+};
 
 const ClientLayout: React.FC = () => {
     const navigate = useNavigate();
@@ -35,38 +61,7 @@ const ClientLayout: React.FC = () => {
                             />
                         </div>
                         <nav className="hidden md:flex items-center space-x-8">
-                            <a
-                                href="/#home"
-                                className={`text-white transition-colors duration-300 cursor-pointer ${
-                                    isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
-                                }`}
-                            >
-                                Home
-                            </a>
-                            <a
-                                href="/#eventos"
-                                className={`text-white transition-colors duration-300 cursor-pointer ${
-                                    isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
-                                }`}
-                            >
-                                Eventos
-                            </a>
-                            <a
-                                href="/#categorias"
-                                className={`text-white transition-colors duration-300 cursor-pointer ${
-                                    isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
-                                }`}
-                            >
-                                Categorias
-                            </a>
-                            <a
-                                href="/#contato"
-                                className={`text-white transition-colors duration-300 cursor-pointer ${
-                                    isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
-                                }`}
-                            >
-                                Contato
-                            </a>
+                            <ClientLayoutNav isLandingPage={isLandingPage} />
                         </nav>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
@@ -80,7 +75,10 @@ const ClientLayout: React.FC = () => {
             </header>
             <main className={isMobile ? 'pt-[4.75rem]' : 'pt-24'}>
                 <ScrollToTop />
-                <Outlet />
+                <LandingUiProvider>
+                    <Outlet />
+                    <ClientLandingModalsHost />
+                </LandingUiProvider>
             </main>
         </div>
     );

@@ -19,6 +19,8 @@ import {
     startCreditSpendCheckout,
 } from '@/utils/credit-spend-checkout';
 import EventLocationMap from '@/components/EventLocationMap';
+import LandingFooter from '@/components/landing/LandingFooter';
+import { useDevice } from '@/hooks/use-device';
 
 // Tipos de dados para os itens de compra
 interface PurchaseItem {
@@ -45,6 +47,7 @@ const EventDetails: React.FC = () => {
     
     const { details, isLoading, isError } = useEventDetails(id);
     const { isAuthenticated, redirectToLogin } = useAuthRedirect();
+    const { isMobile } = useDevice();
     
     const [selectedTickets, setSelectedTickets] = useState<{ [key: string]: number }>({});
     const [isProcessing, setIsProcessing] = useState(false);
@@ -694,51 +697,7 @@ const EventDetails: React.FC = () => {
             </section>
             <footer className="bg-black border-t border-yellow-500/20 py-12 sm:py-16 px-4 sm:px-6">
                 <div className="max-w-7xl mx-auto">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 sm:mb-12">
-                        <div className="col-span-2 md:col-span-1">
-                            <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold mb-4">
-                                EventFest
-                            </div>
-                            <p className="text-gray-400 text-sm leading-relaxed">
-                                A plataforma premium para eventos exclusivos e experiências inesquecíveis.
-                            </p>
-                        </div>
-                        <div>
-                            <h4 className="text-white font-semibold mb-4 text-base sm:text-lg">Links Úteis</h4>
-                            <ul className="space-y-2 text-sm">
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Sobre Nós</a></li>
-                                <li><a href="#" className="text-400 hover:text-yellow-500 transition-colors cursor-pointer">Como Funciona</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Termos de Uso</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Privacidade</a></li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="text-white font-semibold mb-4 text-base sm:text-lg">Suporte</h4>
-                            <ul className="space-y-2 text-sm">
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Central de Ajuda</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Contato</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">FAQ</a></li>
-                                <li><a href="#" className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer">Feedback</a></li>
-                            </ul>
-                        </div>
-                        <div>
-                            <h4 className="text-white font-semibold mb-4 text-base sm:text-lg">Redes Sociais</h4>
-                            <div className="flex space-x-4">
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-instagram text-xl sm:text-2xl"></i>
-                                </a>
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-facebook text-xl sm:text-2xl"></i>
-                                </a>
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-twitter text-xl sm:text-2xl"></i>
-                                </a>
-                                <a href="#" className="text-yellow-500 hover:text-yellow-600 transition-colors cursor-pointer">
-                                    <i className="fab fa-linkedin text-xl sm:text-2xl"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
+                    <LandingFooter isMobile={isMobile} />
                     <div className="border-t border-yellow-500/20 pt-6 text-center">
                         <p className="text-gray-400 text-sm">
                             © 2025 EventFest. Todos os direitos reservados.
