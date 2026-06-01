@@ -14,6 +14,7 @@ export interface AdminCompanyBillingRow {
     billing_plan_locked_until: string | null;
     requires_billing_reacceptance: boolean;
     listing_monthly_fee: number | null;
+    consumption_license_fee: number | null;
     created_at: string;
 }
 
@@ -31,7 +32,7 @@ async function fetchAdminCompaniesBilling(): Promise<AdminCompanyBillingRow[]> {
     const { data, error } = await supabase
         .from('companies')
         .select(
-            'id, corporate_name, trade_name, cnpj, email, billing_plan, billing_plan_accepted_at, billing_contract_id, billing_plan_locked_until, requires_billing_reacceptance, listing_monthly_fee, created_at',
+            'id, corporate_name, trade_name, cnpj, email, billing_plan, billing_plan_accepted_at, billing_contract_id, billing_plan_locked_until, requires_billing_reacceptance, listing_monthly_fee, consumption_license_fee, created_at',
         )
         .order('corporate_name', { ascending: true });
 

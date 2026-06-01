@@ -25,6 +25,9 @@ verify_jwt = false
 [functions.create-listing-monthly-checkout]
 verify_jwt = false
 
+[functions.create-consumption-license-checkout]
+verify_jwt = false
+
 [functions.create-credit-checkout]
 verify_jwt = false
 

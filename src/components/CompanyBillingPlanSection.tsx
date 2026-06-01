@@ -38,6 +38,7 @@ import {
     billingCardDefault,
 } from '@/constants/billing-ui';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
+import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -58,8 +59,31 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [listingPayDialogOpen, setListingPayDialogOpen] = useState(false);
     const [listingPayLoading, setListingPayLoading] = useState(false);
+    const [licensePayDialogOpen, setLicensePayDialogOpen] = useState(false);
+    const [licensePayLoading, setLicensePayLoading] = useState(false);
+    const [pendingLicenseChargeId, setPendingLicenseChargeId] = useState<string | null>(null);
 
     const pendingDefinition = pendingPlan ? getBillingPlanDefinition(pendingPlan) : undefined;
+
+    const { data: licenseStatus, refetch: refetchLicenseStatus } = useQuery({
+        queryKey: ['consumptionLicenseStatus', companyId],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('get_company_consumption_license_status', {
+                p_company_id: companyId,
+            });
+            if (error) throw error;
+            return data as {
+                requires_license?: boolean;
+                is_paid?: boolean;
+                blocks_consumption?: boolean;
+                charge_id?: string;
+                amount?: number;
+                status?: string;
+            };
+        },
+        enabled: !!companyId && billing?.billing_plan === 'consumption_or_license',
+        staleTime: 1000 * 30,
+    });
 
     const {
         data: pendingContract,
@@ -155,6 +179,18 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                 await supabase.rpc('ensure_listing_monthly_charge', { p_company_id: companyId });
                 setListingPayDialogOpen(true);
             }
+
+            if (confirmedPlan === 'consumption_or_license' && !isAdminMaster) {
+                const { data: licenseData } = await supabase.rpc('ensure_consumption_license_charge', {
+                    p_company_id: companyId,
+                });
+                const row = licenseData as { charge_id?: string; already_paid?: boolean } | null;
+                if (row?.charge_id && !row.already_paid) {
+                    setPendingLicenseChargeId(row.charge_id);
+                }
+                await refetchLicenseStatus();
+                setLicensePayDialogOpen(true);
+            }
         } catch (e: unknown) {
             dismissToast(toastId);
             const raw =
@@ -237,6 +273,31 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                 {format(new Date(billing.billing_plan_locked_until), 'dd/MM/yyyy', { locale: ptBR })}.
                             </p>
                         )}
+
+                    {currentPlan === 'consumption_or_license' && licenseStatus?.blocks_consumption && (
+                        <div className="flex gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm">
+                            <AlertTriangle className="h-5 w-5 shrink-0" />
+                            <div className="flex-1">
+                                <p className="font-medium">Licença mensal pendente</p>
+                                <p className="mt-1 text-amber-200/90">
+                                    O consumo com créditos EventFest (PDV, cardápio) só será liberado após pagar a
+                                    licença de uso do sistema
+                                    {licenseStatus.amount
+                                        ? ` (R$ ${Number(licenseStatus.amount).toFixed(2).replace('.', ',')})`
+                                        : ''}
+                                    .
+                                </p>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    className={`${billingBtnSolid} mt-3`}
+                                    onClick={() => setLicensePayDialogOpen(true)}
+                                >
+                                    Pagar licença agora
+                                </Button>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid gap-3">
                         {BILLING_PLANS.map((plan) => {
@@ -467,6 +528,59 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                                 'Pagar mensalidade agora'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={licensePayDialogOpen} onOpenChange={setLicensePayDialogOpen}>
+                <DialogContent className="max-w-md bg-black border-cyan-500/30 text-white">
+                    <DialogHeader>
+                        <DialogTitle className="text-cyan-400">Licença — consumo / créditos</DialogTitle>
+                        <DialogDescription className="text-gray-400">
+                            Pague a licença mensal (valor integral) para liberar consumo com créditos EventFest neste
+                            plano.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 flex-col sm:flex-row">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className={billingBtnGhost}
+                            onClick={() => setLicensePayDialogOpen(false)}
+                        >
+                            Pagar depois
+                        </Button>
+                        <Button
+                            type="button"
+                            className={billingBtnSolid}
+                            disabled={licensePayLoading}
+                            onClick={async () => {
+                                setLicensePayLoading(true);
+                                const toastId = showLoading('Abrindo checkout...');
+                                try {
+                                    const { checkoutUrl } = await startConsumptionLicenseCheckout(
+                                        companyId,
+                                        pendingLicenseChargeId ?? licenseStatus?.charge_id ?? undefined,
+                                    );
+                                    dismissToast(toastId);
+                                    setLicensePayDialogOpen(false);
+                                    window.location.href = checkoutUrl;
+                                } catch (e: unknown) {
+                                    dismissToast(toastId);
+                                    showError(
+                                        e instanceof Error ? e.message : 'Erro ao iniciar pagamento.',
+                                    );
+                                } finally {
+                                    setLicensePayLoading(false);
+                                }
+                            }}
+                        >
+                            {licensePayLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                'Pagar licença agora'
                             )}
                         </Button>
                     </DialogFooter>

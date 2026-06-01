@@ -62,6 +62,7 @@ import AdminListingMonthlyBilling from "./pages/AdminListingMonthlyBilling";
 import AdminContactMessages from "./pages/AdminContactMessages";
 import AdminEventGeoBackfill from "./pages/AdminEventGeoBackfill";
 import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
+import ManagerConsumptionLicenseBilling from "./pages/ManagerConsumptionLicenseBilling";
 import SalesReports from "./pages/SalesReports"; // NOVO
 import EventReports from "./pages/EventsReports"; // NOVO
 import AudienceReports from "./pages/AudienceReports"; // NOVO
@@ -129,6 +130,7 @@ const App = () => (
             <Route path="/manager/reports/registrations" element={<RegistrationsReports />} />
             <Route path="/manager/reports/wristband-movements" element={<WristbandMovementsReports />} />
             <Route path="/manager/reports/listing-monthly" element={<ManagerListingMonthlyBilling />} />
+            <Route path="/manager/reports/consumption-license" element={<ManagerConsumptionLicenseBilling />} />
             <Route path="/manager/reports/credit-spends" element={<ManagerCreditSpendsReport />} />
             <Route path="/manager/reports/credit-accounting" element={<ManagerCreditAccountingReport />} />
             <Route path="/manager/credit/settlements" element={<ManagerCreditSettlements />} />
