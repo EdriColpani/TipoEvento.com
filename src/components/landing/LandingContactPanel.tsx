@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLandingUi } from '@/contexts/LandingUiContext';
+import { formatPhoneInput } from '@/utils/phone-format';
 
 export type LandingContactPanelProps = {
     contactPhone: string;
@@ -89,9 +90,12 @@ const LandingContactPanel: React.FC<LandingContactPanelProps> = ({
                                 className="bg-black/60 border-yellow-500/30 text-white"
                             />
                             <Input
+                                type="tel"
+                                inputMode="tel"
+                                autoComplete="tel"
                                 value={contactFormPhone}
-                                onChange={(e) => setContactFormPhone(e.target.value)}
-                                placeholder="Seu telefone"
+                                onChange={(e) => setContactFormPhone(formatPhoneInput(e.target.value))}
+                                placeholder="(46) 99999-9999"
                                 className="bg-black/60 border-yellow-500/30 text-white"
                             />
                             <textarea

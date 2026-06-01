@@ -20,15 +20,9 @@ import { showSuccess, showError } from '@/utils/toast'; // Importando toast
 import { useLandingUi } from '@/contexts/LandingUiContext';
 import LandingContactPanel from '@/components/landing/LandingContactPanel';
 import LandingFooter from '@/components/landing/LandingFooter';
+import { formatPhoneBR } from '@/utils/phone-format';
 
 const EVENTS_PER_PAGE = 12;
-
-function formatPhoneBR(raw: string | null | undefined): string {
-    const digits = String(raw ?? '').replace(/\D/g, '');
-    if (digits.length === 11) return digits.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
-    if (digits.length === 10) return digits.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
-    return raw ? String(raw) : 'Não informado';
-}
 
 export interface AdvancedFiltersState {
     price: { gratuito: boolean; ate100: boolean; range100_300: boolean; acima300: boolean };
