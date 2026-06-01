@@ -197,6 +197,34 @@ serve(async (req) => {
         });
     }
 
+    const CONSUMPTION_LICENSE_CHARGE_PREFIX = 'consumption_license_charge:';
+    if (externalReference.startsWith(CONSUMPTION_LICENSE_CHARGE_PREFIX)) {
+        const licenseChargeId = externalReference.slice(CONSUMPTION_LICENSE_CHARGE_PREFIX.length);
+        console.log(`[MP Webhook] Consumption license charge payment: ${licenseChargeId}, status=${paymentStatus}`);
+
+        if (paymentStatus === 'approved' || paymentStatus === 'authorized') {
+            const { error: completeErr } = await supabaseService.rpc(
+                'complete_consumption_license_charge_payment',
+                {
+                    p_charge_id: licenseChargeId,
+                    p_mp_payment_id: mpPaymentId,
+                },
+            );
+            if (completeErr) {
+                console.error('[MP Webhook] complete_consumption_license_charge_payment:', completeErr);
+                return new Response(JSON.stringify({ error: completeErr.message }), {
+                    status: 500,
+                    headers: corsHeaders,
+                });
+            }
+        }
+
+        return new Response(JSON.stringify({ received: true, type: 'consumption_license_charge' }), {
+            status: 200,
+            headers: corsHeaders,
+        });
+    }
+
     const transactionId = externalReference;
     console.log(`[MP Webhook] Looking for receivable with transaction ID: ${transactionId}`);
     console.log(`[MP Webhook] Payment ID (resourceId): ${resourceId}`);

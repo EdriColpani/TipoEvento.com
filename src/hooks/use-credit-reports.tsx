@@ -63,6 +63,33 @@ export type AdminCreditFinancialPosition = {
         available_operational_cash?: number;
         estimated_mp_wallet_position?: number;
     };
+    platform_billing?: AdminPlatformBillingRevenue;
+};
+
+export type AdminPlatformBillingRevenue = {
+    period?: {
+        start_date?: string | null;
+        end_date?: string | null;
+    };
+    listing_monthly?: {
+        paid_revenue?: number;
+        pending_amount?: number;
+    };
+    consumption_license?: {
+        paid_revenue?: number;
+        pending_amount?: number;
+    };
+    ticket_commission?: {
+        revenue?: number;
+    };
+    consumption_commission?: {
+        revenue?: number;
+    };
+    totals?: {
+        platform_revenue?: number;
+        recurring_revenue?: number;
+        commission_revenue?: number;
+    };
 };
 
 export type CreditCommissionRow = {
@@ -123,6 +150,21 @@ export function useAdminCreditFinancialPosition(startDate?: string | null, endDa
             });
             if (error) throw error;
             return data as AdminCreditFinancialPosition;
+        },
+        staleTime: 30_000,
+    });
+}
+
+export function useAdminPlatformBillingRevenue(startDate?: string | null, endDate?: string | null) {
+    return useQuery({
+        queryKey: ['adminPlatformBillingRevenue', startDate, endDate],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('get_admin_platform_billing_revenue', {
+                p_start_date: startDate || null,
+                p_end_date: endDate || null,
+            });
+            if (error) throw error;
+            return data as AdminPlatformBillingRevenue;
         },
         staleTime: 30_000,
     });

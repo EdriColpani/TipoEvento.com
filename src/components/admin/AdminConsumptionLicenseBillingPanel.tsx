@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, CalendarDays, Loader2, Plus, Receipt } from 'lucide-react';
+import { CalendarDays, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -29,13 +29,11 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { useProfile } from '@/hooks/use-profile';
-import { supabase } from '@/integrations/supabase/client';
 import { useAdminCompaniesBilling } from '@/hooks/use-admin-companies-billing';
 import {
-    ListingChargeStatus,
-    useListingMonthlyCharges,
-} from '@/hooks/use-listing-monthly-charges';
+    ConsumptionLicenseChargeStatus,
+    useConsumptionLicenseCharges,
+} from '@/hooks/use-consumption-license-charges';
 import { useSystemBillingSettings } from '@/hooks/use-system-billing-settings';
 import {
     formatCurrencyBrInput,
@@ -44,9 +42,9 @@ import {
     sanitizeCurrencyBrInput,
 } from '@/utils/currency-input';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { supabase } from '@/integrations/supabase/client';
 import {
     billingAccentText,
-    billingBtnBack,
     billingBtnGhost,
     billingBtnMutedSm,
     billingBtnSolid,
@@ -57,12 +55,8 @@ import {
     billingSpinner,
     billingTableHead,
 } from '@/constants/billing-ui';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import AdminConsumptionLicenseBillingPanel from '@/components/admin/AdminConsumptionLicenseBillingPanel';
 
-const ADMIN_MASTER_USER_TYPE_ID = 1;
-
-const STATUS_LABELS: Record<ListingChargeStatus, string> = {
+const STATUS_LABELS: Record<ConsumptionLicenseChargeStatus, string> = {
     pending: 'Pendente',
     paid: 'Pago',
     cancelled: 'Cancelado',
@@ -80,40 +74,32 @@ function formatReferenceMonth(isoDate: string): string {
     }
 }
 
-const AdminListingMonthlyBilling: React.FC = () => {
+const AdminConsumptionLicenseBillingPanel: React.FC = () => {
     const navigate = useNavigate();
-    const [searchParams, setSearchParams] = useSearchParams();
-    const invoiceTab = searchParams.get('tab') === 'license' ? 'license' : 'listing';
-    const [userId, setUserId] = useState<string | undefined>();
-    const [statusFilter, setStatusFilter] = useState<'all' | ListingChargeStatus>('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | ConsumptionLicenseChargeStatus>('all');
     const [createOpen, setCreateOpen] = useState(false);
     const [newCompanyId, setNewCompanyId] = useState('');
     const [newMonth, setNewMonth] = useState(() => format(new Date(), 'yyyy-MM'));
     const [newAmount, setNewAmount] = useState('');
     const [newNotes, setNewNotes] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [isBatchRunning, setIsBatchRunning] = useState(false);
 
-    React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
-
-    const { profile, isLoading: loadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
-
-    const { companies } = useAdminCompaniesBilling(isAdminMaster);
-    const { listingMonthlyDefaultFee } = useSystemBillingSettings(isAdminMaster);
+    const { companies } = useAdminCompaniesBilling(true);
+    const { consumptionLicenseDefaultFee } = useSystemBillingSettings(true);
 
     useEffect(() => {
         if (createOpen && !newAmount) {
-            setNewAmount(formatCurrencyBrInput(listingMonthlyDefaultFee));
+            setNewAmount(formatCurrencyBrInput(consumptionLicenseDefaultFee));
         }
-    }, [createOpen, listingMonthlyDefaultFee, newAmount]);
-    const listingCompanies = useMemo(
-        () => companies.filter((c) => c.billing_plan === 'listing_monthly'),
+    }, [createOpen, consumptionLicenseDefaultFee, newAmount]);
+
+    const licenseCompanies = useMemo(
+        () => companies.filter((c) => c.billing_plan === 'consumption_or_license'),
         [companies],
     );
 
-    const { charges, isLoading, isError, invalidate } = useListingMonthlyCharges(isAdminMaster);
+    const { charges, isLoading, isError, invalidate } = useConsumptionLicenseCharges(true);
 
     const filteredCharges = useMemo(() => {
         if (statusFilter === 'all') return charges;
@@ -136,16 +122,15 @@ const AdminListingMonthlyBilling: React.FC = () => {
             return;
         }
         if (!isValidCurrencyBr(newAmount)) {
-            showError('Informe um valor válido (ex.: 299,99).');
+            showError('Informe um valor válido (ex.: 99,99).');
             return;
         }
         const amount = parseCurrencyBr(newAmount);
-
         const referenceMonth = `${newMonth}-01`;
         setIsSaving(true);
         const toastId = showLoading('Gerando cobrança...');
         try {
-            const { data, error } = await supabase.rpc('admin_create_listing_monthly_charge', {
+            const { error } = await supabase.rpc('admin_create_consumption_license_charge', {
                 p_company_id: newCompanyId,
                 p_reference_month: referenceMonth,
                 p_amount: amount,
@@ -165,10 +150,10 @@ const AdminListingMonthlyBilling: React.FC = () => {
         }
     };
 
-    const handleSetStatus = async (chargeId: string, status: ListingChargeStatus) => {
+    const handleSetStatus = async (chargeId: string, status: ConsumptionLicenseChargeStatus) => {
         const toastId = showLoading('Atualizando status...');
         try {
-            const { error } = await supabase.rpc('admin_set_listing_charge_status', {
+            const { error } = await supabase.rpc('admin_set_consumption_license_charge_status', {
                 p_charge_id: chargeId,
                 p_status: status,
                 p_notes: null,
@@ -183,86 +168,72 @@ const AdminListingMonthlyBilling: React.FC = () => {
         }
     };
 
-    if (loadingProfile || !userId) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20">
-                <Loader2 className={`h-10 w-10 animate-spin ${billingSpinner} mx-auto mb-4`} />
-                <p className="text-gray-400">Carregando...</p>
-            </div>
-        );
-    }
-
-    if (!isAdminMaster) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20 text-red-400">
-                Acesso restrito ao Admin Master.
-            </div>
-        );
-    }
+    const handleBatchGenerate = async () => {
+        setIsBatchRunning(true);
+        const toastId = showLoading('Gerando licenças do mês...');
+        try {
+            const { data, error } = await supabase.rpc('admin_generate_monthly_consumption_license_charges', {
+                p_reference_month: `${format(new Date(), 'yyyy-MM')}-01`,
+            });
+            if (error) throw error;
+            dismissToast(toastId);
+            const payload = data as {
+                charges_created_or_updated?: number;
+                skipped_already_paid?: number;
+            };
+            showSuccess(
+                `Lote concluído: ${payload.charges_created_or_updated ?? 0} cobrança(s) gerada(s)/atualizada(s), ${payload.skipped_already_paid ?? 0} já paga(s).`,
+            );
+            invalidate();
+        } catch (e: unknown) {
+            dismissToast(toastId);
+            showError(e instanceof Error ? e.message : 'Erro ao gerar lote mensal.');
+        } finally {
+            setIsBatchRunning(false);
+        }
+    };
 
     return (
-        <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
-                <div>
-                    <h1 className={`text-2xl sm:text-3xl font-serif ${billingAccentText} flex items-center gap-3`}>
-                        <Receipt className="h-8 w-8" />
-                        Faturas mensais
-                    </h1>
-                    <p className="text-gray-400 text-sm mt-2">
-                        Lançamento e controle de cobranças recorrentes (vitrine e licença de consumo).
-                    </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    <Button type="button" onClick={() => navigate('/admin/dashboard')} className={billingBtnBack}>
-                        <ArrowLeft className="mr-2 h-4 w-4" />
-                        Voltar
-                    </Button>
-                    {invoiceTab === 'listing' && (
-                        <Button
-                            type="button"
-                            onClick={() => setCreateOpen(true)}
-                            className={billingBtnSolid}
-                            disabled={listingCompanies.length === 0}
-                        >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Nova cobrança
-                        </Button>
+        <>
+            <div className="flex flex-wrap gap-2 mb-6">
+                <p className="text-gray-400 text-sm flex-1 min-w-[16rem]">
+                    Licença mensal do plano consumo/licença ({licenseCompanies.length} empresa(s)).
+                    Valor padrão em{' '}
+                    <button
+                        type="button"
+                        onClick={() => navigate('/admin/settings/pricing?tab=consumption-license')}
+                        className="text-cyan-400 underline hover:text-cyan-300"
+                    >
+                        Preços e comissões → Consumo / licença
+                    </button>
+                    .
+                </p>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className={billingBtnGhost}
+                    disabled={isBatchRunning || licenseCompanies.length === 0}
+                    onClick={handleBatchGenerate}
+                >
+                    {isBatchRunning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                        <>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Gerar mês corrente
+                        </>
                     )}
-                </div>
+                </Button>
+                <Button
+                    type="button"
+                    onClick={() => setCreateOpen(true)}
+                    className={billingBtnSolid}
+                    disabled={licenseCompanies.length === 0}
+                >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nova cobrança
+                </Button>
             </div>
-
-            <Tabs
-                value={invoiceTab}
-                onValueChange={(v) => setSearchParams(v === 'listing' ? {} : { tab: v })}
-                className="mb-6"
-            >
-                <TabsList className={`bg-black border ${billingPanelBorder} mb-4`}>
-                    <TabsTrigger
-                        value="listing"
-                        className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black"
-                    >
-                        Divulgação (vitrine)
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="license"
-                        className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black"
-                    >
-                        Licença consumo
-                    </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="listing">
-                    <p className="text-gray-400 text-sm mb-4">
-                        Plano vitrine ({listingCompanies.length} empresa(s)). Mensalidade padrão em{' '}
-                        <button
-                            type="button"
-                            onClick={() => navigate('/admin/settings/pricing?tab=listing')}
-                            className="text-cyan-400 underline hover:text-cyan-300"
-                        >
-                            Preços e comissões → Divulgação
-                        </button>
-                        .
-                    </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <Card className={`bg-black border ${billingPanelBorder}`}>
@@ -305,7 +276,7 @@ const AdminListingMonthlyBilling: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white flex items-center gap-2">
                         <CalendarDays className={`h-5 w-5 ${billingAccentText}`} />
-                        Cobranças mensais
+                        Cobranças de licença
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -361,9 +332,7 @@ const AdminListingMonthlyBilling: React.FC = () => {
                                                             type="button"
                                                             size="sm"
                                                             className={billingBtnSuccessSm}
-                                                            onClick={() =>
-                                                                handleSetStatus(charge.id, 'paid')
-                                                            }
+                                                            onClick={() => handleSetStatus(charge.id, 'paid')}
                                                         >
                                                             Marcar pago
                                                         </Button>
@@ -388,27 +357,21 @@ const AdminListingMonthlyBilling: React.FC = () => {
                     )}
                 </CardContent>
             </Card>
-                </TabsContent>
-
-                <TabsContent value="license">
-                    <AdminConsumptionLicenseBillingPanel />
-                </TabsContent>
-            </Tabs>
 
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogContent className={`${billingDialogSurface} max-w-md`}>
                     <DialogHeader>
-                        <DialogTitle className={billingAccentText}>Nova cobrança mensal</DialogTitle>
+                        <DialogTitle className={billingAccentText}>Nova cobrança de licença</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label>Empresa (plano vitrine)</Label>
+                            <Label>Empresa (plano consumo/licença)</Label>
                             <Select value={newCompanyId} onValueChange={setNewCompanyId}>
                                 <SelectTrigger className={billingInput}>
                                     <SelectValue placeholder="Selecione..." />
                                 </SelectTrigger>
                                 <SelectContent className={`bg-black ${billingPanelBorder} text-white`}>
-                                    {listingCompanies.map((c) => (
+                                    {licenseCompanies.map((c) => (
                                         <SelectItem key={c.id} value={c.id}>
                                             {c.trade_name || c.corporate_name || c.cnpj}
                                         </SelectItem>
@@ -460,8 +423,8 @@ const AdminListingMonthlyBilling: React.FC = () => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </>
     );
 };
 
-export default AdminListingMonthlyBilling;
+export default AdminConsumptionLicenseBillingPanel;

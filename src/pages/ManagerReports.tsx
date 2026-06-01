@@ -11,6 +11,7 @@ import SalesLineChart from '@/components/SalesLineChart';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
+import { isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 import { isPlanFeatureEnabled, type PlanFeatureKey } from '@/constants/plan-features';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
@@ -123,6 +124,8 @@ const ManagerReports: React.FC = () => {
     );
 
     const showCreditReport = creditAccess.showCreditReportCards;
+    const showConsumptionLicenseReport =
+        !isAdminMaster && isConsumptionOrLicensePlan(billing?.billing_plan);
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -141,7 +144,7 @@ const ManagerReports: React.FC = () => {
                 </Button>
             </div>
 
-            {visibleReports.length === 0 && !showCreditReport ? (
+            {visibleReports.length === 0 && !showCreditReport && !showConsumptionLicenseReport ? (
                 <p className="text-gray-400 text-sm mb-8">
                     Nenhum relatório disponível no plano comercial da sua empresa.
                 </p>
@@ -187,6 +190,14 @@ const ManagerReports: React.FC = () => {
                                 }
                             />
                         </>
+                    )}
+                    {showConsumptionLicenseReport && billingReady && (
+                        <ReportCard
+                            icon={<Receipt className="h-6 w-6 text-yellow-500" />}
+                            title="Licença mensal de consumo"
+                            description="Faturas da licença do plano consumo/licença — pagamento libera o módulo de créditos."
+                            onClick={() => navigate('/manager/reports/consumption-license')}
+                        />
                     )}
                 </div>
             )}

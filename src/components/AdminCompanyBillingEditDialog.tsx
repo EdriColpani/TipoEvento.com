@@ -59,6 +59,18 @@ async function fetchContractsByType(contractType: string): Promise<EventContract
     return (data ?? []) as EventContractRow[];
 }
 
+async function fetchContractsForPlan(plan: BillingPlanCode): Promise<EventContractRow[]> {
+    const types = getContractTypesForBillingPlan(plan);
+    const batches = await Promise.all(types.map((t) => fetchContractsByType(t)));
+    const merged = batches.flat();
+    const seen = new Set<string>();
+    return merged.filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+    });
+}
+
 interface AdminCompanyBillingEditDialogProps {
     company: AdminCompanyBillingRow | null;
     open: boolean;
@@ -78,6 +90,7 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
     const [contractId, setContractId] = useState<string>(KEEP_CONTRACT_VALUE);
     const [requireReacceptance, setRequireReacceptance] = useState(false);
     const [listingMonthlyFee, setListingMonthlyFee] = useState('');
+    const [consumptionLicenseFee, setConsumptionLicenseFee] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     const planDef = getBillingPlanDefinition(selectedPlan);
@@ -91,7 +104,7 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
         company?.id ?? null,
         open,
     );
-    const { listingMonthlyDefaultFee } = useSystemBillingSettings(open);
+    const { listingMonthlyDefaultFee, consumptionLicenseDefaultFee } = useSystemBillingSettings(open);
 
     useEffect(() => {
         if (!company || !open) return;
@@ -105,7 +118,12 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                     DEFAULT_LISTING_MONTHLY_FEE,
             ),
         );
-    }, [company, open, listingMonthlyDefaultFee]);
+        setConsumptionLicenseFee(
+            formatCurrencyBrInput(
+                company.consumption_license_fee ?? consumptionLicenseDefaultFee ?? 99.99,
+            ),
+        );
+    }, [company, open, listingMonthlyDefaultFee, consumptionLicenseDefaultFee]);
 
     useEffect(() => {
         if (!open || contracts.length === 0) return;
@@ -151,17 +169,32 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                 throw new Error('Informe uma mensalidade válida (ex.: 299,99).');
             }
 
+            const licenseFeeValue =
+                selectedPlan === 'consumption_or_license'
+                    ? parseCurrencyBr(consumptionLicenseFee)
+                    : null;
+            if (
+                selectedPlan === 'consumption_or_license' &&
+                !isValidCurrencyBr(consumptionLicenseFee)
+            ) {
+                throw new Error('Informe uma licença mensal válida (ex.: 99,99).');
+            }
+
             const companyPatch: Record<string, unknown> = {
                 requires_billing_reacceptance: shouldRequireReaccept,
             };
             if (selectedPlan === 'listing_monthly') {
                 companyPatch.listing_monthly_fee = feeValue;
             }
+            if (selectedPlan === 'consumption_or_license') {
+                companyPatch.consumption_license_fee = licenseFeeValue;
+            }
 
             if (
                 shouldRequireReaccept !== company.requires_billing_reacceptance ||
                 planChanged ||
-                selectedPlan === 'listing_monthly'
+                selectedPlan === 'listing_monthly' ||
+                selectedPlan === 'consumption_or_license'
             ) {
                 const { error: flagError } = await supabase
                     .from('companies')
@@ -252,6 +285,26 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                             />
                             <p className="text-xs text-gray-500">
                                 Usado ao gerar cobranças mensais (admin pode ajustar por fatura).
+                            </p>
+                        </div>
+                    )}
+
+                    {selectedPlan === 'consumption_or_license' && (
+                        <div className="space-y-2">
+                            <Label className="text-white">Licença mensal (R$)</Label>
+                            <Input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0,00"
+                                value={consumptionLicenseFee}
+                                onChange={(e) =>
+                                    setConsumptionLicenseFee(sanitizeCurrencyBrInput(e.target.value))
+                                }
+                                className="bg-black/60 border-yellow-500/30 text-white"
+                            />
+                            <p className="text-xs text-gray-500">
+                                Override da licença padrão (R$ 99,99). Cobrança integral no upgrade e recorrência
+                                mensal.
                             </p>
                         </div>
                     )}

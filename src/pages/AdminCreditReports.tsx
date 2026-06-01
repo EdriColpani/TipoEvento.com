@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2 } from 'lucide-react';
+import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ import {
     useAdminCreditReconciliation,
     useAdminCreditRefundCases,
     useAdminCreditSettlements,
+    useAdminPlatformBillingRevenue,
 } from '@/hooks/use-credit-reports';
 import { adminCreditRefund } from '@/utils/credit-manager-payout';
 import { showError, showSuccess } from '@/utils/toast';
@@ -69,6 +70,8 @@ const AdminCreditReports: React.FC = () => {
     const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
     const [positionStartDate, setPositionStartDate] = useState('');
     const [positionEndDate, setPositionEndDate] = useState('');
+    const [revenueStartDate, setRevenueStartDate] = useState('');
+    const [revenueEndDate, setRevenueEndDate] = useState('');
     const [mpIssuesStartDate, setMpIssuesStartDate] = useState('');
     const [mpIssuesEndDate, setMpIssuesEndDate] = useState('');
 
@@ -95,6 +98,7 @@ const AdminCreditReports: React.FC = () => {
 
     const recon = useAdminCreditReconciliation();
     const position = useAdminCreditFinancialPosition(positionStartDate || null, positionEndDate || null);
+    const platformRevenue = useAdminPlatformBillingRevenue(revenueStartDate || null, revenueEndDate || null);
     const mpIssues = useAdminCreditMpReconciliationIssues(mpIssuesStartDate || null, mpIssuesEndDate || null);
     const commission = useAdminCreditCommissionReport();
     const cross = useAdminCreditCrossCompanyFlows();
@@ -171,6 +175,9 @@ const AdminCreditReports: React.FC = () => {
                     </TabsTrigger>
                     <TabsTrigger value="position" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
                         Posição financeira
+                    </TabsTrigger>
+                    <TabsTrigger value="revenue" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                        <TrendingUp className="h-4 w-4 mr-1" /> Receita plataforma
                     </TabsTrigger>
                     <TabsTrigger value="mp-recon" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
                         Conciliação MP
@@ -527,6 +534,23 @@ const AdminCreditReports: React.FC = () => {
                                     />
 
                                     <Metric
+                                        label="Mensalidade vitrine (paga)"
+                                        value={money(position.data?.platform_billing?.listing_monthly?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Licença consumo (paga)"
+                                        value={money(position.data?.platform_billing?.consumption_license?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Comissão ingressos"
+                                        value={money(position.data?.platform_billing?.ticket_commission?.revenue)}
+                                    />
+                                    <Metric
+                                        label="Receita total plataforma (período)"
+                                        value={money(position.data?.platform_billing?.totals?.platform_revenue)}
+                                    />
+
+                                    <Metric
                                         label="Taxas MP (recarga)"
                                         value={money(position.data?.mp_costs?.topup_mp_fees)}
                                     />
@@ -551,6 +575,87 @@ const AdminCreditReports: React.FC = () => {
                                     <Metric
                                         label="Posição estimada carteira MP"
                                         value={money(position.data?.managerial_position?.estimated_mp_wallet_position)}
+                                    />
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="revenue">
+                    <Card className="bg-black border-yellow-500/30 mb-4">
+                        <CardHeader>
+                            <CardTitle className="text-white">Receita da plataforma EventFest</CardTitle>
+                            <CardDescription className="text-gray-400">
+                                Licenças, mensalidades, comissão de ingressos e comissão sobre consumo de créditos.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                                <Label className="text-gray-300">Início</Label>
+                                <Input
+                                    type="date"
+                                    value={revenueStartDate}
+                                    onChange={(e) => setRevenueStartDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-gray-300">Fim</Label>
+                                <Input
+                                    type="date"
+                                    value={revenueEndDate}
+                                    onChange={(e) => setRevenueEndDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-black border-yellow-500/30">
+                        <CardHeader>
+                            <CardTitle className="text-white">Breakdown de receita</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {platformRevenue.isLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                                    <Metric
+                                        label="Mensalidade vitrine (recebida)"
+                                        value={money(platformRevenue.data?.listing_monthly?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Mensalidade vitrine (pendente)"
+                                        value={money(platformRevenue.data?.listing_monthly?.pending_amount)}
+                                    />
+                                    <Metric
+                                        label="Licença consumo (recebida)"
+                                        value={money(platformRevenue.data?.consumption_license?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Licença consumo (pendente)"
+                                        value={money(platformRevenue.data?.consumption_license?.pending_amount)}
+                                    />
+                                    <Metric
+                                        label="Comissão ingressos"
+                                        value={money(platformRevenue.data?.ticket_commission?.revenue)}
+                                    />
+                                    <Metric
+                                        label="Comissão consumo créditos"
+                                        value={money(platformRevenue.data?.consumption_commission?.revenue)}
+                                    />
+                                    <Metric
+                                        label="Recorrente (vitrine + licença)"
+                                        value={money(platformRevenue.data?.totals?.recurring_revenue)}
+                                    />
+                                    <Metric
+                                        label="Comissões (ingresso + consumo)"
+                                        value={money(platformRevenue.data?.totals?.commission_revenue)}
+                                    />
+                                    <Metric
+                                        label="Total receita plataforma"
+                                        value={money(platformRevenue.data?.totals?.platform_revenue)}
                                     />
                                 </div>
                             )}
