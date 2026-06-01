@@ -1,4 +1,5 @@
--- Contato público (landing) + caixa de mensagens para Admin Master
+-- Aplicar manualmente no SQL Editor do Supabase se list_admin_contact_messages retornar 404.
+-- Idempotente: pode rodar mais de uma vez.
 
 CREATE TABLE IF NOT EXISTS public.contact_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -158,3 +159,6 @@ GRANT EXECUTE ON FUNCTION public.get_public_contact_info() TO anon, authenticate
 GRANT EXECUTE ON FUNCTION public.create_public_contact_message(TEXT, TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.list_admin_contact_messages(TEXT, INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.update_admin_contact_message_status(UUID, TEXT) TO authenticated;
+
+-- Opcional: marcar migration como aplicada (se usar supabase_migrations.schema_migrations)
+-- INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('20260630170000') ON CONFLICT DO NOTHING;
