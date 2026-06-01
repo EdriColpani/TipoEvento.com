@@ -49,7 +49,14 @@ const AdminContactMessages: React.FC = () => {
             const payload = (data ?? {}) as { items?: ContactMessage[] };
             setItems(payload.items ?? []);
         } catch (e: unknown) {
-            showError(e instanceof Error ? e.message : 'Erro ao carregar mensagens.');
+            const msg = e instanceof Error ? e.message : '';
+            if (msg.includes('404') || msg.toLowerCase().includes('not found')) {
+                showError(
+                    'Função de mensagens não encontrada no banco. Aplique a migration 20260630170000_contact_messages.sql (supabase db push).',
+                );
+            } else {
+                showError(msg || 'Erro ao carregar mensagens.');
+            }
         } finally {
             setLoading(false);
         }
