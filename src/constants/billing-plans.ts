@@ -23,6 +23,14 @@ export interface BillingPlanDefinition {
     code: BillingPlanCode;
     label: string;
     description: string;
+    /** Frase curta no topo do card */
+    tagline: string;
+    /** Perfil de negócio indicado */
+    idealFor: string;
+    /** Destaques comerciais fixos (complementam preços dinâmicos) */
+    highlights: string[];
+    /** Limitações ou o que não está incluído */
+    limitations: string[];
     /** Gestor pode escolher/confirmar na v1 */
     selectableByGestor: boolean;
     contractType: string;
@@ -33,6 +41,18 @@ export const BILLING_PLANS: BillingPlanDefinition[] = [
         code: 'listing_monthly',
         label: 'Mensalidade — divulgação',
         description: 'Cobrança mensal fixa para divulgar o evento na plataforma, sem venda de ingressos pelo sistema.',
+        tagline: 'Vitrine e divulgação sem intermediar vendas de ingressos.',
+        idealFor: 'Produtores que querem visibilidade na plataforma, inscrições gratuitas e divulgação do evento.',
+        highlights: [
+            'Página pública do evento na vitrine EventFest',
+            'Inscrições gratuitas e relatório de público',
+            'Banners promocionais e gestão de eventos',
+        ],
+        limitations: [
+            'Sem venda de ingressos pagos pela plataforma',
+            'Sem pulseiras digitais nem chaves de validação de entrada',
+            'Sem relatórios de vendas ou comissões sobre ingressos',
+        ],
         selectableByGestor: true,
         contractType: 'listing_monthly',
     },
@@ -40,6 +60,17 @@ export const BILLING_PLANS: BillingPlanDefinition[] = [
         code: 'ticket_commission',
         label: '% sobre venda de ingressos',
         description: 'Comissão sobre ingressos vendidos, conforme faixas cadastradas pelo administrador.',
+        tagline: 'Intermediação completa de ingressos com comissão por volume vendido.',
+        idealFor: 'Shows, festas e eventos que vendem ingressos online e precisam de controle de acesso.',
+        highlights: [
+            'Checkout Mercado Pago integrado na plataforma',
+            'Lotes de ingressos, pulseiras e validação na portaria',
+            'Relatórios financeiros, vendas, público e movimentação',
+        ],
+        limitations: [
+            'Comissão cobrada apenas quando há venda de ingresso',
+            'Módulo de consumo com créditos EventFest depende de liberação da plataforma',
+        ],
         selectableByGestor: true,
         contractType: 'ticket_commission',
     },
@@ -48,6 +79,17 @@ export const BILLING_PLANS: BillingPlanDefinition[] = [
         label: '% ingresso + consumo interno',
         description:
             'Venda de ingressos (faixas de comissão) + módulo de consumo interno quando liberado no contrato e configurações.',
+        tagline: 'Ingressos + consumo no evento com carteira EventFest (bar, PDV, cardápio).',
+        idealFor: 'Festivais e eventos que vendem ingresso e também faturam consumo interno (bar, food, loja).',
+        highlights: [
+            'Tudo do plano de ingressos (% por faixa de volume)',
+            'Consumo com créditos EventFest no PDV e cardápio digital',
+            'Comissão separada sobre cada uso de crédito no evento',
+        ],
+        limitations: [
+            'Sem mensalidade fixa de licença (diferente do plano consumo/licença)',
+            'Módulo de consumo precisa estar ativo no contrato e nas configurações',
+        ],
         selectableByGestor: true,
         contractType: 'ticket_plus_consumption',
     },
@@ -56,6 +98,17 @@ export const BILLING_PLANS: BillingPlanDefinition[] = [
         label: 'Consumo / licença / mensal',
         description:
             'Divulgação de eventos; consumo por créditos/licença quando o módulo estiver ativo no contrato.',
+        tagline: 'Divulgação + licença mensal para operar consumo interno sem vender ingressos.',
+        idealFor: 'Casas, bares, clubes e venues que divulgam eventos e cobram consumo interno, sem ingressos pela plataforma.',
+        highlights: [
+            'Eventos em modo vitrine (sem venda de ingressos pagos)',
+            'Licença mensal de uso do módulo de créditos EventFest',
+            'PDV, estabelecimentos e consumo com comissão sobre créditos',
+        ],
+        limitations: [
+            'Sem intermediação de venda de ingressos pagos',
+            'Consumo bloqueado até pagamento da licença do mês',
+        ],
         selectableByGestor: true,
         contractType: 'consumption_or_license',
     },

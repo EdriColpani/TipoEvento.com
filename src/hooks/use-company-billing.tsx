@@ -6,10 +6,12 @@ export interface CompanyBillingRow extends CompanyBillingFields {
     id: string;
     corporate_name: string | null;
     billing_contract_version?: string | null;
+    listing_monthly_fee?: number | null;
+    consumption_license_fee?: number | null;
 }
 
 const BILLING_SELECT =
-    'id, corporate_name, billing_plan, billing_plan_accepted_at, billing_contract_id, billing_plan_locked_until, requires_billing_reacceptance, listing_active_until, listing_last_payment_at, billing_contract:event_contracts!billing_contract_id(version)';
+    'id, corporate_name, billing_plan, billing_plan_accepted_at, billing_contract_id, billing_plan_locked_until, requires_billing_reacceptance, listing_active_until, listing_last_payment_at, listing_monthly_fee, consumption_license_fee, billing_contract:event_contracts!billing_contract_id(version)';
 
 async function fetchCompanyBilling(companyId: string): Promise<CompanyBillingRow | null> {
     const { data, error } = await supabase
@@ -36,6 +38,8 @@ async function fetchCompanyBilling(companyId: string): Promise<CompanyBillingRow
         requires_billing_reacceptance: Boolean(row.requires_billing_reacceptance),
         listing_active_until: (row.listing_active_until as string | null) ?? null,
         listing_last_payment_at: (row.listing_last_payment_at as string | null) ?? null,
+        listing_monthly_fee: (row.listing_monthly_fee as number | null) ?? null,
+        consumption_license_fee: (row.consumption_license_fee as number | null) ?? null,
         billing_contract_version: nested?.version ?? null,
     };
 }

@@ -11,7 +11,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Loader2, CreditCard, ArrowUpCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Loader2, CreditCard, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { normalizeContractContentForDisplay } from '@/utils/contractContent';
@@ -29,18 +29,13 @@ import { useInvalidateCompanyPlanFeatures } from '@/hooks/use-company-plan-featu
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
 import { fetchBillingPlanContract } from '@/utils/fetchBillingPlanContract';
-import {
-    billingBadgeCurrent,
-    billingBtnGhost,
-    billingBtnOutline,
-    billingBtnSolid,
-    billingCardCurrent,
-    billingCardDefault,
-} from '@/constants/billing-ui';
+import { useBillingPlansCatalog } from '@/hooks/use-billing-plans-catalog';
+import BillingPlanOptionCard from '@/components/BillingPlanOptionCard';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { billingBtnGhost, billingBtnSolid } from '@/constants/billing-ui';
 
 interface CompanyBillingPlanSectionProps {
     companyId: string;
@@ -52,6 +47,14 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     isAdminMaster = false,
 }) => {
     const { billing, isLoading, invalidate } = useCompanyBilling(companyId);
+    const feeOverrides = useMemo(
+        () => ({
+            listingMonthlyFee: billing?.listing_monthly_fee,
+            consumptionLicenseFee: billing?.consumption_license_fee,
+        }),
+        [billing?.listing_monthly_fee, billing?.consumption_license_fee],
+    );
+    const { displays, settings: pricingSettings, isLoading: isLoadingCatalog } = useBillingPlansCatalog(feeOverrides);
     const invalidatePlanFeatures = useInvalidateCompanyPlanFeatures();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [pendingPlan, setPendingPlan] = useState<BillingPlanCode | null>(null);
@@ -209,7 +212,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
         }
     };
 
-    if (isLoading) {
+    if (isLoading || isLoadingCatalog) {
         return (
             <Card className="bg-black border border-cyan-500/30 rounded-2xl p-8 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-cyan-400 mx-auto" />
@@ -227,12 +230,18 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                         Plano e cobrança
                     </CardTitle>
                     <CardDescription className="text-gray-400">
-                        Escolha como sua empresa utiliza a plataforma. Upgrade é feito aqui com aceite de contrato.
-                        Para reduzir o plano, entre em contato com a EventFest — a alteração é registrada pelo
-                        administrador da plataforma.
+                        Valores e percentuais exibidos abaixo vêm do cadastro oficial da EventFest em{' '}
+                        <strong className="text-gray-300">Preços e comissões</strong> (mesmas regras do
+                        administrador). Compare planos e escolha o ideal; upgrade exige aceite de contrato.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    {pricingSettings?.updated_at && (
+                        <p className="text-xs text-gray-500">
+                            Tabela de preços atualizada em{' '}
+                            {format(new Date(pricingSettings.updated_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}.
+                        </p>
+                    )}
                     {!billingReady && (
                         <div className="flex gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm">
                             <AlertTriangle className="h-5 w-5 shrink-0" />
@@ -299,7 +308,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                         </div>
                     )}
 
-                    <div className="grid gap-3">
+                    <div className="grid gap-4 md:grid-cols-2">
                         {BILLING_PLANS.map((plan) => {
                             const isCurrent = currentPlan === plan.code;
                             const canSelect = plan.selectableByGestor || isAdminMaster;
@@ -315,79 +324,18 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                 new Date(billing.billing_plan_locked_until) > new Date();
 
                             return (
-                                <div
+                                <BillingPlanOptionCard
                                     key={plan.code}
-                                    className={`p-4 rounded-xl border ${
-                                        isCurrent ? billingCardCurrent : billingCardDefault
-                                    }`}
-                                >
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                        <div>
-                                            <p className="text-white font-medium">{plan.label}</p>
-                                            <p className="text-gray-400 text-sm mt-1">{plan.description}</p>
-                                            {isDowngradeBlocked && (
-                                                <p className="text-amber-200/90 text-xs mt-2 leading-relaxed max-w-xl">
-                                                    {BILLING_DOWNGRADE_GESTOR_MESSAGE}
-                                                </p>
-                                            )}
-                                            {!canSelect && (
-                                                <span className="inline-block mt-2 text-xs text-gray-500">
-                                                    Em breve
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {isCurrent && (
-                                                <span className={billingBadgeCurrent}>Atual</span>
-                                            )}
-                                            {isCurrent && !billingReady && canSelect && (
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    className={billingBtnSolid}
-                                                    onClick={() => openPlanAction(plan.code)}
-                                                >
-                                                    Confirmar contrato
-                                                </Button>
-                                            )}
-                                            {canSelect && !isCurrent && !isDowngradeBlocked && (
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    disabled={!!lockedUpgrade}
-                                                    className={
-                                                        isUpgrade || billingReady
-                                                            ? billingBtnGhost
-                                                            : billingBtnOutline
-                                                    }
-                                                    onClick={() => openPlanAction(plan.code)}
-                                                >
-                                                    {isUpgrade ? (
-                                                        <>
-                                                            <ArrowUpCircle className="h-4 w-4 mr-1" />
-                                                            Upgrade
-                                                        </>
-                                                    ) : billingReady ? (
-                                                        'Alterar'
-                                                    ) : (
-                                                        'Confirmar plano'
-                                                    )}
-                                                </Button>
-                                            )}
-                                            {isDowngradeBlocked && (
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className={`${billingBtnGhost} max-w-[11rem] text-left h-auto py-2 whitespace-normal`}
-                                                    onClick={() => showError(BILLING_DOWNGRADE_GESTOR_MESSAGE)}
-                                                >
-                                                    Solicitar redução
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
+                                    plan={plan}
+                                    display={displays[plan.code]}
+                                    isCurrent={isCurrent}
+                                    billingReady={billingReady}
+                                    canSelect={canSelect}
+                                    isUpgrade={!!isUpgrade}
+                                    isDowngradeBlocked={isDowngradeBlocked}
+                                    lockedUpgrade={!!lockedUpgrade}
+                                    onAction={() => openPlanAction(plan.code)}
+                                />
                             );
                         })}
                     </div>
