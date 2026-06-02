@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,7 +30,10 @@ import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
 import { fetchBillingPlanContract } from '@/utils/fetchBillingPlanContract';
 import { useBillingPlansCatalog } from '@/hooks/use-billing-plans-catalog';
+import { useConsumptionLicenseStatus } from '@/hooks/use-consumption-license-status';
 import BillingPlanOptionCard from '@/components/BillingPlanOptionCard';
+import { redirectToPlanPaymentCheckout } from '@/utils/plan-payment-checkout';
+import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
 import { format } from 'date-fns';
@@ -46,6 +49,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     companyId,
     isAdminMaster = false,
 }) => {
+    const queryClient = useQueryClient();
     const { billing, isLoading, invalidate } = useCompanyBilling(companyId);
     const feeOverrides = useMemo(
         () => ({
@@ -68,25 +72,10 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
 
     const pendingDefinition = pendingPlan ? getBillingPlanDefinition(pendingPlan) : undefined;
 
-    const { data: licenseStatus, refetch: refetchLicenseStatus } = useQuery({
-        queryKey: ['consumptionLicenseStatus', companyId],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('get_company_consumption_license_status', {
-                p_company_id: companyId,
-            });
-            if (error) throw error;
-            return data as {
-                requires_license?: boolean;
-                is_paid?: boolean;
-                blocks_consumption?: boolean;
-                charge_id?: string;
-                amount?: number;
-                status?: string;
-            };
-        },
-        enabled: !!companyId && billing?.billing_plan === 'consumption_or_license',
-        staleTime: 1000 * 30,
-    });
+    const { data: licenseStatus, refetch: refetchLicenseStatus } = useConsumptionLicenseStatus(
+        companyId,
+        billing?.billing_plan,
+    );
 
     const {
         data: pendingContract,
@@ -165,29 +154,64 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                 throw new Error('Não foi possível salvar o plano.');
             }
 
+            const rpcPayload = data as {
+                consumption_license?: unknown;
+            } | null;
+
             dismissToast(toastId);
             const confirmedPlan = pendingPlan;
             showSuccess(isUpgrade ? 'Plano atualizado com sucesso!' : 'Plano confirmado com sucesso!');
             setDialogOpen(false);
             setPendingPlan(null);
-            invalidate();
+            await invalidate();
             invalidatePlanFeatures(companyId);
 
-            if (confirmedPlan === 'listing_monthly' && !isAdminMaster) {
-                await supabase.rpc('ensure_listing_monthly_charge', { p_company_id: companyId });
-                setListingPayDialogOpen(true);
+            if (!isListingMonthlyPlan(confirmedPlan)) {
+                queryClient.removeQueries({ queryKey: ['listingSubscription', companyId] });
+            }
+            if (isListingMonthlyPlan(confirmedPlan)) {
+                queryClient.removeQueries({ queryKey: ['consumptionLicenseStatus', companyId] });
             }
 
-            if (confirmedPlan === 'consumption_or_license' && !isAdminMaster) {
-                const { data: licenseData } = await supabase.rpc('ensure_consumption_license_charge', {
-                    p_company_id: companyId,
-                });
-                const row = licenseData as { charge_id?: string; already_paid?: boolean } | null;
-                if (row?.charge_id && !row.already_paid) {
-                    setPendingLicenseChargeId(row.charge_id);
+            const needsPaymentCheckout =
+                !isAdminMaster &&
+                (confirmedPlan === 'listing_monthly' || confirmedPlan === 'consumption_or_license');
+
+            if (needsPaymentCheckout) {
+                const checkoutToastId = showLoading('Abrindo pagamento no Mercado Pago...');
+                try {
+                    const result = await redirectToPlanPaymentCheckout(companyId, confirmedPlan, {
+                        consumptionLicenseFromRpc: rpcPayload?.consumption_license,
+                        chargeId:
+                            confirmedPlan === 'consumption_or_license'
+                                ? licenseStatus?.charge_id
+                                : undefined,
+                    });
+                    dismissToast(checkoutToastId);
+                    if (result === 'already_paid') {
+                        showSuccess('Pagamento deste mês já consta como quitado.');
+                    }
+                    return;
+                } catch (checkoutErr: unknown) {
+                    dismissToast(checkoutToastId);
+                    const checkoutMsg =
+                        checkoutErr instanceof Error
+                            ? checkoutErr.message
+                            : 'Não foi possível abrir o checkout. Tente pelo botão de pagamento abaixo.';
+                    showError(checkoutMsg);
+
+                    if (confirmedPlan === 'listing_monthly') {
+                        setListingPayDialogOpen(true);
+                    }
+                    if (confirmedPlan === 'consumption_or_license') {
+                        const lic = rpcPayload?.consumption_license as {
+                            charge_id?: string;
+                        } | null;
+                        if (lic?.charge_id) setPendingLicenseChargeId(lic.charge_id);
+                        await refetchLicenseStatus();
+                        setLicensePayDialogOpen(true);
+                    }
                 }
-                await refetchLicenseStatus();
-                setLicensePayDialogOpen(true);
             }
         } catch (e: unknown) {
             dismissToast(toastId);

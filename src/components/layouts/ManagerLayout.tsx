@@ -31,9 +31,16 @@ import {
     listingSubscriptionBlocksOperations,
     MANAGER_LISTING_RENEWAL_PATH,
 } from '@/constants/listing-subscription';
+import {
+    consumptionLicenseBlocksOperations,
+    isManagerPathAllowedWhenConsumptionLicenseUnpaid,
+    MANAGER_CONSUMPTION_LICENSE_PATH,
+} from '@/constants/consumption-license';
 import { useListingSubscription } from '@/hooks/use-listing-subscription';
-import { companyAllowsCreditConsumption, isListingMonthlyPlan } from '@/utils/company-billing-rules';
+import { useConsumptionLicenseStatus } from '@/hooks/use-consumption-license-status';
+import { companyAllowsCreditConsumption, isConsumptionOrLicensePlan, isListingMonthlyPlan } from '@/utils/company-billing-rules';
 import ListingSubscriptionBanner from '@/components/ListingSubscriptionBanner';
+import ConsumptionLicenseBanner from '@/components/ConsumptionLicenseBanner';
 
 const ADMIN_USER_TYPE_ID = 1;
 const MANAGER_USER_TYPE_ID = 2;
@@ -112,14 +119,20 @@ const ManagerLayout: React.FC = () => {
     const billingGateToastShown = useRef(false);
     const planFeatureRedirectShown = useRef(false);
     const listingGateToastShown = useRef(false);
+    const licenseGateToastShown = useRef(false);
 
     const isListingPlan = isListingMonthlyPlan(billing?.billing_plan ?? null);
+    const isConsumptionLicensePlan = isConsumptionOrLicensePlan(billing?.billing_plan ?? null);
     const { data: listingSubscription, isLoading: isLoadingListingSubscription } = useListingSubscription(
         company?.id,
         billing?.billing_plan ?? null,
     );
     const listingPhase = listingSubscription?.phase ?? 'not_applicable';
-    const listingPastDue = listingSubscriptionBlocksOperations(listingPhase);
+    const listingPastDue = isListingPlan && listingSubscriptionBlocksOperations(listingPhase);
+
+    const { data: consumptionLicenseStatus, isLoading: isLoadingConsumptionLicense } =
+        useConsumptionLicenseStatus(company?.id, billing?.billing_plan ?? null);
+    const licenseBlocksPanel = consumptionLicenseBlocksOperations(consumptionLicenseStatus);
 
     useEffect(() => {
         if (!billingLoaded || !requiresContractAcceptance) {
@@ -161,6 +174,53 @@ const ManagerLayout: React.FC = () => {
         billingReady,
         navigate,
     ]);
+
+    useEffect(() => {
+        if (
+            isAdminMaster ||
+            !isManagerPro ||
+            !isConsumptionLicensePlan ||
+            isLoadingConsumptionLicense ||
+            !licenseBlocksPanel
+        ) {
+            licenseGateToastShown.current = false;
+            return;
+        }
+        if (isManagerPathAllowedWhenConsumptionLicenseUnpaid(location.pathname)) {
+            return;
+        }
+        if (!licenseGateToastShown.current) {
+            licenseGateToastShown.current = true;
+            showError(
+                'Licença mensal pendente. Pague para liberar o painel (relatórios e pagamento continuam disponíveis).',
+            );
+        }
+        navigate(MANAGER_CONSUMPTION_LICENSE_PATH, { replace: true });
+    }, [
+        isAdminMaster,
+        isManagerPro,
+        isConsumptionLicensePlan,
+        isLoadingConsumptionLicense,
+        licenseBlocksPanel,
+        location.pathname,
+        navigate,
+    ]);
+
+    const showListingBanner =
+        isListingPlan &&
+        !isAdminMaster &&
+        listingSubscription &&
+        listingPhase !== 'not_applicable' &&
+        listingPhase !== 'active';
+
+    const showConsumptionLicenseBanner =
+        isConsumptionLicensePlan &&
+        !isAdminMaster &&
+        consumptionLicenseStatus &&
+        licenseBlocksPanel;
+
+    const subscriptionBannerOffset =
+        showListingBanner || showConsumptionLicenseBanner ? 88 : 0;
 
     useEffect(() => {
         if (
@@ -222,7 +282,8 @@ const ManagerLayout: React.FC = () => {
         (isManagerPro && isLoadingCompany) ||
         (needsBillingGateCheck && isLoadingBilling) ||
         (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
-        (isListingPlan && isLoadingListingSubscription)
+        (isListingPlan && isLoadingListingSubscription) ||
+        (isConsumptionLicensePlan && isLoadingConsumptionLicense)
     ) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -273,6 +334,13 @@ const ManagerLayout: React.FC = () => {
     if (listingPastDue && !isAdminMaster) {
         filteredManagerNav = filteredManagerNav.filter((item) =>
             item.path.startsWith('/manager/reports'),
+        );
+    }
+
+    if (licenseBlocksPanel && !isAdminMaster) {
+        filteredManagerNav = filteredManagerNav.filter((item) =>
+            item.path.startsWith('/manager/reports') ||
+            item.path.startsWith('/manager/settings/company-profile'),
         );
     }
 
@@ -331,6 +399,16 @@ const ManagerLayout: React.FC = () => {
         ) {
             showError('Assinatura vencida. Renove em Mensalidade de divulgação.');
             navigate(MANAGER_LISTING_RENEWAL_PATH);
+            if (closeMobile) setIsMobileMenuOpen(false);
+            return;
+        }
+        if (
+            licenseBlocksPanel &&
+            !isAdminMaster &&
+            !isManagerPathAllowedWhenConsumptionLicenseUnpaid(path)
+        ) {
+            showError('Licença mensal pendente. Pague em Licença mensal (consumo).');
+            navigate(MANAGER_CONSUMPTION_LICENSE_PATH);
             if (closeMobile) setIsMobileMenuOpen(false);
             return;
         }
@@ -726,21 +804,29 @@ const ManagerLayout: React.FC = () => {
                     </div>
                 </div>
             </header>
-            {isListingPlan && !isAdminMaster && listingSubscription && (
+            {showListingBanner && (
                 <div
                     className="fixed left-0 right-0 z-[105]"
                     style={{ top: `${Math.max(headerHeight, 64)}px` }}
                 >
                     <ListingSubscriptionBanner
-                        phase={listingSubscription.phase}
-                        message={listingSubscription.message}
-                        listingActiveUntil={listingSubscription.listing_active_until}
+                        phase={listingSubscription!.phase}
+                        message={listingSubscription!.message}
+                        listingActiveUntil={listingSubscription!.listing_active_until}
                     />
+                </div>
+            )}
+            {showConsumptionLicenseBanner && (
+                <div
+                    className="fixed left-0 right-0 z-[105]"
+                    style={{ top: `${Math.max(headerHeight, 64)}px` }}
+                >
+                    <ConsumptionLicenseBanner status={consumptionLicenseStatus!} />
                 </div>
             )}
             <main
                 style={{
-                    paddingTop: `${Math.max(headerHeight, 80) + (isListingPlan && listingSubscription?.phase !== 'active' && listingSubscription?.phase !== 'not_applicable' ? 88 : 0)}px`,
+                    paddingTop: `${Math.max(headerHeight, 80) + subscriptionBannerOffset}px`,
                 }}
                 className={isMobile ? 'p-3' : isTablet ? 'p-4' : 'p-6'}
             >
