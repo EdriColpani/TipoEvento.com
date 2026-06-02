@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ENTRY_QR_ALLOWED_TTLS, ENTRY_QR_TTL_LABELS } from '@/constants/entry-qr';
 import CompanyEventCategoryField from '@/components/CompanyEventCategoryField';
-import { normalizeContractContentForDisplay } from '@/utils/contractContent';
+import { normalizeContractContentForDisplay, looksLikeContractHtml, prepareContractContentForHtmlDisplay } from '@/utils/contractContent';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, CheckSquare, FileText, XCircle, Plus, Ticket } from 'lucide-react';
@@ -473,22 +473,15 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         if (!activeContract) return '';
 
         const rangesHtml = formatCommissionRangesToHtml(commissionRanges || []);
-        let contentToProcess = normalizeContractContentForDisplay(activeContract.content);
-        const withRanges = contentToProcess.replace('X%', rangesHtml);
-        const trimmed = withRanges.trim();
-
-        // Contratos do admin costumam vir como HTML (<h2>, <p>, …). Nesse caso NÃO envolver
-        // o documento inteiro em um único <p> — isso quebra o HTML5, colapsa margens e vira "muro de texto".
-        // Só aplica o split em parágrafos para texto puro (sem tags na primeira posição).
-        const looksLikeHtml = /^</.test(trimmed);
-        if (looksLikeHtml) {
-            return trimmed;
+        const normalized = normalizeContractContentForDisplay(activeContract.content);
+        const withRanges = normalized.replace('X%', rangesHtml);
+        if (looksLikeContractHtml(withRanges.trim())) {
+            return withRanges.trim();
         }
-
-        return trimmed
-            .split(/\n\s*\n/)
-            .map((paragraph) => `<p>${paragraph.trim()}</p>`)
-            .join('');
+        return prepareContractContentForHtmlDisplay(normalized).replace(
+            'X%',
+            rangesHtml,
+        );
     }, [activeContract, commissionRanges]);
 
     // Se estiver editando um evento gratuito já existente, carrega turmas salvas

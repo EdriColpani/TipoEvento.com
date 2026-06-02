@@ -17,7 +17,7 @@ import { Plus, Loader2, ArrowLeft, FileText, Edit, Power, Eye, AlertTriangle, XC
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { normalizeContractContentForDisplay } from '@/utils/contractContent';
+import ContractHtmlBody from '@/components/ContractHtmlBody';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useProfile } from '@/hooks/use-profile';
@@ -538,14 +538,8 @@ const ViewContentDialog: React.FC<{ contract: EventContract, onClose: () => void
                         Versão: <span className="font-semibold text-white">{contract.version}</span>
                     </DialogDescription>
                 </DialogHeader>
-                <div
-                    className="prose prose-invert max-w-none min-h-0 flex-1 overflow-y-auto overscroll-contain mt-0 p-4 border border-yellow-500/20 rounded-lg
-                    [&_h2]:mt-8 [&_h2]:mb-4 [&_h2]:text-yellow-500/95
-                    [&_h3]:mt-6 [&_h3]:mb-3 [&_h3]:text-yellow-500/90
-                    [&_p]:my-4 [&_p]:leading-relaxed
-                    [&_ul]:my-4 [&_ol]:my-4"
-                >
-                    <div dangerouslySetInnerHTML={{ __html: normalizeContractContentForDisplay(contract.content) }} />
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain mt-0 p-4 border border-yellow-500/20 rounded-lg">
+                    <ContractHtmlBody content={contract.content} />
                 </div>
                 <div className="flex shrink-0 justify-end pt-4 border-t border-yellow-500/20">
                     <Button 

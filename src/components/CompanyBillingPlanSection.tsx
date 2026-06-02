@@ -14,7 +14,7 @@ import {
 import { Loader2, CreditCard, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { normalizeContractContentForDisplay } from '@/utils/contractContent';
+import ContractHtmlBody from '@/components/ContractHtmlBody';
 import {
     BILLING_PLANS,
     BillingPlanCode,
@@ -100,11 +100,6 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
         refetchOnMount: 'always',
         retry: 1,
     });
-
-    const processedContent = useMemo(() => {
-        if (!pendingContract?.content) return '';
-        return normalizeContractContentForDisplay(pendingContract.content);
-    }, [pendingContract]);
 
     const contractScrollKey = pendingContract
         ? `${pendingContract.id}-${pendingContract.version}`
@@ -379,9 +374,10 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                             <div
                                 ref={scrollRef}
                                 onScroll={onScroll}
-                                className="prose prose-invert max-w-none max-h-[320px] overflow-y-auto overscroll-contain p-4 border border-cyan-500/20 rounded-lg text-sm"
-                                dangerouslySetInnerHTML={{ __html: processedContent }}
-                            />
+                                className="max-h-[320px] overflow-y-auto overscroll-contain p-4 border border-cyan-500/20 rounded-lg"
+                            >
+                                <ContractHtmlBody content={pendingContract.content} variant="billing" />
+                            </div>
                             <ContractScrollHint visible={!hasScrolledToEnd} />
                             <label
                                 className={`flex items-start gap-3 ${hasScrolledToEnd ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
