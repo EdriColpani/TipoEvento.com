@@ -9,7 +9,7 @@ import { Loader2, Edit, Save, CheckSquare, XSquare } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { normalizeContractContentForDisplay, looksLikeContractHtml, CONTRACT_HTML_PROSE_CLASS } from '@/utils/contractContent';
+import ContractHtmlBody from '@/components/ContractHtmlBody';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
@@ -193,8 +193,6 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
     const rawDisplayContent = useExternal
         ? (externalContent || 'Nenhum termo disponível.')
         : (termsData?.content || 'Nenhum termo disponível para este tipo.');
-    const displayContent = normalizeContractContentForDisplay(rawDisplayContent);
-    const renderAsHtml = looksLikeContractHtml(displayContent);
 
     return (
         <div className="space-y-6">
@@ -230,7 +228,7 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
             <div
                 ref={contentRef}
                 onScroll={showAgreementCheckbox ? onScroll : undefined}
-                className={`max-h-96 overflow-y-auto overscroll-contain bg-black/60 border border-yellow-500/20 rounded-xl text-gray-300 text-sm leading-relaxed ${renderAsHtml && !isEditing ? '' : 'whitespace-pre-wrap'}`}
+                className="max-h-96 overflow-y-auto overscroll-contain bg-black/60 border border-yellow-500/20 rounded-xl text-gray-300 text-sm leading-relaxed"
             >
                 {isEditing ? (
                     <Textarea
@@ -240,13 +238,10 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
                         rows={15}
                         disabled={isSaving}
                     />
-                ) : renderAsHtml ? (
-                    <div
-                        className={`p-4 ${CONTRACT_HTML_PROSE_CLASS}`}
-                        dangerouslySetInnerHTML={{ __html: displayContent }}
-                    />
                 ) : (
-                    <div className="p-4">{displayContent}</div>
+                    <div className="p-4">
+                        <ContractHtmlBody content={rawDisplayContent} />
+                    </div>
                 )}
             </div>
 
