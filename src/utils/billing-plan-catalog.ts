@@ -1,7 +1,5 @@
 import type { BillingPlanCode, BillingPlanDefinition } from '@/constants/billing-plans';
 import { getBillingPlanDefinition } from '@/constants/billing-plans';
-import type { PlanFeatureKey } from '@/constants/plan-features';
-import { PLAN_FEATURE_DEFINITIONS } from '@/constants/plan-features';
 import type { SystemBillingSettings } from '@/hooks/use-system-billing-settings';
 import { formatCurrencyBrInput } from '@/utils/currency-input';
 
@@ -10,8 +8,6 @@ export interface PublicCommissionRange {
     max_tickets: number;
     percentage: number;
 }
-
-export type BillingPlanFeaturesMatrix = Partial<Record<BillingPlanCode, Partial<Record<PlanFeatureKey, boolean>>>>;
 
 /** Aba correspondente em Admin → Preços e comissões */
 export const ADMIN_PRICING_TAB_BY_PLAN: Record<BillingPlanCode, string> = {
@@ -25,7 +21,6 @@ export interface BillingPlanDisplayInfo {
     priceLabel: string;
     priceDetail: string;
     pricingBullets: string[];
-    enabledFeatures: Array<{ label: string; description: string }>;
     /** Faixas ativas (aba Cobrança de ingressos) */
     commissionTiers?: PublicCommissionRange[];
     /** Aba do admin de onde vêm os valores */
@@ -97,25 +92,12 @@ function hasLicenseOverride(settings: SystemBillingSettings, overrides?: Company
     );
 }
 
-function buildEnabledFeatures(
-    planCode: BillingPlanCode,
-    matrix: BillingPlanFeaturesMatrix,
-): Array<{ label: string; description: string }> {
-    const planFeatures = matrix[planCode] ?? {};
-    return PLAN_FEATURE_DEFINITIONS.filter((def) => planFeatures[def.key] === true).map((def) => ({
-        label: def.label,
-        description: def.description,
-    }));
-}
-
 export function buildBillingPlanDisplay(
     plan: BillingPlanDefinition,
     settings: SystemBillingSettings,
     commissionRanges: PublicCommissionRange[],
-    featuresMatrix: BillingPlanFeaturesMatrix,
     overrides?: CompanyPlanFeeOverrides,
 ): BillingPlanDisplayInfo {
-    const enabledFeatures = buildEnabledFeatures(plan.code, featuresMatrix);
     const activeTiers = commissionRanges.filter((r) => r.percentage > 0);
     const commissionSummary = formatCommissionRangesSummary(activeTiers);
     const commissionDetail = formatCommissionRangesDetail(activeTiers);
@@ -141,7 +123,6 @@ export function buildBillingPlanDisplay(
                     'Sem comissão sobre ingressos — não há venda de ingressos neste plano',
                     'Pagamento via Mercado Pago em Relatórios → Mensalidade de divulgação',
                 ],
-                enabledFeatures,
                 adminPricingTab: adminTab,
                 usesCompanyOverride: listingOverride,
                 settingsUpdatedAt: updatedAt,
@@ -156,7 +137,6 @@ export function buildBillingPlanDisplay(
                     'Sem mensalidade fixa de divulgação',
                     'Comissão aplicada automaticamente em cada venda de ingresso',
                 ],
-                enabledFeatures,
                 commissionTiers: activeTiers,
                 adminPricingTab: adminTab,
                 settingsUpdatedAt: updatedAt,
@@ -174,7 +154,6 @@ export function buildBillingPlanDisplay(
                         : 'Módulo de consumo: aguardando liberação pela EventFest',
                     'Sem licença mensal fixa (diferente do plano Consumo / licença)',
                 ],
-                enabledFeatures,
                 commissionTiers: activeTiers,
                 adminPricingTab: adminTab,
                 settingsUpdatedAt: updatedAt,
@@ -195,7 +174,6 @@ export function buildBillingPlanDisplay(
                         ? 'Módulo de consumo: liberado pela EventFest'
                         : 'Módulo de consumo: aguardando liberação pela EventFest',
                 ],
-                enabledFeatures,
                 adminPricingTab: adminTab,
                 usesCompanyOverride: licenseOverride,
                 settingsUpdatedAt: updatedAt,
@@ -205,7 +183,6 @@ export function buildBillingPlanDisplay(
                 priceLabel: 'Consulte o contrato',
                 priceDetail: plan.description,
                 pricingBullets: [],
-                enabledFeatures,
                 adminPricingTab: adminTab,
                 settingsUpdatedAt: updatedAt,
             };
@@ -215,7 +192,6 @@ export function buildBillingPlanDisplay(
 export function buildAllBillingPlanDisplays(
     settings: SystemBillingSettings,
     commissionRanges: PublicCommissionRange[],
-    featuresMatrix: BillingPlanFeaturesMatrix,
     overrides?: CompanyPlanFeeOverrides,
 ): Record<BillingPlanCode, BillingPlanDisplayInfo> {
     const result = {} as Record<BillingPlanCode, BillingPlanDisplayInfo>;
@@ -227,7 +203,7 @@ export function buildAllBillingPlanDisplays(
     ] as BillingPlanCode[]) {
         const def = getBillingPlanDefinition(plan);
         if (def) {
-            result[plan] = buildBillingPlanDisplay(def, settings, commissionRanges, featuresMatrix, overrides);
+            result[plan] = buildBillingPlanDisplay(def, settings, commissionRanges, overrides);
         }
     }
     return result;

@@ -114,23 +114,6 @@ const BillingPlanOptionCard: React.FC<BillingPlanOptionCardProps> = ({
                 </ul>
             </section>
 
-            {display?.enabledFeatures?.length ? (
-                <section className="space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-gray-500 font-medium">Menu do painel</p>
-                    <div className="flex flex-wrap gap-1.5">
-                        {display.enabledFeatures.map((f) => (
-                            <span
-                                key={f.label}
-                                title={f.description}
-                                className="text-xs px-2 py-1 rounded-md bg-white/5 text-gray-300 ring-1 ring-cyan-500/20"
-                            >
-                                {f.label}
-                            </span>
-                        ))}
-                    </div>
-                </section>
-            ) : null}
-
             {plan.limitations.length > 0 && (
                 <section className="space-y-2">
                     <p className="text-xs uppercase tracking-wide text-gray-500 font-medium">Limitações</p>
