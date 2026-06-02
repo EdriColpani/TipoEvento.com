@@ -66,9 +66,18 @@ serve(async (req) => {
       });
     }
 
-    const { data: canManage } = await supabaseService.rpc('user_can_manage_company_billing', {
-      p_company_id: companyId,
-    });
+    // Deve usar o client com JWT do gestor; com service role auth.uid() é null e a RPC nega sempre.
+    const { data: canManage, error: canManageErr } = await supabaseAnon.rpc(
+      'user_can_manage_company_billing',
+      { p_company_id: companyId },
+    );
+    if (canManageErr) {
+      console.error('[create-listing-monthly-checkout] canManage:', canManageErr);
+      return new Response(JSON.stringify({ error: 'Não foi possível validar permissão.' }), {
+        status: 500,
+        headers: corsHeaders,
+      });
+    }
     if (!canManage) {
       return new Response(JSON.stringify({ error: 'Sem permissão para esta empresa.' }), {
         status: 403,
