@@ -9,7 +9,9 @@ import { showSuccess } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import ManagerTypeSelectionDialog from '@/components/ManagerTypeSelectionDialog';
-import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegisterDialog'; // Importando o novo modal PF
+import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegisterDialog';
+import { useQuery } from '@tanstack/react-query';
+import { fetchActivePlatformContract } from '@/utils/fetchPlatformContract';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -31,6 +33,16 @@ const ManagerRegister: React.FC = () => {
 
     const isAdminRegisterRoute = location.pathname === '/admin/register-manager';
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+
+    const {
+        data: platformContract,
+        isLoading: isLoadingContract,
+        isError: isErrorContract,
+    } = useQuery({
+        queryKey: ['platformContract', 'company_registration'],
+        queryFn: () => fetchActivePlatformContract('company_registration'),
+        staleTime: 1000 * 60 * 60,
+    });
 
     const shouldShowAgreementCheckbox = !isAdminRegisterRoute;
 
@@ -81,22 +93,40 @@ const ManagerRegister: React.FC = () => {
                         {isAdminRegisterRoute && isAdminMaster ? "Editar Termos de Registro de Gestor" : "Cadastro de Gestor"}
                     </h1>
                     <p className="text-gray-400 text-sm sm:text-base">
-                        {isAdminRegisterRoute && isAdminMaster ? "Atualize o conteúdo dos termos para novos gestores." : "Leia e aceite os termos para continuar"}
+                        {isAdminRegisterRoute && isAdminMaster
+                            ? 'Edite o contrato em Admin → Contratos (Cadastro da empresa).'
+                            : 'Leia e aceite o contrato de adesão à plataforma para continuar'}
                     </p>
                 </div>
-                
-                <MultiLineEditor 
-                    onAgree={handleAgreeToTerms} 
-                    initialAgreedState={agreedToTerms} 
-                    showAgreementCheckbox={shouldShowAgreementCheckbox}
-                    termsType="manager_registration"
-                />
+
+                {isLoadingContract ? (
+                    <div className="text-center py-10">
+                        <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
+                        <p className="text-gray-400">Carregando contrato de adesão...</p>
+                    </div>
+                ) : isErrorContract || !platformContract ? (
+                    <div className="bg-red-500/20 border border-red-500/30 text-red-400 p-6 rounded-xl">
+                        <h3 className="text-red-400 text-xl">Contrato indisponível</h3>
+                        <p className="text-gray-400 text-sm mt-2">
+                            Não foi possível carregar o contrato de adesão. Peça ao administrador para ativar o
+                            contrato &quot;Cadastro da empresa (Gestor PRO)&quot; em Admin → Contratos.
+                        </p>
+                    </div>
+                ) : (
+                    <MultiLineEditor
+                        onAgree={handleAgreeToTerms}
+                        initialAgreedState={agreedToTerms}
+                        showAgreementCheckbox={shouldShowAgreementCheckbox}
+                        externalContent={platformContract.content}
+                        externalTitle={platformContract.title}
+                    />
+                )}
 
                 {!isAdminRegisterRoute && (
                     <div className="space-y-4">
                         <Button
                             onClick={handleContinue}
-                            disabled={!agreedToTerms || isSubmitting}
+                            disabled={!agreedToTerms || isSubmitting || !platformContract}
                             className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                         >
                             {isSubmitting ? (
