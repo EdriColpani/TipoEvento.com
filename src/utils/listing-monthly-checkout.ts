@@ -25,28 +25,31 @@ export async function startListingMonthlyCheckout(
         headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (error) {
-        throw new Error(error.message || 'Erro ao iniciar pagamento.');
-    }
-
-    const payload = data as {
+    const payload = (data ?? {}) as {
+        error?: string;
+        alreadyPaid?: boolean;
         checkoutUrl?: string;
         chargeId?: string;
         amount?: number;
-        error?: string;
-        alreadyPaid?: boolean;
     };
 
-    if (payload?.error) {
-        throw new Error(payload.error);
+    if (error) {
+        const detail =
+            payload?.error ||
+            (error instanceof Error ? error.message : 'Erro ao iniciar pagamento.');
+        throw new Error(detail);
     }
-    if (!payload?.checkoutUrl || !payload?.chargeId) {
+
+    if (body?.error) {
+        throw new Error(body.error);
+    }
+    if (!body?.checkoutUrl || !body?.chargeId) {
         throw new Error('Resposta de pagamento inválida.');
     }
 
     return {
-        checkoutUrl: payload.checkoutUrl,
-        chargeId: payload.chargeId,
-        amount: Number(payload.amount ?? 0),
+        checkoutUrl: body.checkoutUrl,
+        chargeId: body.chargeId,
+        amount: Number(body.amount ?? 0),
     };
 }

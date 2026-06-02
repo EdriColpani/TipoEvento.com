@@ -25,17 +25,20 @@ export async function startConsumptionLicenseCheckout(
         headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (error) {
-        throw new Error(error.message || 'Erro ao iniciar pagamento.');
-    }
-
-    const payload = data as {
+    const payload = (data ?? {}) as {
+        error?: string;
+        alreadyPaid?: boolean;
         checkoutUrl?: string;
         chargeId?: string;
         amount?: number;
-        error?: string;
-        alreadyPaid?: boolean;
     };
+
+    if (error) {
+        const detail =
+            payload?.error ||
+            (error instanceof Error ? error.message : 'Erro ao iniciar pagamento.');
+        throw new Error(detail);
+    }
 
     if (payload?.error) {
         throw new Error(payload.error);
