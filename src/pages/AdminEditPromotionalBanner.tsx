@@ -135,7 +135,8 @@ const AdminEditPromotionalBanner: React.FC = () => {
 
             dismissToast(toastId);
             showSuccess(`Banner promocional "${values.headline}" atualizado com sucesso!`);
-            queryClient.invalidateQueries({ queryKey: ['promotionalBanners'] }); // Invalida a lista
+            queryClient.invalidateQueries({ queryKey: ['promotionalBanners'] });
+            queryClient.invalidateQueries({ queryKey: ['carouselBanners'] });
             navigate('/admin/banners'); 
 
         } catch (error: any) {

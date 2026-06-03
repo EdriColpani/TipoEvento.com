@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,18 +8,66 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Form } from '@/components/ui/form';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { Loader2, Building, ArrowLeft } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import CompanyForm, { createCompanySchema, CompanyFormData } from '@/components/CompanyForm';
-import { useQueryClient } from '@tanstack/react-query'; // Importando useQueryClient
+import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+    ensureAuthUserForCompanyRegistration,
+    MANAGER_COMPANY_REGISTER_DRAFT_KEY,
+    MANAGER_COMPANY_REGISTER_PATH,
+} from '@/utils/promoter-registration-flow';
+import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+
+type CompanyRegisterDraft = {
+    company: CompanyFormData;
+    accountName: string;
+    savedAt: number;
+};
+
+function saveCompanyRegisterDraft(draft: Omit<CompanyRegisterDraft, 'savedAt'>) {
+    sessionStorage.setItem(
+        MANAGER_COMPANY_REGISTER_DRAFT_KEY,
+        JSON.stringify({ ...draft, savedAt: Date.now() }),
+    );
+}
+
+function loadCompanyRegisterDraft(): CompanyRegisterDraft | null {
+    try {
+        const raw = sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as CompanyRegisterDraft;
+        if (!parsed.company || typeof parsed.accountName !== 'string') return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function clearCompanyRegisterDraft() {
+    sessionStorage.removeItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY);
+}
 
 // --- Component ---
 
 const ManagerCompanyRegister: React.FC = () => {
     const navigate = useNavigate();
-    const queryClient = useQueryClient(); // Inicializando useQueryClient
+    const location = useLocation();
+    const queryClient = useQueryClient();
+    const locationState = (location.state ?? {}) as {
+        fromPromoterCta?: boolean;
+        allowGuestSignup?: boolean;
+    };
     const [userId, setUserId] = useState<string | null>(null);
     const [isFetching, setIsFetching] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isCepLoading, setIsCepLoading] = useState(false);
+    const [accountName, setAccountName] = useState('');
+    const [accountPassword, setAccountPassword] = useState('');
+    const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
+    const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<string | null>(null);
+
+    const needsGuestAccount = !userId && Boolean(locationState.allowGuestSignup);
 
     // Schema de validação para o contexto de Gestor (Pessoa Jurídica)
     const schema = createCompanySchema(true); 
@@ -42,20 +90,42 @@ const ManagerCompanyRegister: React.FC = () => {
         },
     });
 
-    // Fetch User ID
     useEffect(() => {
         const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                showError("Sessão expirada. Faça login novamente.");
-                navigate('/login');
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+            if (user) {
+                if (!isAuthEmailConfirmed(user)) {
+                    await supabase.auth.signOut({ scope: 'local' });
+                    if (locationState.allowGuestSignup) {
+                        setIsFetching(false);
+                        return;
+                    }
+                    showError('Confirme seu e-mail antes de cadastrar a empresa.');
+                    navigate('/login', { state: { from: MANAGER_COMPANY_REGISTER_PATH } });
+                    return;
+                }
+                setUserId(user.id);
+                const draft = loadCompanyRegisterDraft();
+                if (draft) {
+                    form.reset(draft.company);
+                    setAccountName(draft.accountName);
+                    clearCompanyRegisterDraft();
+                    showSuccess('Dados da empresa restaurados. Revise e finalize o cadastro.');
+                }
+                setIsFetching(false);
                 return;
             }
-            setUserId(user.id);
-            setIsFetching(false);
+            if (locationState.allowGuestSignup) {
+                setIsFetching(false);
+                return;
+            }
+            showError('Faça login para cadastrar sua empresa ou use o botão Começar Agora na página inicial.');
+            navigate('/login', { state: { from: MANAGER_COMPANY_REGISTER_PATH } });
         };
-        fetchUser();
-    }, [navigate]);
+        void fetchUser();
+    }, [navigate, locationState.allowGuestSignup, form]);
 
     // Function to fetch address via ViaCEP
     const fetchAddressByCep = async (cep: string) => {
@@ -91,11 +161,49 @@ const ManagerCompanyRegister: React.FC = () => {
     };
 
     const onSubmit = async (values: CompanyFormData) => {
-        if (!userId) return;
         setIsSaving(true);
-        const toastId = showLoading("Registrando empresa e perfil de gestor...");
+        const toastId = showLoading('Registrando empresa e perfil de gestor...');
 
-        const dataToSave = {
+        try {
+            if (needsGuestAccount) {
+                if (!accountName.trim()) {
+                    throw new Error('Informe o nome do responsável pela conta.');
+                }
+                if (!values.email?.trim()) {
+                    throw new Error('Informe o e-mail da empresa (será usado para login).');
+                }
+                if (accountPassword.length < 6) {
+                    throw new Error('A senha deve ter no mínimo 6 caracteres.');
+                }
+                if (accountPassword !== accountPasswordConfirm) {
+                    throw new Error('As senhas não conferem.');
+                }
+            }
+
+            const authResult = await ensureAuthUserForCompanyRegistration(
+                values.email || '',
+                accountPassword,
+                accountName || values.corporate_name,
+                userId,
+            );
+
+            if (authResult.status === 'email_confirmation_required') {
+                saveCompanyRegisterDraft({
+                    company: values,
+                    accountName: accountName.trim(),
+                });
+                setUserId(null);
+                dismissToast(toastId);
+                setPendingConfirmationEmail(authResult.email);
+                return;
+            }
+
+            const activeUserId = authResult.userId;
+            if (activeUserId !== userId) {
+                setUserId(activeUserId);
+            }
+
+            const dataToSave = {
             // REMOVIDO: user_id: userId, // A posse agora é gerenciada pela tabela user_companies
             cnpj: values.cnpj.replace(/\D/g, ''),
             corporate_name: values.corporate_name,
@@ -112,16 +220,14 @@ const ManagerCompanyRegister: React.FC = () => {
             complement: values.complement || null,
         };
 
-        try {
             // 1. Perfil primeiro: RLS em `companies` (companies_insert_gestor_pro) exige tipo_usuario_id = 2 no perfil.
-            //    Ordem antiga (empresa → perfil) fazia o INSERT falhar ou gerava estado estranho.
             const { error: profileUpdateError } = await supabase
                 .from('profiles')
                 .update({
                     tipo_usuario_id: 2,
                     natureza_juridica_id: 2,
                 })
-                .eq('id', userId);
+                .eq('id', activeUserId);
 
             if (profileUpdateError) {
                 throw new Error(
@@ -148,7 +254,7 @@ const ManagerCompanyRegister: React.FC = () => {
 
             // 3. Vínculo obrigatório — sem user_companies o app não resolve company_id ao salvar evento
             const { error: associationError } = await supabase.from('user_companies').insert({
-                user_id: userId,
+                user_id: activeUserId,
                 company_id: companyId,
                 role: 'owner',
                 is_primary: true,
@@ -173,18 +279,19 @@ const ManagerCompanyRegister: React.FC = () => {
                 console.error("Warning: Failed to update event statuses to approved:", eventUpdateError);
             }
 
-            queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
-            queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+            queryClient.invalidateQueries({ queryKey: ['managerCompany', activeUserId] });
+            queryClient.invalidateQueries({ queryKey: ['profile', activeUserId] });
             queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
 
+            clearCompanyRegisterDraft();
             dismissToast(toastId);
-            showSuccess("Registro de Gestor (Empresa) concluído com sucesso!");
+            showSuccess('Registro de Gestor (Empresa) concluído com sucesso!');
             navigate('/manager/dashboard');
-
-        } catch (e: any) {
+        } catch (e: unknown) {
             dismissToast(toastId);
-            console.error("Supabase Save Error:", e);
-            showError(`Falha ao registrar empresa: ${e.message || 'Erro desconhecido'}`);
+            console.error('Supabase Save Error:', e);
+            const message = e instanceof Error ? e.message : 'Erro desconhecido';
+            showError(`Falha ao registrar empresa: ${message}`);
         } finally {
             setIsSaving(false);
         }
@@ -219,6 +326,20 @@ const ManagerCompanyRegister: React.FC = () => {
         );
     }
 
+    if (pendingConfirmationEmail) {
+        return (
+            <EmailConfirmationScreen
+                email={pendingConfirmationEmail}
+                variant="pro"
+                showDraftSaved
+                loginTo="/login"
+                loginState={{ from: MANAGER_COMPANY_REGISTER_PATH }}
+                onBack={() => navigate('/')}
+                backLabel="Voltar para a página inicial"
+            />
+        );
+    }
+
     return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-4 sm:px-6 py-12">
             <div className="relative z-10 w-full max-w-4xl">
@@ -230,7 +351,11 @@ const ManagerCompanyRegister: React.FC = () => {
                         EventFest PRO
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">Cadastro de Gestor (Pessoa Jurídica)</h1>
-                    <p className="text-gray-400 text-sm sm:text-base">Preencha os dados da sua empresa para se tornar um gestor.</p>
+                    <p className="text-gray-400 text-sm sm:text-base">
+                        {needsGuestAccount
+                            ? 'Crie sua conta e cadastre a empresa para virar gestor PRO.'
+                            : 'Preencha os dados da sua empresa para se tornar um gestor.'}
+                    </p>
                 </div>
                 <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-yellow-500/10">
                     <CardHeader>
@@ -246,7 +371,69 @@ const ManagerCompanyRegister: React.FC = () => {
                         <FormProvider {...form}>
                             <Form {...form}>
                                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                                    
+
+                                    {needsGuestAccount && (
+                                        <div className="space-y-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-4">
+                                            <p className="text-sm text-cyan-200/90 font-medium">
+                                                Conta de acesso (obrigatório)
+                                            </p>
+                                            <p className="text-xs text-gray-400">
+                                                Use o mesmo e-mail de acesso abaixo. Enviaremos um link para
+                                                confirmar o e-mail antes de concluir o cadastro da empresa. Se já
+                                                tiver conta,{' '}
+                                                <Link
+                                                    to="/login"
+                                                    state={{ from: MANAGER_COMPANY_REGISTER_PATH }}
+                                                    className="text-yellow-500 hover:underline"
+                                                >
+                                                    faça login
+                                                </Link>
+                                                .
+                                            </p>
+                                            <div>
+                                                <label className="block text-sm text-white mb-2">
+                                                    Nome do responsável *
+                                                </label>
+                                                <Input
+                                                    value={accountName}
+                                                    onChange={(e) => setAccountName(e.target.value)}
+                                                    className="bg-black/60 border-yellow-500/30 text-white"
+                                                    disabled={isSaving}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm text-white mb-2">
+                                                        Senha *
+                                                    </label>
+                                                    <Input
+                                                        type="password"
+                                                        value={accountPassword}
+                                                        onChange={(e) => setAccountPassword(e.target.value)}
+                                                        className="bg-black/60 border-yellow-500/30 text-white"
+                                                        disabled={isSaving}
+                                                        minLength={6}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm text-white mb-2">
+                                                        Confirmar senha *
+                                                    </label>
+                                                    <Input
+                                                        type="password"
+                                                        value={accountPasswordConfirm}
+                                                        onChange={(e) =>
+                                                            setAccountPasswordConfirm(e.target.value)
+                                                        }
+                                                        className="bg-black/60 border-yellow-500/30 text-white"
+                                                        disabled={isSaving}
+                                                        minLength={6}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <CompanyForm 
                                         isSaving={isSaving} 
                                         isCepLoading={isCepLoading} 
@@ -274,7 +461,11 @@ const ManagerCompanyRegister: React.FC = () => {
                                         </Button>
                                         <Button
                                             type="button"
-                                            onClick={() => navigate('/manager/register')}
+                                            onClick={() =>
+                                                navigate(
+                                                    locationState.fromPromoterCta ? '/' : '/manager/register',
+                                                )
+                                            }
                                             variant="outline"
                                             className="flex-1 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer"
                                             disabled={isSaving}

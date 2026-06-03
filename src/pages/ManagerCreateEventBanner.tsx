@@ -27,6 +27,7 @@ import {
     fetchEventCarouselBannerByEvent,
     formatEventCarouselBannerError,
 } from '@/utils/event-carousel-banner-rules';
+import { MANAGER_EVENT_BANNERS_QUERY_KEY } from '@/hooks/use-manager-event-banners';
 
 // Zod schema for event banner validation
 const eventBannerSchema = z.object({
@@ -198,8 +199,9 @@ const ManagerCreateEventBanner: React.FC = () => {
             dismissToast(toastId);
             showSuccess(`Banner para o evento "${values.headline}" criado com sucesso!`);
             form.reset(); // Clear form
-            queryClient.invalidateQueries({ queryKey: ['carouselBanners'] }); // Invalida o cache do carrossel
-            navigate('/manager/events'); // Redireciona para a lista de eventos
+            queryClient.invalidateQueries({ queryKey: ['carouselBanners'] });
+            queryClient.invalidateQueries({ queryKey: [MANAGER_EVENT_BANNERS_QUERY_KEY] });
+            navigate('/manager/events/banners');
 
         } catch (error: unknown) {
             dismissToast(toastId);
@@ -279,8 +281,8 @@ const ManagerCreateEventBanner: React.FC = () => {
                             />
 
                             {hasExistingBannerBlock && (
-                                <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
-                                    <p className="font-medium text-amber-200">Este evento já possui um banner</p>
+                                <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-gray-200">
+                                    <p className="font-medium text-yellow-500">Este evento já possui um banner</p>
                                     <p className="mt-1">
                                         {existingBanner?.headline
                                             ? `"${existingBanner.headline}"`
@@ -295,9 +297,19 @@ const ManagerCreateEventBanner: React.FC = () => {
                                             : '—'}
                                         .
                                     </p>
-                                    <p className="mt-2 text-amber-200/90">
-                                        {EVENT_CAROUSEL_DUPLICATE_EVENT_MESSAGE}
-                                    </p>
+                                    <p className="mt-2 text-gray-400">{EVENT_CAROUSEL_DUPLICATE_EVENT_MESSAGE}</p>
+                                    {existingBanner?.id && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="mt-3 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                            onClick={() =>
+                                                navigate(`/manager/events/banners/edit/${existingBanner.id}`)
+                                            }
+                                        >
+                                            Editar banner existente
+                                        </Button>
+                                    )}
                                 </div>
                             )}
 
@@ -463,13 +475,13 @@ const ManagerCreateEventBanner: React.FC = () => {
                                 </Button>
                                 <Button
                                     type="button"
-                                    onClick={() => navigate('/manager/events')}
+                                    onClick={() => navigate('/manager/events/banners')}
                                     variant="outline"
                                     className="flex-1 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer"
                                     disabled={isSaving}
                                 >
                                     <ArrowLeft className="mr-2 h-5 w-5" />
-                                    Voltar
+                                    Meus banners
                                 </Button>
                             </div>
                         </form>

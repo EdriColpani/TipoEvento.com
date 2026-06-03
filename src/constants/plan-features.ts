@@ -70,6 +70,7 @@ export const MANAGER_NAV_ITEMS: ManagerNavItemConfig[] = [
     { path: '/manager/dashboard', label: 'Dashboard PRO', featureKey: 'dashboard' },
     { path: '/manager/events', label: 'Eventos', featureKey: 'events' },
     { path: '/manager/events/create', label: 'Criar Novo Evento', featureKey: 'events_create' },
+    { path: '/manager/events/banners', label: 'Banners de Evento', featureKey: 'events_banners' },
     { path: '/manager/events/banners/create', label: 'Criar Banner de Evento', featureKey: 'events_banners' },
     { path: '/manager/wristbands', label: 'Ingressos', featureKey: 'wristbands' },
     { path: '/manager/validation-keys', label: 'Chaves de Validação', featureKey: 'validation_keys' },

@@ -8,6 +8,9 @@ import { ArrowLeft, Loader2, SlidersHorizontal, Clock, Maximize, MapPin, ListOrd
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { useQueryClient } from '@tanstack/react-query';
+
+const MAX_BANNERS_CAP = 30;
 
 interface CarouselSettingsState {
     id?: string; // Adicionando ID opcional para rastrear o registro existente
@@ -25,8 +28,22 @@ const FALLBACK_STRATEGIES = [
     { value: 'random', label: 'Aleatório' },
 ];
 
+function sanitizeCarouselSettings(raw: CarouselSettingsState): CarouselSettingsState {
+    const maxBanners = Math.min(MAX_BANNERS_CAP, Math.max(1, Number(raw.max_banners_display) || 1));
+    const minRegional = Math.min(maxBanners, Math.max(0, Number(raw.min_regional_banners) || 0));
+    return {
+        ...raw,
+        rotation_time_seconds: Math.max(1, Number(raw.rotation_time_seconds) || 5),
+        max_banners_display: maxBanners,
+        regional_distance_km: Math.max(0, Number(raw.regional_distance_km) || 0),
+        min_regional_banners: minRegional,
+        days_until_event_threshold: Math.max(0, Number(raw.days_until_event_threshold) || 0),
+    };
+}
+
 const AdminCarouselSettings: React.FC = () => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [userId, setUserId] = useState<string | null>(null);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
     const [settings, setSettings] = useState<CarouselSettingsState | null>(null);
@@ -82,24 +99,29 @@ const AdminCarouselSettings: React.FC = () => {
     }, [navigate]);
 
     const handleInputChange = (key: keyof CarouselSettingsState, value: string | number) => {
+        if (typeof value === 'string' && value === '') {
+            return;
+        }
+
         let numericValue: number;
-        
         if (typeof value === 'string') {
-            // Garante que a string vazia ou inválida se torne 0 ou o valor mínimo
-            numericValue = parseInt(value) || 0;
+            numericValue = parseInt(value, 10);
+            if (Number.isNaN(numericValue)) return;
         } else {
             numericValue = value;
         }
-        
-        // Aplica limites mínimos
-        if (key === 'rotation_time_seconds' && numericValue < 1) numericValue = 1;
-        if (key === 'max_banners_display' && numericValue < 1) numericValue = 1;
-        if (key === 'regional_distance_km' && numericValue < 0) numericValue = 0;
-        if (key === 'min_regional_banners' && numericValue < 0) numericValue = 0;
-        if (key === 'days_until_event_threshold' && numericValue < 0) numericValue = 0;
 
-
-        setSettings(prev => prev ? { ...prev, [key]: numericValue } : null);
+        setSettings((prev) => {
+            if (!prev) return null;
+            const next = { ...prev, [key]: numericValue };
+            if (
+                key === 'max_banners_display' &&
+                next.min_regional_banners > numericValue
+            ) {
+                next.min_regional_banners = numericValue;
+            }
+            return next;
+        });
     };
 
     const handleSelectChange = (key: keyof CarouselSettingsState, value: string) => {
@@ -116,10 +138,11 @@ const AdminCarouselSettings: React.FC = () => {
         const toastId = showLoading("Salvando configurações do carrossel...");
 
         try {
-            const dataToSave = { 
-                ...settings, 
-                updated_by: userId, 
-                updated_at: new Date().toISOString() 
+            const sanitized = sanitizeCarouselSettings(settings);
+            const dataToSave = {
+                ...sanitized,
+                updated_by: userId,
+                updated_at: new Date().toISOString(),
             };
             
             let error;
@@ -154,6 +177,9 @@ const AdminCarouselSettings: React.FC = () => {
             }
 
             dismissToast(toastId);
+            setSettings(sanitized);
+            queryClient.invalidateQueries({ queryKey: ['carouselBanners'] });
+            queryClient.invalidateQueries({ queryKey: ['carouselSettings'] });
             showSuccess("Configurações do carrossel salvas com sucesso!");
             navigate('/admin/dashboard'); 
 
@@ -240,10 +266,13 @@ const AdminCarouselSettings: React.FC = () => {
                             placeholder="5"
                             className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                             min={1}
-                            max={10}
+                            max={MAX_BANNERS_CAP}
                             disabled={isSaving}
                         />
-                        <p className="text-xs text-gray-500 mt-1">Número máximo de banners que aparecerão no carrossel.</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                            Número máximo de banners no carrossel (1 a {MAX_BANNERS_CAP}). Depois de alterar, clique em
+                            Salvar Configurações.
+                        </p>
                     </div>
 
                     {/* Distância Regional */}

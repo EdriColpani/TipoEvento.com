@@ -50,7 +50,9 @@ import AdminCarouselSettings from "./pages/AdminCarouselSettings";
 import AdminCreatePromotionalBanner from "./pages/AdminCreatePromotionalBanner"; 
 import AdminPromotionalBannersList from "./pages/AdminPromotionalBannersList"; 
 import AdminEditPromotionalBanner from "./pages/AdminEditPromotionalBanner"; 
-import ManagerCreateEventBanner from "./pages/ManagerCreateEventBanner"; 
+import ManagerCreateEventBanner from "./pages/ManagerCreateEventBanner";
+import ManagerEventBannersList from "./pages/ManagerEventBannersList";
+import ManagerEditEventBanner from "./pages/ManagerEditEventBanner"; 
 import ManagerSettingsHistory from "./pages/ManagerSettingsHistory"; 
 import AdminCommissionTiers from "./pages/AdminCommissionTiers"; 
 import AdminPricingAndCommissions from "./pages/AdminPricingAndCommissions";
@@ -117,7 +119,9 @@ const App = () => (
             <Route path="/manager/events" element={<ManagerEventsList />} />
             <Route path="/manager/events/create" element={<ManagerCreateEvent />} />
             <Route path="/manager/events/edit/:id" element={<ManagerEditEvent />} />
-            <Route path="/manager/events/banners/create" element={<ManagerCreateEventBanner />} /> 
+            <Route path="/manager/events/banners" element={<ManagerEventBannersList />} />
+            <Route path="/manager/events/banners/create" element={<ManagerCreateEventBanner />} />
+            <Route path="/manager/events/banners/edit/:id" element={<ManagerEditEventBanner />} /> 
             <Route path="/manager/wristbands" element={<ManagerWristbandsList />} />
             <Route path="/manager/wristbands/create" element={<ManagerCreateWristband />} /> 
             <Route path="/manager/wristbands/manage/:id" element={<ManagerManageWristband />} />

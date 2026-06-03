@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
+import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
+import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Register: React.FC = () => {
@@ -144,6 +146,7 @@ const Register: React.FC = () => {
                 email: formData.email,
                 password: formData.password,
                 options: {
+                    emailRedirectTo: `${window.location.origin}/login`,
                     data: {
                         name: formData.name,
                         cpf: cleanCPF,
@@ -159,13 +162,27 @@ const Register: React.FC = () => {
                 return;
             }
 
-            if (data.user || data.session) {
-                showSuccess("Cadastro realizado! Verifique seu e-mail para ativar sua conta.");
-                setShowSuccessMessage(true);
-                setTimeout(() => {
-                    navigate('/login');
-                }, 3000);
+            const signedUpUser = data.session?.user ?? data.user ?? null;
+            if (!signedUpUser) {
+                showError('Não foi possível concluir o cadastro. Tente novamente.');
+                setIsLoading(false);
+                return;
             }
+
+            if (!isAuthEmailConfirmed(signedUpUser)) {
+                if (data.session) {
+                    await supabase.auth.signOut({ scope: 'local' });
+                }
+                setShowSuccessMessage(true);
+                setIsLoading(false);
+                return;
+            }
+
+            if (data.session) {
+                await supabase.auth.signOut({ scope: 'local' });
+            }
+            showSuccess('Cadastro concluído! Faça login para entrar.');
+            navigate('/login');
 
         } catch (error) {
             console.error('Erro inesperado no cadastro:', error);
@@ -174,6 +191,18 @@ const Register: React.FC = () => {
             setIsLoading(false);
         }
     };
+
+    if (showSuccessMessage) {
+        return (
+            <EmailConfirmationScreen
+                email={formData.email}
+                variant="client"
+                loginTo="/login"
+                onBack={() => navigate('/')}
+                backLabel="Voltar para a página inicial"
+            />
+        );
+    }
 
     return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-4 sm:px-6 py-12">
@@ -196,20 +225,6 @@ const Register: React.FC = () => {
                     <p className="text-gray-400 text-sm sm:text-base">Junte-se à nossa comunidade premium</p>
                 </div>
                 <div className="bg-black/80 backdrop-blur-sm border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/15">
-                    {showSuccessMessage ? (
-                        <div className="text-center py-8">
-                            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i className="fas fa-check text-green-500 text-2xl"></i>
-                            </div>
-                            <h3 className="text-xl font-semibold text-white mb-2">Cadastro Realizado!</h3>
-                            <p className="text-gray-400 text-sm mb-4">
-                                Enviamos um link de verificação para seu e-mail. Verifique sua caixa de entrada para ativar sua conta.
-                            </p>
-                            <div className="text-sm text-cyan-400">
-                                Redirecionando para o login em alguns segundos...
-                            </div>
-                        </div>
-                    ) : (
                         <form onSubmit={handleSubmitRegistration} className="space-y-5 sm:space-y-6">
                             <div>
                                 <label htmlFor="name" className="block text-sm font-medium text-white mb-2">
@@ -459,7 +474,6 @@ const Register: React.FC = () => {
                                 </p>
                             </div>
                         </form>
-                    )}
                 </div>
                 <div className="mt-6 p-4 bg-black/40 rounded-xl border border-cyan-500/25">
                     <div className="flex items-center text-cyan-400 mb-2">
