@@ -95,34 +95,71 @@ const Carousel3D: React.FC = () => {
         );
     }
     
-    if (isError || totalItems === 0) {
+    if (isError) {
         return (
             <div className="w-full flex flex-col items-center justify-center py-20 bg-black">
                 <AlertTriangle className="h-10 w-10 text-red-500" />
-                <p className="text-red-400 ml-4">Nenhum banner de destaque encontrado ou erro ao carregar.</p>
+                <p className="text-red-400 mt-4 text-center px-4">
+                    Não foi possível carregar os destaques. Tente atualizar a página.
+                </p>
+            </div>
+        );
+    }
+
+    if (totalItems === 0) {
+        const placeholderWidth = Math.min(containerWidth > 0 ? containerWidth - BANNER_MARGIN : MAX_WIDTH, MAX_WIDTH);
+        const placeholderHeight = placeholderWidth / ASPECT_RATIO_FIXED;
+
+        return (
+            <div className="w-full flex flex-col items-center justify-center bg-black">
+                <div
+                    className="w-full border border-yellow-500/30 rounded-3xl p-8 flex flex-col items-center justify-center bg-black/80"
+                    style={{ minHeight: `${Math.max(placeholderHeight, 280)}px` }}
+                >
+                    <img
+                        src="/logo-eventfest.png"
+                        alt="EventFest"
+                        className="h-20 sm:h-28 w-auto object-contain opacity-90 mb-6"
+                    />
+                    <p className="text-yellow-500 text-lg sm:text-xl font-semibold text-center">
+                        Nenhum banner ativo no momento
+                    </p>
+                    <p className="text-gray-400 text-sm sm:text-base text-center mt-2 max-w-md px-4">
+                        Não há destaques em exibição no carrossel. Volte em breve para conferir eventos e promoções.
+                    </p>
+                </div>
             </div>
         );
     }
     
     // --- Lógica de Renderização dos Itens Visíveis ---
-    
-    const itemsToRender = [];
-    const startOffset = -Math.floor(maxRendered / 2);
-    
-    for (let i = 0; i < maxRendered; i++) {
-        const offset = startOffset + i; 
-        
-        // Calcula o índice real no array allItems (circular)
-        const realIndex = (currentIndex + offset + totalItems) % totalItems;
-        
-        // Verifica se o item já foi adicionado (para evitar duplicação em arrays pequenos)
-        if (itemsToRender.some(item => item.realIndex === realIndex)) continue;
+    const itemsToRender: Array<{
+        item: (typeof allItems)[number];
+        realIndex: number;
+        offset: number;
+    }> = [];
 
-        itemsToRender.push({
-            item: allItems[realIndex],
-            realIndex: realIndex,
-            offset: offset 
-        });
+    if (totalItems <= maxRendered) {
+        // Poucos slides: um por índice, centralizado no atual (evita offset -4 fora da tela).
+        for (let realIndex = 0; realIndex < totalItems; realIndex++) {
+            const offset = realIndex - currentIndex;
+            itemsToRender.push({ item: allItems[realIndex], realIndex, offset });
+        }
+    } else {
+        const startOffset = -Math.floor(maxRendered / 2);
+
+        for (let i = 0; i < maxRendered; i++) {
+            const offset = startOffset + i;
+            const realIndex = (currentIndex + offset + totalItems) % totalItems;
+
+            if (itemsToRender.some((entry) => entry.realIndex === realIndex)) continue;
+
+            itemsToRender.push({
+                item: allItems[realIndex],
+                realIndex,
+                offset,
+            });
+        }
     }
     
     const getPosition = (offset: number) => {
@@ -252,18 +289,14 @@ const Carousel3D: React.FC = () => {
                                         )}>
                                             <img
                                                 src={item.image}
-                                                alt={item.title}
+                                                alt={item.title || 'Banner em destaque'}
                                                 className="w-full h-full object-cover object-top"
+                                                loading="eager"
+                                                decoding="async"
+                                                onError={(e) => {
+                                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                }}
                                             />
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
-                                            <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                                                <h3 className="text-lg font-bold mb-1 text-shadow-lg">{item.title}</h3>
-                                                <p className="text-sm text-gray-200 text-shadow-lg">{item.subtitle}</p>
-                                            </div>
-                                            {/* Tipo de Banner */}
-                                            <div className="absolute top-2 left-2 bg-yellow-500 text-black px-2 py-0.5 rounded-full text-xs font-semibold">
-                                                {item.type === 'event' ? 'EVENTO' : 'PROMOÇÃO'}
-                                            </div>
                                         </div>
                                     </div>
                                 );

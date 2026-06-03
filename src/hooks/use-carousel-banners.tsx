@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
-import { useCarouselSettings, CarouselSettings } from './use-carousel-settings'; // Importando as configurações
-import { isAfter, isBefore, differenceInDays } from 'date-fns';
+import { useCarouselSettings, CarouselSettings } from './use-carousel-settings';
+import { isBefore, differenceInDays, format } from 'date-fns';
 import { parseEventLocalDay } from '@/utils/format-event-date';
+import { isCarouselBannerDisplayActive } from '@/utils/event-carousel-banner-rules';
 
 export interface CarouselBanner {
     id: string;
@@ -13,14 +13,60 @@ export interface CarouselBanner {
     link: string | null;
     display_order: number;
     type: 'event' | 'promotional';
-    // Campos adicionais para ordenação
-    event_date?: Date; 
+    start_date: string;
+    end_date: string;
+    event_date?: Date;
     is_regional?: boolean;
 }
 
-// Função para buscar banners de eventos ativos
+type BannerRow = {
+    id: string;
+    image_url: string | null;
+    headline: string | null;
+    subheadline: string | null;
+    display_order: number | null;
+    start_date: string;
+    end_date: string;
+    event_id?: string | null;
+    link_url?: string | null;
+    events?: { date: string | null } | null;
+};
+
+function todayIso(): string {
+    return format(new Date(), 'yyyy-MM-dd');
+}
+
+function mapRowToCarouselBanner(row: BannerRow, type: 'event' | 'promotional'): CarouselBanner | null {
+    if (!isCarouselBannerDisplayActive(row.start_date, row.end_date)) {
+        return null;
+    }
+    if (!row.image_url?.trim()) {
+        return null;
+    }
+
+    return {
+        id: row.id,
+        title: row.headline || (type === 'event' ? 'Evento em Destaque' : 'Promoção'),
+        subtitle: row.subheadline || '',
+        image: row.image_url,
+        link:
+            type === 'event' && row.event_id
+                ? `/events/${row.event_id}`
+                : row.link_url || null,
+        display_order: Number(row.display_order) || 0,
+        type,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        event_date:
+            type === 'event' && row.events?.date
+                ? parseEventLocalDay(row.events.date) ?? undefined
+                : undefined,
+        is_regional: type === 'event',
+    };
+}
+
 const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
-    // A política RLS pública já filtra por banners ativos (start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE)
+    const refDay = todayIso();
     const { data, error } = await supabase
         .from('event_carousel_banners')
         .select(`
@@ -29,32 +75,27 @@ const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
             headline,
             subheadline,
             display_order,
+            start_date,
+            end_date,
             event_id,
             events (date)
         `)
+        .lte('start_date', refDay)
+        .gte('end_date', refDay)
         .order('display_order', { ascending: true });
 
     if (error) {
-        console.error("Error fetching event banners:", error);
+        console.error('Error fetching event banners:', error);
         throw new Error(error.message);
     }
 
-    return data.map(item => ({
-        id: item.id,
-        title: item.headline || 'Evento em Destaque',
-        subtitle: item.subheadline || '',
-        image: item.image_url,
-        link: item.event_id ? `/events/${item.event_id}` : null,
-        display_order: item.display_order,
-        type: 'event' as const,
-        event_date: item.events?.date ? parseEventLocalDay(item.events.date) ?? undefined : undefined,
-        is_regional: true, // SIMULAÇÃO: Todos são regionais por padrão
-    }));
+    return (data as BannerRow[])
+        .map((row) => mapRowToCarouselBanner(row, 'event'))
+        .filter((b): b is CarouselBanner => b !== null);
 };
 
-// Função para buscar banners promocionais ativos
 const fetchPromotionalBanners = async (): Promise<CarouselBanner[]> => {
-    // A política RLS pública já filtra por banners ativos (start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE)
+    const refDay = todayIso();
     const { data, error } = await supabase
         .from('promotional_banners')
         .select(`
@@ -63,90 +104,97 @@ const fetchPromotionalBanners = async (): Promise<CarouselBanner[]> => {
             headline,
             subheadline,
             display_order,
+            start_date,
+            end_date,
             link_url
         `)
+        .lte('start_date', refDay)
+        .gte('end_date', refDay)
         .order('display_order', { ascending: true });
 
     if (error) {
-        console.error("Error fetching promotional banners:", error);
+        console.error('Error fetching promotional banners:', error);
         throw new Error(error.message);
     }
 
-    return data.map(item => ({
-        id: item.id,
-        title: item.headline || 'Promoção',
-        subtitle: item.subheadline || '',
-        image: item.image_url,
-        link: item.link_url,
-        display_order: item.display_order,
-        type: 'promotional' as const,
-    }));
+    return (data as BannerRow[])
+        .map((row) => mapRowToCarouselBanner(row, 'promotional'))
+        .filter((b): b is CarouselBanner => b !== null);
 };
 
-// Função principal para combinar, ordenar e limitar
 const fetchAndProcessBanners = async (settings: CarouselSettings): Promise<CarouselBanner[]> => {
     const [eventBanners, promotionalBanners] = await Promise.all([
         fetchEventBanners(),
         fetchPromotionalBanners(),
     ]);
 
-    let combinedBanners = [...eventBanners, ...promotionalBanners];
+    let combinedBanners: Array<CarouselBanner & { isUpcomingPriority?: boolean }> = [
+        ...eventBanners,
+        ...promotionalBanners,
+    ];
     const today = new Date();
 
-    // 1. Pré-filtragem e marcação de prioridade (Eventos Próximos)
-    combinedBanners = combinedBanners.map(banner => {
+    combinedBanners = combinedBanners.map((banner) => {
         if (banner.type === 'event' && banner.event_date) {
             const daysUntil = differenceInDays(banner.event_date, today);
-            // Marca se o evento está dentro do threshold de dias
-            const isUpcomingPriority = daysUntil >= 0 && daysUntil <= settings.days_until_event_threshold;
+            const isUpcomingPriority =
+                daysUntil >= 0 && daysUntil <= settings.days_until_event_threshold;
             return { ...banner, isUpcomingPriority };
         }
         return banner;
     });
 
-    // 2. Ordenação Complexa
-    combinedBanners.sort((a, b) => {
-        // Prioridade 1: display_order (menor primeiro)
+    const compareBanners = (
+        a: CarouselBanner & { isUpcomingPriority?: boolean },
+        b: CarouselBanner & { isUpcomingPriority?: boolean },
+    ) => {
         if (a.display_order !== b.display_order) {
             return a.display_order - b.display_order;
         }
-        
-        // Prioridade 2: Banners Promocionais (sempre vêm antes dos eventos se a ordem for igual)
         if (a.type === 'promotional' && b.type === 'event') return -1;
         if (a.type === 'event' && b.type === 'promotional') return 1;
 
-        // Prioridade 3: Eventos Próximos (dentro do threshold)
-        const aIsPriority = a.type === 'event' && (a as any).isUpcomingPriority;
-        const bIsPriority = b.type === 'event' && (b as any).isUpcomingPriority;
-        
+        const aIsPriority = a.type === 'event' && a.isUpcomingPriority;
+        const bIsPriority = b.type === 'event' && b.isUpcomingPriority;
         if (aIsPriority && !bIsPriority) return -1;
         if (!aIsPriority && bIsPriority) return 1;
-        
-        // Prioridade 4: Data do Evento (mais próximo primeiro)
+
         if (a.type === 'event' && b.type === 'event' && a.event_date && b.event_date) {
             return isBefore(a.event_date, b.event_date) ? -1 : 1;
         }
-
         return 0;
-    });
-    
-    // 3. Limitação (Max Banners Display)
-    // Retorna apenas o número máximo configurado de banners
-    return combinedBanners.slice(0, settings.max_banners_display);
+    };
+
+    const eventBannersSorted = combinedBanners.filter((b) => b.type === 'event').sort(compareBanners);
+    const promotionalSorted = combinedBanners
+        .filter((b) => b.type === 'promotional')
+        .sort(compareBanners);
+
+    const maxDisplay = Math.max(1, settings.max_banners_display);
+    const minEventSlots = Math.min(
+        settings.min_regional_banners,
+        eventBannersSorted.length,
+        maxDisplay,
+    );
+    const promoSlots = Math.max(0, maxDisplay - minEventSlots);
+
+    const selected = [
+        ...eventBannersSorted.slice(0, minEventSlots),
+        ...promotionalSorted.slice(0, promoSlots),
+    ];
+
+    return selected.sort(compareBanners);
 };
 
 export const useCarouselBanners = () => {
     const { settings, isLoading: isLoadingSettings } = useCarouselSettings();
-    
+
     const query = useQuery({
         queryKey: ['carouselBanners', settings],
         queryFn: () => fetchAndProcessBanners(settings),
-        enabled: !isLoadingSettings, // Só executa se as configurações estiverem carregadas
-        staleTime: 1000 * 60 * 5, // 5 minutes
-        onError: (error) => {
-            console.error("Query Error: Failed to load carousel banners.", error);
-            showError("Erro ao carregar banners do carrossel.");
-        }
+        enabled: !isLoadingSettings,
+        staleTime: 60_000,
+        refetchOnWindowFocus: true,
     });
 
     return {

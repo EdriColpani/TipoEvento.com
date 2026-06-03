@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.0";
+import {
+  buildFreeRegistrationEmailHtml,
+  sendViaResend,
+} from "../_shared/eventfest-mail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,9 +11,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-/** Remetente fixo: domínio EventFest.com.br (verificado na Resend). Sem secret de e-mail. */
-const RESEND_FROM = "EventFest <noreply@EventFest.com.br>";
 
 const json200 = (obj: Record<string, unknown>) =>
   new Response(JSON.stringify(obj), {
@@ -87,77 +88,29 @@ serve(async (req) => {
       return json200({ success: true, alreadySent: true });
     }
 
-    const resendKey = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-    if (!resendKey) {
-      console.error("[send-free-registration-email] RESEND_API_KEY ausente");
-      return json200({ success: false, error: "no_resend_key" });
-    }
-
     const toEmail = email.trim();
-    const subject = `Ingresso — ${eventTitle ?? "Evento"}`.trim();
-    const dateLine = eventDate ? `Data: <strong>${eventDate}</strong>` : "";
-    const timeLine = eventTime
-      ? ` · Horário: <strong>${eventTime}</strong>`
-      : "";
-    const locationLine = eventLocation
-      ? `<br />Local: <strong>${eventLocation}</strong>`
-      : "";
+    const subject = `EventFest — Ingresso · ${eventTitle ?? "Evento"}`.trim();
+    const html = buildFreeRegistrationEmailHtml({
+      eventTitle,
+      eventDate,
+      eventTime,
+      eventLocation,
+      qrCode,
+      wristbandCode,
+    });
 
-    const codeFallbackBlock = wristbandCode?.trim()
-      ? `<p style="font-size:14px;margin-top:16px;padding:12px;background:#f5f5f5;border-radius:8px"><strong>Código do ingresso:</strong> <span style="font-family:monospace;font-size:16px">${wristbandCode}</span></p>
-  <p style="font-size:13px;color:#555">Se o QR code não funcionar na entrada, informe este código ao organizador.</p>`
-      : "";
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
-<div style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:0 auto;padding:20px">
-  <h1 style="font-size:18px">Inscrição confirmada</h1>
-  <p><strong>${eventTitle ?? "Evento"}</strong></p>
-  <p style="color:#555;font-size:14px">${dateLine}${timeLine}${locationLine}</p>
-  <p style="font-size:14px"><strong>É obrigatório apresentar este QR Code na entrada</strong> para confirmar sua presença no evento. Sem o QR, a entrada pode ser recusada.</p>
-  <p><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}" width="200" height="200" alt="QR" /></p>
-  ${codeFallbackBlock}
-  <p style="font-size:12px;color:#666;margin-top:20px">EventFest · EventFest.com.br</p>
-</div></body></html>`;
-
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 20000);
-
-    let emailResponse: Response;
-    try {
-      emailResponse = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: RESEND_FROM,
-          to: toEmail,
-          subject,
-          html,
-        }),
-      });
-    } catch (e) {
-      clearTimeout(t);
-      console.error("[send-free-registration-email] fetch Resend:", e);
-      return json200({ success: false, error: "resend_timeout_or_network" });
-    }
-    clearTimeout(t);
-
-    const resendData = await emailResponse.json().catch(() => ({}));
-
-    if (!emailResponse.ok) {
+    const sendResult = await sendViaResend({ to: toEmail, subject, html });
+    if (!sendResult.ok) {
       console.error(
         "[send-free-registration-email] Resend:",
-        emailResponse.status,
-        resendData,
+        sendResult.status,
+        sendResult.detail,
       );
       return json200({
         success: false,
         error: "resend_rejected",
-        status: emailResponse.status,
-        detail: JSON.stringify(resendData).slice(0, 500),
+        status: sendResult.status,
+        detail: sendResult.detail,
       });
     }
 

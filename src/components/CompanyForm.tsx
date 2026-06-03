@@ -237,7 +237,12 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isSaving, isCepLoading, fetch
                     name="email"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel className="text-white">E-mail da Empresa (Para Notificações) {isManagerContext && '*'}</FormLabel>
+                            <FormLabel className="text-white">
+                                {isManagerContext
+                                    ? 'E-mail de acesso (login)'
+                                    : 'E-mail da Empresa (Para Notificações)'}{' '}
+                                {isManagerContext && '*'}
+                            </FormLabel>
                             <FormControl>
                                 <Input 
                                     placeholder="contato@empresa.com"

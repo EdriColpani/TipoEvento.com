@@ -8,8 +8,12 @@ import { ArrowLeft, Loader2, SlidersHorizontal, Clock, Maximize, MapPin, ListOrd
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { useQueryClient } from '@tanstack/react-query';
+
+const MAX_BANNERS_CAP = 30;
 
 interface CarouselSettingsState {
+    id?: string;
     rotation_time_seconds: number;
     max_banners_display: number;
     regional_distance_km: number;
@@ -24,8 +28,22 @@ const FALLBACK_STRATEGIES = [
     { value: 'random', label: 'Aleatório' },
 ];
 
+function sanitizeCarouselSettings(raw: CarouselSettingsState): CarouselSettingsState {
+    const maxBanners = Math.min(MAX_BANNERS_CAP, Math.max(1, Number(raw.max_banners_display) || 1));
+    const minRegional = Math.min(maxBanners, Math.max(0, Number(raw.min_regional_banners) || 0));
+    return {
+        ...raw,
+        rotation_time_seconds: Math.max(1, Number(raw.rotation_time_seconds) || 5),
+        max_banners_display: maxBanners,
+        regional_distance_km: Math.max(0, Number(raw.regional_distance_km) || 0),
+        min_regional_banners: minRegional,
+        days_until_event_threshold: Math.max(0, Number(raw.days_until_event_threshold) || 0),
+    };
+}
+
 const ManagerCarouselSettings: React.FC = () => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [userId, setUserId] = useState<string | null>(null);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
     const [settings, setSettings] = useState<CarouselSettingsState | null>(null);
@@ -80,7 +98,22 @@ const ManagerCarouselSettings: React.FC = () => {
     }, [navigate]);
 
     const handleInputChange = (key: keyof CarouselSettingsState, value: string | number) => {
-        setSettings(prev => prev ? { ...prev, [key]: value } : null);
+        if (typeof value === 'string' && value === '') return;
+        let numericValue: number;
+        if (typeof value === 'string') {
+            numericValue = parseInt(value, 10);
+            if (Number.isNaN(numericValue)) return;
+        } else {
+            numericValue = value;
+        }
+        setSettings((prev) => {
+            if (!prev) return null;
+            const next = { ...prev, [key]: numericValue };
+            if (key === 'max_banners_display' && next.min_regional_banners > numericValue) {
+                next.min_regional_banners = numericValue;
+            }
+            return next;
+        });
     };
 
     const handleSelectChange = (key: keyof CarouselSettingsState, value: string) => {
@@ -97,22 +130,41 @@ const ManagerCarouselSettings: React.FC = () => {
         const toastId = showLoading("Salvando configurações do carrossel...");
 
         try {
-            const { error } = await supabase
-                .from('carousel_settings')
-                .upsert(
-                    { 
-                        ...settings, 
-                        updated_by: userId, 
-                        updated_at: new Date().toISOString() 
-                    },
-                    { onConflict: 'id' } // Assume que sempre haverá um único registro com um ID
-                );
+            const sanitized = sanitizeCarouselSettings(settings);
+            const dataToSave = {
+                ...sanitized,
+                updated_by: userId,
+                updated_at: new Date().toISOString(),
+            };
+
+            let error;
+            if (settings.id) {
+                const result = await supabase
+                    .from('carousel_settings')
+                    .update(dataToSave)
+                    .eq('id', settings.id);
+                error = result.error;
+            } else {
+                const { id: _id, ...insertPayload } = dataToSave;
+                const result = await supabase
+                    .from('carousel_settings')
+                    .insert([insertPayload])
+                    .select('id')
+                    .single();
+                error = result.error;
+                if (result.data?.id) {
+                    setSettings((prev) => (prev ? { ...prev, id: result.data.id } : null));
+                }
+            }
 
             if (error) {
                 throw error;
             }
 
             dismissToast(toastId);
+            setSettings(sanitized);
+            queryClient.invalidateQueries({ queryKey: ['carouselBanners'] });
+            queryClient.invalidateQueries({ queryKey: ['carouselSettings'] });
             showSuccess("Configurações do carrossel salvas com sucesso!");
             navigate('/admin/dashboard'); // Ou para uma página de visualização do carrossel
 
@@ -176,7 +228,7 @@ const ManagerCarouselSettings: React.FC = () => {
                             id="rotation_time_seconds" 
                             type="number"
                             value={settings.rotation_time_seconds} 
-                            onChange={(e) => handleInputChange('rotation_time_seconds', Number(e.target.value))} 
+                            onChange={(e) => handleInputChange('rotation_time_seconds', e.target.value)} 
                             placeholder="5"
                             className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                             min={1}
@@ -195,14 +247,17 @@ const ManagerCarouselSettings: React.FC = () => {
                             id="max_banners_display" 
                             type="number"
                             value={settings.max_banners_display} 
-                            onChange={(e) => handleInputChange('max_banners_display', Number(e.target.value))} 
+                            onChange={(e) => handleInputChange('max_banners_display', e.target.value)}
                             placeholder="5"
                             className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                             min={1}
-                            max={10}
+                            max={MAX_BANNERS_CAP}
                             disabled={isSaving}
                         />
-                        <p className="text-xs text-gray-500 mt-1">Número máximo de eventos que aparecerão no carrossel.</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                            Número máximo de banners no carrossel (1 a {MAX_BANNERS_CAP}). Clique em Salvar
+                            Configurações ao terminar.
+                        </p>
                     </div>
 
                     {/* Distância Regional */}
@@ -215,7 +270,7 @@ const ManagerCarouselSettings: React.FC = () => {
                             id="regional_distance_km" 
                             type="number"
                             value={settings.regional_distance_km} 
-                            onChange={(e) => handleInputChange('regional_distance_km', Number(e.target.value))} 
+                            onChange={(e) => handleInputChange('regional_distance_km', e.target.value)} 
                             placeholder="100"
                             className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                             min={0}
@@ -234,7 +289,7 @@ const ManagerCarouselSettings: React.FC = () => {
                             id="min_regional_banners" 
                             type="number"
                             value={settings.min_regional_banners} 
-                            onChange={(e) => handleInputChange('min_regional_banners', Number(e.target.value))} 
+                            onChange={(e) => handleInputChange('min_regional_banners', e.target.value)} 
                             placeholder="3"
                             className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                             min={0}
@@ -279,7 +334,7 @@ const ManagerCarouselSettings: React.FC = () => {
                             id="days_until_event_threshold" 
                             type="number"
                             value={settings.days_until_event_threshold} 
-                            onChange={(e) => handleInputChange('days_until_event_threshold', Number(e.target.value))} 
+                            onChange={(e) => handleInputChange('days_until_event_threshold', e.target.value)} 
                             placeholder="30"
                             className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                             min={0}

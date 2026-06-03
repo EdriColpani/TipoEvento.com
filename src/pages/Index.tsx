@@ -21,6 +21,8 @@ import { useLandingUi } from '@/contexts/LandingUiContext';
 import LandingContactPanel from '@/components/landing/LandingContactPanel';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { formatPhoneBR } from '@/utils/phone-format';
+import { useProfile } from '@/hooks/use-profile';
+import { navigateFromPromoterCta } from '@/utils/promoter-registration-flow';
 
 const EVENTS_PER_PAGE = 12;
 
@@ -89,6 +91,8 @@ const getMinPriceDisplay = (price: number | null, isPaid: boolean, listingOnly?:
 const Index: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>(undefined);
+    const [isPromoterCtaLoading, setIsPromoterCtaLoading] = useState(false);
+    const { profile } = useProfile(userId);
     const { isMobile, isTablet } = useDevice();
     
     const { events: allEvents, isLoading: isLoadingEvents, isError: isErrorEvents } = usePublicEvents();
@@ -187,6 +191,22 @@ const Index: React.FC = () => {
 
     const handleEventClick = (event: PublicEvent) => {
         navigate(`/events/${event.id}`);
+    };
+
+    const handlePromoterCtaClick = async () => {
+        setIsPromoterCtaLoading(true);
+        try {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+            const activeUserId = user?.id ?? userId;
+            if (user?.id && user.id !== userId) {
+                setUserId(user.id);
+            }
+            await navigateFromPromoterCta(navigate, activeUserId, profile);
+        } finally {
+            setIsPromoterCtaLoading(false);
+        }
     };
     
     const handleApplyFilters = () => {
@@ -634,9 +654,19 @@ const Index: React.FC = () => {
                         e crie experiências inesquecíveis para seu público.
                     </p>
                     <Button
-                        className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-600 hover:to-yellow-700 px-8 sm:px-12 py-3 sm:py-4 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105"
+                        type="button"
+                        onClick={() => void handlePromoterCtaClick()}
+                        disabled={isPromoterCtaLoading}
+                        className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:from-yellow-600 hover:to-yellow-700 px-8 sm:px-12 py-3 sm:py-4 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-60"
                     >
-                        Começar Agora
+                        {isPromoterCtaLoading ? (
+                            <>
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin inline" />
+                                Aguarde...
+                            </>
+                        ) : (
+                            'Começar Agora'
+                        )}
                     </Button>
                 </div>
             </section>

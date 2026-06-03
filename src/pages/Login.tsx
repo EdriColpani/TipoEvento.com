@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { resolveClientPostLoginPath } from '@/utils/safe-login-redirect';
+import { resolveClientPostLoginPath, resolvePendingManagerRegistrationPath } from '@/utils/safe-login-redirect';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
+import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -36,6 +37,13 @@ const Login: React.FC = () => {
             const user = authData.user;
 
             if (user) {
+                if (!isAuthEmailConfirmed(user)) {
+                    await supabase.auth.signOut({ scope: 'local' });
+                    showError('Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.');
+                    setIsLoading(false);
+                    return;
+                }
+
                 // 2. Buscar o Tipo de Usuário na tabela profiles
                 const { data: profileData, error: profileError } = await supabase
                     .from('profiles')
@@ -56,8 +64,13 @@ const Login: React.FC = () => {
                 let successMessage = "Login realizado com sucesso!";
                 let redirectPath = '/';
 
+                const pendingManagerRegistration = resolvePendingManagerRegistrationPath(returnTo);
+
                 // 3. Determinar mensagem de sucesso e rota de redirecionamento
-                if (userType === 1) {
+                if (pendingManagerRegistration) {
+                    successMessage = "E-mail confirmado! Conclua o cadastro da sua empresa.";
+                    redirectPath = pendingManagerRegistration;
+                } else if (userType === 1) {
                     successMessage = "Login de Administrador Master realizado com sucesso!";
                     redirectPath = '/admin/dashboard';
                 } else if (userType === 2) {
