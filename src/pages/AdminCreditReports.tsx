@@ -534,20 +534,51 @@ const AdminCreditReports: React.FC = () => {
                                     />
 
                                     <Metric
-                                        label="Mensalidade vitrine (paga)"
+                                        label="Mensalidade vitrine (bruto recebido)"
                                         value={money(position.data?.platform_billing?.listing_monthly?.paid_revenue)}
                                     />
                                     <Metric
-                                        label="Licença consumo (paga)"
+                                        label="Mensalidade vitrine (líquida após MP)"
+                                        value={money(
+                                            position.data?.platform_billing?.listing_monthly?.paid_revenue_net ??
+                                                position.data?.platform_billing?.listing_monthly?.paid_revenue,
+                                        )}
+                                    />
+                                    <Metric
+                                        label="Licença consumo (bruto recebido)"
                                         value={money(position.data?.platform_billing?.consumption_license?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Licença consumo (líquida após MP)"
+                                        value={money(
+                                            position.data?.platform_billing?.consumption_license?.paid_revenue_net ??
+                                                position.data?.platform_billing?.consumption_license?.paid_revenue,
+                                        )}
                                     />
                                     <Metric
                                         label="Comissão ingressos"
                                         value={money(position.data?.platform_billing?.ticket_commission?.revenue)}
                                     />
                                     <Metric
-                                        label="Receita total plataforma (período)"
-                                        value={money(position.data?.platform_billing?.totals?.platform_revenue)}
+                                        label="Comissão consumo créditos"
+                                        value={money(position.data?.platform_billing?.consumption_commission?.revenue)}
+                                    />
+                                    <Metric
+                                        label="Taxas MP (mensalidade/licença)"
+                                        value={money(position.data?.platform_billing?.totals?.billing_mp_fees)}
+                                    />
+                                    <Metric
+                                        label="Receita líquida recorrente (período)"
+                                        value={money(
+                                            position.data?.platform_billing?.totals?.platform_revenue_net ??
+                                                position.data?.platform_billing?.totals?.recurring_revenue_net,
+                                        )}
+                                    />
+                                    <Metric
+                                        label="Receita consolidada (recorrente + comissões)"
+                                        value={money(
+                                            position.data?.platform_billing?.totals?.consolidated_revenue_net,
+                                        )}
                                     />
 
                                     <Metric
@@ -587,7 +618,8 @@ const AdminCreditReports: React.FC = () => {
                         <CardHeader>
                             <CardTitle className="text-white">Receita da plataforma EventFest</CardTitle>
                             <CardDescription className="text-gray-400">
-                                Licenças, mensalidades, comissão de ingressos e comissão sobre consumo de créditos.
+                                Mensalidade e licença: bruto recebido, taxa MP e líquido. Comissões de ingresso/consumo
+                                aparecem separadas; o total líquido principal não inclui comissões.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -622,16 +654,30 @@ const AdminCreditReports: React.FC = () => {
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                                     <Metric
-                                        label="Mensalidade vitrine (recebida)"
+                                        label="Mensalidade vitrine (bruto recebido)"
                                         value={money(platformRevenue.data?.listing_monthly?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Mensalidade vitrine (líquida após MP)"
+                                        value={money(
+                                            platformRevenue.data?.listing_monthly?.paid_revenue_net ??
+                                                platformRevenue.data?.listing_monthly?.paid_revenue,
+                                        )}
                                     />
                                     <Metric
                                         label="Mensalidade vitrine (pendente)"
                                         value={money(platformRevenue.data?.listing_monthly?.pending_amount)}
                                     />
                                     <Metric
-                                        label="Licença consumo (recebida)"
+                                        label="Licença consumo (bruto recebido)"
                                         value={money(platformRevenue.data?.consumption_license?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Licença consumo (líquida após MP)"
+                                        value={money(
+                                            platformRevenue.data?.consumption_license?.paid_revenue_net ??
+                                                platformRevenue.data?.consumption_license?.paid_revenue,
+                                        )}
                                     />
                                     <Metric
                                         label="Licença consumo (pendente)"
@@ -646,16 +692,30 @@ const AdminCreditReports: React.FC = () => {
                                         value={money(platformRevenue.data?.consumption_commission?.revenue)}
                                     />
                                     <Metric
-                                        label="Recorrente (vitrine + licença)"
-                                        value={money(platformRevenue.data?.totals?.recurring_revenue)}
+                                        label="Taxas MP (mensalidade/licença)"
+                                        value={money(platformRevenue.data?.totals?.billing_mp_fees)}
+                                    />
+                                    <Metric
+                                        label="Recorrente líquido (vitrine + licença)"
+                                        value={money(
+                                            platformRevenue.data?.totals?.recurring_revenue_net ??
+                                                platformRevenue.data?.totals?.recurring_revenue,
+                                        )}
                                     />
                                     <Metric
                                         label="Comissões (ingresso + consumo)"
                                         value={money(platformRevenue.data?.totals?.commission_revenue)}
                                     />
                                     <Metric
-                                        label="Total receita plataforma"
-                                        value={money(platformRevenue.data?.totals?.platform_revenue)}
+                                        label="Total receita líquida (mensalidade + licença)"
+                                        value={money(
+                                            platformRevenue.data?.totals?.platform_revenue_net ??
+                                                platformRevenue.data?.totals?.recurring_revenue_net,
+                                        )}
+                                    />
+                                    <Metric
+                                        label="Receita consolidada (recorrente + comissões)"
+                                        value={money(platformRevenue.data?.totals?.consolidated_revenue_net)}
                                     />
                                 </div>
                             )}

@@ -15,6 +15,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserType } from '@/hooks/use-user-type';
+import { useProfileStatus } from '@/hooks/use-profile-status';
+import NotificationBell from '@/components/NotificationBell';
 import { showError, showSuccess } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
@@ -92,6 +94,10 @@ const ManagerLayout: React.FC = () => {
     }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const { hasPendingNotifications, loading: isLoadingNotificationStatus } = useProfileStatus(
+        profile,
+        isLoadingProfile,
+    );
     const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(profile?.tipo_usuario_id);
     
     const isManagerPro = profile?.tipo_usuario_id === MANAGER_USER_TYPE_ID;
@@ -450,10 +456,10 @@ const ManagerLayout: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
-                        <button className="relative p-2 text-yellow-500 hover:bg-yellow-500/10 rounded-lg transition-colors cursor-pointer hidden sm:block">
-                            <i className="fas fa-bell text-lg"></i>
-                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-xs text-white">3</span>
-                        </button>
+                        <NotificationBell
+                            hasPendingNotifications={hasPendingNotifications}
+                            loading={isLoadingProfile || isLoadingNotificationStatus}
+                        />
                         
                         {/* Dropdown Menu para Gestor/Admin */}
                         <DropdownMenu>

@@ -103,7 +103,13 @@ const eventFormSchema = z.object({
     is_paid: z.boolean().default(false),
     /** Evento pago: permite validar ingresso impresso (QR fixo) além do QR dinâmico do app */
     allow_printed_tickets: z.boolean().default(false),
-    entry_qr_ttl_seconds: z.enum(['60', '90', '120']).default('90'),
+    entry_qr_ttl_seconds: z.preprocess(
+        (val) => {
+            const normalized = val === undefined || val === null || val === '' ? '90' : String(val);
+            return normalized;
+        },
+        z.enum(['60', '90', '120']),
+    ),
     validator_show_holder: z.boolean().default(true),
     credit_consumption_enabled: z.boolean().default(false),
     ticket_price: z.string().optional().refine(val => {
@@ -437,6 +443,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     useEffect(() => {
         if (isListingPlan) {
             setValue('is_paid', false);
+            setValue('entry_qr_ttl_seconds', '90');
+            setValue('allow_printed_tickets', false);
+            setValue('validator_show_holder', false);
+            setValue('credit_consumption_enabled', false);
         }
     }, [isListingPlan, setValue]);
 
@@ -864,6 +874,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             }
 
             const effectiveIsPaid = isListingPlan ? false : values.is_paid;
+            const entryQrTtl = (['60', '90', '120'] as const).includes(
+                String(values.entry_qr_ttl_seconds ?? '90') as '60' | '90' | '120',
+            )
+                ? Number(values.entry_qr_ttl_seconds ?? 90)
+                : 90;
 
             // Quantidade total de ingressos: pago = soma dos lotes; gratuito = capacidade (exigido pelo banco como valor positivo)
             const totalTicketsQuantity = values.batches && values.batches.length > 0
@@ -920,7 +935,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 duration: values.duration,
                 is_paid: effectiveIsPaid,
                 allow_printed_tickets: effectiveIsPaid ? Boolean(values.allow_printed_tickets) : false,
-                entry_qr_ttl_seconds: effectiveIsPaid ? Number(values.entry_qr_ttl_seconds) : 90,
+                entry_qr_ttl_seconds: effectiveIsPaid ? entryQrTtl : 90,
                 validator_show_holder: effectiveIsPaid ? Boolean(values.validator_show_holder) : false,
                 credit_consumption_enabled:
                     supportsCreditConsumption ? Boolean(values.credit_consumption_enabled) : false,

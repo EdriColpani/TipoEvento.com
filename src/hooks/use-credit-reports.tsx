@@ -56,6 +56,7 @@ export type AdminCreditFinancialPosition = {
     mp_costs?: {
         topup_mp_fees?: number;
         topup_net_cash?: number;
+        billing_mp_fees?: number;
         mp_disbursed_total?: number;
         mp_disbursed_failed?: number;
     };
@@ -73,10 +74,14 @@ export type AdminPlatformBillingRevenue = {
     };
     listing_monthly?: {
         paid_revenue?: number;
+        paid_revenue_net?: number;
+        mp_fees?: number;
         pending_amount?: number;
     };
     consumption_license?: {
         paid_revenue?: number;
+        paid_revenue_net?: number;
+        mp_fees?: number;
         pending_amount?: number;
     };
     ticket_commission?: {
@@ -87,7 +92,13 @@ export type AdminPlatformBillingRevenue = {
     };
     totals?: {
         platform_revenue?: number;
+        platform_revenue_gross?: number;
+        platform_revenue_net?: number;
+        consolidated_revenue_net?: number;
         recurring_revenue?: number;
+        recurring_revenue_gross?: number;
+        recurring_revenue_net?: number;
+        billing_mp_fees?: number;
         commission_revenue?: number;
     };
 };

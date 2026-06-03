@@ -10,6 +10,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
+import { isListingOnlyCompanyPlan } from '@/utils/company-billing-rules';
 import { clearManagerCreateEventSession } from '@/utils/manager-create-event-session';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
@@ -24,6 +25,7 @@ const ManagerCreateEvent: React.FC = () => {
     const { billing, isLoading: isLoadingBilling } = useCompanyBilling(company?.id);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
     const billingReady = isCompanyBillingReady(billing);
+    const isListingPlan = isListingOnlyCompanyPlan(billing?.billing_plan);
     const needsBillingConfirm = !isAdminMaster && !!company?.id && !isLoadingBilling && !billingReady;
     const [showWristbandModal, setShowWristbandModal] = useState(false);
     const [newEventId, setNewEventId] = useState<string | null>(null);
@@ -46,6 +48,11 @@ const ManagerCreateEvent: React.FC = () => {
 
     const handleSaveSuccess = (id: string) => {
         setNewEventId(id);
+        if (isListingPlan) {
+            showSuccess('Evento de divulgação criado com sucesso!');
+            navigate('/manager/events');
+            return;
+        }
         setShowWristbandModal(true);
     };
 
@@ -135,6 +142,7 @@ const ManagerCreateEvent: React.FC = () => {
                 freezeFormAfterCreate={showWristbandModal}
             />
             
+            {!isListingPlan && (
             <AlertDialog open={showWristbandModal} onOpenChange={setShowWristbandModal}>
                 <AlertDialogContent className="bg-black/90 border border-yellow-500/30 text-white w-[calc(100vw-1.5rem)] max-w-2xl sm:max-w-2xl overflow-hidden p-5 sm:p-6">
                     <AlertDialogHeader className="text-left space-y-3">
@@ -176,6 +184,7 @@ const ManagerCreateEvent: React.FC = () => {
                     </div>
                 </AlertDialogContent>
             </AlertDialog>
+            )}
         </div>
     );
 };
