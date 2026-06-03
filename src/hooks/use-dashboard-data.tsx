@@ -19,6 +19,8 @@ interface EventMetrics {
 
 interface OccupancyMetrics {
     occupancyRate: number;
+    totalWristbandsGenerated: number;
+    totalTicketsSold: number;
 }
 
 export interface DashboardData {
@@ -113,26 +115,39 @@ const fetchDashboardData = async (
     }).length;
 
     // --- 3. Taxa de Ocupação Geral ---
-    // Para simplificar, vamos considerar a taxa de ocupação como (total de pulseiras usadas / total de pulseiras geradas)
-    // Poderia ser mais complexo, como por evento ativo, etc.
-    const { count: totalWristbandsGenerated, error: generatedError } = await supabase
-        .from('wristbands')
-        .select('id', { count: 'exact' });
-    if (generatedError) throw generatedError;
+    // Escopo: eventos do gestor (ou todos, para admin master).
+    // Fórmula: ingressos vendidos / pulseiras geradas.
+    const eventIds = eventsData.map((event) => event.id).filter(Boolean);
+    let totalWristbandsGenerated = 0;
+    let totalTicketsSold = 0;
 
-    const { data: usedWristbands = [], error: usedError } = await supabase
-        .from('wristband_analytics')
-        .select('wristband_id')
-        .eq('event_type', 'purchase')
-        .not('client_user_id', 'is', null);
-    if (usedError) throw usedError;
+    if (eventIds.length > 0) {
+        const { count: generatedCount, error: generatedError } = await supabase
+            .from('wristbands')
+            .select('id', { count: 'exact', head: true })
+            .in('event_id', eventIds);
+        if (generatedError) throw generatedError;
+        totalWristbandsGenerated = generatedCount ?? 0;
 
-    const distinctUsedWristbandIds = new Set(usedWristbands.map(wa => wa.wristband_id));
-    const totalWristbandsUsed = distinctUsedWristbandIds.size;
+        const { data: occupancySalesData = [], error: occupancySalesError } = await applyPaidLikeFilter(
+            supabase
+                .from('receivables')
+                .select('wristband_analytics_ids, event_id')
+                .in('event_id', eventIds),
+        );
+        if (occupancySalesError) throw occupancySalesError;
 
-    const occupancyRate = (totalWristbandsGenerated && totalWristbandsGenerated > 0)
-        ? (totalWristbandsUsed / totalWristbandsGenerated) * 100
-        : 0;
+        totalTicketsSold = occupancySalesData.reduce((sum, row) => {
+            const sold = Array.isArray(row.wristband_analytics_ids)
+                ? row.wristband_analytics_ids.length
+                : 0;
+            return sum + sold;
+        }, 0);
+    }
+
+    const rawOccupancyRate =
+        totalWristbandsGenerated > 0 ? (totalTicketsSold / totalWristbandsGenerated) * 100 : 0;
+    const occupancyRate = Math.max(0, Math.min(rawOccupancyRate, 100));
 
     return {
         sales: {
@@ -149,6 +164,8 @@ const fetchDashboardData = async (
         },
         occupancy: {
             occupancyRate,
+            totalWristbandsGenerated,
+            totalTicketsSold,
         },
     };
 };

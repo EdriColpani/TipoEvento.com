@@ -180,6 +180,8 @@ serve(async (req) => {
                 {
                     p_charge_id: listingChargeId,
                     p_mp_payment_id: mpPaymentId,
+                    p_mp_fee_amount: mpFeeAmount ?? 0,
+                    p_net_received_amount: netAmountAfterMp ?? null,
                 },
             );
             if (completeErr) {
@@ -208,6 +210,8 @@ serve(async (req) => {
                 {
                     p_charge_id: licenseChargeId,
                     p_mp_payment_id: mpPaymentId,
+                    p_mp_fee_amount: mpFeeAmount ?? 0,
+                    p_net_received_amount: netAmountAfterMp ?? null,
                 },
             );
             if (completeErr) {

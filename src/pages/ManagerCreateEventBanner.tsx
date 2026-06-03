@@ -21,6 +21,12 @@ import ImageUploadPicker from '@/components/ImageUploadPicker';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+    EVENT_CAROUSEL_DUPLICATE_EVENT_MESSAGE,
+    EventCarouselBannerSummary,
+    fetchEventCarouselBannerByEvent,
+    formatEventCarouselBannerError,
+} from '@/utils/event-carousel-banner-rules';
 
 // Zod schema for event banner validation
 const eventBannerSchema = z.object({
@@ -41,6 +47,8 @@ const ManagerCreateEventBanner: React.FC = () => {
     const queryClient = useQueryClient();
     const [isSaving, setIsSaving] = useState(false);
     const [userId, setUserId] = useState<string | null>(null);
+    const [existingBanner, setExistingBanner] = useState<EventCarouselBannerSummary | null>(null);
+    const [checkingExistingBanner, setCheckingExistingBanner] = useState(false);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
@@ -105,6 +113,42 @@ const ManagerCreateEventBanner: React.FC = () => {
         }
     }, [form.watch('event_id'), events]);
 
+    const selectedEventId = form.watch('event_id');
+    const hasExistingBannerBlock = Boolean(existingBanner);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const checkExistingBanner = async () => {
+            if (!selectedEventId) {
+                setExistingBanner(null);
+                return;
+            }
+
+            setCheckingExistingBanner(true);
+            try {
+                const banner = await fetchEventCarouselBannerByEvent(selectedEventId);
+                if (!cancelled) {
+                    setExistingBanner(banner);
+                }
+            } catch (error) {
+                console.error('Erro ao verificar banner do evento:', error);
+                if (!cancelled) {
+                    setExistingBanner(null);
+                }
+            } finally {
+                if (!cancelled) {
+                    setCheckingExistingBanner(false);
+                }
+            }
+        };
+
+        void checkExistingBanner();
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedEventId]);
+
 
     const handleImageUpload = (url: string) => {
         form.setValue('image_url', url, { shouldValidate: true });
@@ -121,6 +165,15 @@ const ManagerCreateEventBanner: React.FC = () => {
 
         const isoStartDate = values.start_date ? format(values.start_date, 'yyyy-MM-dd') : null;
         const isoEndDate = values.end_date ? format(values.end_date, 'yyyy-MM-dd') : null;
+
+        const existing = await fetchEventCarouselBannerByEvent(values.event_id);
+        if (existing) {
+            dismissToast(toastId);
+            setExistingBanner(existing);
+            showError(EVENT_CAROUSEL_DUPLICATE_EVENT_MESSAGE);
+            setIsSaving(false);
+            return;
+        }
 
         try {
             const { error } = await supabase
@@ -148,10 +201,10 @@ const ManagerCreateEventBanner: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['carouselBanners'] }); // Invalida o cache do carrossel
             navigate('/manager/events'); // Redireciona para a lista de eventos
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             dismissToast(toastId);
             console.error("Erro ao criar banner de evento:", error);
-            showError(`Falha ao criar banner: ${error.message || 'Erro desconhecido'}`);
+            showError(formatEventCarouselBannerError(error));
         } finally {
             setIsSaving(false);
         }
@@ -185,6 +238,7 @@ const ManagerCreateEventBanner: React.FC = () => {
                     <CardTitle className="text-white text-xl sm:text-2xl font-semibold">Associação e Conteúdo</CardTitle>
                     <CardDescription className="text-gray-400 text-sm">
                         Crie um banner de destaque para o carrossel da página inicial, vinculado a um evento específico.
+                        Cada evento permite apenas <strong>1 banner</strong> — escolha um evento que ainda não tenha banner cadastrado.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -223,6 +277,33 @@ const ManagerCreateEventBanner: React.FC = () => {
                                     </FormItem>
                                 )}
                             />
+
+                            {hasExistingBannerBlock && (
+                                <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+                                    <p className="font-medium text-amber-200">Este evento já possui um banner</p>
+                                    <p className="mt-1">
+                                        {existingBanner?.headline
+                                            ? `"${existingBanner.headline}"`
+                                            : 'Já existe um banner cadastrado'}{' '}
+                                        com exibição de{' '}
+                                        {existingBanner?.start_date
+                                            ? format(parseEventLocalDay(existingBanner.start_date) ?? new Date(), 'dd/MM/yyyy')
+                                            : '—'}{' '}
+                                        até{' '}
+                                        {existingBanner?.end_date
+                                            ? format(parseEventLocalDay(existingBanner.end_date) ?? new Date(), 'dd/MM/yyyy')
+                                            : '—'}
+                                        .
+                                    </p>
+                                    <p className="mt-2 text-amber-200/90">
+                                        {EVENT_CAROUSEL_DUPLICATE_EVENT_MESSAGE}
+                                    </p>
+                                </div>
+                            )}
+
+                            {checkingExistingBanner && selectedEventId && (
+                                <p className="text-xs text-gray-500">Verificando banner do evento...</p>
+                            )}
                             
                             {/* Imagem/Banner com ImageUploadPicker */}
                             <div className="space-y-4 pt-4 border-t border-yellow-500/20">
@@ -365,7 +446,7 @@ const ManagerCreateEventBanner: React.FC = () => {
                             <div className="flex items-center space-x-4 pt-4">
                                 <Button
                                     type="submit"
-                                    disabled={isSaving}
+                                    disabled={isSaving || hasExistingBannerBlock || checkingExistingBanner}
                                     className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer disabled:opacity-50"
                                 >
                                     {isSaving ? (

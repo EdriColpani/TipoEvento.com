@@ -13,6 +13,13 @@ import { useRecentSales } from '@/hooks/use-recent-sales';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 
+const getOccupancyPerformance = (occupancyRate: number) => {
+    if (occupancyRate >= 80) return { label: 'Excelente', subtitle: 'performance', color: 'text-purple-500' };
+    if (occupancyRate >= 60) return { label: 'Boa', subtitle: 'performance', color: 'text-blue-400' };
+    if (occupancyRate >= 40) return { label: 'Regular', subtitle: 'performance', color: 'text-amber-400' };
+    return { label: 'Baixa', subtitle: 'ocupação', color: 'text-red-400' };
+};
+
 const ManagerDashboard: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>(undefined);
@@ -26,6 +33,7 @@ const ManagerDashboard: React.FC = () => {
     const { data: monthlyRevenueData, isLoading: isLoadingMonthlyRevenue, isError: isErrorMonthlyRevenue } = useMonthlyRevenueData(monthlyRevenuePeriod, userId, isAdminMaster || false);
     const { data: topSellingEvents, isLoading: isLoadingTopSellingEvents, isError: isErrorTopSellingEvents } = useTopSellingEvents(5, userId, isAdminMaster || false); // Limite de 5 eventos
     const { data: recentSales, isLoading: isLoadingRecentSales, isError: isErrorRecentSales } = useRecentSales(5, userId, isAdminMaster || false); // Limite de 5 vendas recentes
+    const occupancyPerformance = getOccupancyPerformance(dashboardData?.occupancy.occupancyRate ?? 0);
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -112,13 +120,18 @@ const ManagerDashboard: React.FC = () => {
                                 <Users className="text-purple-500 text-lg sm:text-xl" />
                             </div>
                             <div className="text-right">
-                                <div className="text-purple-500 text-sm font-semibold">Excelente</div>
-                                <div className="text-gray-400 text-xs">performance</div>
+                                <div className={`${occupancyPerformance.color} text-sm font-semibold`}>
+                                    {occupancyPerformance.label}
+                                </div>
+                                <div className="text-gray-400 text-xs">{occupancyPerformance.subtitle}</div>
                             </div>
                         </div>
                         <div>
                             <div className="text-xl sm:text-2xl font-bold text-white mb-1">{dashboardData.occupancy.occupancyRate.toFixed(1)}%</div>
                             <div className="text-gray-400 text-sm">Taxa de Ocupação</div>
+                            <div className="text-gray-500 text-xs mt-1">
+                                {dashboardData.occupancy.totalTicketsSold}/{dashboardData.occupancy.totalWristbandsGenerated} vendidos/gerados
+                            </div>
                         </div>
                     </div>
                 </div>
