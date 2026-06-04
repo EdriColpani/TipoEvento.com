@@ -1,13 +1,9 @@
 import type { NavigateFunction } from 'react-router-dom';
-import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
-import type { QueryClient } from '@tanstack/react-query';
-import { getAuthEmailRedirectUrl } from '@/utils/auth-redirect-url';
-import {
-    PENDING_PROMOTER_METADATA_KEY,
-} from '@/utils/manager-company-registration';
+import { registerUserViaResend } from '@/utils/auth-email-via-resend';
+import { PENDING_PROMOTER_METADATA_KEY } from '@/utils/manager-company-registration';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { showError, showSuccess } from '@/utils/toast';
 
@@ -131,25 +127,6 @@ async function resolveExistingUser(existingUserId: string, fallbackEmail: string
     return { status: 'ready', userId: user.id };
 }
 
-async function resolveNewSignUpUser(
-    signUpUser: User | null,
-    normalizedEmail: string,
-    hadSession: boolean,
-): Promise<EnsureAuthForCompanyResult> {
-    if (!signUpUser?.id) {
-        throw new Error('Não foi possível criar sua conta. Tente novamente.');
-    }
-
-    if (!isAuthEmailConfirmed(signUpUser)) {
-        if (hadSession) {
-            await signOutLocalSession();
-        }
-        return pendingConfirmation(normalizedEmail);
-    }
-
-    return { status: 'ready', userId: signUpUser.id };
-}
-
 export async function ensureAuthUserForCompanyRegistration(
     email: string,
     password: string,
@@ -169,43 +146,30 @@ export async function ensureAuthUserForCompanyRegistration(
         throw new Error('A senha deve ter no mínimo 6 caracteres.');
     }
 
-    const emailRedirectTo = getAuthEmailRedirectUrl(MANAGER_COMPANY_REGISTER_PATH);
-
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    const registerResult = await registerUserViaResend({
         email: normalizedEmail,
         password,
-        options: {
-            emailRedirectTo,
-            data: {
-                name: accountName.trim() || 'Gestor EventFest',
-                [PENDING_PROMOTER_METADATA_KEY]: true,
-            },
+        redirectPath: MANAGER_COMPANY_REGISTER_PATH,
+        metadata: {
+            name: accountName.trim() || 'Gestor EventFest',
+            [PENDING_PROMOTER_METADATA_KEY]: true,
         },
     });
 
-    if (signUpError) {
-        const alreadyExists =
-            signUpError.message.includes('already registered') ||
-            signUpError.message.includes('User already registered');
-        if (!alreadyExists) {
-            throw signUpError;
-        }
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email: normalizedEmail,
-            password,
-        });
-        if (signInError || !signInData.user?.id) {
-            throw new Error(
-                'Já existe uma conta com este e-mail. Confirme o e-mail ou faça login para continuar.',
-            );
-        }
-        if (!isAuthEmailConfirmed(signInData.user)) {
-            await signOutLocalSession();
-            return pendingConfirmation(normalizedEmail);
-        }
-        return { status: 'ready', userId: signInData.user.id };
+    if (registerResult.ok) {
+        return pendingConfirmation(normalizedEmail);
     }
 
-    const signUpUser = signUpData.session?.user ?? signUpData.user ?? null;
-    return resolveNewSignUpUser(signUpUser, normalizedEmail, Boolean(signUpData.session));
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+    });
+    if (signInError || !signInData.user?.id) {
+        throw new Error(registerResult.message || 'Já existe uma conta com este e-mail. Confirme o e-mail ou faça login.');
+    }
+    if (!isAuthEmailConfirmed(signInData.user)) {
+        await signOutLocalSession();
+        return pendingConfirmation(normalizedEmail);
+    }
+    return { status: 'ready', userId: signInData.user.id };
 }

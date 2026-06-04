@@ -34,7 +34,7 @@ export type EmailConfirmationScreenProps = {
 const PRO_STEPS: EmailConfirmationScreenProps['steps'] = [
     {
         title: 'Abra sua caixa de entrada',
-        description: 'Procure o e-mail enviado pelo EventFest (remetente Supabase/Auth).',
+        description: 'Procure o e-mail enviado pelo EventFest (remetente EventFest).',
     },
     {
         title: 'Confirme seu endereço',

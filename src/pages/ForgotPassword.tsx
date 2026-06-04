@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
-import { getAuthEmailRedirectUrl } from '@/utils/auth-redirect-url';
+import { requestPasswordResetViaResend } from '@/utils/auth-email-via-resend';
 
 const ForgotPassword = () => {
     const navigate = useNavigate();
@@ -19,14 +18,12 @@ const ForgotPassword = () => {
         }
         setIsLoading(true);
 
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: getAuthEmailRedirectUrl('/reset-password'),
-        });
+        const result = await requestPasswordResetViaResend(email, '/reset-password');
 
         setIsLoading(false);
 
-        if (error) {
-            console.error("Password reset error:", error);
+        if (!result.ok) {
+            console.error("Password reset error:", result.message);
         }
 
         setIsSubmitted(true);
