@@ -25,7 +25,7 @@ export function resolvePendingManagerRegistrationPath(fromUnknown: unknown): str
     const path = fromUnknown.trim().split('#')[0]?.split('\0')[0] ?? '';
     if (!path.startsWith('/') || path.startsWith('//')) return null;
     const lower = path.toLowerCase();
-    if (lower === '/manager/register/company') {
+    if (lower === '/manager/register/company' || lower === '/manager/register/account') {
         return path;
     }
     return null;

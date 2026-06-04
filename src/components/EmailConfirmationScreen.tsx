@@ -41,9 +41,9 @@ const PRO_STEPS: EmailConfirmationScreenProps['steps'] = [
         description: 'Clique no link de verificação. Ele expira após algum tempo — use o reenvio se precisar.',
     },
     {
-        title: 'Finalize o cadastro PRO',
+        title: 'Cadastre sua empresa',
         description:
-            'Ao confirmar, você será levado ao cadastro da empresa e o sistema concluirá automaticamente seu perfil de gestor.',
+            'Após confirmar, você verá o formulário de dados da empresa (etapa 2). Preencha uma única vez para virar gestor PRO.',
     },
 ];
 

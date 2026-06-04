@@ -45,7 +45,8 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ManagerRegister from "./pages/ManagerRegister"; 
 import ManagerIndividualProfile from "./pages/ManagerIndividualProfile";
-import ManagerCompanyRegister from "./pages/ManagerCompanyRegister"; 
+import ManagerCompanyRegister from "./pages/ManagerCompanyRegister";
+import ManagerPromoterAccountRegister from "./pages/ManagerPromoterAccountRegister"; 
 import AdminCarouselSettings from "./pages/AdminCarouselSettings"; 
 import AdminCreatePromotionalBanner from "./pages/AdminCreatePromotionalBanner"; 
 import AdminPromotionalBannersList from "./pages/AdminPromotionalBannersList"; 
@@ -109,7 +110,7 @@ function AppRoutes() {
           
           {/* Manager Registration Routes (Accessible by logged-in clients) */}
           <Route path="/manager/register" element={<ManagerRegister />} />
-          {/* Rota de registro individual removida, pois agora é um modal */}
+          <Route path="/manager/register/account" element={<ManagerPromoterAccountRegister />} />
           <Route path="/manager/register/company" element={<ManagerCompanyRegister />} />
           
           {/* Manager Routes (Protected by ManagerLayout, which handles auth/redirect) */}

@@ -192,7 +192,8 @@ export function sanitizeAuthRedirectTo(
   if (
     !candidate.includes("/login") &&
     !candidate.includes("/reset-password") &&
-    !candidate.includes("/manager/register/company")
+    !candidate.includes("/manager/register/company") &&
+    !candidate.includes("/manager/register/account")
   ) {
     if (candidate === productionOrigin || candidate.endsWith(".com.br") || candidate.endsWith(".com")) {
       return `${candidate}/login`;

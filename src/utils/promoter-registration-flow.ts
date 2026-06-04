@@ -11,8 +11,57 @@ export const USER_TYPE_ADMIN = 1;
 export const USER_TYPE_MANAGER = 2;
 export const USER_TYPE_CLIENT = 3;
 
+export const MANAGER_ACCOUNT_REGISTER_PATH = '/manager/register/account';
 export const MANAGER_COMPANY_REGISTER_PATH = '/manager/register/company';
 export const MANAGER_TERMS_REGISTER_PATH = '/manager/register';
+
+export type RegisterPromoterAccountResult =
+    | { ok: true; needsConfirmation: true }
+    | { ok: true; needsConfirmation: false }
+    | { ok: false; message: string };
+
+/** Etapa 1 do promotor: só cria conta e envia e-mail (sem dados da empresa). */
+export async function registerPromoterAccountViaResend(input: {
+    email: string;
+    password: string;
+    accountName: string;
+}): Promise<RegisterPromoterAccountResult> {
+    const normalizedEmail = input.email.trim().toLowerCase();
+
+    if (!normalizedEmail || !input.password) {
+        return { ok: false, message: 'Informe e-mail e senha.' };
+    }
+    if (input.password.length < 6) {
+        return { ok: false, message: 'A senha deve ter no mínimo 6 caracteres.' };
+    }
+
+    const registerResult = await registerUserViaResend({
+        email: normalizedEmail,
+        password: input.password,
+        redirectPath: MANAGER_COMPANY_REGISTER_PATH,
+        metadata: {
+            name: input.accountName.trim() || 'Gestor EventFest',
+            [PENDING_PROMOTER_METADATA_KEY]: true,
+        },
+    });
+
+    if (registerResult.ok) {
+        return { ok: true, needsConfirmation: true };
+    }
+
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: input.password,
+    });
+    if (signInError || !signInData.user?.id) {
+        return { ok: false, message: registerResult.message };
+    }
+    if (!isAuthEmailConfirmed(signInData.user)) {
+        await signOutLocalSession();
+        return { ok: true, needsConfirmation: true };
+    }
+    return { ok: true, needsConfirmation: false };
+}
 
 export type PromoterCtaProfile = {
     tipo_usuario_id?: number | null;
@@ -21,12 +70,10 @@ export type PromoterCtaProfile = {
 /**
  * Destino do CTA "Seja um Promotor" / "Começar Agora" na landing.
  *
- * Fluxo atual do gestor na plataforma:
- * 1. /manager/register — aceite do contrato + escolha PF ou PJ
- * 2. /manager/register/company — dados da empresa + vínculo user_companies (exige login hoje)
- * 3. Perfil vira tipo 2 (Gestor PRO) e empresa é criada
- *
- * Este CTA encurta para clientes logados e visitantes: vai direto ao cadastro de empresa.
+ * Fluxo "Seja um Promotor" / "Começar Agora":
+ * 1. Visitante → /manager/register/account (conta + e-mail de confirmação)
+ * 2. Após confirmar e-mail → /manager/register/company (dados da empresa, uma vez)
+ * 3. Perfil vira Gestor PRO + empresa criada
  */
 async function resolveUserType(
     userId: string,
@@ -52,8 +99,8 @@ export async function navigateFromPromoterCta(
     profile: PromoterCtaProfile | null | undefined,
 ): Promise<void> {
     if (!userId) {
-        navigate(MANAGER_COMPANY_REGISTER_PATH, {
-            state: { fromPromoterCta: true, allowGuestSignup: true },
+        navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
+            state: { fromPromoterCta: true },
         });
         return;
     }
