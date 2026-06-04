@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { supabase } from '@/integrations/supabase/client';
-import { showSuccess, showError } from '@/utils/toast';
+import { showError } from '@/utils/toast';
 import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
-import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
-import { getAuthEmailRedirectUrl } from '@/utils/auth-redirect-url';
+import { registerUserViaResend } from '@/utils/auth-email-via-resend';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Register: React.FC = () => {
@@ -123,68 +121,33 @@ const Register: React.FC = () => {
         }
     };
 
-    const translateSupabaseError = (message: string): string => {
-        if (message.includes('User already registered')) {
-            return 'Já existe uma conta com este e-mail.';
-        }
-        if (message.includes('Password should be at least 6 characters')) {
-            return 'A senha deve ter no mínimo 6 caracteres.';
-        }
-        return 'Ocorreu um erro ao processar seu cadastro. Tente novamente.';
-    };
-
     const handleSubmitRegistration = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!validateForm()) return;
         setIsLoading(true);
 
         const cleanCPF = formData.cpf.replace(/\D/g, '');
-        // Se o gênero for string vazia, ele será tratado como null pelo trigger do Supabase
-        const genderToSave = formData.gender || null; 
-        
+        const genderToSave = formData.gender || null;
+
         try {
-            const { data, error } = await supabase.auth.signUp({
+            const registerResult = await registerUserViaResend({
                 email: formData.email,
                 password: formData.password,
-                options: {
-                    emailRedirectTo: getAuthEmailRedirectUrl('/login'),
-                    data: {
-                        name: formData.name,
-                        cpf: cleanCPF,
-                        birth_date: formData.birthDate,
-                        gender: genderToSave,
-                    },
+                redirectPath: '/login',
+                metadata: {
+                    name: formData.name,
+                    cpf: cleanCPF,
+                    birth_date: formData.birthDate,
+                    gender: genderToSave,
                 },
             });
 
-            if (error) {
-                showError(translateSupabaseError(error.message));
-                setIsLoading(false);
+            if (!registerResult.ok) {
+                showError(registerResult.message);
                 return;
             }
 
-            const signedUpUser = data.session?.user ?? data.user ?? null;
-            if (!signedUpUser) {
-                showError('Não foi possível concluir o cadastro. Tente novamente.');
-                setIsLoading(false);
-                return;
-            }
-
-            if (!isAuthEmailConfirmed(signedUpUser)) {
-                if (data.session) {
-                    await supabase.auth.signOut({ scope: 'local' });
-                }
-                setShowSuccessMessage(true);
-                setIsLoading(false);
-                return;
-            }
-
-            if (data.session) {
-                await supabase.auth.signOut({ scope: 'local' });
-            }
-            showSuccess('Cadastro concluído! Faça login para entrar.');
-            navigate('/login');
-
+            setShowSuccessMessage(true);
         } catch (error) {
             console.error('Erro inesperado no cadastro:', error);
             showError("Ocorreu um erro inesperado. Tente novamente.");

@@ -2,6 +2,12 @@
 [functions.auth-send-email]
 verify_jwt = false
 
+[functions.auth-signup-resend]
+verify_jwt = false
+
+[functions.auth-recovery-resend]
+verify_jwt = false
+
 [functions.resend-signup-confirmation]
 verify_jwt = false
 
