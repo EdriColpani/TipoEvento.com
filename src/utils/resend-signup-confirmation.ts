@@ -5,7 +5,10 @@ type ResendSignupResult =
     | { ok: false; message: string };
 
 /** Reenvio via Edge Function + Resend (link com redirect de produção). */
-export async function resendSignupConfirmationEmail(email: string): Promise<ResendSignupResult> {
+export async function resendSignupConfirmationEmail(
+    email: string,
+    redirectPath = '/login',
+): Promise<ResendSignupResult> {
     const normalized = email.trim().toLowerCase();
     if (!normalized) {
         return { ok: false, message: 'Informe um e-mail válido.' };
@@ -23,7 +26,7 @@ export async function resendSignupConfirmationEmail(email: string): Promise<Rese
                 apikey: supabaseAnonKey,
                 Authorization: `Bearer ${supabaseAnonKey}`,
             },
-            body: JSON.stringify({ email: normalized }),
+            body: JSON.stringify({ email: normalized, redirectPath }),
         });
 
         const data = (await response.json().catch(() => ({}))) as {

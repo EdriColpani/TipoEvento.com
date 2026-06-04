@@ -73,15 +73,14 @@ import TicketValidator from "./pages/TicketValidator"; // NOVO
 import RegistrationsReports from "./pages/RegistrationsReports";
 import ClientCreditWallet from "./pages/ClientCreditWallet";
 import ClientCreditMenu from "./pages/ClientCreditMenu";
+import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
+function AppRoutes() {
+  usePromoterRegistrationResume();
+
+  return (
         <Routes>
           {/* Public/Client Routes */}
           <Route path="/" element={<ClientLayout />}> {/* Wrap client routes with ClientLayout */}
@@ -181,6 +180,16 @@ const App = () => (
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+  );
+}
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AppRoutes />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

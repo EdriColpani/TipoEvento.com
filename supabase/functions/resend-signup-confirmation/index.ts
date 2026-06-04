@@ -19,8 +19,19 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function getProductionLoginRedirect(): string {
-  return sanitizeAuthRedirectTo(undefined, Deno.env.get("SITE_URL"));
+function getAuthRedirect(redirectPath?: string): string {
+  const productionOrigin = (
+    Deno.env.get("SITE_URL") ??
+    Deno.env.get("VITE_SITE_URL") ??
+    "https://www.eventfest.com.br"
+  )
+    .trim()
+    .replace(/\/$/, "");
+  const path =
+    typeof redirectPath === "string" && redirectPath.startsWith("/")
+      ? redirectPath
+      : "/login";
+  return sanitizeAuthRedirectTo(`${productionOrigin}${path}`, Deno.env.get("SITE_URL"));
 }
 
 /** Corrige redirect_to dentro do action_link gerado pelo Auth (ex.: localhost). */
@@ -58,7 +69,7 @@ serve(async (req) => {
   }
 
   try {
-    let body: { email?: string } = {};
+    let body: { email?: string; redirectPath?: string } = {};
     try {
       body = (await req.json()) as { email?: string };
     } catch {
@@ -77,7 +88,7 @@ serve(async (req) => {
       return json({ success: false, error: "server_misconfigured" });
     }
 
-    const redirectTo = getProductionLoginRedirect();
+    const redirectTo = getAuthRedirect(body.redirectPath);
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });

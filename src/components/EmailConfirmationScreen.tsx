@@ -26,6 +26,7 @@ export type EmailConfirmationScreenProps = {
     loginTo?: string;
     loginState?: Record<string, unknown>;
     resendEnabled?: boolean;
+    resendRedirectPath?: string;
     onBack?: () => void;
     backLabel?: string;
 };
@@ -40,8 +41,9 @@ const PRO_STEPS: EmailConfirmationScreenProps['steps'] = [
         description: 'Clique no link de verificação. Ele expira após algum tempo — use o reenvio se precisar.',
     },
     {
-        title: 'Faça login e finalize',
-        description: 'Após confirmar, entre com seu e-mail e senha para concluir o cadastro da empresa.',
+        title: 'Finalize o cadastro PRO',
+        description:
+            'Ao confirmar, você será levado ao cadastro da empresa e o sistema concluirá automaticamente seu perfil de gestor.',
     },
 ];
 
@@ -70,6 +72,7 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
     loginTo = '/login',
     loginState,
     resendEnabled = true,
+    resendRedirectPath,
     onBack,
     backLabel = 'Voltar',
 }) => {
@@ -96,7 +99,7 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
         if (!resendEnabled || cooldown > 0 || isResending) return;
         setIsResending(true);
         try {
-            const result = await resendSignupConfirmationEmail(email);
+            const result = await resendSignupConfirmationEmail(email, resendRedirectPath);
             if (!result.ok) {
                 throw new Error(result.message);
             }
@@ -112,7 +115,7 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
         } finally {
             setIsResending(false);
         }
-    }, [cooldown, email, isResending, resendEnabled]);
+    }, [cooldown, email, isResending, resendEnabled, resendRedirectPath]);
 
     const accentBorder = isPro ? 'border-yellow-500/30' : 'border-cyan-500/30';
     const accentShadow = isPro ? 'shadow-yellow-500/10' : 'shadow-cyan-500/15';
@@ -179,7 +182,8 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                                 <div className="text-sm text-left">
                                     <p className="font-medium text-white">Dados da empresa salvos neste navegador</p>
                                     <p className="text-gray-400 mt-1">
-                                        Após confirmar o e-mail e fazer login, você retoma o cadastro de onde parou.
+                                        Após confirmar o e-mail, retorne a esta página ou clique no link do e-mail
+                                        para concluir o cadastro da empresa automaticamente.
                                     </p>
                                 </div>
                             </div>
@@ -219,7 +223,7 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                             >
                                 <Link to={loginTo} state={loginState}>
                                     <CheckCircle2 className="mr-2 h-5 w-5" />
-                                    Já confirmei — ir para login
+                                    Já confirmei — continuar cadastro
                                     <ArrowRight className="ml-2 h-4 w-4" />
                                 </Link>
                             </Button>

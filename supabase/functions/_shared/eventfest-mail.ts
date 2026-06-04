@@ -189,7 +189,11 @@ export function sanitizeAuthRedirectTo(
     return `${productionOrigin}/login`;
   }
 
-  if (!candidate.includes("/login") && !candidate.includes("/reset-password")) {
+  if (
+    !candidate.includes("/login") &&
+    !candidate.includes("/reset-password") &&
+    !candidate.includes("/manager/register/company")
+  ) {
     if (candidate === productionOrigin || candidate.endsWith(".com.br") || candidate.endsWith(".com")) {
       return `${candidate}/login`;
     }

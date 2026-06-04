@@ -14,39 +14,13 @@ import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     ensureAuthUserForCompanyRegistration,
-    MANAGER_COMPANY_REGISTER_DRAFT_KEY,
+    finalizeManagerCompanyRegistration,
+    loadCompanyRegisterDraft,
     MANAGER_COMPANY_REGISTER_PATH,
+    saveCompanyRegisterDraft,
 } from '@/utils/promoter-registration-flow';
+import { hasPendingPromoterRegistration } from '@/utils/manager-company-registration';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
-
-type CompanyRegisterDraft = {
-    company: CompanyFormData;
-    accountName: string;
-    savedAt: number;
-};
-
-function saveCompanyRegisterDraft(draft: Omit<CompanyRegisterDraft, 'savedAt'>) {
-    sessionStorage.setItem(
-        MANAGER_COMPANY_REGISTER_DRAFT_KEY,
-        JSON.stringify({ ...draft, savedAt: Date.now() }),
-    );
-}
-
-function loadCompanyRegisterDraft(): CompanyRegisterDraft | null {
-    try {
-        const raw = sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as CompanyRegisterDraft;
-        if (!parsed.company || typeof parsed.accountName !== 'string') return null;
-        return parsed;
-    } catch {
-        return null;
-    }
-}
-
-function clearCompanyRegisterDraft() {
-    sessionStorage.removeItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY);
-}
 
 // --- Component ---
 
@@ -66,6 +40,8 @@ const ManagerCompanyRegister: React.FC = () => {
     const [accountPassword, setAccountPassword] = useState('');
     const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
     const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<string | null>(null);
+    const [autoFinalizing, setAutoFinalizing] = useState(false);
+    const [resumeWithoutDraft, setResumeWithoutDraft] = useState(false);
 
     const needsGuestAccount = !userId && Boolean(locationState.allowGuestSignup);
 
@@ -91,6 +67,25 @@ const ManagerCompanyRegister: React.FC = () => {
     });
 
     useEffect(() => {
+        const runAutoFinalize = async (activeUserId: string, companyValues: CompanyFormData) => {
+            setAutoFinalizing(true);
+            const toastId = showLoading('E-mail confirmado! Finalizando cadastro de gestor PRO...');
+            try {
+                await finalizeManagerCompanyRegistration(activeUserId, companyValues, queryClient);
+                dismissToast(toastId);
+                showSuccess('Registro de Gestor (Empresa) concluído com sucesso!');
+                navigate('/manager/dashboard');
+            } catch (e: unknown) {
+                dismissToast(toastId);
+                console.error('Auto-finalize error:', e);
+                const message = e instanceof Error ? e.message : 'Erro desconhecido';
+                showError(`Falha ao finalizar cadastro: ${message}`);
+                form.reset(companyValues);
+                setAutoFinalizing(false);
+                setIsFetching(false);
+            }
+        };
+
         const fetchUser = async () => {
             const {
                 data: { user },
@@ -108,11 +103,16 @@ const ManagerCompanyRegister: React.FC = () => {
                 }
                 setUserId(user.id);
                 const draft = loadCompanyRegisterDraft();
+                if (draft?.autoFinalize) {
+                    await runAutoFinalize(user.id, draft.company);
+                    return;
+                }
                 if (draft) {
                     form.reset(draft.company);
                     setAccountName(draft.accountName);
-                    clearCompanyRegisterDraft();
                     showSuccess('Dados da empresa restaurados. Revise e finalize o cadastro.');
+                } else if (hasPendingPromoterRegistration(user)) {
+                    setResumeWithoutDraft(true);
                 }
                 setIsFetching(false);
                 return;
@@ -125,7 +125,30 @@ const ManagerCompanyRegister: React.FC = () => {
             navigate('/login', { state: { from: MANAGER_COMPANY_REGISTER_PATH } });
         };
         void fetchUser();
-    }, [navigate, locationState.allowGuestSignup, form]);
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!session?.user?.id || !isAuthEmailConfirmed(session.user)) return;
+            if (userId === session.user.id && !autoFinalizing) return;
+
+            const draft = loadCompanyRegisterDraft();
+            if (draft?.autoFinalize) {
+                void runAutoFinalize(session.user.id, draft.company);
+                return;
+            }
+            setUserId(session.user.id);
+            if (draft) {
+                form.reset(draft.company);
+                setAccountName(draft.accountName);
+            } else if (hasPendingPromoterRegistration(session.user)) {
+                setResumeWithoutDraft(true);
+            }
+            setIsFetching(false);
+        });
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
+    }, [navigate, locationState.allowGuestSignup, form, queryClient, userId, autoFinalizing]);
 
     // Function to fetch address via ViaCEP
     const fetchAddressByCep = async (cep: string) => {
@@ -191,6 +214,7 @@ const ManagerCompanyRegister: React.FC = () => {
                 saveCompanyRegisterDraft({
                     company: values,
                     accountName: accountName.trim(),
+                    autoFinalize: true,
                 });
                 setUserId(null);
                 dismissToast(toastId);
@@ -203,87 +227,8 @@ const ManagerCompanyRegister: React.FC = () => {
                 setUserId(activeUserId);
             }
 
-            const dataToSave = {
-            // REMOVIDO: user_id: userId, // A posse agora é gerenciada pela tabela user_companies
-            cnpj: values.cnpj.replace(/\D/g, ''),
-            corporate_name: values.corporate_name,
-            trade_name: values.trade_name || null,
-            phone: values.phone ? values.phone.replace(/\D/g, '') : null,
-            email: values.email || null,
-            
-            cep: values.cep ? values.cep.replace(/\D/g, '') : null,
-            street: values.street || null,
-            number: values.number || null,
-            neighborhood: values.neighborhood || null,
-            city: values.city || null,
-            state: values.state || null,
-            complement: values.complement || null,
-        };
+            await finalizeManagerCompanyRegistration(activeUserId, values, queryClient);
 
-            // 1. Perfil primeiro: RLS em `companies` (companies_insert_gestor_pro) exige tipo_usuario_id = 2 no perfil.
-            const { error: profileUpdateError } = await supabase
-                .from('profiles')
-                .update({
-                    tipo_usuario_id: 2,
-                    natureza_juridica_id: 2,
-                })
-                .eq('id', activeUserId);
-
-            if (profileUpdateError) {
-                throw new Error(
-                    profileUpdateError.message ||
-                        'Não foi possível atualizar o perfil para Gestor PRO. Verifique permissões (RLS) ou tente de novo.',
-                );
-            }
-
-            // 2. Inserir empresa
-            const { data: companyData, error: companyError } = await supabase
-                .from('companies')
-                .insert([dataToSave])
-                .select('id')
-                .single();
-
-            if (companyError) {
-                if (companyError.code === '23505' && companyError.message.includes('cnpj')) {
-                    throw new Error('Este CNPJ já está cadastrado em outra conta.');
-                }
-                throw companyError;
-            }
-
-            const companyId = companyData.id;
-
-            // 3. Vínculo obrigatório — sem user_companies o app não resolve company_id ao salvar evento
-            const { error: associationError } = await supabase.from('user_companies').insert({
-                user_id: activeUserId,
-                company_id: companyId,
-                role: 'owner',
-                is_primary: true,
-            });
-
-            if (associationError) {
-                await supabase.from('companies').delete().eq('id', companyId);
-                throw new Error(
-                    associationError.message ||
-                        'Empresa criada, mas falhou o vínculo com sua conta. Tente novamente ou contate o suporte.',
-                );
-            }
-
-            // 4. NOVO: Atualizar o status dos eventos da nova empresa para 'approved'
-            const { error: eventUpdateError } = await supabase
-                .from('events')
-                .update({ status: 'approved' })
-                .eq('company_id', companyId)
-                .eq('status', 'pending'); // Apenas eventos pendentes
-            
-            if (eventUpdateError) {
-                console.error("Warning: Failed to update event statuses to approved:", eventUpdateError);
-            }
-
-            queryClient.invalidateQueries({ queryKey: ['managerCompany', activeUserId] });
-            queryClient.invalidateQueries({ queryKey: ['profile', activeUserId] });
-            queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
-
-            clearCompanyRegisterDraft();
             dismissToast(toastId);
             showSuccess('Registro de Gestor (Empresa) concluído com sucesso!');
             navigate('/manager/dashboard');
@@ -318,10 +263,13 @@ const ManagerCompanyRegister: React.FC = () => {
         showSuccess("Formulário preenchido com dados de teste!");
     };
 
-    if (isFetching) {
+    if (isFetching || autoFinalizing) {
         return (
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
+            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
+                {autoFinalizing && (
+                    <p className="text-gray-400 text-sm">Finalizando cadastro de gestor PRO...</p>
+                )}
             </div>
         );
     }
@@ -332,8 +280,8 @@ const ManagerCompanyRegister: React.FC = () => {
                 email={pendingConfirmationEmail}
                 variant="pro"
                 showDraftSaved
-                loginTo="/login"
-                loginState={{ from: MANAGER_COMPANY_REGISTER_PATH }}
+                loginTo={MANAGER_COMPANY_REGISTER_PATH}
+                resendRedirectPath={MANAGER_COMPANY_REGISTER_PATH}
                 onBack={() => navigate('/')}
                 backLabel="Voltar para a página inicial"
             />
@@ -354,7 +302,9 @@ const ManagerCompanyRegister: React.FC = () => {
                     <p className="text-gray-400 text-sm sm:text-base">
                         {needsGuestAccount
                             ? 'Crie sua conta e cadastre a empresa para virar gestor PRO.'
-                            : 'Preencha os dados da sua empresa para se tornar um gestor.'}
+                            : resumeWithoutDraft
+                              ? 'E-mail confirmado! Preencha os dados da empresa para concluir seu cadastro de gestor PRO.'
+                              : 'Preencha os dados da sua empresa para se tornar um gestor.'}
                     </p>
                 </div>
                 <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-yellow-500/10">

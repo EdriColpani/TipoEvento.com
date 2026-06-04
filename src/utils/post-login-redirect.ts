@@ -1,9 +1,11 @@
 import { resolveClientPostLoginPath, resolvePendingManagerRegistrationPath } from '@/utils/safe-login-redirect';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
+import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import {
+    hasPendingPromoterRegistration,
     MANAGER_COMPANY_REGISTER_DRAFT_KEY,
     MANAGER_COMPANY_REGISTER_PATH,
-} from '@/utils/promoter-registration-flow';
+} from '@/utils/manager-company-registration';
 import { supabase } from '@/integrations/supabase/client';
 
 export type PostLoginRedirect = {
@@ -24,6 +26,16 @@ export async function resolvePostLoginRedirect(
     }
 
     if (sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY)) {
+        return {
+            path: MANAGER_COMPANY_REGISTER_PATH,
+            message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
+        };
+    }
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    if (hasPendingPromoterRegistration(user)) {
         return {
             path: MANAGER_COMPANY_REGISTER_PATH,
             message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
