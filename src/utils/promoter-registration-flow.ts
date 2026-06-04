@@ -3,8 +3,12 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
-import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+import type { QueryClient } from '@tanstack/react-query';
 import { getAuthEmailRedirectUrl } from '@/utils/auth-redirect-url';
+import {
+    PENDING_PROMOTER_METADATA_KEY,
+} from '@/utils/manager-company-registration';
+import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { showError, showSuccess } from '@/utils/toast';
 
 export const USER_TYPE_ADMIN = 1;
@@ -96,7 +100,14 @@ export type EnsureAuthForCompanyResult =
     | { status: 'ready'; userId: string }
     | { status: 'email_confirmation_required'; email: string };
 
-export const MANAGER_COMPANY_REGISTER_DRAFT_KEY = 'eventfest_manager_company_register_draft';
+export {
+    MANAGER_COMPANY_REGISTER_DRAFT_KEY,
+    saveCompanyRegisterDraft,
+    loadCompanyRegisterDraft,
+    clearCompanyRegisterDraft,
+    finalizeManagerCompanyRegistration,
+    hasPendingPromoterRegistration,
+} from '@/utils/manager-company-registration';
 
 async function signOutLocalSession(): Promise<void> {
     await supabase.auth.signOut({ scope: 'local' });
@@ -158,14 +169,17 @@ export async function ensureAuthUserForCompanyRegistration(
         throw new Error('A senha deve ter no mínimo 6 caracteres.');
     }
 
-    const emailRedirectTo = getAuthEmailRedirectUrl('/login');
+    const emailRedirectTo = getAuthEmailRedirectUrl(MANAGER_COMPANY_REGISTER_PATH);
 
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
         options: {
             emailRedirectTo,
-            data: { name: accountName.trim() || 'Gestor EventFest' },
+            data: {
+                name: accountName.trim() || 'Gestor EventFest',
+                [PENDING_PROMOTER_METADATA_KEY]: true,
+            },
         },
     });
 
