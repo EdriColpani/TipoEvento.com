@@ -159,9 +159,43 @@ export function buildAuthVerifyUrl(
     token: overrides?.tokenHash ?? emailData.token_hash,
     type: overrides?.actionType ?? emailData.email_action_type,
   });
-  const redirect = overrides?.redirectTo ?? emailData.redirect_to;
+  const redirect = sanitizeAuthRedirectTo(
+    overrides?.redirectTo ?? emailData.redirect_to,
+    emailData.site_url,
+  );
   if (redirect) params.set("redirect_to", redirect);
   return `${base}?${params.toString()}`;
+}
+
+/** Evita links de confirmação apontando para localhost quando o cadastro é em produção. */
+export function sanitizeAuthRedirectTo(
+  redirectTo: string | undefined,
+  siteUrl: string | undefined,
+): string {
+  const productionOrigin = (
+    Deno.env.get("SITE_URL") ??
+    Deno.env.get("VITE_SITE_URL") ??
+    "https://www.eventfest.com.br"
+  )
+    .trim()
+    .replace(/\/$/, "");
+
+  const candidate = (redirectTo?.trim() || siteUrl?.trim() || `${productionOrigin}/login`).replace(
+    /\/$/,
+    "",
+  );
+
+  if (/127\.0\.0\.1|localhost/i.test(candidate)) {
+    return `${productionOrigin}/login`;
+  }
+
+  if (!candidate.includes("/login") && !candidate.includes("/reset-password")) {
+    if (candidate === productionOrigin || candidate.endsWith(".com.br") || candidate.endsWith(".com")) {
+      return `${candidate}/login`;
+    }
+  }
+
+  return candidate;
 }
 
 export function buildAuthEmail(input: {

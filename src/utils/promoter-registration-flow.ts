@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+import { getAuthEmailRedirectUrl } from '@/utils/auth-redirect-url';
 import { showError, showSuccess } from '@/utils/toast';
 
 export const USER_TYPE_ADMIN = 1;
@@ -157,8 +158,7 @@ export async function ensureAuthUserForCompanyRegistration(
         throw new Error('A senha deve ter no mínimo 6 caracteres.');
     }
 
-    const emailRedirectTo =
-        typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
+    const emailRedirectTo = getAuthEmailRedirectUrl('/login');
 
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: normalizedEmail,

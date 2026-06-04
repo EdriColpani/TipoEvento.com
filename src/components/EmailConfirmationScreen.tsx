@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Inbox, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
+import { resendSignupConfirmationEmail } from '@/utils/resend-signup-confirmation';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -96,19 +96,19 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
         if (!resendEnabled || cooldown > 0 || isResending) return;
         setIsResending(true);
         try {
-            const emailRedirectTo =
-                typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
-            const { error } = await supabase.auth.resend({
-                type: 'signup',
-                email: email.trim().toLowerCase(),
-                options: { emailRedirectTo },
-            });
-            if (error) throw error;
-            showSuccess('E-mail reenviado! Verifique sua caixa de entrada.');
+            const result = await resendSignupConfirmationEmail(email);
+            if (!result.ok) {
+                throw new Error(result.message);
+            }
+            showSuccess('E-mail reenviado! Verifique sua caixa de entrada e spam.');
             setCooldown(RESEND_COOLDOWN_SECONDS);
         } catch (error) {
             console.error('Erro ao reenviar e-mail:', error);
-            showError('Não foi possível reenviar o e-mail. Tente novamente em instantes.');
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : 'Não foi possível reenviar o e-mail. Tente novamente em instantes.';
+            showError(message);
         } finally {
             setIsResending(false);
         }
