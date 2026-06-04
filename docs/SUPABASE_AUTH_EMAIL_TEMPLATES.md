@@ -80,12 +80,30 @@ Com SMTP Resend, o Supabase envia os e-mails de auth; a Edge Function `auth-send
 
 **Authentication → Providers → Email → Confirm email**: deve estar **ligado**.
 
-Se estiver desligado, o Supabase devolve sessão no `signUp` sem enviar e-mail — o app agora bloqueia isso, mas o e-mail de confirmação **só é enviado** com essa opção ativa (+ hook Resend ou SMTP).
+**Authentication → URL Configuration** (crítico — se errado, o link cai em `127.0.0.1:3000`):
 
-Também confira **Authentication → URL Configuration**:
+| Campo | Valor |
+|-------|--------|
+| **Site URL** | `https://www.eventfest.com.br` |
+| **Redirect URLs** | `https://www.eventfest.com.br/login` |
+| | `https://www.eventfest.com.br/reset-password` |
+| | `https://www.eventfest.com.br/manager/register/company` |
+| | `https://eventfest.com.br/login` (sem www, se usar) |
+| | `http://localhost:5173/login` (dev) |
 
-- **Site URL:** `https://eventofest.com.br/` (produção)
-- **Redirect URLs:** `/login`, `/reset-password`, `/manager/register/company`
+No **build/deploy** do front, defina:
+
+```bash
+VITE_SITE_URL=https://www.eventfest.com.br
+```
+
+Na Edge Function `auth-send-email`, opcional:
+
+```bash
+supabase secrets set SITE_URL="https://www.eventfest.com.br"
+```
+
+Isso corrige links antigos que ainda usam `redirect_to` localhost.
 
 ### 5. Redirect URLs
 

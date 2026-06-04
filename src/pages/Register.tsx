@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
 import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+import { getAuthEmailRedirectUrl } from '@/utils/auth-redirect-url';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Register: React.FC = () => {
@@ -146,7 +147,7 @@ const Register: React.FC = () => {
                 email: formData.email,
                 password: formData.password,
                 options: {
-                    emailRedirectTo: `${window.location.origin}/login`,
+                    emailRedirectTo: getAuthEmailRedirectUrl('/login'),
                     data: {
                         name: formData.name,
                         cpf: cleanCPF,

@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { resolveClientPostLoginPath, resolvePendingManagerRegistrationPath } from '@/utils/safe-login-redirect';
-import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+import { resolvePostLoginRedirect } from '@/utils/post-login-redirect';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -14,21 +13,63 @@ const Login: React.FC = () => {
     const [loginData, setLoginData] = useState({ email: '', password: '' });
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
-    const [rememberMe, setRememberMe] = useState(true); // Adicionando estado para Lembrar-me
+    const [rememberMe, setRememberMe] = useState(true);
+
+    const completeAuthenticatedRedirect = async (userId: string) => {
+        try {
+            const { path, message } = await resolvePostLoginRedirect(userId, returnTo);
+            showSuccess(message);
+            navigate(path, { replace: true });
+        } catch (error) {
+            const code = error instanceof Error ? error.message : '';
+            if (code === 'PROFILE_NOT_FOUND') {
+                showError('Erro ao carregar dados do perfil. Tente novamente.');
+            } else if (code === 'UNKNOWN_USER_TYPE') {
+                showError('Tipo de usuário desconhecido. Acesso negado.');
+            } else {
+                showError('Ocorreu um erro inesperado. Tente novamente.');
+            }
+            await supabase.auth.signOut({ scope: 'local' });
+        }
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const handleEmailConfirmationReturn = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (cancelled || !session?.user?.id || !isAuthEmailConfirmed(session.user)) {
+                return;
+            }
+            await completeAuthenticatedRedirect(session.user.id);
+        };
+
+        void handleEmailConfirmationReturn();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (cancelled || !session?.user?.id || !isAuthEmailConfirmed(session.user)) {
+                return;
+            }
+            void completeAuthenticatedRedirect(session.user.id);
+        });
+
+        return () => {
+            cancelled = true;
+            authListener.subscription.unsubscribe();
+        };
+    }, [navigate, returnTo]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
 
         try {
-            // 1. Autenticação com Supabase
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                 email: loginData.email,
                 password: loginData.password,
             });
 
             if (authError) {
-                // Trata erros de credenciais inválidas ou usuário não encontrado
                 showError("Credenciais inválidas ou usuário não encontrado.");
                 setIsLoading(false);
                 return;
@@ -44,53 +85,8 @@ const Login: React.FC = () => {
                     return;
                 }
 
-                // 2. Buscar o Tipo de Usuário na tabela profiles
-                const { data: profileData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('tipo_usuario_id')
-                    .eq('id', user.id)
-                    .single();
-
-                if (profileError || !profileData) {
-                    console.error("Erro ao buscar perfil:", profileError);
-                    showError("Erro ao carregar dados do perfil. Tente novamente.");
-                    // Opcional: forçar logout se o perfil não for encontrado
-                    await supabase.auth.signOut({ scope: 'local' });
-                    setIsLoading(false);
-                    return;
-                }
-
-                const userType = profileData.tipo_usuario_id;
-                let successMessage = "Login realizado com sucesso!";
-                let redirectPath = '/';
-
-                const pendingManagerRegistration = resolvePendingManagerRegistrationPath(returnTo);
-
-                // 3. Determinar mensagem de sucesso e rota de redirecionamento
-                if (pendingManagerRegistration) {
-                    successMessage = "E-mail confirmado! Conclua o cadastro da sua empresa.";
-                    redirectPath = pendingManagerRegistration;
-                } else if (userType === 1) {
-                    successMessage = "Login de Administrador Master realizado com sucesso!";
-                    redirectPath = '/admin/dashboard';
-                } else if (userType === 2) {
-                    successMessage = "Login de Gestor PRO realizado com sucesso!";
-                    redirectPath = await resolveManagerPostLoginPath(user.id);
-                } else if (userType === 3) {
-                    successMessage = "Login de Cliente realizado com sucesso!";
-                    // UX: cliente volta ao site (ou à página em que estava antes do login)
-                    redirectPath = resolveClientPostLoginPath(returnTo);
-                } else {
-                    showError("Tipo de usuário desconhecido. Acesso negado.");
-                    await supabase.auth.signOut({ scope: 'local' });
-                    setIsLoading(false);
-                    return;
-                }
-                
-                showSuccess(successMessage);
-                navigate(redirectPath, { replace: true });
+                await completeAuthenticatedRedirect(user.id);
             } else {
-                // Isso pode acontecer se o e-mail não estiver confirmado, dependendo da configuração do Supabase
                 showError("Login falhou. Verifique seu e-mail e senha.");
             }
 
