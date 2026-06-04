@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Inbox, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Inbox, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { showError, showSuccess } from '@/utils/toast';
@@ -122,9 +123,15 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
     const accentText = isPro ? 'text-yellow-500' : 'text-cyan-400';
     const accentBg = isPro ? 'bg-yellow-500/15' : 'bg-cyan-500/15';
     const accentRing = isPro ? 'ring-yellow-500/30' : 'ring-cyan-500/30';
-    const primaryBtn = isPro
-        ? 'bg-yellow-500 text-black hover:bg-yellow-600'
-        : 'bg-gradient-to-r from-cyan-500 to-blue-600 text-black hover:from-cyan-400 hover:to-blue-500';
+    const primaryBtnClass = isPro
+        ? 'bg-yellow-500 text-black hover:bg-yellow-600 hover:text-black border-0'
+        : 'bg-gradient-to-r from-cyan-500 to-blue-600 text-black hover:from-cyan-400 hover:to-blue-500 border-0';
+    const outlineBtnClass = isPro
+        ? 'border-yellow-500/30 bg-black/60 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400'
+        : 'border-cyan-500/30 bg-black/60 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300';
+    const ghostBtnClass = isPro
+        ? 'border border-transparent bg-transparent text-gray-400 hover:bg-white/5 hover:text-white'
+        : 'border border-transparent bg-transparent text-gray-400 hover:bg-white/5 hover:text-white';
 
     return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-4 sm:px-6 py-12">
@@ -219,12 +226,15 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                         <div className="flex flex-col gap-3 pt-1">
                             <Button
                                 asChild
-                                className={`w-full py-3 text-base font-semibold ${primaryBtn}`}
+                                variant="outline"
+                                className={cn(
+                                    'w-full rounded-xl py-3 text-base font-semibold',
+                                    primaryBtnClass,
+                                )}
                             >
                                 <Link to={loginTo} state={loginState}>
-                                    <CheckCircle2 className="mr-2 h-5 w-5" />
+                                    <CheckCircle2 className="h-5 w-5 shrink-0" />
                                     Já confirmei — continuar cadastro
-                                    <ArrowRight className="ml-2 h-4 w-4" />
                                 </Link>
                             </Button>
 
@@ -234,10 +244,13 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                                     variant="outline"
                                     disabled={cooldown > 0 || isResending}
                                     onClick={() => void handleResend()}
-                                    className={`w-full border-white/15 bg-transparent hover:bg-white/5 ${accentText}`}
+                                    className={cn(
+                                        'w-full rounded-xl py-3 text-base font-semibold',
+                                        outlineBtnClass,
+                                    )}
                                 >
                                     <RefreshCw
-                                        className={`mr-2 h-4 w-4 ${isResending ? 'animate-spin' : ''}`}
+                                        className={cn('h-4 w-4 shrink-0', isResending && 'animate-spin')}
                                     />
                                     {cooldown > 0
                                         ? `Reenviar e-mail (${cooldown}s)`
@@ -248,9 +261,12 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                             {onBack && (
                                 <Button
                                     type="button"
-                                    variant="ghost"
+                                    variant="outline"
                                     onClick={onBack}
-                                    className="w-full text-gray-400 hover:text-white"
+                                    className={cn(
+                                        'w-full rounded-xl py-3 text-base font-medium',
+                                        ghostBtnClass,
+                                    )}
                                 >
                                     {backLabel}
                                 </Button>
