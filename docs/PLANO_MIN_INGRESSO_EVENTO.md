@@ -1,6 +1,6 @@
 # Plano: Mínimo de ingressos por evento (anti-fraude)
 
-**Status:** Implementado (v1)  
+**Status:** Implementado (v1 + fase 2)  
 **Última atualização:** 2026-06-02
 
 ## Regras de negócio
@@ -24,6 +24,7 @@
 1. `20260711120000_min_event_tickets_enforcement.sql` — colunas, RPCs, trigger em `events`
 2. `20260711130000_enforce_min_event_batch_quantity.sql` — trigger em `event_batches`
 3. `20260711140000_event_active_ticket_count_analytics.sql` — contagem por analytics + trigger
+4. `20260713120000_anti_fraud_phase2.sql` — log bypass Admin Master + badge na lista
 
 ## Front-end
 
@@ -36,6 +37,8 @@
 | Pós-criação | `ManagerCreateEvent.tsx` (modal obrigatório em planos com ingressos) |
 | Cadastro ingresso | `ManagerCreateWristband.tsx` |
 | Ativar evento | `EventActiveToggle.tsx` |
+| Badge “faltam ingressos” | `ManagerEventsList.tsx`, `use-event-ticket-readiness.tsx` |
+| Log bypass Admin Master | `AdminMasterBypassLogSection.tsx` |
 | Utilitários | `min-event-tickets-validation.ts`, `min-event-tickets-errors.ts` |
 
 ## Homologação
@@ -49,7 +52,9 @@
 - [ ] Plano vitrine: sem validação de mínimo pago
 - [ ] Admin Master: bypass nas triggers
 
-## Fase 2 (futuro)
+## Fase 2 — implementada
 
-- Log de uso do bypass Admin Master
-- Indicador na lista de eventos (“faltam ingressos para ativar”)
+- Log de bypass Admin Master (`admin_master_bypass_log`)
+- Badge **Faltam ingressos** na lista de eventos desativados
+
+Checklist completo: `docs/CHECKLIST_TESTES_ANTI_FRAUDE.md`

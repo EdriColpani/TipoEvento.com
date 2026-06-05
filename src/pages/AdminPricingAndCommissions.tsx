@@ -9,6 +9,8 @@ import { showError } from '@/utils/toast';
 import { billingBtnBack, billingSpinner } from '@/constants/billing-ui';
 import CommissionTiersPanel from '@/components/admin/CommissionTiersPanel';
 import MinEventTicketsDefaultSection from '@/components/admin/MinEventTicketsDefaultSection';
+import TicketInactivityAdminSection from '@/components/admin/TicketInactivityAdminSection';
+import AdminMasterBypassLogSection from '@/components/admin/AdminMasterBypassLogSection';
 import ListingMonthlyDefaultFeeSection from '@/components/admin/ListingMonthlyDefaultFeeSection';
 import FuturePlanSettingsSection from '@/components/admin/FuturePlanSettingsSection';
 
@@ -105,6 +107,8 @@ const AdminPricingAndCommissions: React.FC = () => {
 
                 <TabsContent value="tickets" className="mt-0">
                     <MinEventTicketsDefaultSection enabled={isAdminMaster} />
+                    <TicketInactivityAdminSection enabled={isAdminMaster} />
+                    <AdminMasterBypassLogSection enabled={isAdminMaster} />
                     <CommissionTiersPanel userId={userId} isAdminMaster={isAdminMaster} />
                 </TabsContent>
 

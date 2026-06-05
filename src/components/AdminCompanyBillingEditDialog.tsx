@@ -30,6 +30,7 @@ import {
     useCompanyBillingHistory,
 } from '@/hooks/use-admin-companies-billing';
 import { useSystemBillingSettings, saveCompanyMinEventTickets } from '@/hooks/use-system-billing-settings';
+import { adminClearCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
 import { DEFAULT_LISTING_MONTHLY_FEE } from '@/utils/company-billing-rules';
 import {
     formatCurrencyBrInput,
@@ -262,6 +263,34 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                             <p className="text-white">{getBillingPlanLabel(company.billing_plan)}</p>
                         </div>
                     </div>
+
+                    {company.ticket_inactivity_blocked && (
+                        <div className="p-3 rounded-lg border border-orange-500/30 bg-orange-500/10 space-y-2">
+                            <p className="text-orange-200 text-sm">
+                                Empresa com <strong>bloqueio por inatividade</strong> de vendas de ingressos.
+                            </p>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="border-orange-500/40 text-orange-300 hover:bg-orange-500/10"
+                                disabled={isSaving}
+                                onClick={() =>
+                                    void (async () => {
+                                        try {
+                                            await adminClearCompanyTicketInactivity(company.id);
+                                            showSuccess('Bloqueio de inatividade removido.');
+                                            onSaved();
+                                        } catch (e: unknown) {
+                                            showError(e instanceof Error ? e.message : 'Erro ao liberar.');
+                                        }
+                                    })()
+                                }
+                            >
+                                Liberar inatividade (Admin)
+                            </Button>
+                        </div>
+                    )}
 
                     <div className="space-y-2 p-3 rounded-lg border border-cyan-500/25 bg-cyan-500/5">
                         <Label className="text-white">Mínimo de ingressos (esta empresa)</Label>

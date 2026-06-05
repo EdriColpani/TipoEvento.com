@@ -12,6 +12,8 @@ export interface SystemBillingSettings {
     consumption_plan_notes: string | null;
     hybrid_consumption_module_enabled: boolean;
     consumption_module_enabled: boolean;
+    ticket_inactivity_enabled: boolean;
+    ticket_inactivity_fee_default: number;
     updated_at: string | null;
 }
 
@@ -22,7 +24,7 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
     const { data, error } = await supabase
         .from('system_billing_settings')
         .select(
-            'min_event_tickets_default, listing_monthly_default_fee, hybrid_consumption_commission_pct, consumption_license_commission_pct, consumption_license_default_fee, hybrid_plan_notes, consumption_plan_notes, hybrid_consumption_module_enabled, consumption_module_enabled, updated_at',
+            'min_event_tickets_default, listing_monthly_default_fee, hybrid_consumption_commission_pct, consumption_license_commission_pct, consumption_license_default_fee, hybrid_plan_notes, consumption_plan_notes, hybrid_consumption_module_enabled, consumption_module_enabled, ticket_inactivity_enabled, ticket_inactivity_fee_default, updated_at',
         )
         .eq('id', 1)
         .maybeSingle();
@@ -39,6 +41,8 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
                 consumption_plan_notes: null,
                 hybrid_consumption_module_enabled: false,
                 consumption_module_enabled: false,
+                ticket_inactivity_enabled: true,
+                ticket_inactivity_fee_default: 0,
                 updated_at: null,
             };
         }
@@ -61,6 +65,8 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
         consumption_plan_notes: (data?.consumption_plan_notes as string | null) ?? null,
         hybrid_consumption_module_enabled: data?.hybrid_consumption_module_enabled === true,
         consumption_module_enabled: data?.consumption_module_enabled === true,
+        ticket_inactivity_enabled: data?.ticket_inactivity_enabled !== false,
+        ticket_inactivity_fee_default: Number(data?.ticket_inactivity_fee_default ?? 0),
         updated_at: data?.updated_at ?? null,
     };
 }

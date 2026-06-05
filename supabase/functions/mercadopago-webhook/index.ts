@@ -199,6 +199,36 @@ serve(async (req) => {
         });
     }
 
+    const TICKET_INACTIVITY_CHARGE_PREFIX = 'ticket_inactivity_charge:';
+    if (externalReference.startsWith(TICKET_INACTIVITY_CHARGE_PREFIX)) {
+        const inactivityChargeId = externalReference.slice(TICKET_INACTIVITY_CHARGE_PREFIX.length);
+        console.log(`[MP Webhook] Ticket inactivity charge payment: ${inactivityChargeId}, status=${paymentStatus}`);
+
+        if (paymentStatus === 'approved' || paymentStatus === 'authorized') {
+            const { error: completeErr } = await supabaseService.rpc(
+                'complete_ticket_inactivity_charge_payment',
+                {
+                    p_charge_id: inactivityChargeId,
+                    p_mp_payment_id: mpPaymentId,
+                    p_mp_fee_amount: mpFeeAmount ?? 0,
+                    p_net_received_amount: netAmountAfterMp ?? null,
+                },
+            );
+            if (completeErr) {
+                console.error('[MP Webhook] complete_ticket_inactivity_charge_payment:', completeErr);
+                return new Response(JSON.stringify({ error: completeErr.message }), {
+                    status: 500,
+                    headers: corsHeaders,
+                });
+            }
+        }
+
+        return new Response(JSON.stringify({ received: true, type: 'ticket_inactivity_charge' }), {
+            status: 200,
+            headers: corsHeaders,
+        });
+    }
+
     const CONSUMPTION_LICENSE_CHARGE_PREFIX = 'consumption_license_charge:';
     if (externalReference.startsWith(CONSUMPTION_LICENSE_CHARGE_PREFIX)) {
         const licenseChargeId = externalReference.slice(CONSUMPTION_LICENSE_CHARGE_PREFIX.length);

@@ -14,6 +14,8 @@ import { companyAllowsTicketSales, isListingOnlyCompanyPlan } from '@/utils/comp
 import { clearManagerCreateEventSession } from '@/utils/manager-create-event-session';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
+import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
+import TicketInactivityBanner from '@/components/TicketInactivityBanner';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -28,6 +30,10 @@ const ManagerCreateEvent: React.FC = () => {
     const isListingPlan = isListingOnlyCompanyPlan(billing?.billing_plan);
     const requiresTicketSales = companyAllowsTicketSales(billing?.billing_plan);
     const needsBillingConfirm = !isAdminMaster && !!company?.id && !isLoadingBilling && !billingReady;
+    const { data: inactivityStatus, isLoading: isLoadingInactivity } = useCompanyTicketInactivity(
+        company?.id,
+        !isAdminMaster,
+    );
     const [showWristbandModal, setShowWristbandModal] = useState(false);
     const [newEventId, setNewEventId] = useState<string | null>(null);
     const userIdRef = useRef<string | null>(null);
@@ -113,6 +119,8 @@ const ManagerCreateEvent: React.FC = () => {
                     </Button>
                 </div>
             </div>
+
+            <TicketInactivityBanner status={inactivityStatus} isLoading={isLoadingInactivity} />
 
             {needsBillingConfirm && (
                 <Card className="mb-6 bg-amber-500/10 border border-amber-500/40">

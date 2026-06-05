@@ -11,6 +11,9 @@ import SalesLineChart from '@/components/SalesLineChart';
 import { useTopSellingEvents } from '@/hooks/use-top-selling-events';
 import { useRecentSales } from '@/hooks/use-recent-sales';
 import { useProfile } from '@/hooks/use-profile';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
+import TicketInactivityBanner from '@/components/TicketInactivityBanner';
 import { supabase } from '@/integrations/supabase/client';
 
 const getOccupancyPerformance = (occupancyRate: number) => {
@@ -27,6 +30,8 @@ const ManagerDashboard: React.FC = () => {
         supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
     }, []);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const { company } = useManagerCompany(userId);
+    const { data: inactivityStatus, isLoading: isLoadingInactivity } = useCompanyTicketInactivity(company?.id);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
     const { data: dashboardData, isLoading, isError } = useDashboardData(userId, isAdminMaster || false);
     const [monthlyRevenuePeriod, setMonthlyRevenuePeriod] = useState(6);
@@ -41,6 +46,8 @@ const ManagerDashboard: React.FC = () => {
                 <h1 className="text-2xl sm:text-3xl font-serif text-white mb-2">Bem-vindo ao Dashboard PRO</h1>
                 <p className="text-gray-400 text-sm sm:text-base">Gerencie seus eventos com ferramentas premium e analytics avançados</p>
             </div>
+
+            <TicketInactivityBanner status={inactivityStatus} isLoading={isLoadingInactivity} />
 
             {/* Cartões de Estatísticas */}
             {(isLoadingProfile || isLoading) && (

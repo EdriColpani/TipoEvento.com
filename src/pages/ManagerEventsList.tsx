@@ -10,7 +10,13 @@ import { useManagerEvents } from '@/hooks/use-manager-events';
 import { supabase } from '@/integrations/supabase/client';
 import DeleteEventDialog from '@/components/DeleteEventDialog';
 import EventActiveToggle from '@/components/EventActiveToggle'; 
-import { useProfile } from '@/hooks/use-profile'; // Importando useProfile
+import { useProfile } from '@/hooks/use-profile';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
+import { useEventTicketReadiness } from '@/hooks/use-event-ticket-readiness';
+import TicketInactivityBanner from '@/components/TicketInactivityBanner';
+import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -28,6 +34,13 @@ const ManagerEventsList: React.FC = () => {
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const { company } = useManagerCompany(userId);
+    const { billing } = useCompanyBilling(company?.id);
+    const showTicketRules = !isAdminMaster && companyAllowsTicketSales(billing?.billing_plan ?? null);
+    const { data: inactivityStatus, isLoading: isLoadingInactivity, refetch: refetchInactivity } =
+        useCompanyTicketInactivity(company?.id, !isAdminMaster);
+    const { data: ticketReadiness = [] } = useEventTicketReadiness(company?.id, showTicketRules);
+    const readinessByEventId = Object.fromEntries(ticketReadiness.map((r) => [r.event_id, r]));
 
     // O hook agora recebe isAdminMaster
     const { events, isLoading, isError, invalidateEvents: invalidateManagerEvents } = useManagerEvents(
@@ -38,7 +51,10 @@ const ManagerEventsList: React.FC = () => {
     const invalidateEvents = useCallback(() => {
         invalidateManagerEvents();
         void queryClient.invalidateQueries({ queryKey: ['publicEvents'] });
-    }, [invalidateManagerEvents, queryClient]);
+        void refetchInactivity();
+        void queryClient.invalidateQueries({ queryKey: ['companyBilling', company?.id] });
+        void queryClient.invalidateQueries({ queryKey: ['eventTicketReadiness', company?.id] });
+    }, [invalidateManagerEvents, queryClient, refetchInactivity, company?.id]);
 
     const filteredEvents = events.filter(event =>
         event.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -94,6 +110,8 @@ const ManagerEventsList: React.FC = () => {
                 </div>
             </div>
 
+            <TicketInactivityBanner status={inactivityStatus} isLoading={isLoadingInactivity} />
+
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <div className="relative mb-6">
                     <Input 
@@ -132,14 +150,18 @@ const ManagerEventsList: React.FC = () => {
                             <TableBody>
                                 {filteredEvents.map((event) => {
                                     const isDraft = event.is_draft;
+                                    const readiness = readinessByEventId[event.id];
+                                    const needsMoreTickets = readiness?.needs_more === true;
                                     let statusText = 'Publicado';
                                     let statusClasses = 'bg-green-500/20 text-green-400';
                                     if (isDraft) {
                                         statusText = 'Rascunho';
                                         statusClasses = 'bg-gray-500/20 text-gray-400';
                                     } else if (!event.is_active) {
-                                        statusText = 'Desativado';
-                                        statusClasses = 'bg-orange-500/20 text-orange-300';
+                                        statusText = needsMoreTickets ? 'Faltam ingressos' : 'Desativado';
+                                        statusClasses = needsMoreTickets
+                                            ? 'bg-amber-500/20 text-amber-300'
+                                            : 'bg-orange-500/20 text-orange-300';
                                     }
 
                                     return (
@@ -157,6 +179,13 @@ const ManagerEventsList: React.FC = () => {
                                                         <Building2 className="h-3.5 w-3.5 shrink-0" />
                                                         <span>{event.company_name}</span>
                                                     </div>
+                                                )}
+                                                {needsMoreTickets && (
+                                                    <p className="mt-1 text-xs text-amber-300/90">
+                                                        Cadastre mais ingressos para ativar na vitrine (
+                                                        {readiness?.active_ticket_count ?? 0} de{' '}
+                                                        {readiness?.min_required ?? '—'}).
+                                                    </p>
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-center py-4">
