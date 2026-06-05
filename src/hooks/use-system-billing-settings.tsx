@@ -1,8 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { DEFAULT_LISTING_MONTHLY_FEE } from '@/utils/company-billing-rules';
+import { DEFAULT_LISTING_MONTHLY_FEE, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
 
 export interface SystemBillingSettings {
+    min_event_tickets_default: number;
     listing_monthly_default_fee: number;
     hybrid_consumption_commission_pct: number;
     consumption_license_commission_pct: number;
@@ -21,7 +22,7 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
     const { data, error } = await supabase
         .from('system_billing_settings')
         .select(
-            'listing_monthly_default_fee, hybrid_consumption_commission_pct, consumption_license_commission_pct, consumption_license_default_fee, hybrid_plan_notes, consumption_plan_notes, hybrid_consumption_module_enabled, consumption_module_enabled, updated_at',
+            'min_event_tickets_default, listing_monthly_default_fee, hybrid_consumption_commission_pct, consumption_license_commission_pct, consumption_license_default_fee, hybrid_plan_notes, consumption_plan_notes, hybrid_consumption_module_enabled, consumption_module_enabled, updated_at',
         )
         .eq('id', 1)
         .maybeSingle();
@@ -29,6 +30,7 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
     if (error) {
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
             return {
+                min_event_tickets_default: DEFAULT_MIN_EVENT_TICKETS,
                 listing_monthly_default_fee: DEFAULT_LISTING_MONTHLY_FEE,
                 hybrid_consumption_commission_pct: DEFAULT_COMMISSION_PCT,
                 consumption_license_commission_pct: DEFAULT_COMMISSION_PCT,
@@ -44,6 +46,7 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
     }
 
     return {
+        min_event_tickets_default: Number(data?.min_event_tickets_default ?? DEFAULT_MIN_EVENT_TICKETS),
         listing_monthly_default_fee: Number(data?.listing_monthly_default_fee ?? DEFAULT_LISTING_MONTHLY_FEE),
         hybrid_consumption_commission_pct: Number(
             data?.hybrid_consumption_commission_pct ?? DEFAULT_COMMISSION_PCT,
@@ -102,6 +105,34 @@ async function upsertBillingSettings(patch: Record<string, unknown>): Promise<vo
 
 export async function saveListingMonthlyDefaultFee(fee: number): Promise<void> {
     await upsertBillingSettings({ listing_monthly_default_fee: fee });
+}
+
+export async function saveMinEventTicketsDefault(
+    minTickets: number,
+    applyToNonCustomized: boolean,
+): Promise<{ companies_updated: number }> {
+    const { data, error } = await supabase.rpc('admin_set_min_event_tickets_default', {
+        p_min_tickets: minTickets,
+        p_apply_to_non_customized: applyToNonCustomized,
+    });
+
+    if (error) throw new Error(error.message);
+
+    const row = (data ?? {}) as { companies_updated?: number };
+    return { companies_updated: Number(row.companies_updated ?? 0) };
+}
+
+export async function saveCompanyMinEventTickets(
+    companyId: string,
+    options: { minTickets: number } | { restoreGlobalDefault: true },
+): Promise<void> {
+    const { error } = await supabase.rpc('admin_set_company_min_event_tickets', {
+        p_company_id: companyId,
+        p_min_tickets: 'restoreGlobalDefault' in options ? null : options.minTickets,
+        p_restore_global_default: 'restoreGlobalDefault' in options,
+    });
+
+    if (error) throw new Error(error.message);
 }
 
 export async function saveHybridPlanSettings(values: {

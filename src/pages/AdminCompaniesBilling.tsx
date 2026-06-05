@@ -9,6 +9,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminCompaniesBilling, AdminCompanyBillingRow } from '@/hooks/use-admin-companies-billing';
 import { getBillingPlanLabel, isCompanyBillingReady } from '@/constants/billing-plans';
+import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
 import AdminCompanyBillingEditDialog from '@/components/AdminCompanyBillingEditDialog';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -133,6 +134,7 @@ const AdminCompaniesBilling: React.FC = () => {
                                         <TableHead className="text-gray-400">Empresa</TableHead>
                                         <TableHead className="text-gray-400">CNPJ</TableHead>
                                         <TableHead className="text-gray-400">Plano</TableHead>
+                                        <TableHead className="text-gray-400">Mín. ingressos</TableHead>
                                         <TableHead className="text-gray-400">Status</TableHead>
                                         <TableHead className="text-gray-400">Aceito em</TableHead>
                                         <TableHead className="text-right text-gray-400">Ações</TableHead>
@@ -165,6 +167,20 @@ const AdminCompaniesBilling: React.FC = () => {
                                                 </TableCell>
                                                 <TableCell className="text-yellow-500/90 text-sm">
                                                     {getBillingPlanLabel(company.billing_plan)}
+                                                </TableCell>
+                                                <TableCell className="text-gray-300 text-sm">
+                                                    {companyAllowsTicketSales(company.billing_plan) ? (
+                                                        <span>
+                                                            {company.min_event_tickets}
+                                                            {company.min_event_tickets_customized && (
+                                                                <span className="ml-1 text-xs text-cyan-400/90">
+                                                                    (personalizado)
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-600">—</span>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell>
                                                     {ready ? (

@@ -33,7 +33,7 @@ import { useBillingPlansCatalog } from '@/hooks/use-billing-plans-catalog';
 import { useConsumptionLicenseStatus } from '@/hooks/use-consumption-license-status';
 import BillingPlanOptionCard from '@/components/BillingPlanOptionCard';
 import { redirectToPlanPaymentCheckout } from '@/utils/plan-payment-checkout';
-import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
+import { companyAllowsTicketSales, isListingMonthlyPlan } from '@/utils/company-billing-rules';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
 import { format } from 'date-fns';
@@ -288,6 +288,15 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                         {format(new Date(billing.billing_plan_accepted_at), "dd/MM/yyyy 'às' HH:mm", {
                                             locale: ptBR,
                                         })}
+                                    </p>
+                                )}
+                                {companyAllowsTicketSales(currentPlan) && (
+                                    <p className="text-green-300/80 text-xs mt-2">
+                                        Mínimo de ingressos por evento pago:{' '}
+                                        <strong>{billing?.min_event_tickets ?? 10}</strong>
+                                        {billing?.min_event_tickets_customized
+                                            ? ' (valor definido para sua empresa)'
+                                            : ' (padrão da plataforma)'}
                                     </p>
                                 )}
                             </div>

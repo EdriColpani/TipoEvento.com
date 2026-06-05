@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, QrCode, Tag, User, Calendar, Hash, DollarSign } from 'lucide-react';
+import { ArrowLeft, Loader2, QrCode, Tag, Calendar, Hash, DollarSign } from 'lucide-react';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
 import { assertCompanyPlanFeature } from '@/utils/plan-feature-guard';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { companyAllowsTicketSales, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
+import { validateEventTicketMinimumOnIssue } from '@/utils/min-event-tickets-validation';
 
 interface WristbandFormData {
     eventId: string;
@@ -58,6 +61,11 @@ const formatPriceInput = (value: string): string => {
 
 const ManagerCreateWristband: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const preselectedEventId =
+        typeof (location.state as { eventId?: string } | null)?.eventId === 'string'
+            ? (location.state as { eventId: string }).eventId
+            : '';
     const [userId, setUserId] = useState<string | null>(null);
     const [formData, setFormData] = useState<WristbandFormData>({
         eventId: '',
@@ -79,9 +87,22 @@ const ManagerCreateWristband: React.FC = () => {
 
     // Fetch manager's company ID and events
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId || undefined);
+    const { billing, isLoading: isLoadingBilling } = useCompanyBilling(company?.id);
     const { events, isLoading: isLoadingEvents } = useManagerEvents(userId || undefined);
+    const requiresPaidTickets = companyAllowsTicketSales(billing?.billing_plan);
+    const companyMinEventTickets = billing?.min_event_tickets ?? DEFAULT_MIN_EVENT_TICKETS;
 
-    const isLoading = isLoadingCompany || isLoadingEvents || !userId;
+    const isLoading = isLoadingCompany || isLoadingEvents || isLoadingBilling || !userId;
+
+    useEffect(() => {
+        if (!preselectedEventId || isLoadingEvents) return;
+        const exists = events.some((e) => e.id === preselectedEventId);
+        if (exists) {
+            setFormData((prev) =>
+                prev.eventId === preselectedEventId ? prev : { ...prev, eventId: preselectedEventId },
+            );
+        }
+    }, [preselectedEventId, events, isLoadingEvents]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { id, value } = e.target;
@@ -117,6 +138,9 @@ const ManagerCreateWristband: React.FC = () => {
         if (!company?.id) errors.push("O Perfil da Empresa não está cadastrado. Cadastre-o em Configurações.");
         
         if (isNaN(priceNumeric) || priceNumeric < 0) errors.push("O Valor deve ser um número positivo.");
+        if (requiresPaidTickets && priceNumeric <= 0) {
+            errors.push('No seu plano, o valor do ingresso deve ser maior que zero.');
+        }
 
         if (errors.length > 0) {
             showError(`Por favor, corrija os seguintes erros: ${errors.join(' ')}`);
@@ -134,13 +158,31 @@ const ManagerCreateWristband: React.FC = () => {
         if (submitInFlightRef.current) {
             return;
         }
-        submitInFlightRef.current = true;
-
-        setIsSaving(true);
-        const toastId = showLoading(`Cadastrando ingresso e ${formData.quantity} registros de analytics...`);
 
         try {
             await assertCompanyPlanFeature(company.id, 'wristbands');
+
+            const minError = await validateEventTicketMinimumOnIssue({
+                eventId: formData.eventId,
+                billingPlan: billing?.billing_plan,
+                minEventTickets: companyMinEventTickets,
+                quantityToAdd: formData.quantity,
+                unitPrice: priceNumeric,
+            });
+            if (minError) {
+                showError(minError);
+                return;
+            }
+        } catch (preErr: unknown) {
+            showError(preErr instanceof Error ? preErr.message : 'Erro ao validar ingressos.');
+            return;
+        }
+
+        submitInFlightRef.current = true;
+        setIsSaving(true);
+        const toastId = showLoading(`Cadastrando ingresso e ${formData.quantity} ingressos...`);
+
+        try {
 
             const baseCodeClean = formData.baseCode.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
             
@@ -208,7 +250,7 @@ const ManagerCreateWristband: React.FC = () => {
             }
 
             dismissToast(toastId);
-            showSuccess(`Ingresso "${baseCodeClean}" cadastrado com ${formData.quantity} registros de analytics...`);
+            showSuccess(`Ingresso "${baseCodeClean}" cadastrado com ${formData.quantity} ingressos.`);
             
             // Limpar formulário após sucesso
             setFormData(prev => ({ 
@@ -327,7 +369,7 @@ const ManagerCreateWristband: React.FC = () => {
                             <div>
                                 <label htmlFor="quantity" className="block text-sm font-medium text-white mb-2 flex items-center">
                                     <Hash className="h-4 w-4 mr-2 text-yellow-500" />
-                                    Quantidade de Registros *
+                                    Quantidade de ingressos *
                                 </label>
                                 <Input 
                                     id="quantity" 
@@ -340,7 +382,9 @@ const ManagerCreateWristband: React.FC = () => {
                                     max={500}
                                     required
                                 />
-                                <p className="text-xs text-gray-500 mt-1">O número de registros de 'criação' no histórico será igual a esta quantidade (máx. 500).</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Quantos ingressos deste tipo serão gerados de uma vez (máx. 500).
+                                </p>
                             </div>
                             <div>
                                 <label htmlFor="accessType" className="block text-sm font-medium text-white mb-2 flex items-center">
@@ -378,19 +422,6 @@ const ManagerCreateWristband: React.FC = () => {
                                 required
                             />
                             <p className="text-xs text-gray-500 mt-1">O valor de venda ou custo deste ingresso.</p>
-                        </div>
-
-                        {/* Associação de Cliente (Aviso atualizado) */}
-                        <div className="pt-4 border-t border-yellow-500/10">
-                            <div className="flex items-start p-3 bg-black/40 rounded-xl border border-yellow-500/20">
-                                <User className="h-5 w-5 mr-3 text-yellow-500 flex-shrink-0" />
-                                <div>
-                                    <p className="text-white font-medium text-sm">Associação de Cliente</p>
-                                    <p className="text-gray-400 text-xs mt-1">
-                                        A coluna para associação de cliente foi criada na tabela de analytics. A interface para associar a um cliente será implementada em uma próxima atualização.
-                                    </p>
-                                </div>
-                            </div>
                         </div>
 
                         {/* Botões de Ação */}
