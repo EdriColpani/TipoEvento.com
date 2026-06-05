@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Power, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
+import { formatMinEventTicketsActivationError } from '@/utils/min-event-tickets-errors';
 
 interface EventActiveToggleProps {
     eventId: string;
@@ -53,8 +54,13 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
             onSuccess();
         } catch (err: unknown) {
             dismissToast(toastId);
-            const msg = err instanceof Error ? err.message : 'Erro desconhecido';
-            showError(`Não foi possível atualizar o evento: ${msg}`);
+            const raw = err instanceof Error ? err.message : 'Erro desconhecido';
+            const msg = formatMinEventTicketsActivationError(raw);
+            showError(
+                nextActive
+                    ? msg
+                    : `Não foi possível desativar o evento: ${msg}`,
+            );
         } finally {
             setBusy(false);
         }
@@ -70,7 +76,7 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                     className="shrink-0 bg-black/60 border-green-500/40 text-green-400 hover:bg-green-500/10 h-8 px-3"
                     disabled={busy}
                     onClick={() => applyToggle(true)}
-                    title="Ativar evento na vitrine"
+                    title="Ativar evento na vitrine. Planos com venda de ingressos exigem cadastrar os ingressos antes."
                 >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
                     <span className="ml-1.5 hidden sm:inline">Ativar</span>

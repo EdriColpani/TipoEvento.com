@@ -29,7 +29,7 @@ import {
     AdminCompanyBillingRow,
     useCompanyBillingHistory,
 } from '@/hooks/use-admin-companies-billing';
-import { useSystemBillingSettings } from '@/hooks/use-system-billing-settings';
+import { useSystemBillingSettings, saveCompanyMinEventTickets } from '@/hooks/use-system-billing-settings';
 import { DEFAULT_LISTING_MONTHLY_FEE } from '@/utils/company-billing-rules';
 import {
     formatCurrencyBrInput,
@@ -91,6 +91,7 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
     const [requireReacceptance, setRequireReacceptance] = useState(false);
     const [listingMonthlyFee, setListingMonthlyFee] = useState('');
     const [consumptionLicenseFee, setConsumptionLicenseFee] = useState('');
+    const [minEventTickets, setMinEventTickets] = useState('10');
     const [isSaving, setIsSaving] = useState(false);
 
     const planDef = getBillingPlanDefinition(selectedPlan);
@@ -104,7 +105,8 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
         company?.id ?? null,
         open,
     );
-    const { listingMonthlyDefaultFee, consumptionLicenseDefaultFee } = useSystemBillingSettings(open);
+    const { listingMonthlyDefaultFee, consumptionLicenseDefaultFee, settings: billingSettings } =
+        useSystemBillingSettings(open);
 
     useEffect(() => {
         if (!company || !open) return;
@@ -123,6 +125,7 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                 company.consumption_license_fee ?? consumptionLicenseDefaultFee ?? 99.99,
             ),
         );
+        setMinEventTickets(String(company.min_event_tickets ?? 10));
     }, [company, open, listingMonthlyDefaultFee, consumptionLicenseDefaultFee]);
 
     useEffect(() => {
@@ -203,6 +206,17 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                 if (flagError) throw flagError;
             }
 
+            const minParsed = Number.parseInt(minEventTickets, 10);
+            if (!Number.isFinite(minParsed) || minParsed < 1 || minParsed > 100000) {
+                throw new Error('Mínimo de ingressos da empresa deve ser entre 1 e 100.000.');
+            }
+            const minChanged =
+                minParsed !== company.min_event_tickets ||
+                !company.min_event_tickets_customized;
+            if (minChanged) {
+                await saveCompanyMinEventTickets(company.id, { minTickets: minParsed });
+            }
+
             dismissToast(toastId);
             showSuccess('Plano da empresa atualizado.');
             onSaved();
@@ -247,6 +261,49 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                             <span className="text-gray-500">Plano atual</span>
                             <p className="text-white">{getBillingPlanLabel(company.billing_plan)}</p>
                         </div>
+                    </div>
+
+                    <div className="space-y-2 p-3 rounded-lg border border-cyan-500/25 bg-cyan-500/5">
+                        <Label className="text-white">Mínimo de ingressos (esta empresa)</Label>
+                        <Input
+                            type="number"
+                            min={1}
+                            max={100000}
+                            value={minEventTickets}
+                            onChange={(e) => setMinEventTickets(e.target.value)}
+                            className="bg-black/60 border-yellow-500/30 text-white max-w-xs"
+                        />
+                        <p className="text-xs text-gray-500">
+                            Padrão global atual: {billingSettings?.min_event_tickets_default ?? 10}.
+                            {company.min_event_tickets_customized
+                                ? ' Valor personalizado — não muda quando o global for alterado.'
+                                : ' Segue o global quando este campo não for personalizado.'}
+                        </p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            disabled={isSaving}
+                            onClick={() =>
+                                void (async () => {
+                                    try {
+                                        await saveCompanyMinEventTickets(company.id, {
+                                            restoreGlobalDefault: true,
+                                        });
+                                        setMinEventTickets(
+                                            String(billingSettings?.min_event_tickets_default ?? 10),
+                                        );
+                                        showSuccess('Mínimo restaurado para o padrão global.');
+                                        onSaved();
+                                    } catch (e: unknown) {
+                                        showError(e instanceof Error ? e.message : 'Erro ao restaurar.');
+                                    }
+                                })()
+                            }
+                        >
+                            Restaurar padrão global
+                        </Button>
                     </div>
 
                     <div className="space-y-2">

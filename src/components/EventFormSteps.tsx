@@ -31,7 +31,14 @@ import {
     MANAGER_EVENT_CREATION_CONTRACT_TYPE,
 } from '@/constants/event-contracts';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
-import { isHybridPlan, isConsumptionOrLicensePlan, isListingOnlyCompanyPlan } from '@/utils/company-billing-rules';
+import {
+    companyAllowsTicketSales,
+    DEFAULT_MIN_EVENT_TICKETS,
+    isHybridPlan,
+    isConsumptionOrLicensePlan,
+    isListingOnlyCompanyPlan,
+} from '@/utils/company-billing-rules';
+import { validateMinBatchTicketSum } from '@/utils/min-event-tickets-validation';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
@@ -216,6 +223,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const companyBillingReady = isCompanyBillingReady(companyBilling);
     // Plano vitrine: evento salvo com listing_only (sem venda de ingressos) — alinhado à matriz de permissões.
     const isListingPlan = isListingOnlyCompanyPlan(companyBilling?.billing_plan);
+    const requiresPaidTickets = companyAllowsTicketSales(companyBilling?.billing_plan);
+    const companyMinEventTickets = companyBilling?.min_event_tickets ?? DEFAULT_MIN_EVENT_TICKETS;
     const supportsCreditConsumption =
         isHybridPlan(companyBilling?.billing_plan) || isConsumptionOrLicensePlan(companyBilling?.billing_plan);
 
@@ -372,6 +381,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const { handleSubmit, control, setValue, watch, formState: { errors } } = methods;
 
     const isPaid = watch('is_paid');
+    const showPaidPricing = isPaid || requiresPaidTickets;
     const numBatches = parseInt(watch('num_batches') || '0');
     const batches = watch('batches');
 
@@ -447,8 +457,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             setValue('allow_printed_tickets', false);
             setValue('validator_show_holder', false);
             setValue('credit_consumption_enabled', false);
+        } else if (requiresPaidTickets) {
+            setValue('is_paid', true);
         }
-    }, [isListingPlan, setValue]);
+    }, [isListingPlan, requiresPaidTickets, setValue]);
 
     // LOGS DE DEBUG
 
@@ -792,6 +804,18 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             }
         }
 
+        const submitIsPaid = isListingPlan ? false : requiresPaidTickets ? true : values.is_paid;
+        const skipBatchMinCheck = Boolean(ticketsLocked && lockedBatchesRef.current);
+        if (requiresPaidTickets && submitIsPaid && !skipBatchMinCheck) {
+            const batchMinError = validateMinBatchTicketSum(values.batches, companyMinEventTickets);
+            if (batchMinError) {
+                showError(batchMinError);
+                setCurrentStep(showContractStep ? 4 : 3);
+                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+                return;
+            }
+        }
+
         if (submitInFlightRef.current) {
             return;
         }
@@ -873,7 +897,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 }
             }
 
-            const effectiveIsPaid = isListingPlan ? false : values.is_paid;
+            const effectiveIsPaid = isListingPlan ? false : requiresPaidTickets ? true : values.is_paid;
             const entryQrTtl = (['60', '90', '120'] as const).includes(
                 String(values.entry_qr_ttl_seconds ?? '90') as '60' | '90' | '120',
             )
@@ -899,9 +923,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
             // Com empresa já vinculada, publica automaticamente (evita ficar preso em "pending").
             const eventStatus = companyIdForEvent ? 'approved' : 'pending';
-            const createSuccessMessage = companyIdForEvent
-                ? 'Evento criado com sucesso e publicado!'
-                : 'Evento criado com sucesso e enviado para aprovação!';
+            const createSuccessMessage = requiresPaidTickets
+                ? 'Evento criado. Cadastre os ingressos e depois ative o evento na lista.'
+                : companyIdForEvent
+                  ? 'Evento criado com sucesso e publicado!'
+                  : 'Evento criado com sucesso e enviado para aprovação!';
 
             const resolvedGeo = await resolveEventGeoOnSave({
                 address: values.address,
@@ -1061,8 +1087,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         batchError && typeof batchError === 'object' && 'message' in batchError
                             ? String((batchError as { message?: string }).message)
                             : 'Erro desconhecido';
+                    const friendlyBatchMsg = msg.includes('soma das quantidades dos lotes')
+                        ? msg.replace(/pulseiras/gi, 'ingressos')
+                        : msg;
                     showError(
-                        `Evento salvo, mas os lotes de ingressos não foram gravados: ${msg}. ` +
+                        `Evento salvo, mas os lotes de ingressos não foram gravados: ${friendlyBatchMsg}. ` +
                             'Se for erro de permissão (RLS), aplique a migration event_batches_rls no Supabase.',
                     );
                 }
@@ -1581,21 +1610,28 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     Plano de <strong>divulgação</strong>: evento em modo vitrine, sem venda de ingressos pela plataforma.
                                 </div>
                             )}
+                            {requiresPaidTickets && (
+                                <div className="p-4 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-sm text-cyan-100 mb-4">
+                                    Seu plano exige eventos <strong>pagos</strong>. Após criar, cadastre e emita os
+                                    ingressos antes de ativar na vitrine.
+                                </div>
+                            )}
                             {ticketsLocked && salesGuard && (
                                 <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-100 mb-4">
                                     {salesGuardLockedMessage(salesGuard)}
                                 </div>
                             )}
+                            {!isListingPlan && !requiresPaidTickets && (
                             <FormField
                                 control={control}
                                 name="is_paid"
                                 render={({ field }) => (
-                                    <FormItem className={`flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 ${isListingPlan || ticketsLocked ? 'opacity-50' : ''}`}>
+                                    <FormItem className={`flex flex-row items-start space-x-3 space-y-0 rounded-md border border-yellow-500/30 p-4 ${ticketsLocked ? 'opacity-50' : ''}`}>
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                disabled={isListingPlan || ticketsLocked}
+                                                disabled={ticketsLocked}
                                                 className="border-yellow-500 text-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:text-black"
                                             />
                                         </FormControl>
@@ -1609,6 +1645,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     </FormItem>
                                 )}
                             />
+                            )}
                         </CardContent>
                     </Card>
                 )}
@@ -1635,7 +1672,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     <span>Carregando lotes e configurações de ingresso…</span>
                                 </div>
                             )}
-                            {!editPricingLoading && isPaid && (
+                            {!editPricingLoading && showPaidPricing && (
                                 <div className="space-y-4">
                                     <FormField
                                         control={control}
@@ -1723,7 +1760,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     />
                                 </div>
                             )}
-                            {!isPaid && (
+                            {!showPaidPricing && (
                                 <div className="text-center py-8">
                                     <p className="text-gray-400 mb-4">Evento Gratuito. Você pode limitar as inscrições por turma.</p>
 
@@ -1830,7 +1867,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                 </div>
                             )}
 
-                            {!editPricingLoading && isPaid && (
+                            {!editPricingLoading && showPaidPricing && (
                                 <>
                                     <FormField
                                         control={control}

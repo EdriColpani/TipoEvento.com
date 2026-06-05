@@ -37,3 +37,4 @@ export function managerCanViewCreditReports(
 }
 
 export const DEFAULT_LISTING_MONTHLY_FEE = 199.9;
+export const DEFAULT_MIN_EVENT_TICKETS = 10;

@@ -8,6 +8,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { showError } from '@/utils/toast';
 import { billingBtnBack, billingSpinner } from '@/constants/billing-ui';
 import CommissionTiersPanel from '@/components/admin/CommissionTiersPanel';
+import MinEventTicketsDefaultSection from '@/components/admin/MinEventTicketsDefaultSection';
 import ListingMonthlyDefaultFeeSection from '@/components/admin/ListingMonthlyDefaultFeeSection';
 import FuturePlanSettingsSection from '@/components/admin/FuturePlanSettingsSection';
 
@@ -103,6 +104,7 @@ const AdminPricingAndCommissions: React.FC = () => {
                 </TabsList>
 
                 <TabsContent value="tickets" className="mt-0">
+                    <MinEventTicketsDefaultSection enabled={isAdminMaster} />
                     <CommissionTiersPanel userId={userId} isAdminMaster={isAdminMaster} />
                 </TabsContent>
 
