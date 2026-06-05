@@ -31,6 +31,7 @@ import ManagerCreateWristband from "./pages/ManagerCreateWristband";
 import ManagerWristbandsList from "./pages/ManagerWristbandsList"; 
 import ManagerManageWristband from "./pages/ManagerManageWristband";
 import ManagerReports from "./pages/ManagerReports";
+import AdminCompaniesTicketInventoryReport from "./pages/AdminCompaniesTicketInventoryReport";
 import WristbandMovementsReports from "./pages/WristbandMovementsReports";
 import FinancialReports from "./pages/FinancialReports";
 import EventTicketDetailsPage from "./pages/EventTicketDetailsPage";
@@ -137,6 +138,7 @@ function AppRoutes() {
             <Route path="/manager/reports/consumption-license" element={<ManagerConsumptionLicenseBilling />} />
             <Route path="/manager/reports/credit-spends" element={<ManagerCreditSpendsReport />} />
             <Route path="/manager/reports/credit-accounting" element={<ManagerCreditAccountingReport />} />
+            <Route path="/manager/reports/admin-ticket-inventory" element={<AdminCompaniesTicketInventoryReport />} />
             <Route path="/manager/credit/settlements" element={<ManagerCreditSettlements />} />
             <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />
