@@ -135,6 +135,7 @@ const AdminCompaniesBilling: React.FC = () => {
                                         <TableHead className="text-gray-400">CNPJ</TableHead>
                                         <TableHead className="text-gray-400">Plano</TableHead>
                                         <TableHead className="text-gray-400">Mín. ingressos</TableHead>
+                                        <TableHead className="text-gray-400">Inatividade</TableHead>
                                         <TableHead className="text-gray-400">Status</TableHead>
                                         <TableHead className="text-gray-400">Aceito em</TableHead>
                                         <TableHead className="text-right text-gray-400">Ações</TableHead>
@@ -180,6 +181,15 @@ const AdminCompaniesBilling: React.FC = () => {
                                                         </span>
                                                     ) : (
                                                         <span className="text-gray-600">—</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {company.ticket_inactivity_blocked ? (
+                                                        <span className="text-xs px-2 py-1 rounded-full bg-orange-500/20 text-orange-300">
+                                                            Bloqueada
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-600">—</span>
                                                     )}
                                                 </TableCell>
                                                 <TableCell>

@@ -17,6 +17,7 @@ export interface AdminCompanyBillingRow {
     consumption_license_fee: number | null;
     min_event_tickets: number;
     min_event_tickets_customized: boolean;
+    ticket_inactivity_blocked: boolean;
     created_at: string;
 }
 
@@ -34,7 +35,7 @@ async function fetchAdminCompaniesBilling(): Promise<AdminCompanyBillingRow[]> {
     const { data, error } = await supabase
         .from('companies')
         .select(
-            'id, corporate_name, trade_name, cnpj, email, billing_plan, billing_plan_accepted_at, billing_contract_id, billing_plan_locked_until, requires_billing_reacceptance, listing_monthly_fee, consumption_license_fee, min_event_tickets, min_event_tickets_customized, created_at',
+            'id, corporate_name, trade_name, cnpj, email, billing_plan, billing_plan_accepted_at, billing_contract_id, billing_plan_locked_until, requires_billing_reacceptance, listing_monthly_fee, consumption_license_fee, min_event_tickets, min_event_tickets_customized, ticket_inactivity_blocked, created_at',
         )
         .order('corporate_name', { ascending: true });
 

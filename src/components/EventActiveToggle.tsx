@@ -15,6 +15,7 @@ import { Power, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { formatMinEventTicketsActivationError } from '@/utils/min-event-tickets-errors';
+import { formatTicketInactivityError } from '@/utils/ticket-inactivity-errors';
 
 interface EventActiveToggleProps {
     eventId: string;
@@ -55,7 +56,7 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
         } catch (err: unknown) {
             dismissToast(toastId);
             const raw = err instanceof Error ? err.message : 'Erro desconhecido';
-            const msg = formatMinEventTicketsActivationError(raw);
+            const msg = formatTicketInactivityError(formatMinEventTicketsActivationError(raw));
             showError(
                 nextActive
                     ? msg

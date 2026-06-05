@@ -31,6 +31,8 @@ import ContractScrollHint from '@/components/ContractScrollHint';
 import { fetchBillingPlanContract } from '@/utils/fetchBillingPlanContract';
 import { useBillingPlansCatalog } from '@/hooks/use-billing-plans-catalog';
 import { useConsumptionLicenseStatus } from '@/hooks/use-consumption-license-status';
+import { useTicketInactivityChargeStatus } from '@/hooks/use-ticket-inactivity-charge-status';
+import { startTicketInactivityCheckout } from '@/utils/ticket-inactivity-checkout';
 import BillingPlanOptionCard from '@/components/BillingPlanOptionCard';
 import { redirectToPlanPaymentCheckout } from '@/utils/plan-payment-checkout';
 import { companyAllowsTicketSales, isListingMonthlyPlan } from '@/utils/company-billing-rules';
@@ -69,6 +71,8 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     const [licensePayDialogOpen, setLicensePayDialogOpen] = useState(false);
     const [licensePayLoading, setLicensePayLoading] = useState(false);
     const [pendingLicenseChargeId, setPendingLicenseChargeId] = useState<string | null>(null);
+    const [inactivityPayDialogOpen, setInactivityPayDialogOpen] = useState(false);
+    const [inactivityPayLoading, setInactivityPayLoading] = useState(false);
 
     const pendingDefinition = pendingPlan ? getBillingPlanDefinition(pendingPlan) : undefined;
 
@@ -76,6 +80,8 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
         companyId,
         billing?.billing_plan,
     );
+    const { data: inactivityChargeStatus, refetch: refetchInactivityCharge } =
+        useTicketInactivityChargeStatus(companyId, billing?.billing_plan);
 
     const {
         data: pendingContract,
@@ -299,6 +305,12 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                             : ' (padrão da plataforma)'}
                                     </p>
                                 )}
+                                {billing?.ticket_inactivity_blocked && (
+                                    <p className="text-orange-300 text-xs mt-2">
+                                        Pendência de inatividade comercial — criação e reativação de eventos
+                                        bloqueadas até regularizar na lista de eventos.
+                                    </p>
+                                )}
                             </div>
                         </div>
                     )}
@@ -310,6 +322,30 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                 {format(new Date(billing.billing_plan_locked_until), 'dd/MM/yyyy', { locale: ptBR })}.
                             </p>
                         )}
+
+                    {companyAllowsTicketSales(currentPlan) && inactivityChargeStatus?.has_pending_charge && (
+                        <div className="flex gap-3 p-4 rounded-xl border border-orange-500/40 bg-orange-500/10 text-orange-200 text-sm">
+                            <AlertTriangle className="h-5 w-5 shrink-0" />
+                            <div className="flex-1">
+                                <p className="font-medium">Taxa de inatividade comercial pendente</p>
+                                <p className="mt-1 text-orange-200/90">
+                                    Inatividade em dois meses consecutivos — pague a taxa fixa da plataforma
+                                    {inactivityChargeStatus.amount
+                                        ? ` (R$ ${Number(inactivityChargeStatus.amount).toFixed(2).replace('.', ',')})`
+                                        : ''}
+                                    .
+                                </p>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    className={`${billingBtnSolid} mt-3`}
+                                    onClick={() => setInactivityPayDialogOpen(true)}
+                                >
+                                    Pagar taxa de inatividade
+                                </Button>
+                            </div>
+                        </div>
+                    )}
 
                     {currentPlan === 'consumption_or_license' && licenseStatus?.blocks_consumption && (
                         <div className="flex gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm">
@@ -558,6 +594,59 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                                 'Pagar licença agora'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={inactivityPayDialogOpen} onOpenChange={setInactivityPayDialogOpen}>
+                <DialogContent className="max-w-md bg-black border-orange-500/30 text-white">
+                    <DialogHeader>
+                        <DialogTitle className="text-orange-400">Taxa de inatividade comercial</DialogTitle>
+                        <DialogDescription className="text-gray-400">
+                            Cobrança gerada após dois meses consecutivos sem venda de ingressos em eventos realizados.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 flex-col sm:flex-row">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className={billingBtnGhost}
+                            onClick={() => setInactivityPayDialogOpen(false)}
+                        >
+                            Pagar depois
+                        </Button>
+                        <Button
+                            type="button"
+                            className={billingBtnSolid}
+                            disabled={inactivityPayLoading}
+                            onClick={async () => {
+                                setInactivityPayLoading(true);
+                                const toastId = showLoading('Abrindo checkout...');
+                                try {
+                                    const { checkoutUrl } = await startTicketInactivityCheckout(
+                                        companyId,
+                                        inactivityChargeStatus?.charge_id,
+                                    );
+                                    dismissToast(toastId);
+                                    setInactivityPayDialogOpen(false);
+                                    void refetchInactivityCharge();
+                                    window.location.href = checkoutUrl;
+                                } catch (e: unknown) {
+                                    dismissToast(toastId);
+                                    showError(
+                                        e instanceof Error ? e.message : 'Erro ao iniciar pagamento.',
+                                    );
+                                } finally {
+                                    setInactivityPayLoading(false);
+                                }
+                            }}
+                        >
+                            {inactivityPayLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                'Pagar agora'
                             )}
                         </Button>
                     </DialogFooter>
