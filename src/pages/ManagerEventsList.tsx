@@ -152,16 +152,23 @@ const ManagerEventsList: React.FC = () => {
                                     const isDraft = event.is_draft;
                                     const readiness = readinessByEventId[event.id];
                                     const needsMoreTickets = readiness?.needs_more === true;
+                                    const autoDeactivated = Boolean(event.auto_deactivated_at);
                                     let statusText = 'Publicado';
                                     let statusClasses = 'bg-green-500/20 text-green-400';
                                     if (isDraft) {
                                         statusText = 'Rascunho';
                                         statusClasses = 'bg-gray-500/20 text-gray-400';
                                     } else if (!event.is_active) {
-                                        statusText = needsMoreTickets ? 'Faltam ingressos' : 'Desativado';
-                                        statusClasses = needsMoreTickets
-                                            ? 'bg-amber-500/20 text-amber-300'
-                                            : 'bg-orange-500/20 text-orange-300';
+                                        if (autoDeactivated) {
+                                            statusText = 'Inatividade comercial';
+                                            statusClasses = 'bg-red-500/20 text-red-300';
+                                        } else if (needsMoreTickets) {
+                                            statusText = 'Faltam ingressos';
+                                            statusClasses = 'bg-amber-500/20 text-amber-300';
+                                        } else {
+                                            statusText = 'Desativado';
+                                            statusClasses = 'bg-orange-500/20 text-orange-300';
+                                        }
                                     }
 
                                     return (
@@ -185,6 +192,12 @@ const ManagerEventsList: React.FC = () => {
                                                         Cadastre mais ingressos para ativar na vitrine (
                                                         {readiness?.active_ticket_count ?? 0} de{' '}
                                                         {readiness?.min_required ?? '—'}).
+                                                    </p>
+                                                )}
+                                                {autoDeactivated && (
+                                                    <p className="mt-1 text-xs text-red-300/90">
+                                                        Desativado automaticamente por falta de vendas após a data do
+                                                        evento. Reative manualmente se necessário.
                                                     </p>
                                                 )}
                                             </TableCell>

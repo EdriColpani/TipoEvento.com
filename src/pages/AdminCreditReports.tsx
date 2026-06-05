@@ -54,14 +54,26 @@ function settlementStatusLabel(s: string): string {
     return map[s] ?? s;
 }
 
+const ADMIN_CREDIT_REPORT_TABS = new Set([
+    'liability',
+    'commission',
+    'cross',
+    'audit',
+    'settlements',
+    'refunds',
+    'accounting',
+    'position',
+    'revenue',
+    'mp-recon',
+]);
+
 const AdminCreditReports: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const queryClient = useQueryClient();
+    const requestedTab = (location.state as { creditTab?: string } | null)?.creditTab;
     const initialTab =
-        (location.state as { creditTab?: string } | null)?.creditTab === 'accounting'
-            ? 'accounting'
-            : 'liability';
+        requestedTab && ADMIN_CREDIT_REPORT_TABS.has(requestedTab) ? requestedTab : 'liability';
     const [tab, setTab] = useState(initialTab);
     const [refundUserId, setRefundUserId] = useState('');
     const [refundAmount, setRefundAmount] = useState('');
@@ -74,6 +86,12 @@ const AdminCreditReports: React.FC = () => {
     const [revenueEndDate, setRevenueEndDate] = useState('');
     const [mpIssuesStartDate, setMpIssuesStartDate] = useState('');
     const [mpIssuesEndDate, setMpIssuesEndDate] = useState('');
+
+    useEffect(() => {
+        if (requestedTab && ADMIN_CREDIT_REPORT_TABS.has(requestedTab)) {
+            setTab(requestedTab);
+        }
+    }, [requestedTab]);
 
     useEffect(() => {
         let cancelled = false;
@@ -556,6 +574,10 @@ const AdminCreditReports: React.FC = () => {
                                         )}
                                     />
                                     <Metric
+                                        label="Taxa inatividade ingressos"
+                                        value={money(position.data?.platform_billing?.ticket_inactivity?.paid_revenue)}
+                                    />
+                                    <Metric
                                         label="Comissão ingressos"
                                         value={money(position.data?.platform_billing?.ticket_commission?.revenue)}
                                     />
@@ -684,6 +706,14 @@ const AdminCreditReports: React.FC = () => {
                                         value={money(platformRevenue.data?.consumption_license?.pending_amount)}
                                     />
                                     <Metric
+                                        label="Taxa inatividade ingressos (recebido)"
+                                        value={money(platformRevenue.data?.ticket_inactivity?.paid_revenue)}
+                                    />
+                                    <Metric
+                                        label="Taxa inatividade (pendente)"
+                                        value={money(platformRevenue.data?.ticket_inactivity?.pending_amount)}
+                                    />
+                                    <Metric
                                         label="Comissão ingressos"
                                         value={money(platformRevenue.data?.ticket_commission?.revenue)}
                                     />
@@ -696,7 +726,7 @@ const AdminCreditReports: React.FC = () => {
                                         value={money(platformRevenue.data?.totals?.billing_mp_fees)}
                                     />
                                     <Metric
-                                        label="Recorrente líquido (vitrine + licença)"
+                                        label="Recorrente líquido (vitrine + licença + inatividade)"
                                         value={money(
                                             platformRevenue.data?.totals?.recurring_revenue_net ??
                                                 platformRevenue.data?.totals?.recurring_revenue,

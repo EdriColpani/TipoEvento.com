@@ -116,3 +116,50 @@ export async function adminClearCompanyTicketInactivity(companyId: string): Prom
     });
     if (error) throw new Error(error.message);
 }
+
+export async function adminRunTicketInactivityAutoDeactivate(): Promise<{
+    skipped?: boolean;
+    reason?: string;
+    events_deactivated?: number;
+    notifications_queued?: number;
+    days_after?: number;
+}> {
+    const { data, error } = await supabase.rpc('admin_run_ticket_inactivity_auto_deactivate');
+    if (error) throw new Error(error.message);
+    return (data ?? {}) as Record<string, unknown>;
+}
+
+export async function adminRunTicketInactivityAutoDeactivateJob(): Promise<{
+    deactivate?: Record<string, unknown>;
+    emails_sent?: number;
+    emails_failed?: number;
+}> {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) throw new Error('Sessão expirada.');
+
+    const { data, error } = await supabase.functions.invoke('run-ticket-inactivity-auto-deactivate-job', {
+        body: {},
+        headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const payload = (data ?? {}) as {
+        error?: string;
+        deactivate?: Record<string, unknown>;
+        emails_sent?: number;
+        emails_failed?: number;
+    };
+
+    if (error) {
+        throw new Error(await readFunctionErrorMessage(error, payload));
+    }
+    if (payload.error) throw new Error(payload.error);
+
+    return payload;
+}
+
+export async function verifyAntiFraudDeploy(): Promise<Record<string, unknown>> {
+    const { data, error } = await supabase.rpc('verify_anti_fraud_deploy');
+    if (error) throw new Error(error.message);
+    return (data ?? {}) as Record<string, unknown>;
+}

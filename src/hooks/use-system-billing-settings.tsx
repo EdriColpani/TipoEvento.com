@@ -14,6 +14,8 @@ export interface SystemBillingSettings {
     consumption_module_enabled: boolean;
     ticket_inactivity_enabled: boolean;
     ticket_inactivity_fee_default: number;
+    ticket_inactivity_auto_deactivate_enabled: boolean;
+    ticket_inactivity_auto_deactivate_days: number;
     updated_at: string | null;
 }
 
@@ -24,7 +26,7 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
     const { data, error } = await supabase
         .from('system_billing_settings')
         .select(
-            'min_event_tickets_default, listing_monthly_default_fee, hybrid_consumption_commission_pct, consumption_license_commission_pct, consumption_license_default_fee, hybrid_plan_notes, consumption_plan_notes, hybrid_consumption_module_enabled, consumption_module_enabled, ticket_inactivity_enabled, ticket_inactivity_fee_default, updated_at',
+            'min_event_tickets_default, listing_monthly_default_fee, hybrid_consumption_commission_pct, consumption_license_commission_pct, consumption_license_default_fee, hybrid_plan_notes, consumption_plan_notes, hybrid_consumption_module_enabled, consumption_module_enabled, ticket_inactivity_enabled, ticket_inactivity_fee_default, ticket_inactivity_auto_deactivate_enabled, ticket_inactivity_auto_deactivate_days, updated_at',
         )
         .eq('id', 1)
         .maybeSingle();
@@ -43,6 +45,8 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
                 consumption_module_enabled: false,
                 ticket_inactivity_enabled: true,
                 ticket_inactivity_fee_default: 0,
+                ticket_inactivity_auto_deactivate_enabled: false,
+                ticket_inactivity_auto_deactivate_days: 30,
                 updated_at: null,
             };
         }
@@ -67,6 +71,8 @@ async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
         consumption_module_enabled: data?.consumption_module_enabled === true,
         ticket_inactivity_enabled: data?.ticket_inactivity_enabled !== false,
         ticket_inactivity_fee_default: Number(data?.ticket_inactivity_fee_default ?? 0),
+        ticket_inactivity_auto_deactivate_enabled: data?.ticket_inactivity_auto_deactivate_enabled === true,
+        ticket_inactivity_auto_deactivate_days: Number(data?.ticket_inactivity_auto_deactivate_days ?? 30),
         updated_at: data?.updated_at ?? null,
     };
 }

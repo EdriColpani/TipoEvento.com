@@ -30,6 +30,15 @@ const ManagerCreditSpendsReport: React.FC = () => {
         supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
     }, []);
 
+    useEffect(() => {
+        if (!access.isLoading && access.isAdminMaster) {
+            navigate('/admin/settings/credit-reports', {
+                state: { creditTab: 'commission' },
+                replace: true,
+            });
+        }
+    }, [access.isLoading, access.isAdminMaster, navigate]);
+
     const totals = (items ?? []).reduce(
         (acc, row) => {
             acc.gross += Number(row.gross_amount ?? 0);
@@ -39,6 +48,15 @@ const ManagerCreditSpendsReport: React.FC = () => {
         },
         { gross: 0, platform: 0, manager: 0 },
     );
+
+    if (access.isLoading || access.isAdminMaster) {
+        return (
+            <div className="max-w-3xl mx-auto text-center py-16 text-gray-400">
+                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-3" />
+                Redirecionando para o painel Admin...
+            </div>
+        );
+    }
 
     if (!access.canAccessManagerCreditReports && !access.canAccessAdminCreditReports) {
         return (

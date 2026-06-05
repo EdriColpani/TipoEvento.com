@@ -29,48 +29,38 @@ Deno.serve(async (req) => {
   try {
     const { supabaseService } = auth as InactivityJobAuth & { ok: true };
     const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as Record<string, unknown>) : {};
-    const skipCheck = body.skipCheck === true;
-    const referenceMonth = typeof body.referenceMonth === 'string' ? body.referenceMonth : null;
+    const skipDeactivate = body.skipDeactivate === true;
 
-    let checkResult: unknown = null;
-    if (!skipCheck) {
-      const { data, error: checkErr } = await supabaseService.rpc('run_ticket_inactivity_check', {
-        p_reference_month: referenceMonth,
-      });
-      if (checkErr) {
-        console.error('[run-ticket-inactivity-monthly-job] run_ticket_inactivity_check:', checkErr);
-        throw new Error(checkErr.message ?? 'Falha na verificação de inatividade.');
+    let deactivateResult: unknown = null;
+    if (!skipDeactivate) {
+      const { data, error: deactivateErr } = await supabaseService.rpc('run_ticket_inactivity_auto_deactivate');
+      if (deactivateErr) {
+        console.error('[run-ticket-inactivity-auto-deactivate-job]', deactivateErr);
+        throw new Error(deactivateErr.message ?? 'Falha na auto-desativação.');
       }
-      checkResult = data;
+      deactivateResult = data;
     }
 
     const notifications = await fetchPendingInactivityNotifications(supabaseService, 100);
-    const monthlyNotifications = notifications.filter(
-      (row) => row.notification_type === 'blocked' || row.notification_type === 'charge_created',
-    );
+    const autoNotifications = notifications.filter((row) => row.notification_type === 'auto_deactivated');
     const emailResult = await sendInactivityNotifications(
       supabaseService,
-      monthlyNotifications,
+      autoNotifications,
       buildTicketInactivityEmail,
     );
 
     return new Response(
       JSON.stringify({
         success: true,
-        check: checkResult,
+        deactivate: deactivateResult,
         emails_sent: emailResult.emailsSent,
         emails_failed: emailResult.emailsFailed,
       }),
       { status: 200, headers: corsHeaders },
     );
   } catch (e) {
-    console.error('[run-ticket-inactivity-monthly-job]', e);
-    const message =
-      e instanceof Error
-        ? e.message
-        : typeof e === 'object' && e !== null && 'message' in e
-          ? String((e as { message: unknown }).message)
-          : 'Erro interno.';
+    console.error('[run-ticket-inactivity-auto-deactivate-job]', e);
+    const message = e instanceof Error ? e.message : 'Erro interno.';
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: corsHeaders,

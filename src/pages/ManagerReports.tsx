@@ -159,7 +159,47 @@ const ManagerReports: React.FC = () => {
                             onClick={() => navigate(card.path)}
                         />
                     ))}
-                    {showCreditReport && (
+                    {showCreditReport && creditAccess.isAdminMaster && (
+                        <>
+                            <ReportCard
+                                icon={<TrendingUp className="h-6 w-6 text-yellow-500" />}
+                                title="Receita da plataforma"
+                                description="Mensalidade vitrine, licença consumo, taxa de inatividade e comissões (Admin Master)."
+                                onClick={() =>
+                                    navigate('/admin/settings/credit-reports', {
+                                        state: { creditTab: 'revenue' },
+                                    })
+                                }
+                            />
+                            <ReportCard
+                                icon={<Banknote className="h-6 w-6 text-yellow-500" />}
+                                title="Repasses de crédito (rede)"
+                                description="Liquidações e payouts de crédito de todas as empresas."
+                                onClick={() =>
+                                    navigate('/admin/settings/credit-reports', {
+                                        state: { creditTab: 'settlements' },
+                                    })
+                                }
+                            />
+                            <ReportCard
+                                icon={<FileSpreadsheet className="h-6 w-6 text-yellow-500" />}
+                                title="Relatório contábil (créditos)"
+                                description="Toda a rede EventFest — recargas, consumos e estornos (CSV para contador)."
+                                onClick={() =>
+                                    navigate('/admin/settings/credit-reports', {
+                                        state: { creditTab: 'accounting' },
+                                    })
+                                }
+                            />
+                            <ReportCard
+                                icon={<Wallet className="h-6 w-6 text-yellow-500" />}
+                                title="Painel créditos Admin"
+                                description="Passivo, auditoria, posição financeira e conciliação Mercado Pago."
+                                onClick={() => navigate('/admin/settings/credit-reports')}
+                            />
+                        </>
+                    )}
+                    {showCreditReport && !creditAccess.isAdminMaster && (
                         <>
                             <ReportCard
                                 icon={<Wallet className="h-6 w-6 text-yellow-500" />}
@@ -176,18 +216,8 @@ const ManagerReports: React.FC = () => {
                             <ReportCard
                                 icon={<FileSpreadsheet className="h-6 w-6 text-yellow-500" />}
                                 title="Relatório contábil (créditos)"
-                                description={
-                                    creditAccess.isAdminMaster
-                                        ? 'Toda a rede EventFest — recargas, consumos e estornos (CSV para contador).'
-                                        : 'Recargas originadas na empresa, consumos recebidos e repasses — exportável CSV.'
-                                }
-                                onClick={() =>
-                                    creditAccess.isAdminMaster
-                                        ? navigate('/admin/settings/credit-reports', {
-                                              state: { creditTab: 'accounting' },
-                                          })
-                                        : navigate('/manager/reports/credit-accounting')
-                                }
+                                description="Recargas originadas na empresa, consumos recebidos e repasses — exportável CSV."
+                                onClick={() => navigate('/manager/reports/credit-accounting')}
                             />
                         </>
                     )}
