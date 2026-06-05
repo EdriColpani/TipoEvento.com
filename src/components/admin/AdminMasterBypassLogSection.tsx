@@ -8,6 +8,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { billingAccentText, billingPanelBorder, billingSpinner } from '@/constants/billing-ui';
 
+const BYPASS_ACTION_LABELS: Record<string, string> = {
+    min_event_tickets_activate: 'Ativar evento (abaixo do mínimo)',
+    min_event_tickets_batch: 'Lotes abaixo do mínimo',
+    min_event_tickets_register: 'Cadastro ingressos abaixo do mínimo',
+    ticket_inactivity_create_event: 'Criar evento (inatividade)',
+    ticket_inactivity_activate_event: 'Reativar evento (inatividade)',
+};
+
+function formatBypassAction(actionType: string): string {
+    return BYPASS_ACTION_LABELS[actionType] ?? actionType;
+}
+
 interface BypassLogRow {
     id: string;
     action_type: string;
@@ -48,8 +60,8 @@ const AdminMasterBypassLogSection: React.FC<AdminMasterBypassLogSectionProps> = 
                     Log de bypass Admin Master
                 </CardTitle>
                 <CardDescription className="text-gray-400">
-                    Registro de ações em que o Admin Master contornou validações anti-fraude (mínimo de ingressos ou
-                    inatividade comercial).
+                    Registro de ações em que o Admin Master contornou validações anti-fraude (mínimo de ingressos,
+                    lotes, cadastro de ingressos ou inatividade comercial).
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -84,7 +96,9 @@ const AdminMasterBypassLogSection: React.FC<AdminMasterBypassLogSectionProps> = 
                                         <TableCell className="text-gray-300 text-xs whitespace-nowrap">
                                             {format(new Date(row.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
                                         </TableCell>
-                                        <TableCell className="text-cyan-300 text-xs">{row.action_type}</TableCell>
+                                        <TableCell className="text-cyan-300 text-xs">
+                                            {formatBypassAction(row.action_type)}
+                                        </TableCell>
                                         <TableCell className="text-gray-300 text-sm max-w-md">{row.summary}</TableCell>
                                         <TableCell className="text-gray-400 text-xs">{row.actor_email ?? '—'}</TableCell>
                                         <TableCell className="text-gray-400 text-xs">{row.company_name ?? '—'}</TableCell>

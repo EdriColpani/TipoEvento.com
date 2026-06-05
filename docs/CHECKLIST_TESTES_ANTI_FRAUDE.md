@@ -12,12 +12,21 @@ Aplicar no Supabase, nesta ordem:
 3. `20260711140000_event_active_ticket_count_analytics.sql`
 4. `20260712120000_ticket_sales_inactivity.sql`
 5. `20260713120000_anti_fraud_phase2.sql`
+6. `20260713130000_fix_admin_bypass_log_actor_email.sql`
+7. `20260713140000_fix_inactivity_job_charge_errors.sql`
+8. `20260713150000_fix_jsonb_agg_order_by.sql`
+9. `20260714120000_admin_companies_event_ticket_inventory.sql`
+10. `20260715120000_anti_fraud_phase3_bypass_log.sql`
+11. `20260715130000_anti_fraud_phase3_admin_charges_revenue.sql`
+12. `20260715140000_anti_fraud_phase3_auto_deactivate.sql`
+14. `20260715160000_anti_fraud_phase4_email_reactivate.sql`
 
 Edge functions:
 
 ```bash
 supabase functions deploy create-ticket-inactivity-checkout
 supabase functions deploy run-ticket-inactivity-monthly-job
+supabase functions deploy run-ticket-inactivity-auto-deactivate-job
 supabase functions deploy mercadopago-webhook
 ```
 
@@ -135,8 +144,28 @@ Para simular job manual sem esperar dia 5: Admin → Preços e comissões → Jo
 
 ---
 
+## E. Fase 3 (ver `docs/PLANO_ANTI_FRAUDE_FASE3.md`)
+
+| # | Passo | Resultado esperado | OK |
+|---|--------|-------------------|-----|
+| E1 | Auto-desativar: evento futuro, 0 vendas | Não desativa antes de `date + X` | [ ] |
+| E2 | Auto-desativar: evento há X+1 dias, 0 vendas, ativo | `is_active = false` | [ ] |
+| E3 | Admin desliga auto-desativar | Job diário skip | [ ] |
+| E4 | Admin cobranças inatividade | Lista `company_ticket_inactivity_charges` | [ ] |
+| E5 | Receita admin | Inclui taxas de inatividade pagas | [ ] |
+| E6 | Bypass Admin em lote < mínimo | Entrada no log | [ ] |
+| E7 | Bypass Admin em cadastro ingresso < mínimo | Entrada no log | [ ] |
+| E8 | Job dia 5: vendas no mês anterior à data do evento | Não bloqueia indevidamente | [ ] |
+| E9 | Auto-desativar: badge **Inatividade comercial** na lista | Gestor vê motivo | [ ] |
+| E10 | Auto-desativar: e-mail ao gestor | Fila `auto_deactivated` + edge job | [ ] |
+| E11 | Venda tardia após auto-desativar | Evento reativa (`is_active=true`, limpa `auto_deactivated_at`) | [ ] |
+| E12 | Admin → Verificar deploy | RPC `verify_anti_fraud_deploy` retorna OK | [ ] |
+
+---
+
 ## Problemas conhecidos / limitações
 
 - `pg_cron` só agenda se a extensão estiver habilitada no projeto Supabase; caso contrário, usar o botão **Job completo** ou agendar a edge function no dashboard.
 - E-mail depende de `companies.email` (perfil da empresa).
 - Cobrança de inatividade **não** desbloqueia automaticamente a empresa — gestor ainda deve desativar eventos ou Admin liberar.
+- Job dia 5 conta vendas **acumuladas até o fim do mês de referência** (migration `20260715150000`); vendas antes da data do evento no mesmo ciclo não geram falso positivo.

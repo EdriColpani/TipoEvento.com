@@ -49,6 +49,15 @@ const ManagerCreditSettlements: React.FC = () => {
         supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
     }, []);
 
+    useEffect(() => {
+        if (!access.isLoading && access.isAdminMaster) {
+            navigate('/admin/settings/credit-reports', {
+                state: { creditTab: 'settlements' },
+                replace: true,
+            });
+        }
+    }, [access.isLoading, access.isAdminMaster, navigate]);
+
     const handleRetryFailed = async () => {
         if (!access.company?.id) return;
         setRetrying(true);
@@ -68,6 +77,15 @@ const ManagerCreditSettlements: React.FC = () => {
             setRetrying(false);
         }
     };
+
+    if (access.isLoading || access.isAdminMaster) {
+        return (
+            <div className="max-w-3xl mx-auto text-center py-16 text-gray-400">
+                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-3" />
+                Redirecionando para o painel Admin...
+            </div>
+        );
+    }
 
     if (!access.canAccessManagerCreditReports) {
         return (

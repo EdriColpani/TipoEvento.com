@@ -1,6 +1,6 @@
 # Plano: Mínimo de ingressos por evento (anti-fraude)
 
-**Status:** Implementado (v1 + fase 2)  
+**Status:** Implementado (v1 + fase 2 + fase 3)  
 **Última atualização:** 2026-06-02
 
 ## Regras de negócio
@@ -56,5 +56,14 @@
 
 - Log de bypass Admin Master (`admin_master_bypass_log`)
 - Badge **Faltam ingressos** na lista de eventos desativados
+
+## Fase 3 — implementada
+
+Ver `docs/PLANO_ANTI_FRAUDE_FASE3.md`:
+
+- Log bypass Admin Master em lotes (`min_event_tickets_batch`) e cadastro de ingressos (`min_event_tickets_register`)
+- Aba **Inatividade ingressos** em Faturas mensais (`AdminTicketInactivityBillingPanel`)
+- Receita admin inclui taxa de inatividade (`get_admin_platform_billing_revenue`)
+- Auto-desativar vitrine após X dias pós-data do evento (config + cron diário)
 
 Checklist completo: `docs/CHECKLIST_TESTES_ANTI_FRAUDE.md`

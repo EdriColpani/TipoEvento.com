@@ -7,6 +7,7 @@ export interface ManagerEventScopeRow {
     is_draft?: boolean;
     /** Quando false, evento desativado (fora da vitrine / sem novas vendas). Default true se coluna ausente. */
     is_active?: boolean;
+    auto_deactivated_at?: string | null;
     date: string | null;
     time: string | null;
     duration: string | null;
@@ -22,6 +23,10 @@ function normalizeRow(raw: Record<string, unknown>): ManagerEventScopeRow {
         title: String(raw.title ?? ''),
         is_draft: raw.is_draft === true,
         is_active: raw.is_active === false ? false : true,
+        auto_deactivated_at:
+            raw.auto_deactivated_at != null && raw.auto_deactivated_at !== ''
+                ? String(raw.auto_deactivated_at)
+                : null,
         date: dateVal != null && dateVal !== '' ? String(dateVal) : null,
         time: timeVal != null && timeVal !== '' ? String(timeVal) : null,
         duration: raw.duration != null && raw.duration !== '' ? String(raw.duration) : null,
@@ -44,6 +49,7 @@ async function fetchEventsWithSchemaFallback(
     options?: FetchManagerEventsScopeOptions,
 ): Promise<ManagerEventScopeRow[]> {
     const attempts = [
+        'id, title, date, time, duration, company_id, created_at, is_draft, is_active, auto_deactivated_at',
         'id, title, date, time, duration, company_id, created_at, is_draft, is_active',
         'id, title, date, time, duration, company_id, created_at, is_active',
         'id, title, date, time, duration, company_id, is_active',

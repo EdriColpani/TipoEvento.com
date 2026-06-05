@@ -59,6 +59,7 @@ import {
 } from '@/constants/billing-ui';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AdminConsumptionLicenseBillingPanel from '@/components/admin/AdminConsumptionLicenseBillingPanel';
+import AdminTicketInactivityBillingPanel from '@/components/admin/AdminTicketInactivityBillingPanel';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -83,7 +84,9 @@ function formatReferenceMonth(isoDate: string): string {
 const AdminListingMonthlyBilling: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const invoiceTab = searchParams.get('tab') === 'license' ? 'license' : 'listing';
+    const tabParam = searchParams.get('tab');
+    const invoiceTab =
+        tabParam === 'license' ? 'license' : tabParam === 'inactivity' ? 'inactivity' : 'listing';
     const [userId, setUserId] = useState<string | undefined>();
     const [statusFilter, setStatusFilter] = useState<'all' | ListingChargeStatus>('all');
     const [createOpen, setCreateOpen] = useState(false);
@@ -209,7 +212,7 @@ const AdminListingMonthlyBilling: React.FC = () => {
                         Faturas mensais
                     </h1>
                     <p className="text-gray-400 text-sm mt-2">
-                        Lançamento e controle de cobranças recorrentes (vitrine e licença de consumo).
+                        Lançamento e controle de cobranças recorrentes (vitrine, licença de consumo e inatividade).
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -233,10 +236,12 @@ const AdminListingMonthlyBilling: React.FC = () => {
 
             <Tabs
                 value={invoiceTab}
-                onValueChange={(v) => setSearchParams(v === 'listing' ? {} : { tab: v })}
+                onValueChange={(v) =>
+                    setSearchParams(v === 'listing' ? {} : { tab: v }, { replace: true })
+                }
                 className="mb-6"
             >
-                <TabsList className={`bg-black border ${billingPanelBorder} mb-4`}>
+                <TabsList className={`bg-black border ${billingPanelBorder} mb-4 flex-wrap h-auto`}>
                     <TabsTrigger
                         value="listing"
                         className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black"
@@ -248,6 +253,12 @@ const AdminListingMonthlyBilling: React.FC = () => {
                         className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black"
                     >
                         Licença consumo
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="inactivity"
+                        className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black"
+                    >
+                        Inatividade ingressos
                     </TabsTrigger>
                 </TabsList>
 
@@ -392,6 +403,10 @@ const AdminListingMonthlyBilling: React.FC = () => {
 
                 <TabsContent value="license">
                     <AdminConsumptionLicenseBillingPanel />
+                </TabsContent>
+
+                <TabsContent value="inactivity">
+                    <AdminTicketInactivityBillingPanel />
                 </TabsContent>
             </Tabs>
 

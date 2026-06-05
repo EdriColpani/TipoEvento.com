@@ -84,6 +84,11 @@ export type AdminPlatformBillingRevenue = {
         mp_fees?: number;
         pending_amount?: number;
     };
+    ticket_inactivity?: {
+        paid_revenue?: number;
+        paid_revenue_net?: number;
+        pending_amount?: number;
+    };
     ticket_commission?: {
         revenue?: number;
     };
