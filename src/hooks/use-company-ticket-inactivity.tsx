@@ -1,5 +1,23 @@
 import { useQuery } from '@tanstack/react-query';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+
+async function readFunctionErrorMessage(
+    error: unknown,
+    payload: { error?: string } | null,
+): Promise<string> {
+    if (payload?.error) return payload.error;
+    if (error instanceof FunctionsHttpError) {
+        try {
+            const json = (await error.context.json()) as { error?: string };
+            if (json?.error) return json.error;
+        } catch {
+            /* ignore */
+        }
+    }
+    if (error instanceof Error) return error.message;
+    return 'Erro no job mensal.';
+}
 
 export interface TicketInactivityPendingEvent {
     event_id: string;
@@ -66,8 +84,10 @@ export async function adminRunTicketInactivityMonthlyJob(referenceMonth?: string
     const token = sess.session?.access_token;
     if (!token) throw new Error('Sessão expirada.');
 
+    const check = await adminRunTicketInactivityCheck(referenceMonth);
+
     const { data, error } = await supabase.functions.invoke('run-ticket-inactivity-monthly-job', {
-        body: { referenceMonth: referenceMonth ?? null },
+        body: { skipCheck: true },
         headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -79,10 +99,15 @@ export async function adminRunTicketInactivityMonthlyJob(referenceMonth?: string
     };
 
     if (error) {
-        throw new Error(payload.error || (error instanceof Error ? error.message : 'Erro no job mensal.'));
+        throw new Error(await readFunctionErrorMessage(error, payload));
     }
     if (payload.error) throw new Error(payload.error);
-    return payload;
+
+    return {
+        check,
+        emails_sent: payload.emails_sent,
+        emails_failed: payload.emails_failed,
+    };
 }
 
 export async function adminClearCompanyTicketInactivity(companyId: string): Promise<void> {

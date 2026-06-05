@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -197,6 +197,14 @@ const ManagerReports: React.FC = () => {
                             title="Licença mensal de consumo"
                             description="Faturas da licença do plano consumo/licença — pagamento libera o módulo de créditos."
                             onClick={() => navigate('/manager/reports/consumption-license')}
+                        />
+                    )}
+                    {isAdminMaster && (
+                        <ReportCard
+                            icon={<Ticket className="h-6 w-6 text-cyan-400" />}
+                            title="Estoque de ingressos (Admin)"
+                            description="Por empresa e evento: total criado, vendido e ainda disponível para venda. Exclusivo Admin Master."
+                            onClick={() => navigate('/manager/reports/admin-ticket-inventory')}
                         />
                     )}
                 </div>

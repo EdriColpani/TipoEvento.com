@@ -116,19 +116,33 @@ serve(async (req) => {
 
   try {
     const body = req.method === 'POST' ? ((await req.json().catch(() => ({}))) as Record<string, unknown>) : {};
+    const skipCheck = body.skipCheck === true;
     const referenceMonth = typeof body.referenceMonth === 'string' ? body.referenceMonth : null;
 
-    const { data: checkResult, error: checkErr } = await supabaseService.rpc(
-      'run_ticket_inactivity_check',
-      { p_reference_month: referenceMonth },
-    );
-    if (checkErr) throw checkErr;
+    let checkResult: unknown = null;
+    if (!skipCheck) {
+      const { data, error: checkErr } = await supabaseService.rpc(
+        'run_ticket_inactivity_check',
+        { p_reference_month: referenceMonth },
+      );
+      if (checkErr) {
+        console.error('[run-ticket-inactivity-monthly-job] run_ticket_inactivity_check:', checkErr);
+        throw new Error(checkErr.message ?? 'Falha na verificação de inatividade.');
+      }
+      checkResult = data;
+    }
 
     const { data: pendingData, error: pendingErr } = await supabaseService.rpc(
       'get_pending_ticket_inactivity_notifications',
       { p_limit: 100 },
     );
-    if (pendingErr) throw pendingErr;
+    if (pendingErr) {
+      console.error('[run-ticket-inactivity-monthly-job] get_pending:', pendingErr);
+      throw new Error(
+        pendingErr.message ??
+          'Falha ao buscar fila de e-mails. Confirme se a migration 20260713120000 foi aplicada.',
+      );
+    }
 
     const notifications = ((pendingData as { notifications?: NotificationRow[] })?.notifications ??
       []) as NotificationRow[];
@@ -172,9 +186,15 @@ serve(async (req) => {
     );
   } catch (e) {
     console.error('[run-ticket-inactivity-monthly-job]', e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : 'Erro interno.' }),
-      { status: 500, headers: corsHeaders },
-    );
+    const message =
+      e instanceof Error
+        ? e.message
+        : typeof e === 'object' && e !== null && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Erro interno.';
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: corsHeaders,
+    });
   }
 });
