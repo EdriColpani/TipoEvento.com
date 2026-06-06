@@ -75,6 +75,7 @@ const ManagerCreateWristband: React.FC = () => {
         price: '0,00', // Usando vírgula para padrão brasileiro
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [selectedEventInventoryMode, setSelectedEventInventoryMode] = useState<'unit_rows' | 'counter' | null>(null);
     /** Evita segundo INSERT (pulseira + analytics) antes do re-render do botão — mesmo padrão do cadastro de evento. */
     const submitInFlightRef = useRef(false);
 
@@ -104,12 +105,46 @@ const ManagerCreateWristband: React.FC = () => {
         }
     }, [preselectedEventId, events, isLoadingEvents]);
 
+    useEffect(() => {
+        if (!formData.eventId) {
+            setSelectedEventInventoryMode(null);
+            return;
+        }
+
+        let cancelled = false;
+        void supabase
+            .from('events')
+            .select('inventory_mode')
+            .eq('id', formData.eventId)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (cancelled) return;
+                if (error) {
+                    console.error('[ManagerCreateWristband] inventory_mode:', error);
+                    setSelectedEventInventoryMode('unit_rows');
+                    return;
+                }
+                setSelectedEventInventoryMode(
+                    data?.inventory_mode === 'counter' ? 'counter' : 'unit_rows',
+                );
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [formData.eventId]);
+
+    const isCounterInventoryEvent = selectedEventInventoryMode === 'counter';
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { id, value } = e.target;
         
         if (id === 'quantity') {
-            const numValue = parseInt(value);
-            setFormData(prev => ({ ...prev, [id]: isNaN(numValue) || numValue < 1 ? 1 : numValue }));
+            const numValue = parseInt(value, 10);
+            const capped = isCounterInventoryEvent
+                ? numValue
+                : Math.min(isNaN(numValue) ? 1 : numValue, 500);
+            setFormData(prev => ({ ...prev, [id]: isNaN(numValue) || numValue < 1 ? 1 : capped }));
         } else if (id === 'price') {
             const formattedPrice = formatPriceInput(value);
             setFormData(prev => ({ ...prev, [id]: formattedPrice }));
@@ -130,10 +165,18 @@ const ManagerCreateWristband: React.FC = () => {
 
     const validateForm = (priceNumeric: number) => {
         const errors: string[] = [];
+
+        if (isCounterInventoryEvent) {
+            errors.push(
+                'Este evento usa estoque por lote (grande porte). Defina a quantidade nos lotes do evento — não emite ingressos um a um aqui.',
+            );
+        }
         
         if (!formData.eventId) errors.push("Selecione o evento.");
         if (!formData.baseCode.trim()) errors.push("O Código Base é obrigatório.");
-        if (formData.quantity < 1 || formData.quantity > 500) errors.push("A quantidade deve ser entre 1 e 500.");
+        if (!isCounterInventoryEvent && (formData.quantity < 1 || formData.quantity > 500)) {
+            errors.push("A quantidade deve ser entre 1 e 500 por emissão manual.");
+        }
         if (!formData.accessType) errors.push("O Tipo de Acesso é obrigatório.");
         if (!company?.id) errors.push("O Perfil da Empresa não está cadastrado. Cadastre-o em Configurações.");
         
@@ -349,6 +392,25 @@ const ManagerCreateWristband: React.FC = () => {
                             </Select>
                         </div>
 
+                        {isCounterInventoryEvent && (
+                            <div className="p-4 rounded-xl border border-cyan-400/50 bg-cyan-950/60 text-sm text-cyan-50">
+                                <p className="font-semibold text-white mb-1">Evento de grande porte</p>
+                                <p>
+                                    A quantidade de ingressos (ex.: 50.000) é definida nos{' '}
+                                    <strong className="text-white">lotes do evento</strong>, com estoque por contador.
+                                    Os QR codes são gerados automaticamente na venda — não use esta tela para emitir em massa.
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="mt-3 border-cyan-400/50 text-cyan-100 hover:bg-cyan-500/10"
+                                    onClick={() => navigate(`/manager/events/edit/${formData.eventId}`)}
+                                >
+                                    Editar lotes do evento
+                                </Button>
+                            </div>
+                        )}
+
                         {/* Código Base, Quantidade e Tipo de Acesso */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
@@ -377,13 +439,16 @@ const ManagerCreateWristband: React.FC = () => {
                                     value={formData.quantity} 
                                     onChange={handleChange} 
                                     placeholder="1"
-                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
+                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 disabled:opacity-50"
                                     min={1}
-                                    max={500}
-                                    required
+                                    max={isCounterInventoryEvent ? undefined : 500}
+                                    disabled={isCounterInventoryEvent}
+                                    required={!isCounterInventoryEvent}
                                 />
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Quantos ingressos deste tipo serão gerados de uma vez (máx. 500).
+                                <p className="text-xs text-gray-400 mt-1">
+                                    {isCounterInventoryEvent
+                                        ? 'Use os lotes do evento para definir 50.000+ ingressos.'
+                                        : 'Emissão manual: até 500 por vez. Para volumes maiores, marque "grande porte" no cadastro do evento.'}
                                 </p>
                             </div>
                             <div>
@@ -428,7 +493,7 @@ const ManagerCreateWristband: React.FC = () => {
                         <div className="pt-4 flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
                             <Button
                                 type="submit"
-                                disabled={isSaving || isLoading || !company}
+                                disabled={isSaving || isLoading || !company || isCounterInventoryEvent}
                                 className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer disabled:opacity-50"
                             >
                                 {isSaving ? (

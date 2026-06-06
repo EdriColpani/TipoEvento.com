@@ -122,75 +122,92 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
         }
     }
     
-    // 3. Buscar Tipos de Pulseira (Wristbands) associados a este evento
-    const { data: wristbandsData, error: wristbandsError } = await supabase
-        .from('wristbands')
-        .select('id, access_type, price, status')
-        .eq('event_id', eventId);
-
-    if (wristbandsError) {
-        console.error("Error fetching wristbands for event:", {
-            code: wristbandsError.code,
-            message: wristbandsError.message,
-            eventId
-        });
-        // Continua com array vazio de wristbands em vez de falhar completamente
-    }
-    
-    // Usa array vazio se não houver dados de wristbands
-    const wristbands = wristbandsData || [];
-
-    // 4. Formatar ticketTypes e calcular disponibilidade REAL (wristband_analytics livres)
-    // Backend reserva em `wristband_analytics` com:
-    // - status = 'active'
-    // - client_user_id IS NULL
-    // Então o front precisa espelhar essa regra, caso contrário o usuário seleciona quantidade
-    // que o backend não consegue reservar (erro 409).
-    const activeWristbands = wristbands.filter((w: any) => w.status === 'active');
-
-    // Conta disponibilidade por wristband_id (pode haver várias entradas por pulseira via analytics).
-    const availabilityByWristbandId: Record<string, number> = {};
-    await Promise.all(
-        activeWristbands.map(async (w: any) => {
-            const { count, error } = await supabase
-                .from('wristband_analytics')
-                .select('id', { count: 'exact', head: true })
-                .eq('wristband_id', w.id)
-                .eq('status', 'active')
-                .is('client_user_id', null);
-
-            if (error) {
-                console.error('[useEventDetails] Erro ao contar disponibilidade de analytics:', error);
-                availabilityByWristbandId[w.id] = 0;
-                return;
-            }
-
-            availabilityByWristbandId[w.id] = typeof count === 'number' ? count : 0;
-        }),
+    // 3. Disponibilidade via RPC (suporta unit_rows e counter)
+    const { data: availabilityPayload, error: availabilityError } = await supabase.rpc(
+        'get_event_ticket_availability',
+        { p_event_id: eventId },
     );
 
-    // Preço mínimo/disponibilidade
+    if (availabilityError) {
+        console.error('[useEventDetails] get_event_ticket_availability:', availabilityError);
+    }
+
+    const availability = availabilityPayload as {
+        ok?: boolean;
+        ticket_types?: Array<{
+            id?: string;
+            wristband_id?: string;
+            name?: string;
+            price?: number;
+            available?: number;
+        }>;
+    } | null;
+
+    let ticketTypes: TicketType[] = [];
+
+    if (availability?.ok && Array.isArray(availability.ticket_types)) {
+        ticketTypes = availability.ticket_types
+            .map((t) => ({
+                id: String(t.wristband_id ?? t.id ?? ''),
+                name: String(t.name ?? 'Ingresso'),
+                price: Number(t.price ?? 0),
+                available: Number(t.available ?? 0),
+                description: `Acesso ${t.name ?? 'ingresso'} para o evento.`,
+            }))
+            .filter((t) => t.id && t.available > 0)
+            .sort((a, b) => a.price - b.price);
+    } else {
+        // Fallback legado
+        const { data: wristbandsData, error: wristbandsError } = await supabase
+            .from('wristbands')
+            .select('id, access_type, price, status')
+            .eq('event_id', eventId);
+
+        if (wristbandsError) {
+            console.error('Error fetching wristbands for event:', wristbandsError);
+        }
+
+        const wristbands = wristbandsData || [];
+        const activeWristbands = wristbands.filter((w: { status?: string }) => w.status === 'active');
+        const availabilityByWristbandId: Record<string, number> = {};
+
+        await Promise.all(
+            activeWristbands.map(async (w: { id: string }) => {
+                const { count, error } = await supabase
+                    .from('wristband_analytics')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('wristband_id', w.id)
+                    .eq('status', 'active')
+                    .is('client_user_id', null);
+
+                availabilityByWristbandId[w.id] = error ? 0 : (count ?? 0);
+            }),
+        );
+
+        ticketTypes = activeWristbands
+            .map((w: { id: string; access_type: string; price: unknown }) => {
+                const price = parseFloat(String(w.price ?? '')) || 0;
+                const available = availabilityByWristbandId[w.id] ?? 0;
+                return {
+                    id: w.id,
+                    name: w.access_type,
+                    price,
+                    available,
+                    description: `Acesso ${w.access_type} para o evento.`,
+                } as TicketType;
+            })
+            .filter((t) => t.available > 0)
+            .sort((a, b) => a.price - b.price);
+    }
+
     let minPrice: number | null = null;
     let minPriceWristbandId: string | null = null;
 
-    const ticketTypes = activeWristbands
-        .map((w: any) => {
-            const price = parseFloat(w.price as unknown as string) || 0;
-            const available = availabilityByWristbandId[w.id] ?? 0;
-
-            return {
-                id: w.id, // ID do wristband_id (necessário para a Edge Function reservar corretamente)
-                name: w.access_type,
-                price,
-                available,
-                description: `Acesso ${w.access_type} para o evento.`,
-            } as TicketType;
-        })
-        .filter((t) => t.available > 0)
-        .sort((a, b) => a.price - b.price);
-
     if (ticketTypes.length > 0) {
-        const cheapest = ticketTypes.reduce((min, t) => (min === null || t.price < min.price ? t : min), null as TicketType | null);
+        const cheapest = ticketTypes.reduce(
+            (min, t) => (min === null || t.price < min.price ? t : min),
+            null as TicketType | null,
+        );
         minPrice = cheapest ? cheapest.price : null;
         minPriceWristbandId = cheapest ? cheapest.id : null;
     }

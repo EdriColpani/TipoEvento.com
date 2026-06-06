@@ -65,6 +65,7 @@ import AdminCompaniesBilling from "./pages/AdminCompaniesBilling";
 import AdminListingMonthlyBilling from "./pages/AdminListingMonthlyBilling";
 import AdminContactMessages from "./pages/AdminContactMessages";
 import AdminEventGeoBackfill from "./pages/AdminEventGeoBackfill";
+import AdminCheckoutObservability from "./pages/AdminCheckoutObservability";
 import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
 import ManagerConsumptionLicenseBilling from "./pages/ManagerConsumptionLicenseBilling";
 import SalesReports from "./pages/SalesReports"; // NOVO
@@ -166,6 +167,7 @@ function AppRoutes() {
                 <Route path="/admin/settings/credit-reports" element={<AdminCreditReports />} />
                 <Route path="/admin/settings/contact-messages" element={<AdminContactMessages />} />
                 <Route path="/admin/settings/event-geo-backfill" element={<AdminEventGeoBackfill />} />
+                <Route path="/admin/settings/checkout-observability" element={<AdminCheckoutObservability />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 

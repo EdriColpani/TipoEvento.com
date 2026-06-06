@@ -119,6 +119,8 @@ const eventFormSchema = z.object({
     ),
     validator_show_holder: z.boolean().default(true),
     credit_consumption_enabled: z.boolean().default(false),
+    /** Grande porte: estoque por lote (batch_inventory), sem materializar 1 linha por ingresso antecipadamente */
+    counter_inventory_mode: z.boolean().default(false),
     ticket_price: z.string().optional().refine(val => {
         if (val === undefined || val === '') return true; // Permite vazio se não for pago
         return /^[0-9]+([,.][0-9]{1,2})?$/.test(val.replace('.', '').replace(',', '.'));
@@ -357,6 +359,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 : '90',
             validator_show_holder: initialData?.validator_show_holder ?? true,
             credit_consumption_enabled: initialData?.credit_consumption_enabled ?? false,
+            counter_inventory_mode: initialData?.inventory_mode === 'counter',
             ticket_price: initialData?.ticket_price?.toString().replace('.', ',') || '',
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
             batches: initialData?.batches?.map((batch) => ({
@@ -571,7 +574,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 const { data: event, error: eventError } = await supabase
                     .from('events')
                     .select(
-                        'is_paid, allow_printed_tickets, entry_qr_ttl_seconds, validator_show_holder, credit_consumption_enabled, ticket_price, contract_id, capacity, date',
+                        'is_paid, allow_printed_tickets, entry_qr_ttl_seconds, validator_show_holder, credit_consumption_enabled, inventory_mode, ticket_price, contract_id, capacity, date',
                     )
                     .eq('id', eventId)
                     .maybeSingle();
@@ -594,6 +597,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 setValue(
                     'credit_consumption_enabled',
                     (event as { credit_consumption_enabled?: boolean }).credit_consumption_enabled === true,
+                );
+                setValue(
+                    'counter_inventory_mode',
+                    (event as { inventory_mode?: string }).inventory_mode === 'counter',
                 );
 
                 if (event.contract_id) {
@@ -957,7 +964,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 banner_image_url: values.banner_image_url,
                 min_age: Number(values.min_age),
                 category: values.category,
-                capacity: Number(values.capacity),
+                capacity: effectiveIsPaid && totalTicketsQuantity > 0
+                    ? totalTicketsQuantity
+                    : Number(values.capacity),
                 duration: values.duration,
                 is_paid: effectiveIsPaid,
                 allow_printed_tickets: effectiveIsPaid ? Boolean(values.allow_printed_tickets) : false,
@@ -965,6 +974,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 validator_show_holder: effectiveIsPaid ? Boolean(values.validator_show_holder) : false,
                 credit_consumption_enabled:
                     supportsCreditConsumption ? Boolean(values.credit_consumption_enabled) : false,
+                inventory_mode: effectiveIsPaid && values.counter_inventory_mode ? 'counter' : 'unit_rows',
+                checkout_queue_enabled: effectiveIsPaid && values.counter_inventory_mode,
+                checkout_async_webhook: effectiveIsPaid && values.counter_inventory_mode,
+                checkout_admit_per_minute: 120,
+                checkout_rate_limit_per_minute: 30,
                 listing_only: isListingPlan,
                 total_tickets: isListingPlan ? Number(values.capacity) : totalTickets,
                 ticket_price: effectiveIsPaid ? ticketPriceForEvent : null,
@@ -1078,8 +1092,15 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                     // Só mostra sucesso se a tabela existir e a operação for concluída
                     if (!deleteError && !batchesError) {
-                        // Não damos dismiss aqui, pois o principal já faz
-                        // showSuccess("Lotes do evento salvos com sucesso!");
+                        if (values.counter_inventory_mode && newEventId) {
+                            const { error: backfillError } = await supabase.rpc(
+                                'backfill_event_counter_inventory',
+                                { p_event_id: newEventId },
+                            );
+                            if (backfillError) {
+                                console.error('[EventFormSteps] backfill_event_counter_inventory:', backfillError);
+                            }
+                        }
                     }
                 } catch (batchError: unknown) {
                     console.error("Erro ao salvar lotes do evento:", batchError);
@@ -1577,8 +1598,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                     min={ticketsLocked && salesGuard ? salesGuard.min_capacity : 1}
                                                 />
                                             </FormControl>
-                                            <FormDescription className="text-gray-500 text-xs">
-                                                Número total de ingressos disponíveis para o evento.
+                                            <FormDescription className="text-gray-300 text-xs">
+                                                {showPaidPricing
+                                                    ? 'Capacidade física do local. A quantidade vendável será definida nos lotes do próximo passo.'
+                                                    : 'Número total de ingressos disponíveis para o evento.'}
                                                 {ticketsLocked && salesGuard
                                                     ? ` Mínimo permitido: ${salesGuard.min_capacity} (já vendidos/inscritos).`
                                                     : ''}
@@ -1606,18 +1629,20 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                 />
                             </div>
                             {isListingPlan && (
-                                <div className="p-4 rounded-xl border border-blue-500/40 bg-blue-500/10 text-sm text-blue-200 mb-4">
-                                    Plano de <strong>divulgação</strong>: evento em modo vitrine, sem venda de ingressos pela plataforma.
+                                <div className="p-4 rounded-xl border border-blue-400/50 bg-blue-950/60 text-sm text-blue-50 mb-4">
+                                    Plano de <strong className="text-white">divulgação</strong>: evento em modo vitrine, sem venda de ingressos pela plataforma.
                                 </div>
                             )}
                             {requiresPaidTickets && (
-                                <div className="p-4 rounded-xl border border-cyan-500/40 bg-cyan-500/10 text-sm text-cyan-100 mb-4">
-                                    Seu plano exige eventos <strong>pagos</strong>. Após criar, cadastre e emita os
-                                    ingressos antes de ativar na vitrine.
+                                <div className="p-4 rounded-xl border border-cyan-400/50 bg-cyan-950/60 text-sm text-cyan-50 mb-4">
+                                    Seu plano exige eventos <strong className="text-white">pagos</strong>. Defina a quantidade nos{' '}
+                                    <strong className="text-white">lotes de ingressos</strong> (próximo passo). Para eventos
+                                    acima de 5.000, marque <strong className="text-white">grande porte</strong> — não é
+                                    necessário emitir cada ingresso manualmente.
                                 </div>
                             )}
                             {ticketsLocked && salesGuard && (
-                                <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-100 mb-4">
+                                <div className="p-4 rounded-xl border border-amber-400/50 bg-amber-950/60 text-sm text-amber-50 mb-4">
                                     {salesGuardLockedMessage(salesGuard)}
                                 </div>
                             )}
@@ -1674,6 +1699,32 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             )}
                             {!editPricingLoading && showPaidPricing && (
                                 <div className="space-y-4">
+                                    <FormField
+                                        control={control}
+                                        name="counter_inventory_mode"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-cyan-500/40 p-4 bg-cyan-500/5">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        disabled={ticketsLocked}
+                                                        className="border-cyan-400 text-cyan-400 data-[state=checked]:bg-cyan-500 data-[state=checked]:text-black"
+                                                    />
+                                                </FormControl>
+                                                <div className="space-y-1 leading-none">
+                                                    <FormLabel className="text-white">
+                                                        Evento de grande porte (estoque por lote)
+                                                    </FormLabel>
+                                                    <FormDescription className="text-gray-400 text-xs">
+                                                        Recomendado acima de 5.000 ingressos. Não cria uma linha no banco
+                                                        por ingresso antes da venda; o estoque é controlado por lote.
+                                                    </FormDescription>
+                                                </div>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
                                     <FormField
                                         control={control}
                                         name="allow_printed_tickets"
@@ -1923,14 +1974,20 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                             <FormControl>
                                                                 <Input 
                                                                     type="number" 
-                                                                    placeholder="Ex: 100" 
+                                                                    placeholder={watch('counter_inventory_mode') ? 'Ex: 50000' : 'Ex: 100'}
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={ticketsLocked}
                                                                     {...field} 
                                                                     onChange={e => field.onChange(e.target.value)} 
                                                                     min={1}
+                                                                    max={watch('counter_inventory_mode') ? 500000 : undefined}
                                                                 />
                                                             </FormControl>
+                                                            {watch('counter_inventory_mode') && (
+                                                                <FormDescription className="text-cyan-200/90 text-xs">
+                                                                    Estoque por contador: informe a quantidade total do lote (ex.: 50.000). Os QR codes são gerados na venda.
+                                                                </FormDescription>
+                                                            )}
                                                             <FormMessage />
                                                         </FormItem>
                                                     )}
