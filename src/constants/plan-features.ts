@@ -85,6 +85,7 @@ export const ROUTE_PLAN_FEATURE_RULES: Array<{ pathPrefix: string; featureKey: P
     { pathPrefix: '/manager/reports/events', featureKey: 'reports_events' },
     { pathPrefix: '/manager/reports/audience', featureKey: 'reports_audience' },
     { pathPrefix: '/manager/reports/registrations', featureKey: 'reports_registrations' },
+    { pathPrefix: '/manager/reports/complimentary-bundles', featureKey: 'wristbands' },
     { pathPrefix: '/manager/reports/wristband-movements', featureKey: 'reports_wristband_movements' },
     { pathPrefix: '/manager/reports/listing-monthly', featureKey: 'reports_listing_monthly' },
     { pathPrefix: '/manager/reports', featureKey: 'reports' },

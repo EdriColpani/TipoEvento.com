@@ -70,7 +70,7 @@ const EventGoLiveChecklist: React.FC<EventGoLiveChecklistProps> = ({ eventId, co
     }
 
     const items = data.items ?? [];
-    const ready = data.ready === true;
+    const ready = data.auto_ready === true || data.ready === true;
 
     return (
         <Card className={`bg-black border mb-6 ${ready ? 'border-green-500/40' : 'border-amber-500/40'}`}>
@@ -82,7 +82,8 @@ const EventGoLiveChecklist: React.FC<EventGoLiveChecklistProps> = ({ eventId, co
                             Checklist Go-Live (Grande Porte)
                         </CardTitle>
                         <CardDescription className="text-gray-400 mt-1">
-                            Conclua todos os itens antes de ativar o evento na vitrine e abrir vendas de alto volume.
+                            Itens em verde liberam o botão Ativar. Itens manuais (runbook, k6) são recomendados para o
+                            dia da venda, mas não bloqueiam a ativação na vitrine.
                         </CardDescription>
                     </div>
                     <div className="text-right">
@@ -164,8 +165,8 @@ const EventGoLiveChecklist: React.FC<EventGoLiveChecklistProps> = ({ eventId, co
 
                 {!ready && (
                     <p className="text-sm text-amber-200/90 pt-2 border-t border-amber-500/20">
-                        Ativação na vitrine para mega eventos exige checklist completo. Corrija os itens em vermelho
-                        e confirme os itens manuais.
+                        Corrija os itens automáticos em vermelho. Depois use o botão <strong className="text-white">Ativar</strong> na
+                        lista de eventos.
                     </p>
                 )}
             </CardContent>

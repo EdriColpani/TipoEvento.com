@@ -45,6 +45,10 @@ export interface TicketType {
     price: number;
     available: number; // Simulação de disponibilidade (contagem de pulseiras ativas)
     description: string; // Descrição do tipo de acesso
+    /** Lote dentro da janela de vendas (modo counter). */
+    salesOpen?: boolean;
+    batchStartDate?: string | null;
+    batchEndDate?: string | null;
 }
 
 // Estrutura de dados agrupada para a tela de detalhes
@@ -140,6 +144,10 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
             name?: string;
             price?: number;
             available?: number;
+            sales_open?: boolean;
+            batch_active?: boolean;
+            start_date?: string | null;
+            end_date?: string | null;
         }>;
     } | null;
 
@@ -153,8 +161,11 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
                 price: Number(t.price ?? 0),
                 available: Number(t.available ?? 0),
                 description: `Acesso ${t.name ?? 'ingresso'} para o evento.`,
+                salesOpen: t.sales_open !== false && t.batch_active !== false,
+                batchStartDate: t.start_date ?? null,
+                batchEndDate: t.end_date ?? null,
             }))
-            .filter((t) => t.id && t.available > 0)
+            .filter((t) => t.id && t.price > 0 && t.available > 0)
             .sort((a, b) => a.price - b.price);
     } else {
         // Fallback legado

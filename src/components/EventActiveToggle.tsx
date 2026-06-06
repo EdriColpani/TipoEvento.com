@@ -18,6 +18,7 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { formatMinEventTicketsActivationError } from '@/utils/min-event-tickets-errors';
 import { formatTicketInactivityError } from '@/utils/ticket-inactivity-errors';
 import { fetchGoLiveChecklistOnce, type GoLiveChecklistItem } from '@/hooks/use-event-go-live-checklist';
+import { getGoLiveAutoBlockers, getGoLiveFixAction, isGoLiveAutoReady } from '@/utils/go-live-activation';
 
 interface EventActiveToggleProps {
     eventId: string;
@@ -76,13 +77,8 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
         setBusy(true);
         try {
             const checklist = await fetchGoLiveChecklistOnce(eventId);
-            if (checklist.applies && checklist.ready !== true) {
-                const pending = (checklist.items ?? []).filter(
-                    (item) =>
-                        item.required
-                        && (item.status === 'fail' || item.status === 'pending'
-                            || (item.key === 'inventory_configured' && item.status === 'warning')),
-                );
+            if (checklist.applies && !isGoLiveAutoReady(checklist)) {
+                const pending = getGoLiveAutoBlockers(checklist.items);
                 setBlockers(pending);
                 setGoLiveBlockOpen(true);
                 return;
@@ -103,7 +99,7 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="shrink-0 bg-black/60 border-green-500/40 text-green-400 hover:bg-green-500/10 h-8 px-3"
+                        className="shrink-0 border-green-500/40 bg-black/60 text-green-400 hover:bg-green-500/15 hover:text-green-300 h-8 px-3"
                         disabled={busy}
                         onClick={() => void tryActivate()}
                         title="Ativar evento na vitrine. Mega eventos exigem checklist go-live completo."
@@ -116,17 +112,40 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                 <AlertDialog open={goLiveBlockOpen} onOpenChange={setGoLiveBlockOpen}>
                     <AlertDialogContent className="bg-black/95 border border-amber-500/40 text-white max-w-lg">
                         <AlertDialogHeader>
-                            <AlertDialogTitle className="text-amber-300">Checklist go-live incompleto</AlertDialogTitle>
+                            <AlertDialogTitle className="text-amber-300">Ainda não dá para ativar</AlertDialogTitle>
                             <AlertDialogDescription asChild>
-                                <div className="text-gray-400 space-y-2 text-sm">
+                                <div className="text-gray-400 space-y-3 text-sm">
                                     <p>
-                                        <strong className="text-white">{eventTitle}</strong> é um evento de grande porte.
-                                        Conclua o checklist antes de ativar na vitrine:
+                                        <strong className="text-white">{eventTitle}</strong> — corrija os itens
+                                        obrigatórios abaixo e clique em <strong className="text-white">Ativar</strong> de novo:
                                     </p>
-                                    <ul className="list-disc pl-5 space-y-1 text-amber-100/90">
-                                        {blockers.map((item) => (
-                                            <li key={item.key}>{item.label}</li>
-                                        ))}
+                                    <ul className="space-y-2">
+                                        {blockers.map((item) => {
+                                            const fix = getGoLiveFixAction(item.key, eventId);
+                                            return (
+                                                <li
+                                                    key={item.key}
+                                                    className="rounded-lg border border-red-500/20 bg-red-950/30 p-2 text-red-100/90"
+                                                >
+                                                    <p className="font-medium text-white">{item.label}</p>
+                                                    {item.message && (
+                                                        <p className="text-xs mt-1 text-gray-300">{item.message}</p>
+                                                    )}
+                                                    {fix && (
+                                                        <button
+                                                            type="button"
+                                                            className="text-yellow-400 underline text-xs mt-1 hover:text-yellow-300"
+                                                            onClick={() => {
+                                                                setGoLiveBlockOpen(false);
+                                                                navigate(fix.path);
+                                                            }}
+                                                        >
+                                                            {fix.label}
+                                                        </button>
+                                                    )}
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                 </div>
                             </AlertDialogDescription>
@@ -156,7 +175,7 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="shrink-0 bg-black/60 border-orange-500/40 text-orange-300 hover:bg-orange-500/10 h-8 px-3"
+                    className="shrink-0 border-orange-500/40 bg-black/60 text-orange-300 hover:bg-orange-500/15 hover:text-orange-200 h-8 px-3"
                     disabled={busy}
                     title="Desativar evento (remove da vitrine)"
                 >

@@ -1,0 +1,36 @@
+---
+description: Padrão de botões EventFest (cores, contraste, variantes)
+globs: src/**/*.tsx
+alwaysApply: true
+---
+
+# Botões EventFest
+
+Todo botão novo deve seguir o tema escuro + amarelo dourado do sistema. **Nunca** usar `variant="outline"` só com classes cyan/azul claras — o fundo branco padrão do shadcn deixa o texto ilegível.
+
+## Primário (ação principal)
+
+```tsx
+className="bg-yellow-500 text-black hover:bg-yellow-600"
+```
+
+## Secundário / outline (voltar, cancelar, links de ação)
+
+```tsx
+variant="outline"
+className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+```
+
+## Desabilitado
+
+Incluir `disabled:opacity-50` quando aplicável.
+
+## Banners informativos (cyan/amber)
+
+Cores cyan/amber são **só para caixas de texto** (`border`, `bg-*-950/60`, `text-*-50`). Botões dentro de banners usam o padrão amarelo acima, não cyan no botão.
+
+## Proibido
+
+- Botão outline com `text-cyan-100` / `text-cyan-200` sem `bg-black/60`
+- Botão primário fora do par amarelo (`bg-yellow-500` + `text-black`)
+- Texto claro sobre fundo claro (contraste insuficiente)

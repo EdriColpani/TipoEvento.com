@@ -15,6 +15,9 @@ verify_jwt = false
 [functions.send-free-registration-email]
 verify_jwt = false
 
+[functions.send-complimentary-bundle-email]
+verify_jwt = false
+
 # Gestor autenticado no app; JWT é validado dentro da função (evita 401 no gateway com sessão ok)
 [functions.create-validation-key]
 verify_jwt = false

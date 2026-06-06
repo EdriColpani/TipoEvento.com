@@ -22,6 +22,9 @@ export type GoLiveChecklist = {
     event_title?: string;
     is_active?: boolean;
     ready?: boolean;
+    auto_ready?: boolean;
+    auto_ready_count?: number;
+    auto_required_count?: number;
     ready_count?: number;
     required_count?: number;
     message?: string;

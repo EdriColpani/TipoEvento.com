@@ -22,6 +22,7 @@ import EventLocationMap from '@/components/EventLocationMap';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { useDevice } from '@/hooks/use-device';
 import { useEventCheckoutQueue } from '@/hooks/use-event-checkout-queue';
+import { generateRandomUuid } from '@/utils/random-id';
 
 // Tipos de dados para os itens de compra
 interface PurchaseItem {
@@ -53,7 +54,7 @@ const EventDetails: React.FC = () => {
     const [selectedTickets, setSelectedTickets] = useState<{ [key: string]: number }>({});
     const [isProcessing, setIsProcessing] = useState(false);
     const [isCreditProcessing, setIsCreditProcessing] = useState(false);
-    const checkoutIdempotencyKeyRef = useRef<string>(crypto.randomUUID());
+    const checkoutIdempotencyKeyRef = useRef<string>(generateRandomUuid());
     const queue = useEventCheckoutQueue(id, isAuthenticated && !details?.event.listing_only);
 
     const creditBalanceQuery = useQuery({
@@ -280,7 +281,7 @@ const EventDetails: React.FC = () => {
             
             dismissToast(toastId);
             showSuccess("Redirecionando para o Mercado Pago...");
-            checkoutIdempotencyKeyRef.current = crypto.randomUUID();
+            checkoutIdempotencyKeyRef.current = generateRandomUuid();
 
             // 4. Redirecionar para a URL de checkout
             window.location.href = checkoutUrl;
@@ -587,12 +588,25 @@ const EventDetails: React.FC = () => {
                                     <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-6">Selecionar Ingressos</h3>
                                     <div className="space-y-6">
                                         {ticketTypes.length > 0 ? (
-                                            ticketTypes.map((ticket: TicketType) => (
+                                            ticketTypes.map((ticket: TicketType) => {
+                                                const ticketPurchaseClosed =
+                                                    salesClosed || ticket.salesOpen === false;
+                                                return (
                                                 <div key={ticket.id} className="bg-black/60 border border-yellow-500/20 rounded-xl p-4 sm:p-6">
                                                     <div className="flex justify-between items-start mb-4">
                                                         <div>
                                                             <h4 className="text-white font-semibold text-base sm:text-lg">{ticket.name}</h4>
                                                             <p className="text-gray-400 text-xs sm:text-sm mt-1">{ticket.description}</p>
+                                                            {ticket.salesOpen === false && ticket.batchStartDate && (
+                                                                <p className="text-amber-300/90 text-xs mt-2">
+                                                                    Vendas deste lote a partir de{' '}
+                                                                    {formatEventDateForDisplay(ticket.batchStartDate)}
+                                                                    {ticket.batchEndDate
+                                                                        ? ` até ${formatEventDateForDisplay(ticket.batchEndDate)}`
+                                                                        : ''}
+                                                                    .
+                                                                </p>
+                                                            )}
                                                         </div>
                                                         <div className="text-right flex-shrink-0 ml-4">
                                                             <div className="text-xl sm:text-2xl font-bold text-yellow-500">{getPriceDisplay(ticket.price)}</div>
@@ -605,7 +619,7 @@ const EventDetails: React.FC = () => {
                                                             <button
                                                                 onClick={() => handleTicketChange(ticket.id, (selectedTickets[ticket.id] || 0) - 1)}
                                                                 className="w-7 h-7 sm:w-8 sm:h-8 bg-yellow-500/20 border border-yellow-500/40 rounded-full flex items-center justify-center text-yellow-500 hover:bg-yellow-500/30 transition-all duration-300 cursor-pointer"
-                                                                disabled={ticket.available === 0 || (selectedTickets[ticket.id] || 0) === 0 || isProcessing || isCreditProcessing || salesClosed}
+                                                                disabled={ticket.available === 0 || (selectedTickets[ticket.id] || 0) === 0 || isProcessing || isCreditProcessing || ticketPurchaseClosed}
                                                             >
                                                                 <i className="fas fa-minus text-xs"></i>
                                                             </button>
@@ -615,14 +629,15 @@ const EventDetails: React.FC = () => {
                                                             <button
                                                                 onClick={() => handleTicketChange(ticket.id, (selectedTickets[ticket.id] || 0) + 1)}
                                                                 className="w-7 h-7 sm:w-8 sm:h-8 bg-yellow-500/20 border border-yellow-500/40 rounded-full flex items-center justify-center text-yellow-500 hover:bg-yellow-500/30 transition-all duration-300 cursor-pointer"
-                                                                disabled={(selectedTickets[ticket.id] || 0) >= ticket.available || isProcessing || isCreditProcessing || salesClosed}
+                                                                disabled={(selectedTickets[ticket.id] || 0) >= ticket.available || isProcessing || isCreditProcessing || ticketPurchaseClosed}
                                                             >
                                                                 <i className="fas fa-plus text-xs"></i>
                                                             </button>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            ))
+                                                );
+                                            })
                                         ) : (
                                             <div className="text-center p-4 bg-black/60 rounded-xl border border-red-500/30">
                                                 <p className="text-red-400 text-sm">Nenhum tipo de ingresso ativo encontrado para este evento.</p>

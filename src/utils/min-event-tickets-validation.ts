@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
+import { batchQuantityAsNumber } from '@/utils/batch-quantity';
 import type { BillingPlanCode } from '@/constants/billing-plans';
 
 /** Ingressos ativos emitidos para o evento (analytics com preço > 0). */
@@ -31,7 +32,7 @@ export function validateMinBatchTicketSum(
     batches: Array<{ quantity?: string | number | null }> | undefined,
     minRequired: number,
 ): string | null {
-    const batchSum = (batches ?? []).reduce((sum, b) => sum + Number(b.quantity || 0), 0);
+    const batchSum = (batches ?? []).reduce((sum, b) => sum + batchQuantityAsNumber(b.quantity), 0);
     if (batchSum < minRequired) {
         return `A soma das quantidades dos lotes deve ser pelo menos ${minRequired} ingressos (mínimo da sua empresa).`;
     }

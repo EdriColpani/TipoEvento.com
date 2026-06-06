@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, FileEdit, QrCode, Building2 } from 'lucide-react';
+import { Plus, Search, Loader2, FileEdit, QrCode, Building2, Gift } from 'lucide-react';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { supabase } from '@/integrations/supabase/client';
 import DeleteEventDialog from '@/components/DeleteEventDialog';
@@ -15,8 +15,10 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
 import { useEventTicketReadiness } from '@/hooks/use-event-ticket-readiness';
 import TicketInactivityBanner from '@/components/TicketInactivityBanner';
-import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
+import { companyAllowsTicketSales, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { getInactiveEventGuidance } from '@/utils/inactive-event-guidance';
+import EventActivationBlockers from '@/components/EventActivationBlockers';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -37,6 +39,7 @@ const ManagerEventsList: React.FC = () => {
     const { company } = useManagerCompany(userId);
     const { billing } = useCompanyBilling(company?.id);
     const showTicketRules = !isAdminMaster && companyAllowsTicketSales(billing?.billing_plan ?? null);
+    const minEventTickets = billing?.min_event_tickets ?? DEFAULT_MIN_EVENT_TICKETS;
     const { data: inactivityStatus, isLoading: isLoadingInactivity, refetch: refetchInactivity } =
         useCompanyTicketInactivity(company?.id, !isAdminMaster);
     const { data: ticketReadiness = [] } = useEventTicketReadiness(company?.id, showTicketRules);
@@ -151,7 +154,14 @@ const ManagerEventsList: React.FC = () => {
                                 {filteredEvents.map((event) => {
                                     const isDraft = event.is_draft;
                                     const readiness = readinessByEventId[event.id];
-                                    const needsMoreTickets = readiness?.needs_more === true;
+                                    const guidance = getInactiveEventGuidance(
+                                        event,
+                                        readiness,
+                                        showTicketRules,
+                                        minEventTickets,
+                                    );
+                                    const needsMoreTickets =
+                                        readiness?.needs_more === true || guidance?.showMissingTicketsStatus === true;
                                     const autoDeactivated = Boolean(event.auto_deactivated_at);
                                     let statusText = 'Publicado';
                                     let statusClasses = 'bg-green-500/20 text-green-400';
@@ -177,7 +187,7 @@ const ManagerEventsList: React.FC = () => {
                                             className="border-b border-yellow-500/10 hover:bg-black/40 transition-colors text-sm cursor-pointer"
                                             onClick={() => handleRowClick(event.id)}
                                         >
-                                            <TableCell className="py-4">
+                                            <TableCell className="relative z-[1] py-4">
                                                 <div className="text-white font-medium truncate max-w-[400px]">
                                                     {event.title}
                                                 </div>
@@ -187,13 +197,57 @@ const ManagerEventsList: React.FC = () => {
                                                         <span>{event.company_name}</span>
                                                     </div>
                                                 )}
-                                                {needsMoreTickets && (
-                                                    <p className="mt-1 text-xs text-amber-300/90">
-                                                        Cadastre mais ingressos para ativar na vitrine (
-                                                        {readiness?.active_ticket_count ?? 0} de{' '}
-                                                        {readiness?.min_required ?? '—'}).
+                                                {event.inventory_mode !== 'counter' && guidance && (
+                                                    <p className="relative z-[1] mt-1 text-xs text-amber-300/90 leading-relaxed">
+                                                        <span className="font-semibold text-amber-200">
+                                                            {guidance.title}:
+                                                        </span>{' '}
+                                                        {guidance.hint}
+                                                        {guidance.actionPath && guidance.actionLabel && (
+                                                            <>
+                                                                {' '}
+                                                                <button
+                                                                    type="button"
+                                                                    className="text-yellow-400 underline underline-offset-2 hover:text-yellow-300 font-medium"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigate(
+                                                                            guidance.actionPath!,
+                                                                            guidance.actionPath === '/manager/wristbands/create'
+                                                                                ? { state: { eventId: event.id } }
+                                                                                : undefined,
+                                                                        );
+                                                                    }}
+                                                                >
+                                                                    {guidance.actionLabel}
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        {guidance.secondaryActionPath && guidance.secondaryActionLabel && (
+                                                            <>
+                                                                {' · '}
+                                                                <button
+                                                                    type="button"
+                                                                    className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200 font-medium"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigate(guidance.secondaryActionPath!);
+                                                                    }}
+                                                                >
+                                                                    {guidance.secondaryActionLabel}
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </p>
                                                 )}
+                                                <div className="relative z-[1]">
+                                                    <EventActivationBlockers
+                                                        eventId={event.id}
+                                                        inventoryMode={event.inventory_mode}
+                                                        isActive={event.is_active}
+                                                        isDraft={isDraft}
+                                                    />
+                                                </div>
                                                 {autoDeactivated && (
                                                     <p className="mt-1 text-xs text-red-300/90">
                                                         Desativado automaticamente por falta de vendas após a data do
@@ -214,12 +268,23 @@ const ManagerEventsList: React.FC = () => {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        className="shrink-0 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-black h-8 px-3"
+                                                        className="shrink-0 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 h-8 px-3"
                                                         onClick={() => handleRowClick(event.id)}
                                                     >
                                                         <FileEdit className="h-4 w-4 mr-2 shrink-0" />
                                                         {isDraft ? 'Continuar Edição' : 'Gerenciar'}
                                                     </Button>
+                                                    {event.inventory_mode === 'counter' && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="shrink-0 bg-black/60 border-cyan-500/30 text-cyan-300 hover:bg-cyan-950/60 hover:text-white h-8 px-3"
+                                                            onClick={() => navigate(`/manager/events/${event.id}/cortesias`)}
+                                                        >
+                                                            <Gift className="h-4 w-4 mr-2 shrink-0" />
+                                                            Cortesias
+                                                        </Button>
+                                                    )}
                                                     <EventActiveToggle
                                                         eventId={event.id}
                                                         eventTitle={event.title}

@@ -12,6 +12,8 @@ export interface ManagerEventScopeRow {
     time: string | null;
     duration: string | null;
     company_id: string | null;
+    created_by?: string | null;
+    inventory_mode?: 'counter' | 'unit_rows' | null;
     created_at: string;
 }
 
@@ -31,6 +33,12 @@ function normalizeRow(raw: Record<string, unknown>): ManagerEventScopeRow {
         time: timeVal != null && timeVal !== '' ? String(timeVal) : null,
         duration: raw.duration != null && raw.duration !== '' ? String(raw.duration) : null,
         company_id: raw.company_id != null && raw.company_id !== '' ? String(raw.company_id) : null,
+        created_by:
+            raw.created_by != null && raw.created_by !== '' ? String(raw.created_by) : null,
+        inventory_mode:
+            raw.inventory_mode === 'counter' || raw.inventory_mode === 'unit_rows'
+                ? raw.inventory_mode
+                : null,
         created_at: raw.created_at != null && raw.created_at !== '' ? String(raw.created_at) : '',
     };
 }
@@ -48,19 +56,21 @@ async function fetchEventsWithSchemaFallback(
     client: SupabaseClient,
     options?: FetchManagerEventsScopeOptions,
 ): Promise<ManagerEventScopeRow[]> {
+    const createdBySelect = options?.createdByUserId ? ', created_by' : '';
+    const inventorySelect = ', inventory_mode';
     const attempts = [
-        'id, title, date, time, duration, company_id, created_at, is_draft, is_active, auto_deactivated_at',
-        'id, title, date, time, duration, company_id, created_at, is_draft, is_active',
-        'id, title, date, time, duration, company_id, created_at, is_active',
-        'id, title, date, time, duration, company_id, is_active',
-        'id, title, event_date, event_time, duration, company_id, created_at, is_active',
-        'id, title, event_date, event_time, duration, company_id, is_active',
-        'id, title, date, time, duration, is_active',
-        'id, title, event_date, event_time, duration, is_active',
-        'id, title, date, time, is_active',
-        'id, title, event_date, event_time, is_active',
-        'id, title, is_active',
-        '*',
+        `id, title, date, time, duration, company_id, created_at, is_draft, is_active, auto_deactivated_at${inventorySelect}${createdBySelect}`,
+        `id, title, date, time, duration, company_id, created_at, is_draft, is_active${inventorySelect}${createdBySelect}`,
+        `id, title, date, time, duration, company_id, created_at, is_active${inventorySelect}${createdBySelect}`,
+        `id, title, date, time, duration, company_id, is_active${inventorySelect}${createdBySelect}`,
+        `id, title, event_date, event_time, duration, company_id, created_at, is_active${createdBySelect}`,
+        `id, title, event_date, event_time, duration, company_id, is_active${createdBySelect}`,
+        `id, title, date, time, duration, is_active${createdBySelect}`,
+        `id, title, event_date, event_time, duration, is_active${createdBySelect}`,
+        `id, title, date, time, is_active${createdBySelect}`,
+        `id, title, event_date, event_time, is_active${createdBySelect}`,
+        `id, title, is_active${createdBySelect}`,
+        options?.createdByUserId ? `id, title, created_by, is_active${inventorySelect}` : '*',
     ];
 
     let lastMessage = '';
@@ -77,7 +87,12 @@ async function fetchEventsWithSchemaFallback(
             continue;
         }
 
-        const rawRows = (data as Record<string, unknown>[]) ?? [];
+        let rawRows = (data as Record<string, unknown>[]) ?? [];
+        if (options?.createdByUserId) {
+            rawRows = rawRows.filter(
+                (row) => String(row.created_by ?? '') === options.createdByUserId,
+            );
+        }
         return rawRows.map(normalizeRow);
     }
 

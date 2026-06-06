@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
 import { formatEventDateForDisplay, parseEventLocalDay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
+import { pickMinimumPaidPrice } from '@/utils/public-event-pricing';
 
 export interface PublicEvent {
     id: string;
@@ -22,27 +23,64 @@ export interface PublicEvent {
     capacity: number; // New: event capacity from the 'events' table
 }
 
+type EventAggregate = {
+    min_price: number;
+    min_price_wristband_id: string | null;
+    total_available_tickets: number;
+};
+
+function parsePrice(raw: unknown): number {
+    if (typeof raw === 'number') return raw;
+    return parseFloat(String(raw ?? '').replace(',', '.')) || 0;
+}
+
+async function fillMinPriceFromAvailabilityRpc(
+    eventId: string,
+    aggregate: EventAggregate,
+): Promise<void> {
+    const { data, error } = await supabase.rpc('get_event_ticket_availability', {
+        p_event_id: eventId,
+    });
+    if (error) {
+        console.error('[usePublicEvents] get_event_ticket_availability:', eventId, error);
+        return;
+    }
+
+    const payload = data as {
+        ok?: boolean;
+        ticket_types?: Array<{ price?: number; wristband_id?: string; id?: string }>;
+    } | null;
+
+    if (!payload?.ok || !Array.isArray(payload.ticket_types)) return;
+
+    for (const ticket of payload.ticket_types) {
+        const price = parsePrice(ticket.price);
+        if (price > 0 && price < aggregate.min_price) {
+            aggregate.min_price = price;
+            aggregate.min_price_wristband_id = String(ticket.wristband_id ?? ticket.id ?? '') || null;
+        }
+    }
+}
+
 const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
-    // 1. Buscar todos os eventos com capacidade
     const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select(`
-            id, title, description, date, time, location, exposure_card_image_url, category, capacity, is_paid, listing_only, ticket_price, is_active
+            id, title, description, date, time, location, exposure_card_image_url, category, capacity, is_paid, listing_only, ticket_price, is_active, inventory_mode
         `)
         .eq('is_active', true)
         .order('date', { ascending: true });
 
     if (eventsError) {
-        console.error("Error fetching public events:", eventsError);
+        console.error('Error fetching public events:', eventsError);
         throw new Error(eventsError.message);
     }
 
     const openForSales = eventsData.filter((e) => isEventOpenForNewSales(e.date, e.time));
     const eventIds = openForSales.map((e) => e.id);
 
-    // Inicializar agregados para todos os eventos (para contar pulseiras e preço de lotes)
-    const eventAggregates: { [eventId: string]: { min_price: number; min_price_wristband_id: string | null; total_available_tickets: number } } = {};
-    eventIds.forEach(id => {
+    const eventAggregates: Record<string, EventAggregate> = {};
+    eventIds.forEach((id) => {
         eventAggregates[id] = { min_price: Infinity, min_price_wristband_id: null, total_available_tickets: 0 };
     });
 
@@ -51,52 +89,111 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
     );
 
     const ticketSalesEventIds = eventIds.filter((id) => !listingOnlyIds.has(id));
+    const counterEventIds = new Set(
+        openForSales
+            .filter((e) => e.inventory_mode === 'counter' && !listingOnlyIds.has(e.id))
+            .map((e) => e.id),
+    );
 
     if (ticketSalesEventIds.length > 0) {
-        const { data: batchesData } = await supabase
+        // Preços dos lotes (ignora Staff/gratuitos com price = 0)
+        const { data: batchesData, error: batchesError } = await supabase
             .from('event_batches')
             .select('event_id, price')
-            .in('event_id', ticketSalesEventIds);
+            .in('event_id', ticketSalesEventIds)
+            .gt('price', 0);
 
-        if (batchesData?.length) {
-            batchesData.forEach((row: { event_id: string; price: unknown }) => {
-                const price = typeof row.price === 'number' ? row.price : parseFloat(String(row.price ?? '').replace(',', '.')) || 0;
-                if (price >= 0 && price < eventAggregates[row.event_id].min_price) {
-                    eventAggregates[row.event_id].min_price = price;
-                }
+        if (batchesError) {
+            console.error('Error fetching event batches for public catalog:', batchesError);
+        }
+
+        batchesData?.forEach((row) => {
+            const price = parsePrice(row.price);
+            const aggregate = eventAggregates[row.event_id];
+            if (!aggregate || price <= 0) return;
+            if (price < aggregate.min_price) {
+                aggregate.min_price = price;
+            }
+        });
+
+        // Estoque counter (batch_inventory)
+        if (counterEventIds.size > 0) {
+            const { data: inventoryData, error: inventoryError } = await supabase
+                .from('batch_inventory')
+                .select('event_id, total, sold, reserved')
+                .in('event_id', [...counterEventIds]);
+
+            if (inventoryError) {
+                console.error('Error fetching batch_inventory for public catalog:', inventoryError);
+            }
+
+            inventoryData?.forEach((row) => {
+                const aggregate = eventAggregates[row.event_id];
+                if (!aggregate) return;
+                const available = Math.max(
+                    0,
+                    Number(row.total ?? 0) - Number(row.sold ?? 0) - Number(row.reserved ?? 0),
+                );
+                aggregate.total_available_tickets += available;
             });
         }
 
-        const { data: wristbandsData, error: wristbandsError } = await supabase
-            .from('wristbands')
-            .select('event_id, id, price, status')
-            .in('event_id', ticketSalesEventIds);
+        const unitRowsEventIds = ticketSalesEventIds.filter((id) => !counterEventIds.has(id));
 
-        if (wristbandsError) {
-            console.error("Error fetching wristband data:", wristbandsError);
-        }
+        if (unitRowsEventIds.length > 0) {
+            const { data: wristbandsData, error: wristbandsError } = await supabase
+                .from('wristbands')
+                .select('event_id, id, price, status')
+                .in('event_id', unitRowsEventIds);
 
-        if (wristbandsData?.length) {
-            wristbandsData.forEach(item => {
-                const price = typeof item.price === 'number' ? item.price : parseFloat(String(item.price ?? '').replace(',', '.')) || 0;
-                if (price >= 0 && price < eventAggregates[item.event_id].min_price) {
-                    eventAggregates[item.event_id].min_price = price;
-                    eventAggregates[item.event_id].min_price_wristband_id = item.id;
+            if (wristbandsError) {
+                console.error('Error fetching wristband data:', wristbandsError);
+            }
+
+            wristbandsData?.forEach((item) => {
+                const aggregate = eventAggregates[item.event_id];
+                if (!aggregate) return;
+                const price = parsePrice(item.price);
+                if (price > 0 && price < aggregate.min_price) {
+                    aggregate.min_price = price;
+                    aggregate.min_price_wristband_id = item.id;
                 }
                 if (item.status === 'active') {
-                    eventAggregates[item.event_id].total_available_tickets += 1;
+                    aggregate.total_available_tickets += 1;
                 }
             });
         }
+
+        // Fallback RPC para eventos pagos sem preço (ex.: counter com ticket_price 0 no evento)
+        const rpcFallbackIds = openForSales
+            .filter(
+                (e) =>
+                    e.is_paid &&
+                    !e.listing_only &&
+                    eventAggregates[e.id]?.min_price === Infinity,
+            )
+            .map((e) => e.id);
+
+        await Promise.all(
+            rpcFallbackIds.map(async (eventId) => {
+                await fillMinPriceFromAvailabilityRpc(eventId, eventAggregates[eventId]);
+            }),
+        );
     }
 
-    // 4. Combinar dados e formatar (min_price = menor entre lotes, pulseiras e events.ticket_price)
     return openForSales.map((event) => {
-        const aggregates = eventAggregates[event.id] || { min_price: Infinity, min_price_wristband_id: null, total_available_tickets: 0 };
-        const fromBatchesOrWristbands = aggregates.min_price;
-        const fromEvent = event.ticket_price != null ? Number(event.ticket_price) : Infinity;
-        const minPriceValue = Math.min(fromBatchesOrWristbands, fromEvent);
-        const minPrice = minPriceValue === Infinity ? null : minPriceValue;
+        const aggregates = eventAggregates[event.id] || {
+            min_price: Infinity,
+            min_price_wristband_id: null,
+            total_available_tickets: 0,
+        };
+
+        const minPrice = event.listing_only
+            ? null
+            : pickMinimumPaidPrice([
+                  aggregates.min_price === Infinity ? null : aggregates.min_price,
+                  event.ticket_price,
+              ]);
 
         return {
             id: event.id,
@@ -106,11 +203,11 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
             raw_date: parseEventLocalDay(event.date),
             time: event.time,
             location: event.location,
-            image_url: event.exposure_card_image_url, // USANDO O NOVO CAMPO PARA O CARD DE EXPOSIÇÃO
+            image_url: event.exposure_card_image_url,
             category: event.category,
             is_paid: event.is_paid === true,
             listing_only: event.listing_only === true,
-            min_price: event.listing_only === true ? null : minPrice,
+            min_price: minPrice,
             min_price_wristband_id: aggregates.min_price_wristband_id,
             total_available_tickets: aggregates.total_available_tickets,
             capacity: event.capacity,
@@ -120,13 +217,13 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
 
 export const usePublicEvents = () => {
     const query = useQuery({
-        queryKey: ['publicEvents'],
+        queryKey: ['publicEvents', 'v2'],
         queryFn: fetchPublicEvents,
-        staleTime: 1000 * 60 * 5, // 5 minutes
+        staleTime: 1000 * 60 * 2,
         onError: (error) => {
-            console.error("Query Error: Failed to load public events.", error);
-            showError("Erro ao carregar a lista de eventos.");
-        }
+            console.error('Query Error: Failed to load public events.', error);
+            showError('Erro ao carregar a lista de eventos.');
+        },
     });
 
     return {
