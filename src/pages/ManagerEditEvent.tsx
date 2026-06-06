@@ -5,6 +5,7 @@ import { Loader2, ArrowLeft } from 'lucide-react';
 import { showError } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import EventFormSteps from '@/components/EventFormSteps';
+import EventGoLiveChecklist from '@/components/EventGoLiveChecklist';
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { highlightsToText } from '@/utils/event-highlights';
 import { useProfile } from '@/hooks/use-profile';
@@ -158,6 +159,8 @@ const ManagerEditEvent: React.FC = () => {
                     Voltar para a Lista
                 </Button>
             </div>
+
+            {id && <EventGoLiveChecklist eventId={id} />}
 
             <EventFormSteps 
                 eventId={id}

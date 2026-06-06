@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
 import EventLocationMap from '@/components/EventLocationMap';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { useDevice } from '@/hooks/use-device';
+import { useEventCheckoutQueue } from '@/hooks/use-event-checkout-queue';
 
 // Tipos de dados para os itens de compra
 interface PurchaseItem {
@@ -52,6 +53,8 @@ const EventDetails: React.FC = () => {
     const [selectedTickets, setSelectedTickets] = useState<{ [key: string]: number }>({});
     const [isProcessing, setIsProcessing] = useState(false);
     const [isCreditProcessing, setIsCreditProcessing] = useState(false);
+    const checkoutIdempotencyKeyRef = useRef<string>(crypto.randomUUID());
+    const queue = useEventCheckoutQueue(id, isAuthenticated && !details?.event.listing_only);
 
     const creditBalanceQuery = useQuery({
         queryKey: ['client-credit-balance-event', id],
@@ -141,6 +144,19 @@ const EventDetails: React.FC = () => {
     };
 
     const totalPrice = getTotalPrice();
+    const checkoutBlockedByQueue = queue.queueEnabled && !queue.canCheckout;
+    const queueBanner = queue.queueEnabled && queue.status === 'waiting' ? (
+        <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-4 text-sm text-cyan-100 mb-4">
+            <div className="font-semibold text-white mb-1">Fila virtual de compra</div>
+            <p>
+                Posição na fila: <strong>{queue.position}</strong>
+                {queue.waitEstimateSeconds > 0 && (
+                    <> · estimativa ~{Math.ceil(queue.waitEstimateSeconds / 60)} min</>
+                )}
+            </p>
+            <p className="text-xs text-cyan-200/80 mt-1">A página atualiza automaticamente quando for sua vez.</p>
+        </div>
+    ) : null;
     const canPayWithCredit = creditEligible
         && creditWalletStatus === 'active'
         && creditBalance >= totalPrice
@@ -148,6 +164,11 @@ const EventDetails: React.FC = () => {
     
     const handleCheckout = async () => {
         if (!validatePurchaseContext()) return;
+
+        if (queue.queueEnabled && !queue.canCheckout) {
+            showError('Aguarde sua vez na fila virtual para comprar.');
+            return;
+        }
 
         const purchaseItems = getPurchaseItems();
         if (purchaseItems.length === 0) {
@@ -175,6 +196,8 @@ const EventDetails: React.FC = () => {
                 body: {
                     eventId: id,
                     clientOrigin: typeof window !== 'undefined' ? window.location.origin : '',
+                    idempotencyKey: checkoutIdempotencyKeyRef.current,
+                    queueSessionToken: queue.sessionToken ?? undefined,
                     purchaseItems: purchaseItems.map(item => ({
                         ticketTypeId: item.ticketTypeId,
                         quantity: item.quantity,
@@ -184,6 +207,7 @@ const EventDetails: React.FC = () => {
                 },
                 headers: {
                     'Authorization': `Bearer ${session.access_token}`,
+                    'x-idempotency-key': checkoutIdempotencyKeyRef.current,
                 }
             });
 
@@ -256,7 +280,8 @@ const EventDetails: React.FC = () => {
             
             dismissToast(toastId);
             showSuccess("Redirecionando para o Mercado Pago...");
-            
+            checkoutIdempotencyKeyRef.current = crypto.randomUUID();
+
             // 4. Redirecionar para a URL de checkout
             window.location.href = checkoutUrl;
 
@@ -446,9 +471,10 @@ const EventDetails: React.FC = () => {
                                             <span className="text-2xl sm:text-4xl font-bold text-yellow-500">
                                                 A partir de {minPriceDisplay}
                                             </span>
+                                            {queueBanner}
                                             <Button 
                                                 onClick={handleCheckout}
-                                                disabled={isProcessing || getTotalTickets() === 0 || salesClosed}
+                                                disabled={isProcessing || getTotalTickets() === 0 || salesClosed || checkoutBlockedByQueue}
                                                 className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
                                             >
                                                 {isProcessing ? (
@@ -615,9 +641,10 @@ const EventDetails: React.FC = () => {
                                                     <span className="text-yellow-500 text-xl sm:text-2xl font-bold">{getPriceDisplay(getTotalPrice())}</span>
                                                 </div>
                                             </div>
+                                            {queueBanner}
                                             <Button 
                                                 onClick={handleCheckout}
-                                                disabled={isProcessing || isCreditProcessing || getTotalTickets() === 0 || salesClosed}
+                                                disabled={isProcessing || isCreditProcessing || getTotalTickets() === 0 || salesClosed || checkoutBlockedByQueue}
                                                 className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 sm:py-4 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
                                             >
                                                 {isProcessing ? (

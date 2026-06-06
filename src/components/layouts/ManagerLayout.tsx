@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin } from 'lucide-react';
+import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity } from 'lucide-react';
 import PlanFeatureRouteGuard from '@/components/PlanFeatureRouteGuard';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import {
@@ -564,6 +564,13 @@ const ManagerLayout: React.FC = () => {
                                                             <MapPin className="mr-2 h-4 w-4" />
                                                             Geocodificar eventos
                                                         </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() => navigate('/admin/settings/checkout-observability')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/checkout-observability' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Activity className="mr-2 h-4 w-4" />
+                                                            Observabilidade checkout
+                                                        </DropdownMenuItem>
                                                         <DropdownMenuItem 
                                                             onClick={() => navigate('/admin/banners')}
                                                             className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/banners' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
@@ -729,6 +736,13 @@ const ManagerLayout: React.FC = () => {
                                                             >
                                                                 <MapPin className="mr-2 h-4 w-4" />
                                                                 Geocodificar eventos
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { navigate('/admin/settings/checkout-observability'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Activity className="mr-2 h-4 w-4" />
+                                                                Observabilidade checkout
                                                             </button>
                                                             <button 
                                                                 onClick={() => { navigate('/admin/banners'); setIsMobileMenuOpen(false); }}

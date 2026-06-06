@@ -15,6 +15,28 @@ const supabaseService = createClient(
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+async function logCheckoutOps(params: {
+  eventId: string | null | undefined;
+  correlationId: string;
+  operation: string;
+  status?: string;
+  details?: Record<string, unknown>;
+}) {
+  if (!params.eventId) return;
+  try {
+    await supabaseService.rpc('log_checkout_ops_event', {
+      p_event_id: params.eventId,
+      p_correlation_id: params.correlationId,
+      p_operation: params.operation,
+      p_status: params.status ?? 'ok',
+      p_duration_ms: null,
+      p_details: params.details ?? {},
+    });
+  } catch (err) {
+    console.warn('[checkout-ops-log]', err);
+  }
+}
+
 async function logPaymentEvent(params: {
   transactionId: string;
   source: 'webhook' | 'system';
@@ -71,33 +93,65 @@ serve(async (req) => {
       ? 'payment'
       : rawNotificationType;
 
-  if (!normalizedNotificationType) {
-    // Fallback: alguns payloads do MP não trazem type/action de forma consistente,
-    // mas incluem data.id (payment id). Nesse caso tratamos como payment.
-    if (idFromBody) {
-      console.warn('[MP Webhook] notification type ausente; inferindo tipo "payment" via data.id.');
-    } else {
-    return new Response(JSON.stringify({ error: 'Missing notification type' }), { status: 400, headers: corsHeaders });
+  const internalJobIdHeader = req.headers.get('X-Internal-Webhook-Job');
+  const workerTokenHeaderEarly = (req.headers.get('X-Webhook-Worker-Token') ?? '').trim();
+  const expectedWorkerTokenEarly = (Deno.env.get('WEBHOOK_WORKER_TOKEN') ?? 'internal').trim();
+  const isInternalJobRequest = body?._internalJob === true
+    && body?.payment
+    && internalJobIdHeader
+    && workerTokenHeaderEarly === expectedWorkerTokenEarly;
+
+  if (!isInternalJobRequest) {
+    if (!normalizedNotificationType) {
+      if (idFromBody) {
+        console.warn('[MP Webhook] notification type ausente; inferindo tipo "payment" via data.id.');
+      } else {
+        return new Response(JSON.stringify({ error: 'Missing notification type' }), { status: 400, headers: corsHeaders });
+      }
+    }
+
+    const resourceIdCheck = idFromQuery || idFromBody;
+    const finalTypeCheck = normalizedNotificationType || (idFromBody ? 'payment' : null);
+
+    if (finalTypeCheck !== 'payment' || !resourceIdCheck) {
+      console.log(`[MP Webhook] Ignoring notification type: ${String(finalTypeCheck)} (raw=${String(rawNotificationType)}) or missing resource ID.`);
+      return new Response(JSON.stringify({ message: 'Notification received, but ignored.' }), { status: 200, headers: corsHeaders });
     }
   }
   
   // 1. Determinar o tipo de notificação e ID do recurso
-  const resourceId = idFromQuery || idFromBody;
-  const finalNotificationType = normalizedNotificationType || (idFromBody ? 'payment' : null);
+  const resourceId = isInternalJobRequest
+    ? String((body.payment as Record<string, unknown>)?.id ?? '')
+    : (idFromQuery || idFromBody);
+  const finalNotificationType = isInternalJobRequest
+    ? 'payment'
+    : (normalizedNotificationType || (idFromBody ? 'payment' : null));
 
-  if (finalNotificationType !== 'payment' || !resourceId) {
+  if (!isInternalJobRequest && (finalNotificationType !== 'payment' || !resourceId)) {
     console.log(`[MP Webhook] Ignoring notification type: ${String(finalNotificationType)} (raw=${String(rawNotificationType)}) or missing resource ID. Query id: ${idFromQuery}, Body id: ${idFromBody}`);
     return new Response(JSON.stringify({ message: 'Notification received, but ignored.' }), { status: 200, headers: corsHeaders });
   }
 
   try {
-    const paymentLookup = await resolveWebhookPayment(supabaseService, String(resourceId));
-    if (!paymentLookup.ok) {
-      console.error(`[MP Webhook] Mercado Pago API error (${paymentLookup.status}):`, paymentLookup.text);
-      return new Response(JSON.stringify({ error: 'Failed to fetch payment details from Mercado Pago.' }), { status: 500, headers: corsHeaders });
+    const internalJobId = internalJobIdHeader;
+    const workerTokenHeader = workerTokenHeaderEarly;
+    const expectedWorkerToken = expectedWorkerTokenEarly;
+    const isInternalJob = isInternalJobRequest;
+
+    let mpPaymentData: Record<string, any>;
+
+    if (isInternalJob) {
+      mpPaymentData = body.payment as Record<string, any>;
+      console.log(`[MP Webhook] Internal job processing ${internalJobId}`);
+    } else {
+      const paymentLookup = await resolveWebhookPayment(supabaseService, String(resourceId));
+      if (!paymentLookup.ok) {
+        console.error(`[MP Webhook] Mercado Pago API error (${paymentLookup.status}):`, paymentLookup.text);
+        return new Response(JSON.stringify({ error: 'Failed to fetch payment details from Mercado Pago.' }), { status: 500, headers: corsHeaders });
+      }
+      mpPaymentData = paymentLookup.data as Record<string, any>;
     }
 
-    const mpPaymentData = paymentLookup.data as Record<string, any>;
     const paymentStatus = mpPaymentData.status; // Status real do pagamento
     const paymentStatusDetail = mpPaymentData.status_detail || null; // Detalhes adicionais do status
     const mpPaymentId = mpPaymentData.id ? String(mpPaymentData.id) : null;
@@ -263,11 +317,94 @@ serve(async (req) => {
     console.log(`[MP Webhook] Looking for receivable with transaction ID: ${transactionId}`);
     console.log(`[MP Webhook] Payment ID (resourceId): ${resourceId}`);
 
+    if (!isInternalJob) {
+      const { data: recvMeta } = await supabaseService
+        .from('receivables')
+        .select('event_id')
+        .eq('id', transactionId)
+        .maybeSingle();
+
+      let shouldAsync = (Deno.env.get('MP_WEBHOOK_ASYNC') ?? '').trim() === 'true';
+
+      if (recvMeta?.event_id) {
+        const { data: evMeta } = await supabaseService
+          .from('events')
+          .select('checkout_async_webhook, inventory_mode')
+          .eq('id', recvMeta.event_id)
+          .maybeSingle();
+
+        shouldAsync = shouldAsync
+          || evMeta?.checkout_async_webhook === true
+          || evMeta?.inventory_mode === 'counter';
+      }
+
+      if (shouldAsync) {
+        const { data: enqueueResult, error: enqueueError } = await supabaseService.rpc(
+          'enqueue_payment_webhook_job',
+          {
+            p_mp_payment_id: mpPaymentId ?? String(resourceId),
+            p_external_reference: transactionId,
+            p_event_id: recvMeta?.event_id ?? null,
+            p_payment_status: paymentStatus ?? null,
+            p_payload: mpPaymentData,
+          },
+        );
+
+        if (enqueueError) {
+          console.error('[MP Webhook] enqueue_payment_webhook_job:', enqueueError);
+          return new Response(JSON.stringify({ error: enqueueError.message }), {
+            status: 500,
+            headers: corsHeaders,
+          });
+        }
+
+        const payload = enqueueResult as { already_completed?: boolean; job_id?: string };
+        if (payload?.already_completed) {
+          return new Response(JSON.stringify({ message: 'Job already completed.' }), {
+            status: 200,
+            headers: corsHeaders,
+          });
+        }
+
+        await logCheckoutOps({
+          eventId: recvMeta?.event_id,
+          correlationId: transactionId,
+          operation: 'webhook_enqueued',
+          details: { job_id: payload?.job_id ?? null, mp_payment_id: mpPaymentId },
+        });
+
+        const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
+        const workerToken = (Deno.env.get('WEBHOOK_WORKER_TOKEN') ?? 'internal').trim();
+        const triggerWorker = fetch(`${supabaseUrl}/functions/v1/process-payment-webhook-jobs`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
+            'Content-Type': 'application/json',
+            'X-Webhook-Worker-Token': workerToken,
+          },
+          body: JSON.stringify({ limit: 5 }),
+        });
+
+        // @ts-ignore Supabase Edge runtime
+        if (typeof EdgeRuntime !== 'undefined' && typeof EdgeRuntime.waitUntil === 'function') {
+          // @ts-ignore
+          EdgeRuntime.waitUntil(triggerWorker);
+        } else {
+          triggerWorker.catch((err) => console.error('[MP Webhook] worker trigger failed:', err));
+        }
+
+        return new Response(JSON.stringify({
+          queued: true,
+          job_id: payload?.job_id ?? null,
+        }), { status: 200, headers: corsHeaders });
+      }
+    }
+
     // 5. Buscar a transação na tabela 'receivables' usando o transactionId (external_reference)
     // Primeiro, tentar encontrar com status 'pending'
     let { data: receivable, error: fetchReceivableError } = await supabaseService
         .from('receivables')
-        .select('id, client_user_id, wristband_analytics_ids, manager_user_id, event_id, total_value, status, payment_gateway_id')
+        .select('id, client_user_id, wristband_analytics_ids, counter_reservation_items, manager_user_id, event_id, total_value, status, payment_gateway_id')
         .eq('id', transactionId)
         .eq('status', 'pending')
         .maybeSingle();
@@ -277,7 +414,7 @@ serve(async (req) => {
         console.log(`[MP Webhook] Receivable not found with status 'pending', searching without status filter...`);
         const { data: receivableAnyStatus, error: fetchAnyStatusError } = await supabaseService
             .from('receivables')
-            .select('id, client_user_id, wristband_analytics_ids, manager_user_id, event_id, total_value, status, payment_gateway_id')
+            .select('id, client_user_id, wristband_analytics_ids, counter_reservation_items, manager_user_id, event_id, total_value, status, payment_gateway_id')
             .eq('id', transactionId)
             .maybeSingle();
         
@@ -333,7 +470,7 @@ serve(async (req) => {
             if (preferenceId) {
                 const { data: receivableByGatewayId, error: fetchByGatewayError } = await supabaseService
                     .from('receivables')
-                    .select('id, client_user_id, wristband_analytics_ids, manager_user_id, event_id, total_value, status, payment_gateway_id')
+                    .select('id, client_user_id, wristband_analytics_ids, counter_reservation_items, manager_user_id, event_id, total_value, status, payment_gateway_id')
                     .eq('payment_gateway_id', preferenceId)
                     .maybeSingle();
                 
@@ -388,7 +525,8 @@ serve(async (req) => {
     });
 
     const clientUserId = receivable.client_user_id;
-    const analyticsIds = receivable.wristband_analytics_ids;
+    let analyticsIds = receivable.wristband_analytics_ids as string[] | null;
+    const counterReservationItems = receivable.counter_reservation_items;
     const managerUserId = receivable.manager_user_id;
     const eventId = receivable.event_id;
     const totalValue = receivable.total_value;
@@ -447,6 +585,39 @@ serve(async (req) => {
         }
         
         console.log(`[MP Webhook] Successfully updated receivable ${finalTransactionId} status to 'paid'`);
+
+        if (
+          (!analyticsIds || analyticsIds.length === 0) &&
+          counterReservationItems &&
+          Array.isArray(counterReservationItems) &&
+          counterReservationItems.length > 0
+        ) {
+          console.log(`[MP Webhook] Materializing counter inventory tickets for ${finalTransactionId}...`);
+          const { data: materializeResult, error: materializeError } = await supabaseService.rpc(
+            'materialize_counter_checkout_tickets',
+            {
+              p_transaction_id: finalTransactionId,
+              p_client_user_id: clientUserId,
+            },
+          );
+          if (materializeError) {
+            console.error('[MP Webhook] CRITICAL: counter materialization failed:', materializeError);
+            throw new Error(`Failed to materialize counter tickets: ${materializeError.message}`);
+          }
+          const matPayload = materializeResult as { analytics_ids?: string[] } | null;
+          if (matPayload?.analytics_ids && Array.isArray(matPayload.analytics_ids)) {
+            analyticsIds = matPayload.analytics_ids as string[];
+          } else {
+            const { data: refreshedReceivable } = await supabaseService
+              .from('receivables')
+              .select('wristband_analytics_ids')
+              .eq('id', finalTransactionId)
+              .maybeSingle();
+            analyticsIds = (refreshedReceivable?.wristband_analytics_ids as string[] | null) ?? analyticsIds;
+          }
+          console.log(`[MP Webhook] Counter materialization complete. analytics count=${analyticsIds?.length ?? 0}`);
+        }
+
         await logPaymentEvent({
           transactionId: finalTransactionId,
           source: 'webhook',
@@ -648,6 +819,16 @@ serve(async (req) => {
         console.log(`  ✅ Receivable status updated to 'paid'`);
         console.log(`  ✅ Financial splits recorded (2 records)`);
         console.log(`  ✅ Wristband analytics updated (${updates.length} records)`);
+
+        await logCheckoutOps({
+          eventId: receivable.event_id,
+          correlationId: finalTransactionId,
+          operation: 'webhook_processed',
+          details: {
+            mp_payment_id: mpPaymentId,
+            tickets_updated: updates.length,
+          },
+        });
         
         return new Response(JSON.stringify({ 
             message: 'Payment approved, financial split recorded, and tickets assigned.',
@@ -656,8 +837,22 @@ serve(async (req) => {
         }), { status: 200, headers: corsHeaders });
 
     } else if (paymentStatus === 'rejected' || paymentStatus === 'cancelled') {
-        // 4. Atualizar status da transação para 'failed'
-        console.log(`[MP Webhook] Payment ${paymentStatus}. Updating receivable ${finalTransactionId} to 'failed'...`);
+        console.log(`[MP Webhook] Payment ${paymentStatus}. Releasing reservation for ${finalTransactionId}...`);
+
+        if (receivable.status === 'pending') {
+            const { error: releaseError } = await supabaseService.rpc('release_ticket_checkout_reservation', {
+                p_transaction_id: finalTransactionId,
+                p_reason: paymentStatus,
+            });
+
+            if (releaseError) {
+                console.error(`[MP Webhook] Failed to release checkout reservation for transaction ${finalTransactionId}:`, releaseError);
+            } else {
+                console.log(`[MP Webhook] Released checkout reservation for failed/cancelled transaction ${finalTransactionId}.`);
+            }
+        }
+
+        console.log(`[MP Webhook] Updating receivable ${finalTransactionId} to 'failed'...`);
         const { error: updateReceivableError } = await supabaseService
             .from('receivables')
             .update({
@@ -678,30 +873,6 @@ serve(async (req) => {
             throw updateReceivableError;
         }
 
-        // Libera pulseiras reservadas em checkout pendente que não foram atribuídas a cliente.
-        if (Array.isArray(analyticsIds) && analyticsIds.length > 0) {
-            const { error: releaseError } = await supabaseService
-                .from('wristband_analytics')
-                .update({
-                    status: 'active',
-                    event_type: 'inventory',
-                    event_data: {
-                        reservation_released_at: new Date().toISOString(),
-                        reservation_release_reason: paymentStatus,
-                        transaction_id: finalTransactionId,
-                    },
-                })
-                .in('id', analyticsIds)
-                .eq('status', 'pending')
-                .is('client_user_id', null);
-
-            if (releaseError) {
-                console.error(`[MP Webhook] Failed to release pending wristbands for transaction ${finalTransactionId}:`, releaseError);
-            } else {
-                console.log(`[MP Webhook] Released pending wristbands for failed/cancelled transaction ${finalTransactionId}.`);
-            }
-        }
-        
         console.log(`[MP Webhook] Receivable ${finalTransactionId} marked as 'failed'`);
         await logPaymentEvent({
           transactionId: finalTransactionId,

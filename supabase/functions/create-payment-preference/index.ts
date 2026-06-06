@@ -7,9 +7,34 @@ import {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-idempotency-key',
   'Content-Type': 'application/json',
 };
+
+async function logCheckoutOps(
+  supabaseService: ReturnType<typeof createClient>,
+  params: {
+    eventId: string;
+    correlationId: string;
+    operation: string;
+    status?: string;
+    durationMs?: number;
+    details?: Record<string, unknown>;
+  },
+) {
+  try {
+    await supabaseService.rpc('log_checkout_ops_event', {
+      p_event_id: params.eventId,
+      p_correlation_id: params.correlationId,
+      p_operation: params.operation,
+      p_status: params.status ?? 'ok',
+      p_duration_ms: params.durationMs ?? null,
+      p_details: params.details ?? {},
+    });
+  } catch (err) {
+    console.warn('[checkout-ops-log]', err);
+  }
+}
 
 /** Origem pública (https://loja.com) para back_urls — alinha com o domínio onde o usuário compra (evita PA_UNAUTHORIZED no MP). */
 function resolveCheckoutOrigin(
@@ -105,26 +130,20 @@ serve(async (req) => {
   console.log(`[DEBUG] Client authenticated. User ID: ${clientUserId}`);
 
   try {
-    const releaseReservedAnalytics = async (ids: string[]) => {
-      if (!ids || ids.length === 0) return;
-      const { error } = await supabaseService
-        .from('wristband_analytics')
-        .update({
-          status: 'active',
-          event_type: 'inventory',
-          event_data: {
-            reservation_released_at: new Date().toISOString(),
-          },
-        })
-        .in('id', ids)
-        .eq('status', 'pending')
-        .is('client_user_id', null);
+    const releaseCheckoutReservation = async (transactionId: string, reason: string) => {
+      const { error } = await supabaseService.rpc('release_ticket_checkout_reservation', {
+        p_transaction_id: transactionId,
+        p_reason: reason,
+      });
       if (error) {
-        console.error('[create-payment-preference] Falha ao liberar reservas:', error);
+        console.error('[create-payment-preference] Falha ao liberar reserva:', error);
       }
     };
 
     const body = (await req.json()) as Record<string, unknown>;
+    const headerIdempotency = req.headers.get('x-idempotency-key')?.trim() ?? '';
+    const bodyIdempotency = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
+    const idempotencyKey = headerIdempotency || bodyIdempotency || '';
     const { eventId, purchaseItems } = body as {
       eventId?: string;
       purchaseItems?: unknown[];
@@ -266,86 +285,123 @@ serve(async (req) => {
     console.log(
         `[DEBUG] MP checkout ingressos source=${checkoutTokenSource} collector=${checkoutCollectorId ?? 'n/a'} fee=${marketplaceFee} pct=${appliedPercentage}% gross=${totalValue}`,
     );
-    
-    // 4. Reserve/Identify available wristband analytics records
-    const analyticsIdsToReserve: string[] = [];
-    
-    for (const item of purchaseItems) {
-        const { ticketTypeId, quantity } = item;
-        
-        // Fetch N records of analytics that are 'active' and not associated with a client
-        const { data: availableAnalytics, error: fetchAnalyticsError } = await supabaseService
-            .from('wristband_analytics')
-            .select('id')
-            .eq('wristband_id', ticketTypeId)
-            .eq('status', 'active')
-            .is('client_user_id', null)
-            .limit(quantity);
 
-        if (fetchAnalyticsError) throw fetchAnalyticsError;
+    const cleanToken = mpAccessToken.trim();
+    const authorizationHeader = `Bearer ${cleanToken}`;
 
-        if (!availableAnalytics || availableAnalytics.length < quantity) {
-            return new Response(JSON.stringify({ error: `Not enough tickets available for type ${ticketTypeId}. Available: ${availableAnalytics?.length || 0}. Requested: ${quantity}.` }), { 
-                status: 409, 
-                headers: corsHeaders 
-            });
-        }
-        
-        analyticsIdsToReserve.push(...availableAnalytics.map(a => a.id));
-    }
-    
-    // 5. Insert pending transaction into receivables
-    const { data: transactionData, error: insertTransactionError } = await supabaseService
-        .from('receivables')
-        .insert({
-            client_user_id: clientUserId,
-            manager_user_id: managerUserId,
-            event_id: eventId,
-            total_value: totalValue,
-            status: 'pending',
-            payment_status: 'pending',
-            gross_amount: totalValue,
-            wristband_analytics_ids: analyticsIdsToReserve, // IDs reservados
-        })
-        .select('id')
-        .single();
+    const rpcItems = purchaseItems.map((item: any) => ({
+      wristband_id: item.ticketTypeId,
+      ticketTypeId: item.ticketTypeId,
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.price) || 0,
+      name: item.name || 'Ingresso Evento',
+    }));
 
-    if (insertTransactionError) throw insertTransactionError;
-    const transactionId = transactionData.id;
-
-    // 5.1 Reservar analytics imediatamente para evitar múltiplas compras pendentes
-    // apontarem para as mesmas pulseiras antes da confirmação de pagamento.
-    const { data: reservedRows, error: reserveError } = await supabaseService
-      .from('wristband_analytics')
-      .update({
-        status: 'pending',
-        event_type: 'checkout_pending',
-        event_data: {
-          reserved_transaction_id: transactionId,
-          reserved_at: new Date().toISOString(),
-        },
-      })
-      .in('id', analyticsIdsToReserve)
-      .eq('status', 'active')
-      .is('client_user_id', null)
-      .select('id');
+    const reserveStarted = Date.now();
+    const { data: reserveResult, error: reserveError } = await supabaseService.rpc(
+      'reserve_tickets_for_mp_checkout',
+      {
+        p_client_user_id: clientUserId,
+        p_manager_user_id: managerUserId,
+        p_event_id: eventId,
+        p_total_value: totalValue,
+        p_items: rpcItems,
+        p_idempotency_key: idempotencyKey || null,
+        p_queue_session_token: (body.queueSessionToken as string | undefined) ?? null,
+      },
+    );
 
     if (reserveError) {
-      await supabaseService.from('receivables').delete().eq('id', transactionId);
-      throw reserveError;
+      const reserveMsg = reserveError.message || 'Não foi possível reservar os ingressos.';
+      const isConflict =
+        reserveMsg.includes('esgotados') ||
+        reserveMsg.includes('reservar') ||
+        reserveMsg.includes('reservados');
+      const isRateLimited = reserveMsg.toLowerCase().includes('limite');
+      const isQueueRejected = reserveMsg.toLowerCase().includes('fila');
+      await logCheckoutOps(supabaseService, {
+        eventId,
+        correlationId: idempotencyKey || crypto.randomUUID(),
+        operation: isRateLimited
+          ? 'rate_limited'
+          : isQueueRejected
+            ? 'queue_rejected'
+            : isConflict
+              ? 'reserve_conflict'
+              : 'reserve_error',
+        status: isConflict ? 'warning' : 'error',
+        durationMs: Date.now() - reserveStarted,
+        details: { message: reserveMsg.slice(0, 300) },
+      });
+      return new Response(JSON.stringify({ error: reserveMsg }), {
+        status: isConflict ? 409 : 400,
+        headers: corsHeaders,
+      });
     }
 
-    const reservedIds = (reservedRows || []).map((r: any) => r.id as string);
-    if (reservedIds.length !== analyticsIdsToReserve.length) {
-      // Conflito de concorrência: alguém reservou/vendeu no intervalo.
-      await releaseReservedAnalytics(reservedIds);
-      await supabaseService.from('receivables').delete().eq('id', transactionId);
-      return new Response(
-        JSON.stringify({ error: 'Alguns ingressos acabaram de ser reservados por outra compra. Tente novamente.' }),
-        { status: 409, headers: corsHeaders },
-      );
+    const reservePayload = reserveResult as {
+      ok?: boolean;
+      duplicate?: boolean;
+      transaction_id?: string;
+    };
+
+    if (!reservePayload?.ok || !reservePayload.transaction_id) {
+      return new Response(JSON.stringify({ error: 'Resposta inválida ao reservar ingressos.' }), {
+        status: 500,
+        headers: corsHeaders,
+      });
     }
-    
+
+    const transactionId = reservePayload.transaction_id;
+
+    await logCheckoutOps(supabaseService, {
+      eventId,
+      correlationId: idempotencyKey || transactionId,
+      operation: 'reserve_ok',
+      status: 'ok',
+      durationMs: Date.now() - reserveStarted,
+      details: {
+        transaction_id: transactionId,
+        duplicate: reservePayload.duplicate === true,
+      },
+    });
+
+    if (reservePayload.duplicate === true) {
+      const { data: existingTx } = await supabaseService
+        .from('receivables')
+        .select('id, mp_preference_id, status')
+        .eq('id', transactionId)
+        .maybeSingle();
+
+      if (existingTx?.mp_preference_id && existingTx.status === 'pending') {
+        const prefResp = await fetch(
+          `https://api.mercadopago.com/checkout/preferences/${existingTx.mp_preference_id}`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: authorizationHeader,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+
+        if (prefResp.ok) {
+          const existingPref = await prefResp.json();
+          if (existingPref.init_point) {
+            return new Response(JSON.stringify({
+              message: 'Payment preference already created for this checkout attempt.',
+              checkoutUrl: existingPref.init_point,
+              transactionId,
+              duplicate: true,
+            }), {
+              status: 200,
+              headers: corsHeaders,
+            });
+          }
+        }
+      }
+    }
+
     // 6. Prepare MP Preference Items
     // IMPORTANTE: unit_price deve ser número, não string
     const mpItems = purchaseItems.map((item: any) => ({
@@ -364,8 +420,7 @@ serve(async (req) => {
     
     const base = checkoutOrigin.replace(/\/$/, '');
     if (!base) {
-      await releaseReservedAnalytics(analyticsIdsToReserve);
-      await supabaseService.from('receivables').delete().eq('id', transactionId);
+      await releaseCheckoutReservation(transactionId, 'invalid_checkout_origin');
       return new Response(
         JSON.stringify({
           error: 'SITE_URL ou clientOrigin inválido. Configure SITE_URL nas secrets da função e/ou envie clientOrigin do front.',
@@ -385,8 +440,7 @@ serve(async (req) => {
     // 8. Create MP Preference usando API REST diretamente (mais confiável que SDK)
     // Validação: Preferência deve ter pelo menos um item com preço válido
     if (!mpItems || mpItems.length === 0 || mpItems.some((item: any) => !item.unit_price || item.unit_price <= 0)) {
-        await releaseReservedAnalytics(analyticsIdsToReserve);
-        await supabaseService.from('receivables').delete().eq('id', transactionId);
+        await releaseCheckoutReservation(transactionId, 'invalid_mp_items');
         return new Response(JSON.stringify({ error: 'Itens de pagamento inválidos. Verifique os preços.' }), { 
             status: 400, 
             headers: corsHeaders 
@@ -411,12 +465,7 @@ serve(async (req) => {
 
     console.log(`[DEBUG] Creating MP preference with access token length: ${mpAccessToken.length}`);
     console.log(`[DEBUG] Preference data:`, JSON.stringify(preferenceData, null, 2));
-    
-    // Formato correto do header Authorization para Mercado Pago
-    // IMPORTANTE: Token deve estar limpo (sem espaços) e no formato Bearer
-    const cleanToken = mpAccessToken.trim();
-    const authorizationHeader = `Bearer ${cleanToken}`;
-    
+
     console.log(`[DEBUG] Authorization header length: ${authorizationHeader.length}`);
     console.log(`[DEBUG] Token prefix: ${cleanToken.substring(0, 15)}...`);
     
@@ -463,8 +512,7 @@ serve(async (req) => {
             ? 'Token do Mercado Pago recusado. Verifique o Access Token em Perfil da Empresa → Ingressos MP (conta do gestor vinculada ao marketplace EventFest).'
             : undefined;
 
-        await releaseReservedAnalytics(analyticsIdsToReserve);
-        await supabaseService.from('receivables').delete().eq('id', transactionId);
+        await releaseCheckoutReservation(transactionId, 'mp_preference_failed');
 
         const httpStatus = isPolicyBlock || mpApiResponse.status === 403 ? 403 : 502;
 
@@ -490,9 +538,7 @@ serve(async (req) => {
     console.log(`[DEBUG] MP response received. ID: ${mpResponse.id}, Init point: ${mpResponse.init_point}`);
     
     if (!mpResponse.init_point) {
-        // Se falhar, reverter a transação pendente
-        await releaseReservedAnalytics(analyticsIdsToReserve);
-        await supabaseService.from('receivables').delete().eq('id', transactionId);
+        await releaseCheckoutReservation(transactionId, 'mp_missing_init_point');
         return new Response(JSON.stringify({ error: 'URL de pagamento não foi gerada pelo Mercado Pago. Verifique as configurações.' }), { 
             status: 500, 
             headers: corsHeaders 
