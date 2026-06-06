@@ -9,6 +9,8 @@ import { buildComplimentarySeatUrl } from '@/utils/public-app-url';
 import { buildSeatWhatsAppMessage } from '@/utils/complimentary-share-text';
 import { copyTextToClipboard } from '@/utils/copy-to-clipboard';
 import { parseEventLocalDay } from '@/utils/format-event-date';
+import { saveComplimentaryReturnPath } from '@/utils/complimentary-auth-return';
+import { useProfile } from '@/hooks/use-profile';
 
 type BundlePublic = {
     ok: boolean;
@@ -68,6 +70,9 @@ const ComplimentaryBundlePage: React.FC = () => {
     const [holderView, setHolderView] = useState<HolderView | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
 
+    const { profile } = useProfile(userId ?? undefined);
+    const isManagerAccount = profile?.tipo_usuario_id === 2;
+
     const returnPath = useMemo(
         () => (token ? `/cortesia/pacote?token=${encodeURIComponent(token)}` : '/'),
         [token],
@@ -100,6 +105,12 @@ const ComplimentaryBundlePage: React.FC = () => {
         const payload = data as HolderView;
         if (payload.ok) {
             setHolderView(payload);
+        }
+    }, [token]);
+
+    useEffect(() => {
+        if (token) {
+            saveComplimentaryReturnPath(`/cortesia/pacote?token=${encodeURIComponent(token)}`);
         }
     }, [token]);
 
@@ -226,6 +237,15 @@ const ComplimentaryBundlePage: React.FC = () => {
                     {inactiveMessage && (
                         <p className="text-amber-300 text-sm rounded-lg border border-amber-500/30 bg-amber-950/30 p-3">
                             {inactiveMessage}
+                        </p>
+                    )}
+
+                    {isManagerAccount && userId && bundle.status === 'active' && (
+                        <p className="text-cyan-200/90 text-xs rounded-lg border border-cyan-500/30 bg-cyan-950/30 p-3">
+                            Você entrou com conta de gestor. Use esta tela para distribuir cortesias deste pacote.
+                            Após cada convidado resgatar, o ingresso dele aparece em{' '}
+                            <strong className="text-white">Meus Ingressos</strong> na conta dele — o seu ingresso
+                            pessoal (se resgatar um link individual) também ficará em Meus Ingressos.
                         </p>
                     )}
 

@@ -1,13 +1,31 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { showError } from '@/utils/toast';
 import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
 import { registerUserViaResend } from '@/utils/auth-email-via-resend';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    isComplimentaryReturnPath,
+    saveComplimentaryReturnPath,
+} from '@/utils/complimentary-auth-return';
+import { clearCompanyRegisterDraft } from '@/utils/manager-company-registration';
 
 const Register: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const returnTo = (location.state as { from?: string } | null)?.from;
+    const complimentaryReturnPath = isComplimentaryReturnPath(returnTo)
+        ? returnTo
+        : peekComplimentaryReturnPath();
+
+    useEffect(() => {
+        if (complimentaryReturnPath) {
+            saveComplimentaryReturnPath(complimentaryReturnPath);
+            clearCompanyRegisterDraft();
+        }
+    }, [complimentaryReturnPath]);
+
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -130,15 +148,23 @@ const Register: React.FC = () => {
         const genderToSave = formData.gender || null;
 
         try {
+            if (complimentaryReturnPath) {
+                saveComplimentaryReturnPath(complimentaryReturnPath);
+                clearCompanyRegisterDraft();
+            }
+
             const registerResult = await registerUserViaResend({
                 email: formData.email,
                 password: formData.password,
-                redirectPath: '/login',
+                redirectPath: complimentaryReturnPath
+                    ? buildComplimentaryLoginRedirectPath(complimentaryReturnPath)
+                    : '/login',
                 metadata: {
                     name: formData.name,
                     cpf: cleanCPF,
                     birth_date: formData.birthDate,
                     gender: genderToSave,
+                    account_intent: 'client',
                 },
             });
 
@@ -161,9 +187,17 @@ const Register: React.FC = () => {
             <EmailConfirmationScreen
                 email={formData.email}
                 variant="client"
-                loginTo="/login"
-                onBack={() => navigate('/')}
-                backLabel="Voltar para a página inicial"
+                loginTo={
+                    complimentaryReturnPath
+                        ? buildComplimentaryLoginRedirectPath(complimentaryReturnPath)
+                        : '/login'
+                }
+                onBack={() => navigate(complimentaryReturnPath ?? '/')}
+                backLabel={
+                    complimentaryReturnPath
+                        ? 'Voltar ao pacote cortesia'
+                        : 'Voltar para a página inicial'
+                }
             />
         );
     }
@@ -430,7 +464,13 @@ const Register: React.FC = () => {
                                     Já tem uma conta?{' '}
                                     <button
                                         type="button"
-                                        onClick={() => navigate('/login')}
+                                        onClick={() =>
+                                            navigate('/login', {
+                                                state: complimentaryReturnPath
+                                                    ? { from: complimentaryReturnPath }
+                                                    : undefined,
+                                            })
+                                        }
                                         className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
                                     >
                                         Fazer Login
