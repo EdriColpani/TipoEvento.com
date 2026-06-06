@@ -76,6 +76,10 @@ import TicketValidator from "./pages/TicketValidator"; // NOVO
 import RegistrationsReports from "./pages/RegistrationsReports";
 import ClientCreditWallet from "./pages/ClientCreditWallet";
 import ClientCreditMenu from "./pages/ClientCreditMenu";
+import ManagerComplimentaryBundles from "./pages/ManagerComplimentaryBundles";
+import ManagerComplimentaryBundlesReport from "./pages/ManagerComplimentaryBundlesReport";
+import ComplimentaryBundlePage from "./pages/ComplimentaryBundlePage";
+import ComplimentarySeatRedeemPage from "./pages/ComplimentarySeatRedeemPage";
 import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
 
 const queryClient = new QueryClient();
@@ -98,6 +102,8 @@ function AppRoutes() {
             <Route path="tickets" element={<MyTickets />} />
             <Route path="wallet" element={<ClientCreditWallet />} />
             <Route path="wallet/consumo" element={<ClientCreditMenu />} />
+            <Route path="cortesia/pacote" element={<ComplimentaryBundlePage />} />
+            <Route path="cortesia/resgatar" element={<ComplimentarySeatRedeemPage />} />
           </Route>
 
           {/* Reset fora do ClientLayout: evita header “já logado” na sessão de recovery */}
@@ -121,6 +127,7 @@ function AppRoutes() {
             <Route path="/manager/events" element={<ManagerEventsList />} />
             <Route path="/manager/events/create" element={<ManagerCreateEvent />} />
             <Route path="/manager/events/edit/:id" element={<ManagerEditEvent />} />
+            <Route path="/manager/events/:eventId/cortesias" element={<ManagerComplimentaryBundles />} />
             <Route path="/manager/events/banners" element={<ManagerEventBannersList />} />
             <Route path="/manager/events/banners/create" element={<ManagerCreateEventBanner />} />
             <Route path="/manager/events/banners/edit/:id" element={<ManagerEditEventBanner />} /> 
@@ -134,6 +141,7 @@ function AppRoutes() {
             <Route path="/manager/reports/events" element={<EventReports />} />
             <Route path="/manager/reports/audience" element={<AudienceReports />} />
             <Route path="/manager/reports/registrations" element={<RegistrationsReports />} />
+            <Route path="/manager/reports/complimentary-bundles" element={<ManagerComplimentaryBundlesReport />} />
             <Route path="/manager/reports/wristband-movements" element={<WristbandMovementsReports />} />
             <Route path="/manager/reports/listing-monthly" element={<ManagerListingMonthlyBilling />} />
             <Route path="/manager/reports/consumption-license" element={<ManagerConsumptionLicenseBilling />} />

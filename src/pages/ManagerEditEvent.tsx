@@ -6,6 +6,7 @@ import { showError } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import EventFormSteps from '@/components/EventFormSteps';
 import EventGoLiveChecklist from '@/components/EventGoLiveChecklist';
+import EventBatchInventoryConsultPanel from '@/components/EventBatchInventoryConsultPanel';
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { highlightsToText } from '@/utils/event-highlights';
 import { useProfile } from '@/hooks/use-profile';
@@ -44,6 +45,7 @@ const ManagerEditEvent: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
     const [initialEventData, setInitialEventData] = useState<EventFormData | null>(null);
+    const [inventoryMode, setInventoryMode] = useState<string>('unit_rows');
     const [isFetching, setIsFetching] = useState(true);
     const [userId, setUserId] = useState<string | null>(null);
 
@@ -101,6 +103,7 @@ const ManagerEditEvent: React.FC = () => {
                 return;
             }
 
+            setInventoryMode((eventData as { inventory_mode?: string }).inventory_mode ?? 'unit_rows');
             setInitialEventData({
                 title: eventData.title || '',
                 description: eventData.description || '',
@@ -161,6 +164,16 @@ const ManagerEditEvent: React.FC = () => {
             </div>
 
             {id && <EventGoLiveChecklist eventId={id} />}
+
+            {id && inventoryMode === 'counter' && (
+                <div className="mb-6">
+                    <EventBatchInventoryConsultPanel
+                        eventId={id}
+                        variant="inline"
+                        showEditButton={false}
+                    />
+                </div>
+            )}
 
             <EventFormSteps 
                 eventId={id}

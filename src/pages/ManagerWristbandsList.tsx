@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, AlertTriangle, Tag, Settings } from 'lucide-react';
+import { Plus, Search, Loader2, AlertTriangle, Tag, Settings, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerWristbands, WristbandData } from '@/hooks/use-manager-wristbands';
 import { useProfile } from '@/hooks/use-profile'; // Importando o hook de perfil
+
+const formatQty = (n: number) => n.toLocaleString('pt-BR');
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -30,8 +32,17 @@ const ManagerWristbandsList: React.FC = () => {
 
     const filteredWristbands = wristbands.filter(wristband =>
         wristband.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        wristband.events?.title?.toLowerCase().includes(searchTerm.toLowerCase())
+        wristband.events?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        wristband.access_type.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const hasCounterRows = wristbands.some((w) => w.inventory_mode === 'counter');
+    const counterStockTotal = wristbands
+        .filter((w) => w.inventory_mode === 'counter')
+        .reduce((sum, w) => sum + (w.batch_stock_total ?? 0), 0);
+    const listCountLabel = hasCounterRows
+        ? `${wristbands.length} tipo(s) · ${formatQty(counterStockTotal)} ingressos em estoque`
+        : String(wristbands.length);
 
     const getStatusClasses = (status: WristbandData['status']) => {
         switch (status) {
@@ -92,7 +103,7 @@ const ManagerWristbandsList: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0 flex items-center">
                     {/* <QrCodeIcon className="h-7 w-7 mr-3" /> Removido o ícone de QR Code aqui */}
-                    {isAdminMaster ? `Todos os Ingressos (${wristbands.length})` : `Gestão de Ingressos (${wristbands.length})`}
+                    {isAdminMaster ? `Todos os Ingressos (${listCountLabel})` : `Gestão de Ingressos (${listCountLabel})`}
                 </h1>
                 <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
                     <Button
@@ -113,6 +124,20 @@ const ManagerWristbandsList: React.FC = () => {
             </div>
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
+                {hasCounterRows && (
+                    <div className="mb-6 flex items-start gap-3 rounded-xl border border-cyan-400/40 bg-cyan-950/50 p-4 text-sm text-cyan-50">
+                        <Info className="h-5 w-5 text-cyan-300 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="font-semibold text-white mb-1">Evento de grande porte</p>
+                            <p className="text-cyan-100/90 text-xs leading-relaxed">
+                                Cada linha abaixo é um <strong className="text-white">tipo</strong> (Standard, VIP…), não um
+                                ingresso individual. A quantidade cadastrada no lote aparece na coluna{' '}
+                                <strong className="text-white">Estoque</strong> (ex.: 40.000 Standard). O QR code de cada
+                                ingresso é criado automaticamente na venda — não é preciso gerar 40.000 linhas aqui.
+                            </p>
+                        </div>
+                    </div>
+                )}
                 {/* Botão movido para o topo do card, antes do campo de pesquisa */}
                 <Button 
                     onClick={() => navigate('/manager/wristbands/create')}
@@ -152,6 +177,7 @@ const ManagerWristbandsList: React.FC = () => {
                                     <TableHead className="text-left text-gray-400 font-semibold py-3">Código</TableHead>
                                     <TableHead className="text-left text-gray-400 font-semibold py-3">Evento</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3">Tipo de Acesso</TableHead>
+                                    <TableHead className="text-center text-gray-400 font-semibold py-3">Estoque</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3">Status</TableHead>
                                     <TableHead className="text-right text-gray-400 font-semibold py-3 w-[220px]">Ações</TableHead>
                                 </TableRow>
@@ -171,6 +197,24 @@ const ManagerWristbandsList: React.FC = () => {
                                             </TableCell>
                                             <TableCell className="text-center py-4">
                                                 <span className="text-yellow-500 font-medium">{wristband.access_type}</span>
+                                            </TableCell>
+                                            <TableCell className="text-center py-4 tabular-nums text-gray-200">
+                                                {wristband.inventory_mode === 'counter' ? (
+                                                    <div className="text-xs sm:text-sm">
+                                                        <div className="font-semibold text-white">
+                                                            {formatQty(wristband.batch_stock_total ?? 0)}
+                                                        </div>
+                                                        <div className="text-gray-400 text-[11px]">
+                                                            disp.{' '}
+                                                            {formatQty(wristband.batch_stock_available ?? wristband.batch_stock_total ?? 0)}
+                                                            {(wristband.batch_stock_sold ?? 0) > 0 && (
+                                                                <> · vend. {formatQty(wristband.batch_stock_sold ?? 0)}</>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-gray-500 text-xs">Unitário</span>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-center py-4">
                                                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusClasses(wristband.status)}`}>

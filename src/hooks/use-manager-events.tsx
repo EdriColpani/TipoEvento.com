@@ -14,6 +14,7 @@ export interface ManagerEvent {
     company_id: string;
     /** Preenchido só para Admin Master (lista global). */
     company_name?: string | null;
+    inventory_mode?: 'counter' | 'unit_rows' | null;
 }
 
 /**
@@ -96,13 +97,17 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
             date: e.date ?? '',
             company_id: companyId,
             company_name: companyName,
+            inventory_mode:
+                e.inventory_mode === 'counter' || e.inventory_mode === 'unit_rows'
+                    ? e.inventory_mode
+                    : null,
         };
     });
 };
 
 export const useManagerEvents = (
     userId: string | undefined,
-    isAdminMaster: boolean,
+    isAdminMaster = false,
     options?: { enabled?: boolean },
 ) => {
     const queryClient = useQueryClient();

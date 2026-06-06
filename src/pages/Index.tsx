@@ -23,6 +23,7 @@ import LandingFooter from '@/components/landing/LandingFooter';
 import { formatPhoneBR } from '@/utils/phone-format';
 import { useProfile } from '@/hooks/use-profile';
 import { navigateFromPromoterCta } from '@/utils/promoter-registration-flow';
+import { formatPublicMinPrice } from '@/utils/public-event-pricing';
 
 const EVENTS_PER_PAGE = 12;
 
@@ -80,13 +81,6 @@ function applyAdvancedFilters(events: PublicEvent[], filters: AdvancedFiltersSta
         return true;
     });
 }
-
-const getMinPriceDisplay = (price: number | null, isPaid: boolean, listingOnly?: boolean): string => {
-    if (listingOnly) return 'Divulgação';
-    if (isPaid && (price === null || price === 0)) return 'R$ 0,00';
-    if (!isPaid) return 'Gratuito';
-    return `R$ ${(price ?? 0).toFixed(2).replace('.', ',')}`;
-};
 
 const Index: React.FC = () => {
     const navigate = useNavigate();
@@ -536,7 +530,7 @@ const Index: React.FC = () => {
                                                                 {event.listing_only ? 'Modo' : event.is_paid ? 'A partir de' : 'Entrada'}
                                                             </span>
                                                             <span className="text-xl font-bold text-yellow-500 whitespace-nowrap">
-                                                                {getMinPriceDisplay(event.min_price, event.is_paid, event.listing_only)}
+                                                                {formatPublicMinPrice(event.min_price, event.is_paid, event.listing_only)}
                                                             </span>
                                                         </div>
                                                         <Button

@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -227,6 +227,14 @@ const ManagerReports: React.FC = () => {
                             title="Licença mensal de consumo"
                             description="Faturas da licença do plano consumo/licença — pagamento libera o módulo de créditos."
                             onClick={() => navigate('/manager/reports/consumption-license')}
+                        />
+                    )}
+                    {isManagerPro && !isAdminMaster && isPlanFeatureEnabled(features, 'wristbands', false) && billingReady && (
+                        <ReportCard
+                            icon={<Gift className="h-6 w-6 text-cyan-400" />}
+                            title="Pacotes cortesia"
+                            description="Pacotes Staff enviados, resgates por ingresso e destinatários — exclusivo gestor PRO."
+                            onClick={() => navigate('/manager/reports/complimentary-bundles')}
                         />
                     )}
                     {isAdminMaster && (

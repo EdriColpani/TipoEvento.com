@@ -9,10 +9,12 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
+import { useProfile } from '@/hooks/use-profile';
 import { assertCompanyPlanFeature } from '@/utils/plan-feature-guard';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { companyAllowsTicketSales, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
 import { validateEventTicketMinimumOnIssue } from '@/utils/min-event-tickets-validation';
+import EventBatchInventoryConsultPanel from '@/components/EventBatchInventoryConsultPanel';
 
 interface WristbandFormData {
     eventId: string;
@@ -87,9 +89,11 @@ const ManagerCreateWristband: React.FC = () => {
     }, []);
 
     // Fetch manager's company ID and events
+    const { profile } = useProfile(userId || undefined);
+    const isAdminMaster = profile?.tipo_usuario_id === 1;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId || undefined);
     const { billing, isLoading: isLoadingBilling } = useCompanyBilling(company?.id);
-    const { events, isLoading: isLoadingEvents } = useManagerEvents(userId || undefined);
+    const { events, isLoading: isLoadingEvents } = useManagerEvents(userId || undefined, isAdminMaster);
     const requiresPaidTickets = companyAllowsTicketSales(billing?.billing_plan);
     const companyMinEventTickets = billing?.min_event_tickets ?? DEFAULT_MIN_EVENT_TICKETS;
 
@@ -392,23 +396,11 @@ const ManagerCreateWristband: React.FC = () => {
                             </Select>
                         </div>
 
-                        {isCounterInventoryEvent && (
-                            <div className="p-4 rounded-xl border border-cyan-400/50 bg-cyan-950/60 text-sm text-cyan-50">
-                                <p className="font-semibold text-white mb-1">Evento de grande porte</p>
-                                <p>
-                                    A quantidade de ingressos (ex.: 50.000) é definida nos{' '}
-                                    <strong className="text-white">lotes do evento</strong>, com estoque por contador.
-                                    Os QR codes são gerados automaticamente na venda — não use esta tela para emitir em massa.
-                                </p>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="mt-3 border-cyan-400/50 text-cyan-100 hover:bg-cyan-500/10"
-                                    onClick={() => navigate(`/manager/events/edit/${formData.eventId}`)}
-                                >
-                                    Editar lotes do evento
-                                </Button>
-                            </div>
+                        {formData.eventId && isCounterInventoryEvent && (
+                            <EventBatchInventoryConsultPanel
+                                eventId={formData.eventId}
+                                variant="consultation"
+                            />
                         )}
 
                         {/* Código Base, Quantidade e Tipo de Acesso */}
@@ -423,8 +415,9 @@ const ManagerCreateWristband: React.FC = () => {
                                     value={formData.baseCode} 
                                     onChange={handleChange} 
                                     placeholder="Ex: CONCERTO-VIP-A1"
-                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                    required
+                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 disabled:opacity-50"
+                                    disabled={isCounterInventoryEvent}
+                                    required={!isCounterInventoryEvent}
                                 />
                                 <p className="text-xs text-gray-500 mt-1">Este será o código único do ingresso.</p>
                             </div>
@@ -456,7 +449,11 @@ const ManagerCreateWristband: React.FC = () => {
                                     <Tag className="h-4 w-4 mr-2 text-yellow-500" />
                                     Tipo de Acesso *
                                 </label>
-                                <Select onValueChange={(value) => handleSelectChange('accessType', value)} value={formData.accessType}>
+                                <Select
+                                    onValueChange={(value) => handleSelectChange('accessType', value)}
+                                    value={formData.accessType}
+                                    disabled={isCounterInventoryEvent}
+                                >
                                     <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500">
                                         <SelectValue placeholder="Selecione o Tipo" />
                                     </SelectTrigger>
@@ -483,8 +480,9 @@ const ManagerCreateWristband: React.FC = () => {
                                 onChange={handleChange} 
                                 onBlur={handlePriceBlur}
                                 placeholder="0,00"
-                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                required
+                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 disabled:opacity-50"
+                                disabled={isCounterInventoryEvent}
+                                required={!isCounterInventoryEvent}
                             />
                             <p className="text-xs text-gray-500 mt-1">O valor de venda ou custo deste ingresso.</p>
                         </div>

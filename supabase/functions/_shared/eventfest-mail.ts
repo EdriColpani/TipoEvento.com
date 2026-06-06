@@ -342,6 +342,39 @@ ${codeBlock}`;
   });
 }
 
+export function buildComplimentaryBundleEmailHtml(input: {
+  recipientName: string;
+  eventTitle: string;
+  batchName: string;
+  quantity: number;
+  bundleUrl: string;
+  expiresAt?: string;
+}): string {
+  const expiryLine = input.expiresAt
+    ? `<p style="margin:0 0 12px;font-size:14px;color:#a3a3a3;">Válido até <strong style="color:#fff;">${escapeHtml(input.expiresAt)}</strong>.</p>`
+    : "";
+
+  const extraHtml = `<p style="margin:0 0 8px;font-size:15px;color:#ffffff;"><strong>${escapeHtml(input.eventTitle)}</strong></p>
+<p style="margin:0 0 12px;font-size:14px;color:#a3a3a3;">
+  Tipo: <strong style="color:#fff;">${escapeHtml(input.batchName)}</strong>
+  · <strong style="color:#fff;">${input.quantity}</strong> ingresso(s) cortesia
+</p>
+${expiryLine}
+<p style="margin:0;font-size:14px;color:#d4d4d4;line-height:1.6;">
+  Entre com sua conta EventFest para distribuir os ingressos às pessoas que irão ao evento.
+  Cada participante precisa resgatar o próprio ingresso com login.
+</p>`;
+
+  return wrapEventFestEmailLayout({
+    title: `Cortesia — ${input.recipientName}`,
+    intro: `Olá, ${escapeHtml(input.recipientName)}. Você recebeu um pacote cortesia para o evento abaixo.`,
+    ctaLabel: "Acessar pacote cortesia",
+    ctaUrl: input.bundleUrl,
+    extraHtml,
+    footerNote: "EventFest · Pacote cortesia enviado pelo organizador do evento.",
+  });
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

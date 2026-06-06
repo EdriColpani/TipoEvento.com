@@ -39,9 +39,11 @@ import {
     isListingOnlyCompanyPlan,
 } from '@/utils/company-billing-rules';
 import { validateMinBatchTicketSum } from '@/utils/min-event-tickets-validation';
+import { parseBatchQuantity, isValidBatchQuantity, batchQuantityAsNumber } from '@/utils/batch-quantity';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
+import EventGrandePorteGuide from '@/components/EventGrandePorteGuide';
 import EventLocationFormFields from '@/components/EventLocationFormFields';
 import { resolveEventGeoOnSave } from '@/utils/google-maps';
 import { cn } from '@/lib/utils';
@@ -154,7 +156,17 @@ const eventFormSchema = z.object({
     }
     data.batches.forEach((batch, i) => {
         if (!batch.name || !String(batch.name).trim()) ctx.addIssue({ code: 'custom', message: 'Nome do lote é obrigatório.', path: ['batches', i, 'name'] });
-        if (!batch.quantity || !/^[1-9]\d*$/.test(String(batch.quantity))) ctx.addIssue({ code: 'custom', message: 'Quantidade deve ser um número inteiro positivo.', path: ['batches', i, 'quantity'] });
+        const qtyNorm = parseBatchQuantity(batch.quantity);
+        const qtyMax = data.counter_inventory_mode ? 500_000 : undefined;
+        if (!isValidBatchQuantity(batch.quantity, qtyMax)) {
+            ctx.addIssue({
+                code: 'custom',
+                message: qtyMax && qtyNorm && Number(qtyNorm) > qtyMax
+                    ? `Quantidade máxima por lote: ${qtyMax.toLocaleString('pt-BR')}.`
+                    : 'Quantidade deve ser um número inteiro positivo (ex.: 50000 ou 50.000).',
+                path: ['batches', i, 'quantity'],
+            });
+        }
         const priceStr = batch.price ? String(batch.price).replace(/\./g, '').replace(',', '.') : '';
         if (!batch.price || !/^[0-9]+(\.[0-9]{1,2})?$/.test(priceStr)) ctx.addIssue({ code: 'custom', message: 'Preço inválido.', path: ['batches', i, 'price'] });
         if (!batch.start_date) ctx.addIssue({ code: 'custom', message: 'Data de início é obrigatória.', path: ['batches', i, 'start_date'] });
@@ -913,7 +925,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
             // Quantidade total de ingressos: pago = soma dos lotes; gratuito = capacidade (exigido pelo banco como valor positivo)
             const totalTicketsQuantity = values.batches && values.batches.length > 0
-                ? values.batches.reduce((sum, batch) => sum + Number(batch.quantity || 0), 0)
+                ? values.batches.reduce((sum, batch) => sum + batchQuantityAsNumber(batch.quantity), 0)
                 : 0;
             const totalTickets = effectiveIsPaid ? totalTicketsQuantity : Number(values.capacity);
 
@@ -1062,6 +1074,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 Boolean(eventId && salesGuard?.has_sales && lockedBatchesRef.current);
             if (effectiveIsPaid && newEventId && values.batches && !skipBatchRewrite) {
                 try {
+                    if (values.counter_inventory_mode && newEventId) {
+                        await supabase.rpc('cleanup_orphan_counter_wristbands', {
+                            p_event_id: newEventId,
+                        });
+                    }
+
                     // Exclui lotes antigos para recriar (simples para este exemplo, considerar updates mais complexos para produção)
                     const { error: deleteError } = await supabase
                         .from('event_batches')
@@ -1076,7 +1094,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     const batchesToInsert = values.batches.map(batch => ({
                         event_id: newEventId,
                         name: batch.name,
-                        quantity: Number(batch.quantity),
+                        quantity: batchQuantityAsNumber(batch.quantity),
                         price: parseFloat(batch.price.replace(',', '.')),
                         start_date: format(batch.start_date!, 'yyyy-MM-dd'),
                         end_date: format(batch.end_date!, 'yyyy-MM-dd'),
@@ -1717,14 +1735,25 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                         Evento de grande porte (estoque por lote)
                                                     </FormLabel>
                                                     <FormDescription className="text-gray-400 text-xs">
-                                                        Recomendado acima de 5.000 ingressos. Não cria uma linha no banco
-                                                        por ingresso antes da venda; o estoque é controlado por lote.
+                                                        Para 5.000+ ingressos. Estoque por lote (Standard, VIP…); QR gerado na venda.
                                                     </FormDescription>
                                                 </div>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
                                     />
+                                    <EventGrandePorteGuide active={watch('counter_inventory_mode')} />
+                                    {eventId && watch('counter_inventory_mode') && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="w-full sm:w-auto bg-black/60 border border-cyan-400/40 text-cyan-200 hover:bg-cyan-950/80 hover:text-white"
+                                            onClick={() => navigate(`/manager/events/${eventId}/cortesias`)}
+                                        >
+                                            <Ticket className="h-4 w-4 mr-2" />
+                                            Enviar pacotes cortesia (Staff / convidados)
+                                        </Button>
+                                    )}
                                     <FormField
                                         control={control}
                                         name="allow_printed_tickets"
@@ -1955,12 +1984,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                             <FormLabel className="text-white">Nome do Lote</FormLabel>
                                                             <FormControl>
                                                                 <Input 
-                                                                    placeholder="Ex: Lote Promocional" 
+                                                                    placeholder={watch('counter_inventory_mode') ? 'Ex: Standard, VIP, Staff' : 'Ex: Lote Promocional'}
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={ticketsLocked}
                                                                     {...field} 
                                                                 />
                                                             </FormControl>
+                                                            {watch('counter_inventory_mode') && (
+                                                                <FormDescription className="text-cyan-200/80 text-xs">
+                                                                    Este nome é o tipo de acesso na portaria e na venda (ex.: Standard, VIP).
+                                                                </FormDescription>
+                                                            )}
                                                             <FormMessage />
                                                         </FormItem>
                                                     )}
@@ -1973,19 +2007,23 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                             <FormLabel className="text-white">Quantidade de Ingressos</FormLabel>
                                                             <FormControl>
                                                                 <Input 
-                                                                    type="number" 
-                                                                    placeholder={watch('counter_inventory_mode') ? 'Ex: 50000' : 'Ex: 100'}
+                                                                    type="text"
+                                                                    inputMode="numeric"
+                                                                    placeholder={watch('counter_inventory_mode') ? 'Ex: 50000 ou 50.000' : 'Ex: 100'}
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={ticketsLocked}
                                                                     {...field} 
-                                                                    onChange={e => field.onChange(e.target.value)} 
-                                                                    min={1}
-                                                                    max={watch('counter_inventory_mode') ? 500000 : undefined}
+                                                                    onChange={(e) => field.onChange(e.target.value)}
+                                                                    onBlur={(e) => {
+                                                                        const normalized = parseBatchQuantity(e.target.value);
+                                                                        if (normalized) field.onChange(normalized);
+                                                                        field.onBlur();
+                                                                    }}
                                                                 />
                                                             </FormControl>
                                                             {watch('counter_inventory_mode') && (
                                                                 <FormDescription className="text-cyan-200/90 text-xs">
-                                                                    Estoque por contador: informe a quantidade total do lote (ex.: 50.000). Os QR codes são gerados na venda.
+                                                                    Estoque por contador: use 50000 ou 50.000 (mil). Os QR codes são gerados na venda.
                                                                 </FormDescription>
                                                             )}
                                                             <FormMessage />
