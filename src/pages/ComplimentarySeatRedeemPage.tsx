@@ -7,6 +7,7 @@ import { Loader2, LogIn, Ticket, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
 import { parseEventLocalDay } from '@/utils/format-event-date';
+import { saveComplimentaryReturnPath } from '@/utils/complimentary-auth-return';
 
 type SeatPublic = {
     ok: boolean;
@@ -67,6 +68,12 @@ const ComplimentarySeatRedeemPage: React.FC = () => {
         }
         setSeat(data as SeatPublic);
         setLoading(false);
+    }, [token]);
+
+    useEffect(() => {
+        if (token) {
+            saveComplimentaryReturnPath(`/cortesia/resgatar?token=${encodeURIComponent(token)}`);
+        }
     }, [token]);
 
     useEffect(() => {

@@ -5,11 +5,28 @@ import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError } from '@/utils/toast';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { resolvePostLoginRedirect } from '@/utils/post-login-redirect';
+import {
+    isComplimentaryReturnPath,
+    resolveComplimentaryReturnPath,
+} from '@/utils/complimentary-auth-return';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const returnTo = (location.state as { from?: string } | null)?.from;
+    const returnToFromQuery = (() => {
+        const raw = new URLSearchParams(location.search).get('returnTo');
+        if (!raw) return undefined;
+        try {
+            return decodeURIComponent(raw);
+        } catch {
+            return raw;
+        }
+    })();
+    const returnTo =
+        (location.state as { from?: string } | null)?.from ??
+        (isComplimentaryReturnPath(returnToFromQuery) ? returnToFromQuery : undefined) ??
+        resolveComplimentaryReturnPath(undefined) ??
+        undefined;
     const [loginData, setLoginData] = useState({ email: '', password: '' });
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -203,7 +220,11 @@ const Login: React.FC = () => {
                                 Não tem uma conta?{' '}
                                 <button
                                     type="button"
-                                    onClick={() => navigate('/register')}
+                                    onClick={() =>
+                                        navigate('/register', {
+                                            state: returnTo ? { from: returnTo } : undefined,
+                                        })
+                                    }
                                     className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
                                 >
                                     Cadastre-se

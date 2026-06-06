@@ -1,5 +1,9 @@
 import { resolveClientPostLoginPath, resolvePendingManagerRegistrationPath } from '@/utils/safe-login-redirect';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
+import {
+    consumeComplimentaryReturnPath,
+    resolveComplimentaryReturnPath,
+} from '@/utils/complimentary-auth-return';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import {
     hasPendingPromoterRegistration,
@@ -17,15 +21,27 @@ export async function resolvePostLoginRedirect(
     userId: string,
     returnTo: unknown,
 ): Promise<PostLoginRedirect> {
+    const complimentaryPath = resolveComplimentaryReturnPath(returnTo);
+    if (complimentaryPath) {
+        consumeComplimentaryReturnPath();
+        return {
+            path: resolveClientPostLoginPath(complimentaryPath),
+            message: 'Login realizado. Continue com seu ingresso cortesia.',
+        };
+    }
+
     const pendingManagerRegistration = resolvePendingManagerRegistrationPath(returnTo);
-    if (pendingManagerRegistration) {
+    if (pendingManagerRegistration && !resolveComplimentaryReturnPath(undefined)) {
         return {
             path: pendingManagerRegistration,
             message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
         };
     }
 
-    if (sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY)) {
+    if (
+        sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY) &&
+        !resolveComplimentaryReturnPath(undefined)
+    ) {
         return {
             path: MANAGER_COMPANY_REGISTER_PATH,
             message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
@@ -35,7 +51,7 @@ export async function resolvePostLoginRedirect(
     const {
         data: { user },
     } = await supabase.auth.getUser();
-    if (hasPendingPromoterRegistration(user)) {
+    if (hasPendingPromoterRegistration(user) && !resolveComplimentaryReturnPath(undefined)) {
         return {
             path: MANAGER_COMPANY_REGISTER_PATH,
             message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',

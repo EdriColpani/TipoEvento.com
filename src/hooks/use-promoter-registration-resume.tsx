@@ -8,6 +8,7 @@ import {
     MANAGER_COMPANY_REGISTER_DRAFT_KEY,
     MANAGER_COMPANY_REGISTER_PATH,
 } from '@/utils/manager-company-registration';
+import { peekComplimentaryReturnPath } from '@/utils/complimentary-auth-return';
 
 /**
  * Após confirmar e-mail, o Supabase pode redirecionar para / ou /login.
@@ -23,6 +24,10 @@ export function usePromoterRegistrationResume() {
         let cancelled = false;
 
         const resumeIfNeeded = async () => {
+            if (location.pathname.startsWith('/cortesia/') || peekComplimentaryReturnPath()) {
+                return;
+            }
+
             const {
                 data: { session },
             } = await supabase.auth.getSession();
@@ -41,6 +46,7 @@ export function usePromoterRegistrationResume() {
 
         const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
             if (cancelled || !session?.user || !isAuthEmailConfirmed(session.user)) return;
+            if (location.pathname.startsWith('/cortesia/') || peekComplimentaryReturnPath()) return;
             const hasDraft = Boolean(sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY));
             const pendingPromoter = hasPendingPromoterRegistration(session.user);
             if ((hasDraft || pendingPromoter) && location.pathname !== MANAGER_COMPANY_REGISTER_PATH) {
