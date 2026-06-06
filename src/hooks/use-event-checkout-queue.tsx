@@ -86,7 +86,7 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
                 sessionToken: null,
                 position: 0,
                 waitEstimateSeconds: 0,
-                queueEnabled: false,
+                queueEnabled: true,
                 error: err instanceof Error ? err.message : 'Erro ao entrar na fila.',
             });
         }
@@ -113,6 +113,7 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
             setState((prev) => ({
                 ...prev,
                 status: 'error',
+                queueEnabled: true,
                 error: err instanceof Error ? err.message : 'Erro ao consultar fila.',
             }));
         }
@@ -150,9 +151,11 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
         };
     }, [pollQueue, state.status]);
 
+    const canCheckout = state.status === 'admitted' && Boolean(state.sessionToken);
+
     return {
         ...state,
-        canCheckout: state.status === 'admitted',
+        canCheckout,
         joinQueue,
         pollQueue,
     };

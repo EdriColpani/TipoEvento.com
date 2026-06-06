@@ -145,8 +145,20 @@ const EventDetails: React.FC = () => {
     };
 
     const totalPrice = getTotalPrice();
-    const checkoutBlockedByQueue = queue.queueEnabled && !queue.canCheckout;
-    const queueBanner = queue.queueEnabled && queue.status === 'waiting' ? (
+    const queueCheckoutActive = isAuthenticated && !details?.event.listing_only;
+    const checkoutBlockedByQueue = queueCheckoutActive && !queue.canCheckout;
+    const queueBanner =
+        queue.status === 'joining' || queue.status === 'idle' ? (
+            <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-4 text-sm text-cyan-100 mb-4">
+                <div className="font-semibold text-white mb-1">Preparando fila virtual...</div>
+                <p className="text-xs text-cyan-200/80">Aguarde alguns segundos antes de comprar.</p>
+            </div>
+        ) : queue.status === 'error' ? (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100 mb-4">
+                <div className="font-semibold text-white mb-1">Fila virtual indisponível</div>
+                <p>{queue.error ?? 'Recarregue a página para tentar novamente.'}</p>
+            </div>
+        ) : queue.queueEnabled && queue.status === 'waiting' ? (
         <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 p-4 text-sm text-cyan-100 mb-4">
             <div className="font-semibold text-white mb-1">Fila virtual de compra</div>
             <p>
@@ -166,8 +178,19 @@ const EventDetails: React.FC = () => {
     const handleCheckout = async () => {
         if (!validatePurchaseContext()) return;
 
-        if (queue.queueEnabled && !queue.canCheckout) {
-            showError('Aguarde sua vez na fila virtual para comprar.');
+        if (!queue.canCheckout) {
+            if (queue.status === 'waiting') {
+                showError('Aguarde sua vez na fila virtual para comprar.');
+            } else if (queue.status === 'error') {
+                showError(queue.error ?? 'Erro na fila virtual. Recarregue a página.');
+            } else {
+                showError('Aguarde a fila virtual liberar sua compra.');
+            }
+            return;
+        }
+
+        if (!queue.sessionToken) {
+            showError('Sessão da fila não encontrada. Recarregue a página.');
             return;
         }
 
