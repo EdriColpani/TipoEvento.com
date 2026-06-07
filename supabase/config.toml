@@ -26,6 +26,9 @@ verify_jwt = false
 [functions.create-payment-preference]
 verify_jwt = false
 
+[functions.event-checkout-queue]
+verify_jwt = false
+
 # Webhook do Mercado Pago não envia JWT do Supabase; precisa aceitar chamadas públicas.
 [functions.mercadopago-webhook]
 verify_jwt = false

@@ -7,6 +7,9 @@ const corsHeaders = {
   'Content-Type': 'application/json',
 };
 
+const json = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: corsHeaders });
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -14,25 +17,34 @@ serve(async (req) => {
 
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: corsHeaders,
-    });
+    return json({ error: 'Faça login para entrar na fila.' }, 401);
   }
 
-  const supabaseAnon = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    { global: { headers: { Authorization: authHeader } } },
-  );
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
-  const { data: { user }, error: userError } = await supabaseAnon.auth.getUser();
+  if (!supabaseUrl || !serviceKey) {
+    console.error('[event-checkout-queue] misconfigured');
+    return json({ error: 'Servidor de fila indisponível.' }, 500);
+  }
+
+  const supabaseAuth = createClient(supabaseUrl, anonKey || serviceKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabaseAuth.auth.getUser();
+
   if (userError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: corsHeaders,
-    });
+    return json({ error: 'Sessão inválida. Faça login novamente.' }, 401);
   }
+
+  const supabaseService = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 
   try {
     const body = await req.json();
@@ -40,39 +52,53 @@ serve(async (req) => {
     const sessionToken = body.sessionToken as string | undefined;
     const action = (body.action as string | undefined) ?? 'join';
 
-    if (!eventId) {
-      return new Response(JSON.stringify({ error: 'eventId required' }), {
-        status: 400,
-        headers: corsHeaders,
-      });
+    if (!eventId && action === 'join') {
+      return json({ error: 'eventId obrigatório.' }, 400);
     }
 
     if (action === 'poll') {
       if (!sessionToken) {
-        return new Response(JSON.stringify({ error: 'sessionToken required' }), {
-          status: 400,
-          headers: corsHeaders,
-        });
+        return json({ error: 'sessionToken obrigatório.' }, 400);
       }
 
-      const { data, error } = await supabaseAnon.rpc('poll_event_checkout_queue', {
+      const { data, error } = await supabaseService.rpc('poll_event_checkout_queue', {
         p_session_token: sessionToken,
       });
 
-      if (error) throw error;
-      return new Response(JSON.stringify(data), { status: 200, headers: corsHeaders });
+      if (error) {
+        console.error('[event-checkout-queue] poll rpc:', error.message);
+        return json({ error: error.message }, 500);
+      }
+
+      if (data && typeof data === 'object' && (data as { ok?: boolean }).ok === false) {
+        const msg = (data as { error?: string }).error ?? 'Erro ao consultar fila.';
+        return json({ error: msg }, 400);
+      }
+
+      return json((data ?? {}) as Record<string, unknown>);
     }
 
-    const { data, error } = await supabaseAnon.rpc('join_event_checkout_queue', {
+    const { data, error } = await supabaseService.rpc('join_event_checkout_queue', {
       p_event_id: eventId,
       p_client_user_id: user.id,
     });
 
-    if (error) throw error;
-    return new Response(JSON.stringify(data), { status: 200, headers: corsHeaders });
+    if (error) {
+      console.error('[event-checkout-queue] join rpc:', error.message);
+      return json({ error: error.message }, 500);
+    }
+
+    if (data && typeof data === 'object' && (data as { ok?: boolean }).ok === false) {
+      const msg = (data as { error?: string }).error ?? 'Erro ao entrar na fila.';
+      return json({ error: msg }, 400);
+    }
+
+    return json((data ?? {}) as Record<string, unknown>);
   } catch (error) {
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Internal Server Error',
-    }), { status: 500, headers: corsHeaders });
+    console.error('[event-checkout-queue] catch:', error);
+    return json(
+      { error: error instanceof Error ? error.message : 'Erro interno na fila virtual.' },
+      500,
+    );
   }
 });

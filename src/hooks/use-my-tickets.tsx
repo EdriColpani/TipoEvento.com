@@ -239,11 +239,27 @@ export async function emitReceivableTickets(receivableId: string): Promise<{
         console.warn('client_emit_receivable_tickets:', error.message);
         return { ok: false, error: error.message };
     }
-    const payload = data as { ok?: boolean; updated?: number; error?: string } | null;
+    const payload = data as {
+        ok?: boolean;
+        updated?: number;
+        expected?: number;
+        error?: string;
+        materialized?: number;
+    } | null;
+    if (!payload?.ok) {
+        const err = payload?.error ?? 'unknown';
+        if (err === 'no_analytics_ids') {
+            return { ok: false, error: 'Ingressos ainda não foram gerados. Use Verificar no MP.' };
+        }
+        if (err === 'receivable_not_paid') {
+            return { ok: false, error: 'Pagamento ainda não confirmado.' };
+        }
+        return { ok: false, error: err };
+    }
     return {
-        ok: Boolean(payload?.ok),
-        updated: payload?.updated,
-        error: payload?.error,
+        ok: true,
+        updated: payload.updated,
+        error: undefined,
     };
 }
 
