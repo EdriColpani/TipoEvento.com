@@ -153,7 +153,10 @@ const ComplimentaryBundlePage: React.FC = () => {
                 if (payload.error === 'email_mismatch') {
                     showError('Entre com o e-mail indicado pelo organizador do evento.');
                 } else if (payload.error === 'holder_already_claimed') {
-                    showError('Este pacote já foi vinculado a outra conta.');
+                    showError(
+                        'Este pacote já foi vinculado a outra conta EventFest. ' +
+                            'Use a conta que acessou o link primeiro ou peça ao organizador para liberar o vínculo.',
+                    );
                 } else {
                     showError('Não foi possível acessar o pacote.');
                 }
@@ -272,7 +275,26 @@ const ComplimentaryBundlePage: React.FC = () => {
                         </div>
                     )}
 
-                    {userId && !bundle.is_holder && !holderView?.ok && bundle.status === 'active' && (
+                    {userId &&
+                        !bundle.is_holder &&
+                        !holderView?.ok &&
+                        bundle.status === 'active' &&
+                        bundle.holder_claimed && (
+                            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-sm text-amber-100">
+                                <p className="font-medium text-white mb-1">Pacote vinculado a outra conta</p>
+                                <p>
+                                    Alguém já clicou em &quot;Acessar pacote&quot; com outra conta EventFest (pode ter
+                                    sido um teste anterior). Entre com aquela conta ou peça ao organizador do evento
+                                    para <strong className="text-white">liberar o vínculo</strong> e tente de novo.
+                                </p>
+                            </div>
+                        )}
+
+                    {userId &&
+                        !bundle.is_holder &&
+                        !holderView?.ok &&
+                        bundle.status === 'active' &&
+                        !bundle.holder_claimed && (
                         <Button
                             className="w-full bg-yellow-500 text-black hover:bg-yellow-600"
                             disabled={claiming}
