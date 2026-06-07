@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 
 export type CheckoutQueueStatus = 'idle' | 'joining' | 'waiting' | 'admitted' | 'error';
 
@@ -13,6 +14,43 @@ interface QueueState {
 }
 
 const STORAGE_KEY_PREFIX = 'eventfest_checkout_queue:';
+
+function rpcPayloadError(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+    const record = payload as Record<string, unknown>;
+    if (record.ok === false && typeof record.error === 'string') {
+        return record.error;
+    }
+    return null;
+}
+
+async function invokeCheckoutQueueFunction(
+    eventId: string,
+    action: 'join' | 'poll',
+    sessionToken?: string,
+): Promise<Record<string, unknown>> {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) throw new Error('Faça login para entrar na fila.');
+
+    const response = await supabase.functions.invoke('event-checkout-queue', {
+        body: {
+            eventId,
+            action,
+            sessionToken,
+        },
+        headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.error) {
+        throw new Error(await parseEdgeFunctionError(response.error, response.data));
+    }
+
+    const payloadError = rpcPayloadError(response.data);
+    if (payloadError) throw new Error(payloadError);
+
+    return (response.data ?? {}) as Record<string, unknown>;
+}
 
 export function useEventCheckoutQueue(eventId: string | undefined, enabled: boolean) {
     const [state, setState] = useState<QueueState>({
@@ -36,7 +74,7 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
             sessionStorage.setItem(storageKey, sessionToken);
         }
 
-        if (!queueEnabled || statusRaw === 'admitted') {
+        if (statusRaw === 'admitted') {
             setState({
                 status: 'admitted',
                 sessionToken,
@@ -48,13 +86,25 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
             return;
         }
 
+        if (statusRaw === 'waiting') {
+            setState({
+                status: 'waiting',
+                sessionToken,
+                position: Number(payload.position ?? 0),
+                waitEstimateSeconds: Number(payload.wait_estimate_seconds ?? 30),
+                queueEnabled: true,
+                error: null,
+            });
+            return;
+        }
+
         setState({
-            status: 'waiting',
-            sessionToken,
-            position: Number(payload.position ?? 0),
-            waitEstimateSeconds: Number(payload.wait_estimate_seconds ?? 30),
-            queueEnabled: true,
-            error: null,
+            status: 'error',
+            sessionToken: null,
+            position: 0,
+            waitEstimateSeconds: 0,
+            queueEnabled: queueEnabled || true,
+            error: typeof payload.error === 'string' ? payload.error : 'Status da fila inválido.',
         });
     }, [storageKey]);
 
@@ -67,27 +117,55 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
         setState((prev) => ({ ...prev, status: 'joining', error: null }));
 
         try {
-            const { data: sess } = await supabase.auth.getSession();
-            const token = sess.session?.access_token;
-            if (!token) throw new Error('Faça login para entrar na fila.');
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Faça login para entrar na fila.');
 
-            const { data, error } = await supabase.functions.invoke('event-checkout-queue', {
-                body: { eventId, action: 'join' },
-                headers: { Authorization: `Bearer ${token}` },
+            let payload: Record<string, unknown> | null = null;
+            let lastError: Error | null = null;
+
+            const { data, error } = await supabase.rpc('join_event_checkout_queue', {
+                p_event_id: eventId,
+                p_client_user_id: user.id,
             });
 
-            if (error) throw error;
-            if (data?.error) throw new Error(String(data.error));
+            if (error) {
+                lastError = new Error(error.message);
+            } else {
+                const payloadError = rpcPayloadError(data);
+                if (payloadError) {
+                    lastError = new Error(payloadError);
+                } else {
+                    payload = data as Record<string, unknown>;
+                }
+            }
 
-            applyPayload(data as Record<string, unknown>);
+            if (!payload) {
+                try {
+                    payload = await invokeCheckoutQueueFunction(eventId, 'join');
+                } catch (edgeErr) {
+                    throw lastError ?? edgeErr;
+                }
+            }
+
+            applyPayload(payload);
         } catch (err) {
+            let message = err instanceof Error ? err.message : 'Erro ao entrar na fila.';
+            if (message.includes('non-2xx')) {
+                message =
+                    'Fila virtual indisponível. Verifique se a migration da fila foi aplicada no Supabase (db push).';
+            }
+            if (message.includes('Could not find the function')) {
+                message =
+                    'Função da fila não encontrada no banco. Execute supabase db push no projeto Supabase.';
+            }
+
             setState({
                 status: 'error',
                 sessionToken: null,
                 position: 0,
                 waitEstimateSeconds: 0,
                 queueEnabled: true,
-                error: err instanceof Error ? err.message : 'Erro ao entrar na fila.',
+                error: message,
             });
         }
     }, [applyPayload, enabled, eventId]);
@@ -96,19 +174,21 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
         if (!eventId || !state.sessionToken || state.status !== 'waiting') return;
 
         try {
-            const { data: sess } = await supabase.auth.getSession();
-            const token = sess.session?.access_token;
-            if (!token) return;
+            let payload: Record<string, unknown> | null = null;
 
-            const { data, error } = await supabase.functions.invoke('event-checkout-queue', {
-                body: { eventId, action: 'poll', sessionToken: state.sessionToken },
-                headers: { Authorization: `Bearer ${token}` },
+            const { data, error } = await supabase.rpc('poll_event_checkout_queue', {
+                p_session_token: state.sessionToken,
             });
 
-            if (error) throw error;
-            if (data?.error) throw new Error(String(data.error));
+            if (error) {
+                payload = await invokeCheckoutQueueFunction(eventId, 'poll', state.sessionToken);
+            } else {
+                const payloadError = rpcPayloadError(data);
+                if (payloadError) throw new Error(payloadError);
+                payload = data as Record<string, unknown>;
+            }
 
-            applyPayload(data as Record<string, unknown>);
+            applyPayload(payload);
         } catch (err) {
             setState((prev) => ({
                 ...prev,

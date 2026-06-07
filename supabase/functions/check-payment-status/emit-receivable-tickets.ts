@@ -1,17 +1,97 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
-/** Vincula ingressos reservados ao cliente (mesma regra da RPC client_emit_receivable_tickets). */
-export async function emitReceivableTicketsForPaidPurchase(
+type ReceivableRow = {
+  id: string;
+  status: string;
+  payment_status: string | null;
+  client_user_id: string | null;
+  wristband_analytics_ids: string[] | null;
+  counter_reservation_items: unknown;
+  paid_at: string | null;
+};
+
+function expectedTicketCount(receivable: {
+  wristband_analytics_ids: string[] | null;
+  counter_reservation_items: unknown;
+}): number {
+  const ids = Array.isArray(receivable.wristband_analytics_ids)
+    ? receivable.wristband_analytics_ids
+    : [];
+  if (ids.length > 0) return ids.length;
+
+  const items = receivable.counter_reservation_items;
+  if (!Array.isArray(items)) return 0;
+
+  return items.reduce((sum, item) => {
+    const qty = Number((item as { quantity?: unknown })?.quantity ?? 0);
+    return sum + (Number.isFinite(qty) && qty > 0 ? qty : 0);
+  }, 0);
+}
+
+async function loadReceivable(
   supabaseService: SupabaseClient,
   receivableId: string,
-): Promise<{ updated: number; expected: number }> {
-  const { data: receivable, error } = await supabaseService
+): Promise<ReceivableRow | null> {
+  const { data, error } = await supabaseService
     .from('receivables')
-    .select('id, status, payment_status, client_user_id, wristband_analytics_ids, paid_at')
+    .select(
+      'id, status, payment_status, client_user_id, wristband_analytics_ids, counter_reservation_items, paid_at',
+    )
     .eq('id', receivableId)
     .maybeSingle();
 
-  if (error || !receivable) {
+  if (error || !data) return null;
+  return data as ReceivableRow;
+}
+
+async function materializeCounterTicketsIfNeeded(
+  supabaseService: SupabaseClient,
+  receivable: ReceivableRow,
+): Promise<{ ok: boolean; error?: string }> {
+  const existingIds = Array.isArray(receivable.wristband_analytics_ids)
+    ? receivable.wristband_analytics_ids
+    : [];
+  if (existingIds.length > 0) {
+    return { ok: true };
+  }
+
+  const items = receivable.counter_reservation_items;
+  if (!Array.isArray(items) || items.length === 0) {
+    return { ok: true };
+  }
+
+  if (!receivable.client_user_id) {
+    return { ok: false, error: 'Cliente não informado na transação.' };
+  }
+
+  const { data, error } = await supabaseService.rpc('materialize_counter_checkout_tickets', {
+    p_transaction_id: receivable.id,
+    p_client_user_id: receivable.client_user_id,
+  });
+
+  if (error) {
+    console.error('[emit-receivable-tickets] materialize failed:', error.message);
+    return { ok: false, error: error.message };
+  }
+
+  const payload = data as { ok?: boolean; skipped?: boolean; error?: string } | null;
+  if (payload?.ok === true || payload?.skipped === true) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    error: payload?.error ?? 'Falha ao gerar ingressos do estoque.',
+  };
+}
+
+/** Materializa (counter) e vincula ingressos ao cliente após pagamento aprovado. */
+export async function emitReceivableTicketsForPaidPurchase(
+  supabaseService: SupabaseClient,
+  receivableId: string,
+): Promise<{ updated: number; expected: number; materialized?: number }> {
+  let receivable = await loadReceivable(supabaseService, receivableId);
+  if (!receivable) {
     return { updated: 0, expected: 0 };
   }
 
@@ -24,10 +104,17 @@ export async function emitReceivableTicketsForPaidPurchase(
     return { updated: 0, expected: 0 };
   }
 
+  const materializeResult = await materializeCounterTicketsIfNeeded(supabaseService, receivable);
+  if (!materializeResult.ok) {
+    return { updated: 0, expected: expectedTicketCount(receivable) };
+  }
+
+  receivable = (await loadReceivable(supabaseService, receivableId)) ?? receivable;
+
   const ids = Array.isArray(receivable.wristband_analytics_ids)
     ? receivable.wristband_analytics_ids
     : [];
-  const expected = ids.length;
+  const expected = ids.length > 0 ? ids.length : expectedTicketCount(receivable);
   if (expected === 0) {
     return { updated: 0, expected: 0 };
   }
@@ -72,7 +159,20 @@ export async function emitReceivableTicketsForPaidPurchase(
     }
   }
 
-  return { updated, expected };
+  const { count } = await supabaseService
+    .from('wristband_analytics')
+    .select('id', { count: 'exact', head: true })
+    .in('id', ids)
+    .eq('client_user_id', receivable.client_user_id)
+    .eq('event_type', 'purchase')
+    .in('status', ['active', 'used']);
+
+  const assigned = count ?? 0;
+
+  return {
+    updated: Math.max(updated, assigned),
+    expected,
+  };
 }
 
 export async function countAssignedTickets(
@@ -80,18 +180,21 @@ export async function countAssignedTickets(
   receivableId: string,
   clientUserId: string,
 ): Promise<{ assigned: number; expected: number }> {
-  const { data: receivable } = await supabaseService
-    .from('receivables')
-    .select('wristband_analytics_ids')
-    .eq('id', receivableId)
-    .maybeSingle();
+  const receivable = await loadReceivable(supabaseService, receivableId);
+  if (!receivable) {
+    return { assigned: 0, expected: 0 };
+  }
 
-  const ids = Array.isArray(receivable?.wristband_analytics_ids)
+  const ids = Array.isArray(receivable.wristband_analytics_ids)
     ? receivable.wristband_analytics_ids
     : [];
-  const expected = ids.length;
+  const expected = ids.length > 0 ? ids.length : expectedTicketCount(receivable);
   if (expected === 0) {
     return { assigned: 0, expected: 0 };
+  }
+
+  if (ids.length === 0) {
+    return { assigned: 0, expected };
   }
 
   const { count } = await supabaseService
