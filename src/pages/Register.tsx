@@ -6,7 +6,9 @@ import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
 import { registerUserViaResend } from '@/utils/auth-email-via-resend';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+    buildComplimentaryLoginRedirectPath,
     isComplimentaryReturnPath,
+    peekComplimentaryReturnPath,
     saveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
 import { clearCompanyRegisterDraft } from '@/utils/manager-company-registration';

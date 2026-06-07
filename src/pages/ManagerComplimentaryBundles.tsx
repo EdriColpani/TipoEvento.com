@@ -221,6 +221,31 @@ const ManagerComplimentaryBundles: React.FC = () => {
         }
     };
 
+    const handleResetHolder = async (bundle: ComplimentaryBundleRow) => {
+        if (
+            !window.confirm(
+                `Liberar o vínculo do pacote de "${bundle.recipient_name}"? ` +
+                    'Outra conta poderá acessar o link e distribuir os ingressos.',
+            )
+        ) {
+            return;
+        }
+        const { data, error } = await supabase.rpc('reset_complimentary_bundle_holder', {
+            p_bundle_id: bundle.id,
+        });
+        const payload = data as { ok?: boolean; error?: string; redeemed_count?: number };
+        if (error || !payload?.ok) {
+            if (payload?.error === 'seats_already_redeemed') {
+                showError('Não é possível liberar: já há ingressos resgatados deste pacote.');
+            } else {
+                showError('Não foi possível liberar o vínculo.');
+            }
+            return;
+        }
+        showSuccess('Vínculo liberado. Envie o link novamente ao destinatário.');
+        void queryClient.invalidateQueries({ queryKey: ['complimentaryBundles', eventId] });
+    };
+
     const handleCancel = async (bundleId: string) => {
         if (!window.confirm('Cancelar este pacote e liberar o estoque não resgatado?')) return;
         const { data, error } = await supabase.rpc('cancel_complimentary_bundle', {
@@ -440,6 +465,16 @@ const ManagerComplimentaryBundles: React.FC = () => {
                                         )}
                                     </div>
                                     <div className="flex flex-wrap gap-2">
+                                        {bundle.status === 'active' && bundle.holder_claimed && bundle.redeemed_count === 0 && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/30"
+                                                onClick={() => void handleResetHolder(bundle)}
+                                            >
+                                                Liberar vínculo
+                                            </Button>
+                                        )}
                                         <Button
                                             size="sm"
                                             variant="outline"
