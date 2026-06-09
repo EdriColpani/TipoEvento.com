@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -198,6 +198,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const queryClient = useQueryClient();
     const [currentStep, setCurrentStep] = useState(1);
     const skipStepScrollRef = useRef(true);
+    const formTopRef = useRef<HTMLDivElement>(null);
     const [isSaving, setIsSaving] = useState(false);
     /** Evita duplo INSERT/update: `isSaving` só atualiza no próximo render; clique duplo dispara dois submits no mesmo tick. */
     const submitInFlightRef = useRef(false);
@@ -216,13 +217,23 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         }
     }, [draftPersistedEventId]);
 
-    useEffect(() => {
+    const scrollFormToTop = useCallback(() => {
+        formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    }, []);
+
+    useLayoutEffect(() => {
         if (skipStepScrollRef.current) {
             skipStepScrollRef.current = false;
             return;
         }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, [currentStep]);
+        scrollFormToTop();
+        const t = window.setTimeout(scrollFormToTop, 50);
+        return () => window.clearTimeout(t);
+    }, [currentStep, scrollFormToTop]);
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
     const [useTurmas, setUseTurmas] = useState(false);
@@ -1282,6 +1293,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     return (
         <FormProvider {...methods}>
+            <div ref={formTopRef} className="scroll-mt-24" aria-hidden />
             <form
                 onSubmit={onFormSubmit}
                 className={cn('space-y-8', freezeFormAfterCreate && 'pointer-events-none opacity-60')}
@@ -2102,7 +2114,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         {currentStep > 1 && (
                             <Button 
                                 type="button" 
-                                onClick={() => setCurrentStep(prev => prev - 1)}
+                                onClick={() => {
+                                    setCurrentStep(prev => prev - 1);
+                                    window.setTimeout(scrollFormToTop, 0);
+                                }}
                                 variant="outline"
                                 className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-2 text-base font-semibold transition-all duration-300 cursor-pointer"
                             >
@@ -2123,6 +2138,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                         }
                                     }
                                     setCurrentStep(prev => prev + 1);
+                                    window.setTimeout(scrollFormToTop, 0);
                                 }}
                                 className="bg-yellow-500 text-black hover:bg-yellow-600 py-2 text-base font-semibold transition-all duration-300 cursor-pointer ml-auto"
                             >
