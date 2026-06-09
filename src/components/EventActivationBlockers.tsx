@@ -25,8 +25,7 @@ const EventActivationBlockers: React.FC<EventActivationBlockersProps> = ({
     isDraft,
 }) => {
     const navigate = useNavigate();
-    const shouldFetch =
-        !isActive && !isDraft && (inventoryMode === 'counter' || inventoryMode == null);
+    const shouldFetch = !isActive && !isDraft;
 
     const { data, isLoading } = useEventGoLiveChecklist(eventId, shouldFetch);
 

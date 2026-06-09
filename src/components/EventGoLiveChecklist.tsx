@@ -63,7 +63,7 @@ const EventGoLiveChecklist: React.FC<EventGoLiveChecklistProps> = ({ eventId, co
         return (
             <Card className="bg-black/40 border border-gray-700/50 mb-6">
                 <CardContent className="py-4 text-sm text-gray-400">
-                    {data.message ?? 'Checklist go-live disponível para eventos de grande porte.'}
+                    {data.message ?? 'Checklist go-live disponível para eventos pagos com venda de ingressos.'}
                 </CardContent>
             </Card>
         );
@@ -79,7 +79,7 @@ const EventGoLiveChecklist: React.FC<EventGoLiveChecklistProps> = ({ eventId, co
                     <div>
                         <CardTitle className="text-lg text-white flex items-center gap-2">
                             <Rocket className={`h-5 w-5 ${ready ? 'text-green-400' : 'text-amber-400'}`} />
-                            Checklist Go-Live (Grande Porte)
+                            Checklist Go-Live
                         </CardTitle>
                         <CardDescription className="text-gray-400 mt-1">
                             Itens em verde liberam o botão Ativar. Itens manuais (runbook, k6) são recomendados para o

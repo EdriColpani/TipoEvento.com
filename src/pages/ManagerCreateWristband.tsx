@@ -15,6 +15,7 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { companyAllowsTicketSales, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
 import { validateEventTicketMinimumOnIssue } from '@/utils/min-event-tickets-validation';
 import EventBatchInventoryConsultPanel from '@/components/EventBatchInventoryConsultPanel';
+import EventActivationReminderBanner from '@/components/EventActivationReminderBanner';
 
 interface WristbandFormData {
     eventId: string;
@@ -172,7 +173,7 @@ const ManagerCreateWristband: React.FC = () => {
 
         if (isCounterInventoryEvent) {
             errors.push(
-                'Este evento usa estoque por lote (grande porte). Defina a quantidade nos lotes do evento — não emite ingressos um a um aqui.',
+                'Este evento usa estoque por lote. Defina a quantidade nos lotes do evento — não emite ingressos um a um aqui.',
             );
         }
         
@@ -345,6 +346,38 @@ const ManagerCreateWristband: React.FC = () => {
         );
     }
 
+    if (requiresPaidTickets) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 sm:px-0">
+                <EventActivationReminderBanner />
+                <div className="text-center py-16 rounded-2xl border border-cyan-400/40 bg-cyan-950/40 p-8">
+                    <QrCode className="h-12 w-12 text-cyan-300 mx-auto mb-4" />
+                    <h2 className="text-xl font-semibold text-white mb-3">Ingressos definidos nos lotes do evento</h2>
+                    <p className="text-sm text-cyan-100/90 max-w-lg mx-auto mb-6 leading-relaxed">
+                        Eventos pagos usam estoque por lote. Defina a quantidade ao cadastrar ou editar o evento
+                        (Standard, VIP…) — os QR codes são gerados na venda. Não é mais necessário emitir ingressos
+                        manualmente aqui.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Button
+                            onClick={() => navigate('/manager/events')}
+                            className="bg-yellow-500 text-black hover:bg-yellow-600"
+                        >
+                            Ir para Meus Eventos
+                        </Button>
+                        <Button
+                            onClick={() => navigate('/manager/wristbands')}
+                            variant="outline"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                        >
+                            Ver estoque
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-0">
             <div className="flex items-center justify-between mb-8">
@@ -361,6 +394,8 @@ const ManagerCreateWristband: React.FC = () => {
                     Voltar para a Lista
                 </Button>
             </div>
+
+            <EventActivationReminderBanner />
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
                 <CardHeader>
@@ -441,7 +476,7 @@ const ManagerCreateWristband: React.FC = () => {
                                 <p className="text-xs text-gray-400 mt-1">
                                     {isCounterInventoryEvent
                                         ? 'Use os lotes do evento para definir 50.000+ ingressos.'
-                                        : 'Emissão manual: até 500 por vez. Para volumes maiores, marque "grande porte" no cadastro do evento.'}
+                                        : 'Emissão manual: até 500 por vez (eventos gratuitos ou legado).'}
                                 </p>
                             </div>
                             <div>

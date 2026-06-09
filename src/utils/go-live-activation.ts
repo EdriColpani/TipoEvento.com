@@ -19,7 +19,10 @@ export function getGoLiveFixAction(
 ): { label: string; path: string } | null {
     switch (itemKey) {
         case 'mp_configured':
-            return { label: 'Configurar Mercado Pago', path: '/manager/settings/advanced' };
+            return {
+                label: 'Ir para Perfil da Empresa',
+                path: '/manager/settings/company-profile?tab=payments',
+            };
         case 'inventory_configured':
         case 'counter_mode':
         case 'async_webhook':

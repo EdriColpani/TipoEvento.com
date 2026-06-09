@@ -122,7 +122,7 @@ const AdminCheckoutObservability: React.FC = () => {
                         Observabilidade de Checkout
                     </h1>
                     <p className="text-gray-400 text-sm">
-                        Métricas em tempo real para eventos de grande porte — reservas, fila, webhooks e integridade de estoque.
+                        Métricas em tempo real para eventos com venda de ingressos — reservas, fila, webhooks e integridade de estoque.
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -162,7 +162,7 @@ const AdminCheckoutObservability: React.FC = () => {
                                     <div className="px-3 py-2 text-sm text-gray-400">Carregando...</div>
                                 ) : events.length === 0 ? (
                                     <div className="px-3 py-2 text-sm text-gray-400">
-                                        Nenhum evento grande porte encontrado.
+                                        Nenhum evento com checkout monitorado encontrado.
                                     </div>
                                 ) : (
                                     events.map((event) => (

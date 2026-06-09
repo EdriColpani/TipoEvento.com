@@ -1,5 +1,4 @@
--- Ativação na vitrine: só itens automáticos bloqueiam o gestor.
--- Itens manuais (runbook, k6, soft open) viram recomendações — visíveis no checklist, não impedem Ativar.
+-- Mensagem do checklist: MP do gestor em Perfil da Empresa → Ingressos MP.
 
 CREATE OR REPLACE FUNCTION public.get_event_go_live_checklist(p_event_id UUID)
 RETURNS JSONB
