@@ -63,19 +63,23 @@ const ManagerCreateEvent: React.FC = () => {
         setShowWristbandModal(true);
     };
 
-    const handleEmitirPulseiras = () => {
-        setShowWristbandModal(false);
-        navigate('/manager/wristbands/create', { state: { eventId: newEventId } }); // Passa o ID do evento
-    };
-
-    const handleNaoEmitir = () => {
+    const handleIrParaEventos = () => {
         setShowWristbandModal(false);
         navigate('/manager/events');
     };
 
-    const handleIrParaPulseiras = () => {
+    const handleEditarEvento = () => {
         setShowWristbandModal(false);
-        navigate('/manager/wristbands', { state: { eventId: newEventId } });
+        if (newEventId) {
+            navigate(`/manager/events/edit/${newEventId}`);
+        } else {
+            navigate('/manager/events');
+        }
+    };
+
+    const handleVerEstoque = () => {
+        setShowWristbandModal(false);
+        navigate('/manager/wristbands');
     };
 
     const handleAutoFill = () => {
@@ -162,10 +166,12 @@ const ManagerCreateEvent: React.FC = () => {
                 <AlertDialogContent className="bg-black/90 border border-yellow-500/30 text-white w-[calc(100vw-1.5rem)] max-w-2xl sm:max-w-2xl overflow-hidden p-5 sm:p-6">
                     <AlertDialogHeader className="text-left space-y-3">
                         <AlertDialogTitle className="text-yellow-500 text-xl font-serif pr-1 select-none outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-sm">
-                            Próxima Etapa: Ingressos
+                            Evento criado
                         </AlertDialogTitle>
                         <AlertDialogDescription className="!text-gray-300 hover:!text-gray-300 text-left text-sm sm:text-base leading-relaxed">
-                            O evento foi criado. Cadastre os ingressos agora antes de ativar o evento na vitrine.
+                            {requiresTicketSales
+                                ? 'Os ingressos vêm dos lotes que você definiu. Valide o checklist go-live e clique em Ativar em Meus Eventos para publicar na vitrine.'
+                                : 'O evento foi criado. Ative-o em Meus Eventos quando estiver pronto para publicar na vitrine.'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     {/* Só Button: AlertDialogAction/Cancel do Radix aplicam estilos que escapam do grid em alguns temas */}
@@ -173,31 +179,31 @@ const ManagerCreateEvent: React.FC = () => {
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={handleEmitirPulseiras}
+                            onClick={handleIrParaEventos}
                             className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-0 bg-yellow-500 !text-black hover:!bg-yellow-600 hover:!text-black focus-visible:!text-black"
                         >
                             <Plus className="h-4 w-4 mr-2 shrink-0" />
-                            Emitir Ingressos
+                            Ir para Meus Eventos
                         </Button>
+                        {newEventId && (
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={handleIrParaPulseiras}
+                            onClick={handleEditarEvento}
+                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-yellow-500/30 bg-black/60 !text-yellow-400 hover:!bg-yellow-500/15 hover:!text-yellow-300 focus-visible:!text-yellow-300 focus-visible:ring-yellow-500/40"
+                        >
+                            Editar evento / lotes
+                        </Button>
+                        )}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleVerEstoque}
                             className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-yellow-500/30 bg-black/60 !text-yellow-400 hover:!bg-yellow-500/15 hover:!text-yellow-300 focus-visible:!text-yellow-300 focus-visible:ring-yellow-500/40"
                         >
                             <QrCode className="h-4 w-4 mr-2 shrink-0" />
-                            Ir para Ingressos
+                            Ver estoque
                         </Button>
-                        {!requiresTicketSales && (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleNaoEmitir}
-                            className="w-full min-h-11 h-auto justify-center whitespace-normal py-2.5 px-3 border-yellow-500/30 bg-black/60 !text-yellow-400 hover:!bg-yellow-500/15 hover:!text-yellow-300 focus-visible:!text-yellow-300 focus-visible:ring-yellow-500/40"
-                        >
-                            Não, Voltar para Eventos
-                        </Button>
-                        )}
                     </div>
                 </AlertDialogContent>
             </AlertDialog>
