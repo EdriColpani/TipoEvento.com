@@ -272,7 +272,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
     if (inventory?.inventory_mode !== 'counter') {
         return (
             <div className="max-w-4xl mx-auto py-10">
-                <p className="text-gray-300">Pacotes cortesia disponíveis apenas em eventos de grande porte.</p>
+                <p className="text-gray-300">Pacotes cortesia disponíveis apenas em eventos pagos com lotes configurados.</p>
                 <Button className="mt-4" variant="outline" onClick={() => navigate('/manager/events')}>
                     Voltar
                 </Button>

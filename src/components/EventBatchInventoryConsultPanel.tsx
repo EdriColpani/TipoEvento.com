@@ -58,7 +58,7 @@ const EventBatchInventoryConsultPanel: React.FC<EventBatchInventoryConsultPanelP
                     <p className="font-semibold text-white">
                         {variant === 'consultation'
                             ? 'Lotes do evento (somente consulta)'
-                            : 'Resumo dos lotes — grande porte'}
+                            : 'Resumo dos lotes'}
                     </p>
                     <p className="text-cyan-100/90 mt-1 text-xs leading-relaxed">
                         {variant === 'consultation' ? (

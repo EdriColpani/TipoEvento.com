@@ -121,8 +121,6 @@ const eventFormSchema = z.object({
     ),
     validator_show_holder: z.boolean().default(true),
     credit_consumption_enabled: z.boolean().default(false),
-    /** Grande porte: estoque por lote (batch_inventory), sem materializar 1 linha por ingresso antecipadamente */
-    counter_inventory_mode: z.boolean().default(false),
     ticket_price: z.string().optional().refine(val => {
         if (val === undefined || val === '') return true; // Permite vazio se não for pago
         return /^[0-9]+([,.][0-9]{1,2})?$/.test(val.replace('.', '').replace(',', '.'));
@@ -157,7 +155,7 @@ const eventFormSchema = z.object({
     data.batches.forEach((batch, i) => {
         if (!batch.name || !String(batch.name).trim()) ctx.addIssue({ code: 'custom', message: 'Nome do lote é obrigatório.', path: ['batches', i, 'name'] });
         const qtyNorm = parseBatchQuantity(batch.quantity);
-        const qtyMax = data.counter_inventory_mode ? 500_000 : undefined;
+        const qtyMax = 500_000;
         if (!isValidBatchQuantity(batch.quantity, qtyMax)) {
             ctx.addIssue({
                 code: 'custom',
@@ -199,6 +197,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [currentStep, setCurrentStep] = useState(1);
+    const skipStepScrollRef = useRef(true);
     const [isSaving, setIsSaving] = useState(false);
     /** Evita duplo INSERT/update: `isSaving` só atualiza no próximo render; clique duplo dispara dois submits no mesmo tick. */
     const submitInFlightRef = useRef(false);
@@ -216,6 +215,14 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             createdEventIdRef.current = draftPersistedEventId;
         }
     }, [draftPersistedEventId]);
+
+    useEffect(() => {
+        if (skipStepScrollRef.current) {
+            skipStepScrollRef.current = false;
+            return;
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [currentStep]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(propUserId || null);
     const [useTurmas, setUseTurmas] = useState(false);
@@ -371,7 +378,6 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 : '90',
             validator_show_holder: initialData?.validator_show_holder ?? true,
             credit_consumption_enabled: initialData?.credit_consumption_enabled ?? false,
-            counter_inventory_mode: initialData?.inventory_mode === 'counter',
             ticket_price: initialData?.ticket_price?.toString().replace('.', ',') || '',
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
             batches: initialData?.batches?.map((batch) => ({
@@ -610,11 +616,6 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     'credit_consumption_enabled',
                     (event as { credit_consumption_enabled?: boolean }).credit_consumption_enabled === true,
                 );
-                setValue(
-                    'counter_inventory_mode',
-                    (event as { inventory_mode?: string }).inventory_mode === 'counter',
-                );
-
                 if (event.contract_id) {
                     setValue('contract_id', event.contract_id);
                     setValue('contractAccepted', true);
@@ -986,9 +987,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 validator_show_holder: effectiveIsPaid ? Boolean(values.validator_show_holder) : false,
                 credit_consumption_enabled:
                     supportsCreditConsumption ? Boolean(values.credit_consumption_enabled) : false,
-                inventory_mode: effectiveIsPaid && values.counter_inventory_mode ? 'counter' : 'unit_rows',
-                checkout_queue_enabled: effectiveIsPaid && values.counter_inventory_mode,
-                checkout_async_webhook: effectiveIsPaid && values.counter_inventory_mode,
+                inventory_mode: effectiveIsPaid ? 'counter' : 'unit_rows',
+                checkout_queue_enabled: effectiveIsPaid && totalTicketsQuantity >= 5000,
+                checkout_async_webhook: effectiveIsPaid,
                 checkout_admit_per_minute: 120,
                 checkout_rate_limit_per_minute: 30,
                 listing_only: isListingPlan,
@@ -1074,7 +1075,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 Boolean(eventId && salesGuard?.has_sales && lockedBatchesRef.current);
             if (effectiveIsPaid && newEventId && values.batches && !skipBatchRewrite) {
                 try {
-                    if (values.counter_inventory_mode && newEventId) {
+                    if (effectiveIsPaid && newEventId) {
                         await supabase.rpc('cleanup_orphan_counter_wristbands', {
                             p_event_id: newEventId,
                         });
@@ -1110,7 +1111,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                     // Só mostra sucesso se a tabela existir e a operação for concluída
                     if (!deleteError && !batchesError) {
-                        if (values.counter_inventory_mode && newEventId) {
+                        if (effectiveIsPaid && newEventId) {
                             const { error: backfillError } = await supabase.rpc(
                                 'backfill_event_counter_inventory',
                                 { p_event_id: newEventId },
@@ -1654,9 +1655,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             {requiresPaidTickets && (
                                 <div className="p-4 rounded-xl border border-cyan-400/50 bg-cyan-950/60 text-sm text-cyan-50 mb-4">
                                     Seu plano exige eventos <strong className="text-white">pagos</strong>. Defina a quantidade nos{' '}
-                                    <strong className="text-white">lotes de ingressos</strong> (próximo passo). Para eventos
-                                    acima de 5.000, marque <strong className="text-white">grande porte</strong> — não é
-                                    necessário emitir cada ingresso manualmente.
+                                    <strong className="text-white">lotes de ingressos</strong> (próximo passo). Os QR codes são
+                                    gerados na venda — não é necessário emitir ingressos manualmente.
                                 </div>
                             )}
                             {ticketsLocked && salesGuard && (
@@ -1717,33 +1717,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             )}
                             {!editPricingLoading && showPaidPricing && (
                                 <div className="space-y-4">
-                                    <FormField
-                                        control={control}
-                                        name="counter_inventory_mode"
-                                        render={({ field }) => (
-                                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-cyan-500/40 p-4 bg-cyan-500/5">
-                                                <FormControl>
-                                                    <Checkbox
-                                                        checked={field.value}
-                                                        onCheckedChange={field.onChange}
-                                                        disabled={ticketsLocked}
-                                                        className="border-cyan-400 text-cyan-400 data-[state=checked]:bg-cyan-500 data-[state=checked]:text-black"
-                                                    />
-                                                </FormControl>
-                                                <div className="space-y-1 leading-none">
-                                                    <FormLabel className="text-white">
-                                                        Evento de grande porte (estoque por lote)
-                                                    </FormLabel>
-                                                    <FormDescription className="text-gray-400 text-xs">
-                                                        Para 5.000+ ingressos. Estoque por lote (Standard, VIP…); QR gerado na venda.
-                                                    </FormDescription>
-                                                </div>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <EventGrandePorteGuide active={watch('counter_inventory_mode')} />
-                                    {eventId && watch('counter_inventory_mode') && (
+                                    <EventGrandePorteGuide />
+                                    {eventId && (
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -1984,17 +1959,15 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                             <FormLabel className="text-white">Nome do Lote</FormLabel>
                                                             <FormControl>
                                                                 <Input 
-                                                                    placeholder={watch('counter_inventory_mode') ? 'Ex: Standard, VIP, Staff' : 'Ex: Lote Promocional'}
+                                                                    placeholder="Ex: Standard, VIP, Staff"
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={ticketsLocked}
                                                                     {...field} 
                                                                 />
                                                             </FormControl>
-                                                            {watch('counter_inventory_mode') && (
-                                                                <FormDescription className="text-cyan-200/80 text-xs">
-                                                                    Este nome é o tipo de acesso na portaria e na venda (ex.: Standard, VIP).
-                                                                </FormDescription>
-                                                            )}
+                                                            <FormDescription className="text-cyan-200/80 text-xs">
+                                                                Este nome é o tipo de acesso na portaria e na venda (ex.: Standard, VIP).
+                                                            </FormDescription>
                                                             <FormMessage />
                                                         </FormItem>
                                                     )}
@@ -2009,7 +1982,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                 <Input 
                                                                     type="text"
                                                                     inputMode="numeric"
-                                                                    placeholder={watch('counter_inventory_mode') ? 'Ex: 50000 ou 50.000' : 'Ex: 100'}
+                                                                    placeholder="Ex: 200 ou 50.000"
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={ticketsLocked}
                                                                     {...field} 
@@ -2021,11 +1994,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                     }}
                                                                 />
                                                             </FormControl>
-                                                            {watch('counter_inventory_mode') && (
-                                                                <FormDescription className="text-cyan-200/90 text-xs">
-                                                                    Estoque por contador: use 50000 ou 50.000 (mil). Os QR codes são gerados na venda.
-                                                                </FormDescription>
-                                                            )}
+                                                            <FormDescription className="text-cyan-200/90 text-xs">
+                                                                Estoque deste tipo. Os QR codes são gerados automaticamente na venda.
+                                                            </FormDescription>
                                                             <FormMessage />
                                                         </FormItem>
                                                     )}

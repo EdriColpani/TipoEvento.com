@@ -7,7 +7,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Search, Loader2, AlertTriangle, Tag, Settings, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerWristbands, WristbandData } from '@/hooks/use-manager-wristbands';
-import { useProfile } from '@/hooks/use-profile'; // Importando o hook de perfil
+import { useProfile } from '@/hooks/use-profile';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
+import EventActivationReminderBanner from '@/components/EventActivationReminderBanner';
 
 const formatQty = (n: number) => n.toLocaleString('pt-BR');
 
@@ -26,6 +30,10 @@ const ManagerWristbandsList: React.FC = () => {
     
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const { company } = useManagerCompany(userId);
+    const { billing } = useCompanyBilling(company?.id);
+    const requiresPaidTickets = companyAllowsTicketSales(billing?.billing_plan);
+    const hideManualCreate = requiresPaidTickets && !isAdminMaster;
 
     // O hook agora recebe isAdminMaster
     const { wristbands, isLoading, isError, invalidateWristbands } = useManagerWristbands(userId, isAdminMaster);
@@ -113,6 +121,7 @@ const ManagerWristbandsList: React.FC = () => {
                     >
                         Voltar para o Dashboard
                     </Button>
+                    {!hideManualCreate && (
                     <Button 
                         onClick={() => navigate('/manager/wristbands/create')}
                         className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
@@ -120,25 +129,28 @@ const ManagerWristbandsList: React.FC = () => {
                         <Plus className="mr-2 h-5 w-5" />
                         Cadastrar Novo Ingresso
                     </Button>
+                    )}
                 </div>
             </div>
+
+            <EventActivationReminderBanner />
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 {hasCounterRows && (
                     <div className="mb-6 flex items-start gap-3 rounded-xl border border-cyan-400/40 bg-cyan-950/50 p-4 text-sm text-cyan-50">
                         <Info className="h-5 w-5 text-cyan-300 shrink-0 mt-0.5" />
                         <div>
-                            <p className="font-semibold text-white mb-1">Evento de grande porte</p>
+                            <p className="font-semibold text-white mb-1">Estoque por lote</p>
                             <p className="text-cyan-100/90 text-xs leading-relaxed">
                                 Cada linha abaixo é um <strong className="text-white">tipo</strong> (Standard, VIP…), não um
                                 ingresso individual. A quantidade cadastrada no lote aparece na coluna{' '}
-                                <strong className="text-white">Estoque</strong> (ex.: 40.000 Standard). O QR code de cada
-                                ingresso é criado automaticamente na venda — não é preciso gerar 40.000 linhas aqui.
+                                <strong className="text-white">Estoque</strong>. O QR code de cada ingresso é criado
+                                automaticamente na venda.
                             </p>
                         </div>
                     </div>
                 )}
-                {/* Botão movido para o topo do card, antes do campo de pesquisa */}
+                {!hideManualCreate && (
                 <Button 
                     onClick={() => navigate('/manager/wristbands/create')}
                     className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 px-8 text-lg font-semibold transition-all duration-300 cursor-pointer shadow-lg shadow-yellow-500/30 hover:shadow-yellow-500/50 mb-6"
@@ -146,6 +158,7 @@ const ManagerWristbandsList: React.FC = () => {
                     <Plus className="mr-2 h-6 w-6" />
                     Cadastrar Novo Ingresso
                 </Button>
+                )}
 
                 <div className="relative mb-6">
                     <Input 

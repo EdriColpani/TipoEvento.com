@@ -161,11 +161,11 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
                 price: Number(t.price ?? 0),
                 available: Number(t.available ?? 0),
                 description: `Acesso ${t.name ?? 'ingresso'} para o evento.`,
-                salesOpen: t.sales_open !== false && t.batch_active !== false,
+                salesOpen: t.sales_open === true && t.batch_active === true,
                 batchStartDate: t.start_date ?? null,
                 batchEndDate: t.end_date ?? null,
             }))
-            .filter((t) => t.id && t.price > 0 && t.available > 0)
+            .filter((t) => t.id && t.price > 0 && t.available > 0 && t.salesOpen === true)
             .sort((a, b) => a.price - b.price);
     } else {
         // Fallback legado
@@ -214,8 +214,10 @@ const fetchEventDetails = async (eventId: string): Promise<EventDetailsData | nu
     let minPrice: number | null = null;
     let minPriceWristbandId: string | null = null;
 
-    if (ticketTypes.length > 0) {
-        const cheapest = ticketTypes.reduce(
+    const purchasableTicketTypes = ticketTypes.filter((t) => t.salesOpen === true);
+
+    if (purchasableTicketTypes.length > 0) {
+        const cheapest = purchasableTicketTypes.reduce(
             (min, t) => (min === null || t.price < min.price ? t : min),
             null as TicketType | null,
         );
