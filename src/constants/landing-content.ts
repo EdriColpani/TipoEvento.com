@@ -211,7 +211,7 @@ export const LANDING_TERMS_SECTIONS: LandingTermsSection[] = [
         bullets: [
             'EventFest',
             'Email: contato@eventfest.com',
-            'Instagram: @eventfest.contato',
+            'Instagram e demais canais oficiais no rodapé do site.',
         ],
     },
 ];

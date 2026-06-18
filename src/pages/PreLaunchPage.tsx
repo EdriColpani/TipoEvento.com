@@ -16,6 +16,7 @@ import {
     PRE_LAUNCH_MANAGER_INTRO,
     PRE_LAUNCH_MANAGER_PILLARS,
 } from '@/constants/landing-content';
+import { usePublicSiteContact } from '@/hooks/use-public-site-contact';
 import { formatPhoneBR } from '@/utils/phone-format';
 import { showError, showSuccess } from '@/utils/toast';
 import { cn } from '@/lib/utils';
@@ -26,8 +27,9 @@ const MANAGER_PILLAR_ICONS = [QrCode, Wallet, Store, BarChart3] as const;
 const PreLaunchPage: React.FC = () => {
     const { isMobile } = useDevice();
     const { openContact } = useLandingUi();
-    const [contactPhone, setContactPhone] = useState('Não informado');
-    const [contactCompanyName, setContactCompanyName] = useState('EventFest');
+    const { contact: publicContact } = usePublicSiteContact();
+    const contactPhone = formatPhoneBR(publicContact.phone);
+    const contactCompanyName = publicContact.company_name;
     const [contactName, setContactName] = useState('');
     const [contactFormPhone, setContactFormPhone] = useState('');
     const [contactMessage, setContactMessage] = useState('');
@@ -54,18 +56,6 @@ const PreLaunchPage: React.FC = () => {
                 else meta.removeAttribute('content');
             }
         };
-    }, []);
-
-    useEffect(() => {
-        supabase
-            .rpc('get_public_contact_info')
-            .then(({ data, error }) => {
-                if (error) return;
-                const payload = (data ?? {}) as { phone?: string | null; company_name?: string | null };
-                setContactPhone(formatPhoneBR(payload.phone ?? null));
-                if (payload.company_name) setContactCompanyName(payload.company_name);
-            })
-            .catch(() => {});
     }, []);
 
     const handleSendContact = async () => {
