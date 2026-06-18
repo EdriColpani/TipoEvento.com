@@ -296,7 +296,7 @@ export const PRE_LAUNCH_BENEFITS = [
     },
     {
         title: 'Pagamentos seguros',
-        body: 'Checkout integrado ao Mercado Pago e, quando disponível, créditos EventFest para consumo no evento.',
+        body: 'Checkout integrado às principais empresas de pagamento do mercado, com padrões de segurança e conformidade. Ingressos e créditos EventFest em um fluxo confiável — para você vender com tranquilidade e o público comprar com facilidade.',
     },
     {
         title: 'Experiência premium',
@@ -306,3 +306,30 @@ export const PRE_LAUNCH_BENEFITS = [
 
 export const PRE_LAUNCH_STATUS_MESSAGE =
     'Nossa equipe está em fase final de testes. Em breve você poderá explorar eventos e comprar ingressos por aqui. Enquanto isso, fale conosco se quiser saber mais ou ser avisado do lançamento.';
+
+export const PRE_LAUNCH_MANAGER_INTRO = {
+    title: 'Para quem organiza eventos',
+    problem:
+        'Produtoras e gestores ainda perdem tempo com planilhas, filas na entrada, dinheiro preso em caixa e pouca visão do que acontece dentro do evento. A EventFest nasce para centralizar gestão, controle e receita em um só lugar.',
+    promise:
+        'Do cadastro do evento à última venda no bar conveniado — com agilidade para o público e controle real para você.',
+};
+
+export const PRE_LAUNCH_MANAGER_PILLARS = [
+    {
+        title: 'Entrada sem fila',
+        body: 'Ingresso digital com validação rápida na portaria. Menos gargalo, menos stress na abertura dos portões e mais previsibilidade sobre quem já entrou.',
+    },
+    {
+        title: 'Créditos EventFest',
+        body: 'O público recarrega saldo e consome com QR Code nos pontos do evento — sem enfrentar filas de caixa. Mais fluidez para o visitante e mais giro para a sua operação.',
+    },
+    {
+        title: 'Empresas conveniadas',
+        body: 'Integre bares, food trucks e lojas parceiras ao ecossistema do evento. Novas vendas no local, dados de consumo e uma experiência que fideliza quem volta no próximo show.',
+    },
+    {
+        title: 'Gestão e controle',
+        body: 'Painel para lotes, vendas, relatórios e acompanhamento em tempo real. Você enxerga o evento enquanto ele acontece — não só no dia seguinte.',
+    },
+];

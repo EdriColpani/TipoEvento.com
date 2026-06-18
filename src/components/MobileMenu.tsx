@@ -81,6 +81,7 @@ const MobileMenu: React.FC = () => {
         ? [
               { path: '/#home', label: 'Início', icon: 'fas fa-home' },
               { path: '/#sobre', label: 'Sobre', icon: 'fas fa-info-circle' },
+              { path: '/#gestores', label: 'Gestores', icon: 'fas fa-briefcase' },
               { path: '/#solucao', label: 'Solução', icon: 'fas fa-star' },
               { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
           ]
