@@ -69,6 +69,7 @@ import AdminContactMessages from "./pages/AdminContactMessages";
 import AdminEventGeoBackfill from "./pages/AdminEventGeoBackfill";
 import AdminCheckoutObservability from "./pages/AdminCheckoutObservability";
 import AdminPublicLaunchSettings from "./pages/AdminPublicLaunchSettings";
+import AdminPublicSocialSettings from "./pages/AdminPublicSocialSettings";
 import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
 import ManagerConsumptionLicenseBilling from "./pages/ManagerConsumptionLicenseBilling";
 import SalesReports from "./pages/SalesReports"; // NOVO
@@ -185,6 +186,7 @@ function AppRoutes() {
                 <Route path="/admin/settings/event-geo-backfill" element={<AdminEventGeoBackfill />} />
                 <Route path="/admin/settings/checkout-observability" element={<AdminCheckoutObservability />} />
                 <Route path="/admin/settings/public-launch" element={<AdminPublicLaunchSettings />} />
+                <Route path="/admin/settings/public-social" element={<AdminPublicSocialSettings />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 

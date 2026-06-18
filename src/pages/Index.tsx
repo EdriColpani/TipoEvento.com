@@ -24,6 +24,7 @@ import { formatPhoneBR } from '@/utils/phone-format';
 import { useProfile } from '@/hooks/use-profile';
 import { navigateFromPromoterCta } from '@/utils/promoter-registration-flow';
 import { formatPublicMinPrice } from '@/utils/public-event-pricing';
+import { usePublicSiteContact } from '@/hooks/use-public-site-contact';
 
 const EVENTS_PER_PAGE = 12;
 
@@ -96,14 +97,15 @@ const Index: React.FC = () => {
     const [cityFilter, setCityFilter] = useState('');
     const [dateFilter, setDateFilter] = useState('');
     const [filters, setFilters] = useState<AdvancedFiltersState>(defaultFilters);
-    const [contactPhone, setContactPhone] = useState<string>('Não informado');
-    const [contactCompanyName, setContactCompanyName] = useState<string>('EventFest');
+    const { contact: publicContact } = usePublicSiteContact();
     const [contactName, setContactName] = useState('');
     const [contactFormPhone, setContactFormPhone] = useState('');
     const [contactMessage, setContactMessage] = useState('');
     const [sendingContact, setSendingContact] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const { contactOpen } = useLandingUi();
+    const contactPhone = formatPhoneBR(publicContact.phone);
+    const contactCompanyName = publicContact.company_name;
 
     const filteredEvents = React.useMemo(() => {
         let list = allEvents;
@@ -169,18 +171,6 @@ const Index: React.FC = () => {
         supabase.auth.getUser().then(({ data: { user } }) => {
             setUserId(user?.id);
         });
-    }, []);
-
-    useEffect(() => {
-        supabase
-            .rpc('get_public_contact_info')
-            .then(({ data, error }) => {
-                if (error) return;
-                const payload = (data ?? {}) as { phone?: string | null; company_name?: string | null };
-                setContactPhone(formatPhoneBR(payload.phone ?? null));
-                if (payload.company_name) setContactCompanyName(payload.company_name);
-            })
-            .catch(() => {});
     }, []);
 
     const handleEventClick = (event: PublicEvent) => {

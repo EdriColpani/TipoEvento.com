@@ -6,6 +6,8 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { usePublicSiteContact } from '@/hooks/use-public-site-contact';
+import { buildInstagramUrl } from '@/utils/public-site-contact';
 
 type LandingSocialLinksProps = {
     className?: string;
@@ -16,13 +18,17 @@ const LandingSocialLinks: React.FC<LandingSocialLinksProps> = ({
     className,
     iconClassName = 'text-xl sm:text-2xl',
 }) => {
+    const { contact } = usePublicSiteContact();
+    const instagramUrl = buildInstagramUrl(contact.instagram_handle);
+    const linkedinUrl = contact.linkedin_url;
+
     return (
         <TooltipProvider delayDuration={200}>
             <div className={cn('flex space-x-4', className)}>
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <a
-                            href="https://instagram.com/eventfest.contato"
+                            href={instagramUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-yellow-500 hover:text-cyan-300 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
@@ -35,29 +41,21 @@ const LandingSocialLinks: React.FC<LandingSocialLinksProps> = ({
                         side="top"
                         className="bg-black/95 border border-cyan-400/40 text-cyan-300 text-xs font-medium shadow-lg animate-in fade-in-0 zoom-in-95"
                     >
-                        eventfest.contato
+                        @{contact.instagram_handle}
                     </TooltipContent>
                 </Tooltip>
 
-                <a
-                    href="https://twitter.com/eventfest"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-yellow-500 hover:text-cyan-300 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
-                    aria-label="Twitter / X EventFest"
-                >
-                    <i className={cn('fab fa-twitter', iconClassName)} />
-                </a>
-
-                <a
-                    href="https://linkedin.com/company/eventfest"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-yellow-500 hover:text-cyan-300 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
-                    aria-label="LinkedIn EventFest"
-                >
-                    <i className={cn('fab fa-linkedin', iconClassName)} />
-                </a>
+                {linkedinUrl ? (
+                    <a
+                        href={linkedinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-yellow-500 hover:text-cyan-300 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
+                        aria-label="LinkedIn EventFest"
+                    >
+                        <i className={cn('fab fa-linkedin', iconClassName)} />
+                    </a>
+                ) : null}
             </div>
         </TooltipProvider>
     );
