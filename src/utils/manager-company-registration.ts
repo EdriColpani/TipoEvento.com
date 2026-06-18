@@ -79,7 +79,7 @@ export async function finalizeManagerCompanyRegistration(
     if (profileUpdateError) {
         throw new Error(
             profileUpdateError.message ||
-                'Não foi possível atualizar o perfil para Gestor PRO. Verifique permissões (RLS) ou tente de novo.',
+                'Não foi possível atualizar o perfil para gestor. Verifique permissões (RLS) ou tente de novo.',
         );
     }
 

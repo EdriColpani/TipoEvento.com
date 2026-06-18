@@ -44,7 +44,7 @@ const PRO_STEPS: EmailConfirmationScreenProps['steps'] = [
     {
         title: 'Cadastre sua empresa',
         description:
-            'Após confirmar, você verá o formulário de dados da empresa (etapa 2). Preencha uma única vez para virar gestor PRO.',
+            'Após confirmar, você verá o formulário de dados da empresa (etapa 2). Preencha uma única vez para concluir o cadastro de gestor.',
     },
 ];
 
@@ -83,7 +83,7 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
     const resolvedSubtitle =
         subtitle ??
         (isPro
-            ? 'Sua conta foi criada. Falta apenas validar o e-mail para concluir o cadastro de gestor PRO.'
+            ? 'Sua conta foi criada. Falta apenas validar o e-mail para concluir o cadastro de gestor.'
             : 'Enviamos um link de verificação para ativar sua conta.');
     const resolvedSteps = steps ?? (isPro ? PRO_STEPS : CLIENT_STEPS);
 
@@ -156,7 +156,7 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                                 : 'bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 bg-clip-text text-transparent'
                         }`}
                     >
-                        {isPro ? 'EventFest PRO' : 'EventFest'}
+                        {isPro ? 'EventFest — Gestor' : 'EventFest'}
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">{resolvedTitle}</h1>
                     <p className="text-gray-400 text-sm sm:text-base max-w-md mx-auto">{resolvedSubtitle}</p>

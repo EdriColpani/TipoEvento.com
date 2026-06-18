@@ -5,13 +5,17 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import MultiLineEditor from '@/components/MultiLineEditor';
 import { Loader2 } from 'lucide-react';
-import { showSuccess } from '@/utils/toast';
+import { showError, showSuccess } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import ManagerTypeSelectionDialog from '@/components/ManagerTypeSelectionDialog';
 import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegisterDialog';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActivePlatformContract } from '@/utils/fetchPlatformContract';
+import {
+    buildContractAcceptanceAuditMeta,
+    recordContractAcceptance,
+} from '@/utils/contract-acceptance-audit';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -19,6 +23,7 @@ const ManagerRegister: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const [agreedToTerms, setAgreedToTerms] = useState(false);
+    const [termsScrolledToEnd, setTermsScrolledToEnd] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTypeSelectionModal, setShowTypeSelectionModal] = useState(false);
     const [showIndividualRegisterModal, setShowIndividualRegisterModal] = useState(false); // NOVO: Estado para o modal PF
@@ -46,12 +51,41 @@ const ManagerRegister: React.FC = () => {
 
     const shouldShowAgreementCheckbox = !isAdminRegisterRoute;
 
-    const handleAgreeToTerms = (agreed: boolean) => {
+    const handleAgreeToTerms = (agreed: boolean, context?: { scrolledToEnd: boolean }) => {
         setAgreedToTerms(agreed);
+        setTermsScrolledToEnd(context?.scrolledToEnd ?? false);
     };
 
-    const handleContinue = () => {
-        // Abre o modal de seleção de tipo
+    const handleContinue = async () => {
+        if (!platformContract) {
+            showError('Contrato de adesão indisponível.');
+            return;
+        }
+        if (!agreedToTerms) {
+            showError('Aceite o contrato para continuar.');
+            return;
+        }
+
+        if (!userId) {
+            showError('Sessão inválida. Faça login novamente.');
+            return;
+        }
+
+        try {
+            await recordContractAcceptance({
+                contractId: platformContract.id,
+                contractType: platformContract.contract_type,
+                userId,
+                audit: buildContractAcceptanceAuditMeta('manager_register', {
+                    scrolledToEnd: termsScrolledToEnd,
+                }),
+            });
+        } catch (err) {
+            console.error('Erro ao registrar aceite do contrato de adesão:', err);
+            showError('Não foi possível registrar o aceite do contrato. Tente novamente.');
+            return;
+        }
+
         setShowTypeSelectionModal(true);
     };
 
@@ -87,7 +121,7 @@ const ManagerRegister: React.FC = () => {
                         className="text-3xl font-serif text-yellow-500 font-bold mb-2 cursor-pointer"
                         onClick={() => navigate('/')} 
                     >
-                        EventFest PRO
+                        EventFest
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">
                         {isAdminRegisterRoute && isAdminMaster ? "Editar Termos de Registro de Gestor" : "Cadastro de Gestor"}
@@ -109,7 +143,7 @@ const ManagerRegister: React.FC = () => {
                         <h3 className="text-red-400 text-xl">Contrato indisponível</h3>
                         <p className="text-gray-400 text-sm mt-2">
                             Não foi possível carregar o contrato de adesão. Peça ao administrador para ativar o
-                            contrato &quot;Cadastro da empresa (Gestor PRO)&quot; em Admin → Contratos.
+                            contrato &quot;Cadastro da empresa (Gestor)&quot; em Admin → Contratos.
                         </p>
                     </div>
                 ) : (

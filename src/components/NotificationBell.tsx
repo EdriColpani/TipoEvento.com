@@ -121,7 +121,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                                 <div className="ml-3">
                                     <p className="text-white font-medium text-sm">Registro de gestor pendente</p>
                                     <p className="text-gray-400 text-xs mt-1">
-                                        Complete seu cadastro (RG, endereço, etc.) para liberar o Dashboard PRO.
+                                        Complete seu cadastro (RG, endereço, etc.) para liberar o Dashboard.
                                     </p>
                                     <Button
                                         variant="link"
@@ -132,7 +132,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                                         }`}
                                         onClick={() => navigate('/manager/register')}
                                     >
-                                        Continuar cadastro PRO
+                                        Continuar cadastro de gestor
                                     </Button>
                                 </div>
                             </div>

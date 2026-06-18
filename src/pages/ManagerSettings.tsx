@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings, User, Building, Bell, CreditCard, History, Loader2, Store, ShoppingBag, Banknote } from 'lucide-react';
+import { Settings, User, Building, Bell, CreditCard, History, Loader2, Store, ShoppingBag, Banknote, Globe } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerCompany } from '@/hooks/use-manager-company';
@@ -45,6 +45,7 @@ const ManagerSettings: React.FC = () => {
     // Adiciona opções específicas para Admin Master
     if (isAdminMaster) {
         settingsOptions.push(
+            { icon: <Globe className="h-6 w-6 text-yellow-500" />, title: "Site Público", description: "Modo pré-lançamento ou vitrine ao vivo para visitantes.", path: "/admin/settings/public-launch" },
             { icon: <History className="h-6 w-6 text-yellow-500" />, title: "Histórico de Configurações", description: "Visualize todas as alterações feitas nas configurações da sua conta.", path: "/manager/settings/history" },
             { icon: <Settings className="h-6 w-6 text-yellow-500" />, title: "Configurações Avançadas", description: "Mercado Pago da plataforma (mensalidade), sistema e backup.", path: "/manager/settings/advanced" }
         );

@@ -32,7 +32,7 @@ export interface PlanFeatureDefinition {
 }
 
 export const PLAN_FEATURE_DEFINITIONS: PlanFeatureDefinition[] = [
-    { key: 'dashboard', label: 'Dashboard PRO', description: 'Painel principal', group: 'Geral' },
+    { key: 'dashboard', label: 'Dashboard', description: 'Painel principal', group: 'Geral' },
     { key: 'events', label: 'Eventos', description: 'Lista de eventos', group: 'Eventos' },
     { key: 'events_create', label: 'Criar evento', description: 'Novo evento (vitrine ou ingressos)', group: 'Eventos' },
     { key: 'events_banners', label: 'Banners de evento', description: 'Criar banner promocional', group: 'Eventos' },
@@ -67,7 +67,7 @@ export interface ManagerNavItemConfig {
 }
 
 export const MANAGER_NAV_ITEMS: ManagerNavItemConfig[] = [
-    { path: '/manager/dashboard', label: 'Dashboard PRO', featureKey: 'dashboard' },
+    { path: '/manager/dashboard', label: 'Dashboard', featureKey: 'dashboard' },
     { path: '/manager/events', label: 'Eventos', featureKey: 'events' },
     { path: '/manager/events/create', label: 'Criar Novo Evento', featureKey: 'events_create' },
     { path: '/manager/events/banners', label: 'Banners de Evento', featureKey: 'events_banners' },

@@ -234,7 +234,7 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
             <div className="max-w-3xl mx-auto text-center py-20 px-4">
                 <h1 className="text-2xl font-serif text-red-400 mb-3">Acesso restrito</h1>
                 <p className="text-gray-400 text-sm mb-6">
-                    Este relatório é exclusivo do gestor PRO. Admin Master não possui acesso a esta tela.
+                    Este relatório é exclusivo do gestor. Admin Master não possui acesso a esta tela.
                 </p>
                 <Button variant="outline" onClick={() => navigate('/manager/reports')}>
                     Voltar aos relatórios

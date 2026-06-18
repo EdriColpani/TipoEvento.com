@@ -8,9 +8,10 @@ import { showSuccess, showError } from '@/utils/toast';
 import { useProfileStatus } from '@/hooks/use-profile-status';
 import { useProfile, ProfileData } from '@/hooks/use-profile';
 import NotificationBell from './NotificationBell';
-import { Shield } from 'lucide-react'; // Importando ícone para Admin
+import { Shield, LayoutDashboard } from 'lucide-react'; // Importando ícone para Admin
 import { useUserType } from '@/hooks/use-user-type'; // Importando novo hook
 import { useManagerCompany } from '@/hooks/use-manager-company'; // NOVO: Importando hook da empresa
+import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 
 const AuthStatusMenu: React.FC = () => {
     const navigate = useNavigate();
@@ -18,6 +19,7 @@ const AuthStatusMenu: React.FC = () => {
     const [session, setSession] = useState<any>(null);
     const [loadingSession, setLoadingSession] = useState(true);
     const isLandingPage = location.pathname === '/';
+    const { showPreLaunchExperience } = usePublicLaunchMode();
 
     useEffect(() => {
         const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
@@ -164,7 +166,7 @@ const AuthStatusMenu: React.FC = () => {
                         </DropdownMenuItem>
                         
                         {/* NOVO: Cadastrar Eventos para Clientes (Tipo 3) */}
-                        {isClient && (
+                        {isClient && !showPreLaunchExperience && (
                             <DropdownMenuItem 
                                 onClick={() => navigate('/manager/register')} 
                                 className={`cursor-pointer text-green-400 font-semibold ${
@@ -183,8 +185,8 @@ const AuthStatusMenu: React.FC = () => {
                                     isLandingPage ? 'hover:bg-cyan-400/10 text-cyan-300' : 'hover:bg-yellow-500/10 text-yellow-500'
                                 }`}
                             >
-                                <i className="fas fa-crown mr-2"></i>
-                                Dashboard PRO
+                                <LayoutDashboard className="mr-2 h-4 w-4" />
+                                Dashboard
                             </DropdownMenuItem>
                         )}
                         {isAdmin && (
@@ -227,16 +229,18 @@ const AuthStatusMenu: React.FC = () => {
             >
                 Login
             </Button>
-            <Button
-                onClick={() => navigate('/register')}
-                className={`border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
-                    isLandingPage
-                        ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
-                        : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
-                }`}
-            >
-                Cadastro
-            </Button>
+            {!showPreLaunchExperience ? (
+                <Button
+                    onClick={() => navigate('/register')}
+                    className={`border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
+                        isLandingPage
+                            ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
+                            : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
+                    }`}
+                >
+                    Cadastro
+                </Button>
+            ) : null}
         </div>
     );
 };

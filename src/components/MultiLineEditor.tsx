@@ -15,7 +15,7 @@ import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
 
 interface MultiLineEditorProps {
-    onAgree: (agreed: boolean) => void;
+    onAgree: (agreed: boolean, context?: { scrolledToEnd: boolean }) => void;
     initialAgreedState?: boolean;
     showAgreementCheckbox?: boolean; // Nova prop
     termsType?: 'general' | 'manager_registration'; // Tipo em terms_and_conditions (quando não usa external)
@@ -95,13 +95,13 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
     useEffect(() => {
         if (showAgreementCheckbox) {
             setAgreed(false);
-            onAgree(false);
+            onAgree(false, { scrolledToEnd: false });
         }
     }, [scrollContentKey, showAgreementCheckbox]);
 
     const handleCheckboxChange = (checked: boolean) => {
         setAgreed(checked);
-        onAgree(checked);
+        onAgree(checked, { scrolledToEnd: hasScrolledToEnd });
     };
 
     const handleSave = async () => {

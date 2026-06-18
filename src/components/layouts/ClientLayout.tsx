@@ -12,21 +12,55 @@ const ClientLandingModalsHost: React.FC = () => {
     return <LandingModals activeModal={activeModal} onClose={closeModal} />;
 };
 
-const ClientLayoutNav: React.FC<{ isLandingPage: boolean }> = ({ isLandingPage }) => {
+import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
+
+const ClientLayoutNav: React.FC<{ isLandingPage: boolean; showPreLaunchNav: boolean }> = ({
+    isLandingPage,
+    showPreLaunchNav,
+}) => {
     const landingUi = useLandingUiOptional();
+    const linkClass = `text-white transition-colors duration-300 cursor-pointer ${
+        isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
+    }`;
 
     const handleContatoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         if (!landingUi) return;
         e.preventDefault();
         landingUi.openContact();
+        document.getElementById('contato')?.scrollIntoView({ behavior: 'smooth' });
     };
+
+    if (showPreLaunchNav) {
+        return (
+            <>
+                <a href="/#home" className={linkClass}>Início</a>
+                <a href="/#sobre" className={linkClass}>Sobre</a>
+                <a href="/#solucao" className={linkClass}>Solução</a>
+                <a
+                    href="/#contato"
+                    onClick={handleContatoClick}
+                    className={`${linkClass} ${landingUi?.contactOpen ? 'text-cyan-400' : ''}`}
+                    aria-expanded={landingUi?.contactOpen}
+                >
+                    Contato
+                </a>
+            </>
+        );
+    }
 
     return (
         <>
-            <a href="/#home" className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'}`}>Home</a>
-            <a href="/#eventos" className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'}`}>Eventos</a>
-            <a href="/#categorias" className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'}`}>Categorias</a>
-            <a href="/#contato" onClick={handleContatoClick} className={`text-white transition-colors duration-300 cursor-pointer ${isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'} ${landingUi?.contactOpen ? 'text-cyan-400' : ''}`} aria-expanded={landingUi?.contactOpen}>Contato</a>
+            <a href="/#home" className={linkClass}>Home</a>
+            <a href="/#eventos" className={linkClass}>Eventos</a>
+            <a href="/#categorias" className={linkClass}>Categorias</a>
+            <a
+                href="/#contato"
+                onClick={handleContatoClick}
+                className={`${linkClass} ${landingUi?.contactOpen ? 'text-cyan-400' : ''}`}
+                aria-expanded={landingUi?.contactOpen}
+            >
+                Contato
+            </a>
         </>
     );
 };
@@ -35,7 +69,9 @@ const ClientLayout: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { device, isMobile } = useDevice();
+    const { showPreLaunchExperience } = usePublicLaunchMode();
     const isLandingPage = location.pathname === '/';
+    const usePreLaunchNav = showPreLaunchExperience && isLandingPage;
 
     useEffect(() => {
         document.documentElement.setAttribute('data-device', device);
@@ -61,7 +97,7 @@ const ClientLayout: React.FC = () => {
                             />
                         </div>
                         <nav className="hidden md:flex items-center space-x-8">
-                            <ClientLayoutNav isLandingPage={isLandingPage} />
+                            <ClientLayoutNav isLandingPage={isLandingPage} showPreLaunchNav={usePreLaunchNav} />
                         </nav>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">

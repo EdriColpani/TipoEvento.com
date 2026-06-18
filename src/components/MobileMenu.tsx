@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, Bell, User, LogOut, Crown } from 'lucide-react';
+import { Menu, X, Bell, User, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from '@/integrations/supabase/client';
@@ -10,6 +10,7 @@ import { useUserType } from '@/hooks/use-user-type'; // Importando novo hook
 import { showSuccess, showError } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company'; // NOVO: Importando hook da empresa
 import { useLandingUiOptional } from '@/contexts/LandingUiContext';
+import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 
 const MANAGER_USER_TYPE_ID = 2;
 
@@ -47,6 +48,8 @@ const MobileMenu: React.FC = () => {
     const isManagerPro = profile?.tipo_usuario_id === MANAGER_USER_TYPE_ID;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
     const landingUi = useLandingUiOptional();
+    const { showPreLaunchExperience } = usePublicLaunchMode();
+    const isHomePreLaunch = showPreLaunchExperience && location.pathname === '/';
 
     const handleNavigation = (path: string, loginReturnTo?: string) => {
         setIsOpen(false);
@@ -74,12 +77,19 @@ const MobileMenu: React.FC = () => {
         }
     };
 
-    const navItems = [
-        { path: '/', label: 'Home', icon: 'fas fa-home' },
-        { path: '/#eventos', label: 'Eventos', icon: 'fas fa-calendar-alt' },
-        { path: '/#categorias', label: 'Categorias', icon: 'fas fa-th-large' },
-        { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
-    ];
+    const navItems = isHomePreLaunch
+        ? [
+              { path: '/#home', label: 'Início', icon: 'fas fa-home' },
+              { path: '/#sobre', label: 'Sobre', icon: 'fas fa-info-circle' },
+              { path: '/#solucao', label: 'Solução', icon: 'fas fa-star' },
+              { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
+          ]
+        : [
+              { path: '/', label: 'Home', icon: 'fas fa-home' },
+              { path: '/#eventos', label: 'Eventos', icon: 'fas fa-calendar-alt' },
+              { path: '/#categorias', label: 'Categorias', icon: 'fas fa-th-large' },
+              { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
+          ];
 
     const isUserLoading = loadingSession || isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany);
     const isLoggedIn = session && profile;
@@ -157,8 +167,8 @@ const MobileMenu: React.FC = () => {
                                     variant="ghost"
                                     className="w-full justify-start text-lg py-6 text-yellow-500 font-semibold hover:bg-yellow-500/10"
                                 >
-                                    <Crown className="mr-3 h-5 w-5" />
-                                    Dashboard PRO
+                                    <LayoutDashboard className="mr-3 h-5 w-5" />
+                                    Dashboard
                                 </Button>
                             )}
                             <div className="border-t border-yellow-500/20 pt-4">
@@ -185,12 +195,14 @@ const MobileMenu: React.FC = () => {
                             >
                                 Login
                             </Button>
-                            <Button
-                                onClick={() => handleNavigation('/register')}
-                                className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
-                            >
-                                Cadastro
-                            </Button>
+                            {!showPreLaunchExperience ? (
+                                <Button
+                                    onClick={() => handleNavigation('/register')}
+                                    className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
+                                >
+                                    Cadastro
+                                </Button>
+                            ) : null}
                         </div>
                     )}
 

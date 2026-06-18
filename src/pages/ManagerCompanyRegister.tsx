@@ -164,14 +164,14 @@ const ManagerCompanyRegister: React.FC = () => {
                         className="text-3xl font-serif text-yellow-500 font-bold mb-2 cursor-pointer"
                         onClick={() => navigate('/')}
                     >
-                        EventFest PRO
+                        EventFest
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">
                         Cadastro de Gestor (Pessoa Jurídica)
                     </h1>
                     <p className="text-gray-400 text-sm sm:text-base">
                         Etapa 2 de 2 — e-mail confirmado. Preencha os dados da empresa para
-                        concluir seu cadastro de gestor PRO.
+                        concluir seu cadastro de gestor.
                     </p>
                 </div>
                 <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-yellow-500/10">
@@ -209,7 +209,7 @@ const ManagerCompanyRegister: React.FC = () => {
                                             ) : (
                                                 <>
                                                     <i className="fas fa-check-circle mr-2"></i>
-                                                    Finalizar Cadastro PRO
+                                                    Finalizar cadastro
                                                 </>
                                             )}
                                         </Button>

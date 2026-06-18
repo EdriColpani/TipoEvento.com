@@ -136,6 +136,11 @@ serve(async (req) => {
       external_reference: externalReference,
       notification_url: notificationUrl,
       back_urls: { success: successUrl, pending: pendingUrl, failure: failureUrl },
+      // Recarga: cartão somente à vista (1x). Pix permanece disponível no checkout MP.
+      payment_methods: {
+        installments: 1,
+        default_installments: 1,
+      },
     };
 
     const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {

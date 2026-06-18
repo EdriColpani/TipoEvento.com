@@ -98,7 +98,7 @@ const ManagerAdvancedSettings: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white text-xl sm:text-2xl font-semibold">Ajustes de Sistema e Segurança</CardTitle>
                     <CardDescription className="text-gray-400 text-sm">
-                        Configurações que afetam o comportamento geral da sua conta PRO.
+                        Configurações que afetam o comportamento geral da sua conta de gestor.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">

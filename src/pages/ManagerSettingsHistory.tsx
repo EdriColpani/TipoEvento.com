@@ -68,7 +68,7 @@ const ManagerSettingsHistory: React.FC = () => {
         const loadData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                navigate('/manager/login');
+                navigate('/login');
                 return;
             }
             setUserId(user.id);

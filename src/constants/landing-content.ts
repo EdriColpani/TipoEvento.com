@@ -22,7 +22,7 @@ export const LANDING_HOW_IT_WORKS = [
     },
     {
         title: '4. Seja promotor',
-        body: 'Gestores PRO cadastram eventos, definem lotes, publicam na vitrine e acompanham vendas pelo painel administrativo.',
+        body: 'Gestores cadastram eventos, definem lotes, publicam na vitrine e acompanham vendas pelo painel administrativo.',
     },
 ];
 
@@ -248,7 +248,7 @@ export const LANDING_HELP_CENTER_SECTIONS = [
     {
         title: 'Gestores e empresas',
         items: [
-            'Cadastre-se como Gestor PRO para criar e publicar eventos.',
+            'Cadastre-se como gestor para criar e publicar eventos.',
             'Configure lotes, imagens e localização no formulário de evento.',
             'Dúvidas comerciais: use o formulário de contato nesta página.',
         ],
@@ -270,10 +270,39 @@ export const LANDING_FAQ_ITEMS: FaqItem[] = [
     },
     {
         question: 'Como publico meu evento na EventFest?',
-        answer: 'Crie uma conta Gestor PRO, complete o cadastro da empresa e use Criar evento no painel. Após aprovação, o evento aparece na vitrine.',
+        answer: 'Crie uma conta de gestor, complete o cadastro da empresa e use Criar evento no painel. Após aprovação, o evento aparece na vitrine.',
     },
     {
         question: 'O que são créditos EventFest?',
         answer: 'Em eventos participantes, você pode pagar com saldo da carteira EventFest, conforme regras exibidas na página do evento.',
     },
 ];
+
+export const PRE_LAUNCH_HERO = {
+    badge: 'Lançamento em preparação',
+    title: 'A plataforma premium para eventos ao vivo',
+    subtitle:
+        'Estamos finalizando a EventFest para conectar organizadores, empresas e público em uma experiência segura, moderna e memorável.',
+};
+
+export const PRE_LAUNCH_BENEFITS = [
+    {
+        title: 'Vitrine de eventos',
+        body: 'Descubra shows, festivais e experiências com informações claras, filtros inteligentes e compra confiável.',
+    },
+    {
+        title: 'Gestão completa',
+        body: 'Organizadores cadastram eventos, definem lotes, acompanham vendas e relatórios em um painel profissional.',
+    },
+    {
+        title: 'Pagamentos seguros',
+        body: 'Checkout integrado ao Mercado Pago e, quando disponível, créditos EventFest para consumo no evento.',
+    },
+    {
+        title: 'Experiência premium',
+        body: 'Do ingresso digital à validação na entrada — tudo pensado para eventos de grande porte e médio porte.',
+    },
+];
+
+export const PRE_LAUNCH_STATUS_MESSAGE =
+    'Nossa equipe está em fase final de testes. Em breve você poderá explorar eventos e comprar ingressos por aqui. Enquanto isso, fale conosco se quiser saber mais ou ser avisado do lançamento.';

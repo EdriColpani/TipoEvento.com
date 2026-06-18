@@ -503,3 +503,111 @@ export function useAdminCreditRefundCases() {
         staleTime: 30_000,
     });
 }
+
+export type AdminCreditTopupChargebackSummary = {
+    total_cases?: number;
+    cases_with_platform_absorb?: number;
+    total_credit_granted?: number;
+    total_wallet_debit?: number;
+    total_clawback_manager?: number;
+    total_platform_absorb?: number;
+    last_chargeback_at?: string | null;
+    has_platform_loss_alert?: boolean;
+};
+
+export type AdminCreditTopupChargebackRow = {
+    id: string;
+    topup_order_id: string;
+    client_user_id: string;
+    mp_payment_id: string;
+    mp_status: string;
+    credit_granted_amount: number;
+    wallet_debit: number;
+    clawback_manager_total: number;
+    platform_absorb: number;
+    clawback_settlement_count: number;
+    reason: string;
+    ledger_entry_id: string | null;
+    created_at: string;
+    gross_paid_amount: number | null;
+    origin_company_id: string | null;
+    origin_company_name: string | null;
+    topup_paid_at: string | null;
+    admin_notified_at?: string | null;
+};
+
+export function useAdminCreditTopupChargebackSummary(
+    startDate?: string | null,
+    endDate?: string | null,
+    enabled = true,
+) {
+    return useQuery({
+        queryKey: ['adminCreditTopupChargebackSummary', startDate, endDate],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('get_admin_credit_topup_chargeback_summary', {
+                p_start_date: startDate || null,
+                p_end_date: endDate || null,
+            });
+            if (error) throw error;
+            return data as AdminCreditTopupChargebackSummary;
+        },
+        staleTime: 30_000,
+        enabled,
+    });
+}
+
+export function useAdminCreditTopupChargebacks(
+    startDate?: string | null,
+    endDate?: string | null,
+    platformAbsorbOnly = false,
+) {
+    return useQuery({
+        queryKey: ['adminCreditTopupChargebacks', startDate, endDate, platformAbsorbOnly],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('list_admin_credit_topup_chargebacks', {
+                p_start_date: startDate || null,
+                p_end_date: endDate || null,
+                p_platform_absorb_only: platformAbsorbOnly,
+                p_limit: 200,
+                p_offset: 0,
+            });
+            if (error) throw error;
+            const payload = data as { items: AdminCreditTopupChargebackRow[]; total: number };
+            return {
+                items: payload?.items ?? [],
+                total: payload?.total ?? 0,
+            };
+        },
+        staleTime: 20_000,
+    });
+}
+
+const CHARGEBACK_EXPORT_PAGE_SIZE = 200;
+const CHARGEBACK_EXPORT_MAX = 5000;
+
+export async function fetchAdminCreditTopupChargebacksExport(
+    startDate?: string | null,
+    endDate?: string | null,
+    platformAbsorbOnly = false,
+): Promise<AdminCreditTopupChargebackRow[]> {
+    const all: AdminCreditTopupChargebackRow[] = [];
+    let offset = 0;
+
+    while (offset < CHARGEBACK_EXPORT_MAX) {
+        const { data, error } = await supabase.rpc('list_admin_credit_topup_chargebacks', {
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+            p_platform_absorb_only: platformAbsorbOnly,
+            p_limit: CHARGEBACK_EXPORT_PAGE_SIZE,
+            p_offset: offset,
+        });
+        if (error) throw error;
+
+        const items = ((data as { items?: AdminCreditTopupChargebackRow[] })?.items ?? []) as AdminCreditTopupChargebackRow[];
+        all.push(...items);
+        if (items.length < CHARGEBACK_EXPORT_PAGE_SIZE) break;
+        offset += CHARGEBACK_EXPORT_PAGE_SIZE;
+    }
+
+    return all;
+}

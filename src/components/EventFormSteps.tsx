@@ -917,7 +917,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     const nj = profile.natureza_juridica_id != null ? Number(profile.natureza_juridica_id) : null;
                     if (nj === 2) {
                         showError(
-                            'Sua conta é Pessoa Jurídica, mas não há empresa vinculada (user_companies). Conclua o cadastro da empresa em Configurações / registro PRO; se o cadastro antigo falhou no vínculo, refaça ou peça suporte para associar seu user_id à empresa.',
+                            'Sua conta é Pessoa Jurídica, mas não há empresa vinculada (user_companies). Conclua o cadastro da empresa em Configurações / registro de gestor; se o cadastro antigo falhou no vínculo, refaça ou peça suporte para associar seu user_id à empresa.',
                         );
                     } else {
                         showError(

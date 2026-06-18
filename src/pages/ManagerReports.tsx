@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift, ScrollText } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
@@ -197,6 +197,12 @@ const ManagerReports: React.FC = () => {
                                 description="Passivo, auditoria, posição financeira e conciliação Mercado Pago."
                                 onClick={() => navigate('/admin/settings/credit-reports')}
                             />
+                            <ReportCard
+                                icon={<ScrollText className="h-6 w-6 text-yellow-500" />}
+                                title="Aceites de contrato"
+                                description="Auditoria de aceites por empresa: versão, hash, snapshot, usuário e data/hora."
+                                onClick={() => navigate('/manager/reports/admin-contract-acceptances')}
+                            />
                         </>
                     )}
                     {showCreditReport && !creditAccess.isAdminMaster && (
@@ -233,7 +239,7 @@ const ManagerReports: React.FC = () => {
                         <ReportCard
                             icon={<Gift className="h-6 w-6 text-cyan-400" />}
                             title="Pacotes cortesia"
-                            description="Pacotes Staff enviados, resgates por ingresso e destinatários — exclusivo gestor PRO."
+                            description="Pacotes Staff enviados, resgates por ingresso e destinatários — exclusivo do gestor."
                             onClick={() => navigate('/manager/reports/complimentary-bundles')}
                         />
                     )}

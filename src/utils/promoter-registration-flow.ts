@@ -123,7 +123,7 @@ export async function navigateFromPromoterCta(
         const companyId = await fetchManagerPrimaryCompanyId(supabase, userId);
         if (companyId) {
             const path = await resolveManagerPostLoginPath(userId);
-            showSuccess('Você já é gestor PRO. Redirecionando para o painel.');
+            showSuccess('Você já é gestor. Redirecionando para o painel.');
             navigate(path);
             return;
         }
