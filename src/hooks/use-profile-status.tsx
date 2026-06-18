@@ -23,8 +23,8 @@ export const useProfileStatus = (
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id || null);
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUserId(session?.user?.id || null);
         });
     }, []);
 

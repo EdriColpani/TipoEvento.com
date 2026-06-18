@@ -71,7 +71,8 @@ export const useProfile = (userId: string | undefined) => {
         queryKey: ['profile', userId],
         queryFn: () => fetchProfile(userId!),
         enabled: !!userId,
-        staleTime: 1000 * 60 * 5, // 5 minutes
+        staleTime: 1000 * 60 * 5,
+        retry: 1,
     });
 
     return {

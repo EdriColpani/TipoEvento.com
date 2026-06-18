@@ -7,7 +7,12 @@ import {
 /** Verifica se cadastros devem ficar bloqueados no modo pré-lançamento. */
 export async function isRegistrationBlockedByPreview(): Promise<boolean> {
     const { data, error } = await supabase.rpc('get_public_launch_mode');
-    if (error) return false;
+    if (error) {
+        if (error.message?.includes('function') || error.code === '42883') {
+            return false;
+        }
+        return true;
+    }
 
     if (normalizePublicLaunchMode(data) !== 'preview') {
         return false;

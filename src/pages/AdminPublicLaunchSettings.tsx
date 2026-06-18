@@ -27,28 +27,33 @@ const AdminPublicLaunchSettings: React.FC = () => {
 
     useEffect(() => {
         const load = async () => {
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
-            if (!user) {
-                showError('Sessão expirada. Faça login novamente.');
-                navigate('/login');
-                return;
-            }
-            setUserId(user.id);
+            try {
+                const {
+                    data: { user },
+                } = await supabase.auth.getUser();
+                if (!user) {
+                    showError('Sessão expirada. Faça login novamente.');
+                    navigate('/login');
+                    return;
+                }
+                setUserId(user.id);
 
-            const { data, error } = await supabase
-                .from('system_billing_settings')
-                .select('public_launch_mode')
-                .eq('id', 1)
-                .maybeSingle();
+                const { data, error } = await supabase
+                    .from('system_billing_settings')
+                    .select('public_launch_mode')
+                    .eq('id', 1)
+                    .maybeSingle();
 
-            if (error && error.code !== 'PGRST116' && !error.message?.includes('column')) {
-                showError('Erro ao carregar configuração do site público.');
-            } else {
-                setMode(normalizePublicLaunchMode(data?.public_launch_mode ?? 'preview'));
+                if (error && error.code !== 'PGRST116' && !error.message?.includes('column')) {
+                    showError('Erro ao carregar configuração do site público.');
+                } else {
+                    setMode(normalizePublicLaunchMode(data?.public_launch_mode ?? 'preview'));
+                }
+            } catch (e) {
+                console.warn('public_launch_mode load failed', e);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
         void load();
     }, [navigate]);
@@ -88,7 +93,7 @@ const AdminPublicLaunchSettings: React.FC = () => {
         }
     };
 
-    if (isLoading || isLoadingProfile) {
+    if ((isLoading && !userId) || (isLoadingProfile && !profile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

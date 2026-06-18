@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity } from 'lucide-react';
+import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Globe, Share2 } from 'lucide-react';
 import SiteLogo from '@/components/SiteLogo';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import {
@@ -68,29 +68,8 @@ const ManagerLayout: React.FC = () => {
     }, [location.pathname]);
 
     useEffect(() => {
-        const measureHeaderHeight = () => {
-            if (headerRef.current) {
-                setHeaderHeight(headerRef.current.offsetHeight);
-            }
-        };
-
-        // Mede imediatamente
-        measureHeaderHeight();
-        
-        // Mede novamente após um pequeno delay para garantir que o DOM está totalmente renderizado
-        const timeoutId = setTimeout(measureHeaderHeight, 100);
-        
-        window.addEventListener('resize', measureHeaderHeight);
-
-        return () => {
-            clearTimeout(timeoutId);
-            window.removeEventListener('resize', measureHeaderHeight);
-        };
-    }, []); // Empty dependency array means this effect runs once on mount and cleans up on unmount
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUserId(session?.user?.id);
             setLoadingSession(false);
         });
     }, []);
@@ -100,11 +79,11 @@ const ManagerLayout: React.FC = () => {
         profile,
         isLoadingProfile,
     );
-    const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(profile?.tipo_usuario_id);
+    const { userTypeName: baseUserTypeName } = useUserType(userId ? profile?.tipo_usuario_id : undefined);
     
-    const isManagerPro = profile?.tipo_usuario_id === MANAGER_USER_TYPE_ID;
+    const isManagerPro = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_USER_TYPE_ID;
+    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_USER_TYPE_ID;
     const needsBillingGateCheck = isManagerPro && !isAdminMaster && !!company?.id;
     const { billing, isLoading: isLoadingBilling } = useCompanyBilling(
         needsBillingGateCheck ? company!.id : undefined,
@@ -261,6 +240,40 @@ const ManagerLayout: React.FC = () => {
         navigate,
     ]);
 
+    const isLayoutLoading =
+        loadingSession ||
+        isLoadingProfile ||
+        (isManagerPro && isLoadingCompany) ||
+        (needsBillingGateCheck && isLoadingBilling) ||
+        (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
+        (isListingPlan && isLoadingListingSubscription) ||
+        (isConsumptionLicensePlan && isLoadingConsumptionLicense);
+
+    useEffect(() => {
+        if (isLayoutLoading) return;
+
+        const el = headerRef.current;
+        if (!el) return;
+
+        const measureHeaderHeight = () => {
+            setHeaderHeight(el.getBoundingClientRect().height);
+        };
+
+        measureHeaderHeight();
+
+        const resizeObserver = new ResizeObserver(measureHeaderHeight);
+        resizeObserver.observe(el);
+        window.addEventListener('resize', measureHeaderHeight);
+
+        const timeoutId = window.setTimeout(measureHeaderHeight, 150);
+
+        return () => {
+            clearTimeout(timeoutId);
+            resizeObserver.disconnect();
+            window.removeEventListener('resize', measureHeaderHeight);
+        };
+    }, [isLayoutLoading, isMobile, isTablet]);
+
     const handleLogout = async () => {
         try {
             const { error } = await supabase.auth.signOut({ scope: 'local' });
@@ -283,16 +296,7 @@ const ManagerLayout: React.FC = () => {
     };
 
     // Show loading spinner while session or profile/company data is being fetched
-    if (
-        loadingSession ||
-        isLoadingProfile ||
-        isLoadingUserType ||
-        (isManagerPro && isLoadingCompany) ||
-        (needsBillingGateCheck && isLoadingBilling) ||
-        (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
-        (isListingPlan && isLoadingListingSubscription) ||
-        (isConsumptionLicensePlan && isLoadingConsumptionLicense)
-    ) {
+    if (isLayoutLoading) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
@@ -578,6 +582,20 @@ const ManagerLayout: React.FC = () => {
                                                             <Activity className="mr-2 h-4 w-4" />
                                                             Observabilidade checkout
                                                         </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() => navigate('/admin/settings/public-launch')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/public-launch' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Globe className="mr-2 h-4 w-4" />
+                                                            Site público (pré-lançamento)
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() => navigate('/admin/settings/public-social')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/public-social' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Share2 className="mr-2 h-4 w-4" />
+                                                            Redes e contato público
+                                                        </DropdownMenuItem>
                                                         <DropdownMenuItem 
                                                             onClick={() => navigate('/admin/banners')}
                                                             className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/banners' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
@@ -751,6 +769,20 @@ const ManagerLayout: React.FC = () => {
                                                                 <Activity className="mr-2 h-4 w-4" />
                                                                 Observabilidade checkout
                                                             </button>
+                                                            <button
+                                                                onClick={() => { navigate('/admin/settings/public-launch'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Globe className="mr-2 h-4 w-4" />
+                                                                Site público (pré-lançamento)
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { navigate('/admin/settings/public-social'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Share2 className="mr-2 h-4 w-4" />
+                                                                Redes e contato público
+                                                            </button>
                                                             <button 
                                                                 onClick={() => { navigate('/admin/banners'); setIsMobileMenuOpen(false); }}
                                                                 className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
@@ -854,7 +886,7 @@ const ManagerLayout: React.FC = () => {
             )}
             <main
                 style={{
-                    paddingTop: `${Math.max(headerHeight, 80) + subscriptionBannerOffset}px`,
+                    paddingTop: `${Math.max(headerHeight, 104) + subscriptionBannerOffset}px`,
                 }}
                 className={isMobile ? 'p-3' : isTablet ? 'p-4' : 'p-6'}
             >

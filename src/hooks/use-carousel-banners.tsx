@@ -66,10 +66,11 @@ function mapRowToCarouselBanner(row: BannerRow, type: 'event' | 'promotional'): 
 }
 
 const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
-    const refDay = todayIso();
-    const { data, error } = await supabase
-        .from('event_carousel_banners')
-        .select(`
+    try {
+        const refDay = todayIso();
+        const { data, error } = await supabase
+            .from('event_carousel_banners')
+            .select(`
             id,
             image_url,
             headline,
@@ -80,25 +81,30 @@ const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
             event_id,
             events (date)
         `)
-        .lte('start_date', refDay)
-        .gte('end_date', refDay)
-        .order('display_order', { ascending: true });
+            .lte('start_date', refDay)
+            .gte('end_date', refDay)
+            .order('display_order', { ascending: true });
 
-    if (error) {
-        console.error('Error fetching event banners:', error);
-        throw new Error(error.message);
+        if (error) {
+            console.warn('event_carousel_banners:', error.message);
+            return [];
+        }
+
+        return (data as BannerRow[])
+            .map((row) => mapRowToCarouselBanner(row, 'event'))
+            .filter((b): b is CarouselBanner => b !== null);
+    } catch (e) {
+        console.warn('event_carousel_banners failed', e);
+        return [];
     }
-
-    return (data as BannerRow[])
-        .map((row) => mapRowToCarouselBanner(row, 'event'))
-        .filter((b): b is CarouselBanner => b !== null);
 };
 
 const fetchPromotionalBanners = async (): Promise<CarouselBanner[]> => {
-    const refDay = todayIso();
-    const { data, error } = await supabase
-        .from('promotional_banners')
-        .select(`
+    try {
+        const refDay = todayIso();
+        const { data, error } = await supabase
+            .from('promotional_banners')
+            .select(`
             id,
             image_url,
             headline,
@@ -108,98 +114,108 @@ const fetchPromotionalBanners = async (): Promise<CarouselBanner[]> => {
             end_date,
             link_url
         `)
-        .lte('start_date', refDay)
-        .gte('end_date', refDay)
-        .order('display_order', { ascending: true });
+            .lte('start_date', refDay)
+            .gte('end_date', refDay)
+            .order('display_order', { ascending: true });
 
-    if (error) {
-        console.error('Error fetching promotional banners:', error);
-        throw new Error(error.message);
+        if (error) {
+            console.warn('promotional_banners:', error.message);
+            return [];
+        }
+
+        return (data as BannerRow[])
+            .map((row) => mapRowToCarouselBanner(row, 'promotional'))
+            .filter((b): b is CarouselBanner => b !== null);
+    } catch (e) {
+        console.warn('promotional_banners failed', e);
+        return [];
     }
-
-    return (data as BannerRow[])
-        .map((row) => mapRowToCarouselBanner(row, 'promotional'))
-        .filter((b): b is CarouselBanner => b !== null);
 };
 
 const fetchAndProcessBanners = async (settings: CarouselSettings): Promise<CarouselBanner[]> => {
-    const [eventBanners, promotionalBanners] = await Promise.all([
-        fetchEventBanners(),
-        fetchPromotionalBanners(),
-    ]);
+    try {
+        const [eventBanners, promotionalBanners] = await Promise.all([
+            fetchEventBanners(),
+            fetchPromotionalBanners(),
+        ]);
 
-    let combinedBanners: Array<CarouselBanner & { isUpcomingPriority?: boolean }> = [
-        ...eventBanners,
-        ...promotionalBanners,
-    ];
-    const today = new Date();
+        let combinedBanners: Array<CarouselBanner & { isUpcomingPriority?: boolean }> = [
+            ...eventBanners,
+            ...promotionalBanners,
+        ];
+        const today = new Date();
 
-    combinedBanners = combinedBanners.map((banner) => {
-        if (banner.type === 'event' && banner.event_date) {
-            const daysUntil = differenceInDays(banner.event_date, today);
-            const isUpcomingPriority =
-                daysUntil >= 0 && daysUntil <= settings.days_until_event_threshold;
-            return { ...banner, isUpcomingPriority };
-        }
-        return banner;
-    });
+        combinedBanners = combinedBanners.map((banner) => {
+            if (banner.type === 'event' && banner.event_date) {
+                const daysUntil = differenceInDays(banner.event_date, today);
+                const isUpcomingPriority =
+                    daysUntil >= 0 && daysUntil <= settings.days_until_event_threshold;
+                return { ...banner, isUpcomingPriority };
+            }
+            return banner;
+        });
 
-    const compareBanners = (
-        a: CarouselBanner & { isUpcomingPriority?: boolean },
-        b: CarouselBanner & { isUpcomingPriority?: boolean },
-    ) => {
-        if (a.display_order !== b.display_order) {
-            return a.display_order - b.display_order;
-        }
-        if (a.type === 'promotional' && b.type === 'event') return -1;
-        if (a.type === 'event' && b.type === 'promotional') return 1;
+        const compareBanners = (
+            a: CarouselBanner & { isUpcomingPriority?: boolean },
+            b: CarouselBanner & { isUpcomingPriority?: boolean },
+        ) => {
+            if (a.display_order !== b.display_order) {
+                return a.display_order - b.display_order;
+            }
+            if (a.type === 'promotional' && b.type === 'event') return -1;
+            if (a.type === 'event' && b.type === 'promotional') return 1;
 
-        const aIsPriority = a.type === 'event' && a.isUpcomingPriority;
-        const bIsPriority = b.type === 'event' && b.isUpcomingPriority;
-        if (aIsPriority && !bIsPriority) return -1;
-        if (!aIsPriority && bIsPriority) return 1;
+            const aIsPriority = a.type === 'event' && a.isUpcomingPriority;
+            const bIsPriority = b.type === 'event' && b.isUpcomingPriority;
+            if (aIsPriority && !bIsPriority) return -1;
+            if (!aIsPriority && bIsPriority) return 1;
 
-        if (a.type === 'event' && b.type === 'event' && a.event_date && b.event_date) {
-            return isBefore(a.event_date, b.event_date) ? -1 : 1;
-        }
-        return 0;
-    };
+            if (a.type === 'event' && b.type === 'event' && a.event_date && b.event_date) {
+                return isBefore(a.event_date, b.event_date) ? -1 : 1;
+            }
+            return 0;
+        };
 
-    const eventBannersSorted = combinedBanners.filter((b) => b.type === 'event').sort(compareBanners);
-    const promotionalSorted = combinedBanners
-        .filter((b) => b.type === 'promotional')
-        .sort(compareBanners);
+        const eventBannersSorted = combinedBanners.filter((b) => b.type === 'event').sort(compareBanners);
+        const promotionalSorted = combinedBanners
+            .filter((b) => b.type === 'promotional')
+            .sort(compareBanners);
 
-    const maxDisplay = Math.max(1, settings.max_banners_display);
-    const minEventSlots = Math.min(
-        settings.min_regional_banners,
-        eventBannersSorted.length,
-        maxDisplay,
-    );
-    const promoSlots = Math.max(0, maxDisplay - minEventSlots);
+        const maxDisplay = Math.max(1, settings.max_banners_display);
+        const minEventSlots = Math.min(
+            settings.min_regional_banners,
+            eventBannersSorted.length,
+            maxDisplay,
+        );
+        const promoSlots = Math.max(0, maxDisplay - minEventSlots);
 
-    const selected = [
-        ...eventBannersSorted.slice(0, minEventSlots),
-        ...promotionalSorted.slice(0, promoSlots),
-    ];
+        const selected = [
+            ...eventBannersSorted.slice(0, minEventSlots),
+            ...promotionalSorted.slice(0, promoSlots),
+        ];
 
-    return selected.sort(compareBanners);
+        return selected.sort(compareBanners);
+    } catch (e) {
+        console.warn('fetchAndProcessBanners failed', e);
+        return [];
+    }
 };
 
 export const useCarouselBanners = () => {
-    const { settings, isLoading: isLoadingSettings } = useCarouselSettings();
+    const { settings } = useCarouselSettings();
 
     const query = useQuery({
         queryKey: ['carouselBanners', settings],
         queryFn: () => fetchAndProcessBanners(settings),
-        enabled: !isLoadingSettings,
         staleTime: 60_000,
+        retry: 1,
         refetchOnWindowFocus: true,
+        placeholderData: [],
     });
 
     return {
         ...query,
-        banners: query.data || [],
-        isLoading: isLoadingSettings || query.isLoading,
+        banners: query.data ?? [],
+        isLoading: query.isLoading && query.data === undefined,
     };
 };

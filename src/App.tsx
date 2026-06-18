@@ -85,8 +85,16 @@ import ManagerComplimentaryBundlesReport from "./pages/ManagerComplimentaryBundl
 import ComplimentaryBundlePage from "./pages/ComplimentaryBundlePage";
 import ComplimentarySeatRedeemPage from "./pages/ComplimentarySeatRedeemPage";
 import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
+import { PublicLaunchModeProvider } from "./contexts/PublicLaunchModeContext";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function AppRoutes() {
   usePromoterRegistrationResume();
@@ -213,7 +221,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AppRoutes />
+        <PublicLaunchModeProvider>
+          <AppRoutes />
+        </PublicLaunchModeProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

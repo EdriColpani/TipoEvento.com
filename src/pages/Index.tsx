@@ -7,9 +7,7 @@ import {
     buildLandingCategoryCards,
     categoriesMatch,
 } from '@/utils/landing-categories';
-import AuthStatusMenu from '@/components/AuthStatusMenu';
 import { Input } from "@/components/ui/input";
-import MobileMenu from '@/components/MobileMenu';
 import { supabase } from '@/integrations/supabase/client';
 import { trackAdvancedFilterUse } from '@/utils/metrics';
 import { usePublicEvents, PublicEvent } from '@/hooks/use-public-events';
@@ -168,8 +166,8 @@ const Index: React.FC = () => {
     const totalPages = Math.max(1, Math.ceil(filteredEvents.length / EVENTS_PER_PAGE));
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUserId(session?.user?.id);
         });
     }, []);
 
@@ -447,11 +445,17 @@ const Index: React.FC = () => {
                                         <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
                                         <p className="text-gray-400">Carregando eventos...</p>
                                     </div>
-                                ) : isErrorEvents || allEvents.length === 0 ? (
+                                ) : isErrorEvents ? (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
                                         <div className="col-span-full text-center py-10">
                                             <AlertTriangle className="h-10 w-10 text-red-500 mx-auto mb-4" />
-                                            <p className="text-gray-400">Nenhum evento encontrado.</p>
+                                            <p className="text-gray-400">Não foi possível carregar os eventos. Tente atualizar a página.</p>
+                                        </div>
+                                    </div>
+                                ) : allEvents.length === 0 ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
+                                        <div className="col-span-full text-center py-10">
+                                            <p className="text-gray-400">Nenhum evento disponível no momento.</p>
                                         </div>
                                     </div>
                                 ) : filteredEvents.length === 0 ? (

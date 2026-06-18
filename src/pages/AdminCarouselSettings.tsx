@@ -52,50 +52,62 @@ const AdminCarouselSettings: React.FC = () => {
 
     useEffect(() => {
         const fetchUserAndSettings = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                showError("Sessão expirada. Faça login novamente.");
-                navigate('/login');
-                return;
-            }
-            setUserId(user.id);
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    showError("Sessão expirada. Faça login novamente.");
+                    navigate('/login');
+                    return;
+                }
+                setUserId(user.id);
 
-            const { data, error } = await supabase
-                .from('carousel_settings')
-                .select('*')
-                .limit(1)
-                .single();
+                const { data, error } = await supabase
+                    .from('carousel_settings')
+                    .select('*')
+                    .limit(1)
+                    .maybeSingle();
 
-            const defaultSettings: CarouselSettingsState = {
-                rotation_time_seconds: 5,
-                max_banners_display: 5,
-                regional_distance_km: 100,
-                min_regional_banners: 3,
-                fallback_strategy: 'latest_events',
-                days_until_event_threshold: 30,
-            };
+                const defaultSettings: CarouselSettingsState = {
+                    rotation_time_seconds: 5,
+                    max_banners_display: 5,
+                    regional_distance_km: 100,
+                    min_regional_banners: 3,
+                    fallback_strategy: 'latest_events',
+                    days_until_event_threshold: 30,
+                };
 
-            if (error && error.code !== 'PGRST116') { // PGRST116 = No rows found
-                console.error("Error fetching carousel settings:", error);
-                showError("Erro ao carregar configurações do carrossel.");
-                setSettings(defaultSettings); // Fallback to defaults on error
-            } else if (data) {
+                if (error) {
+                    console.warn('carousel_settings:', error.message);
+                    showError("Erro ao carregar configurações do carrossel.");
+                    setSettings(defaultSettings);
+                } else if (data) {
+                    setSettings({
+                        id: data.id,
+                        rotation_time_seconds: data.rotation_time_seconds,
+                        max_banners_display: data.max_banners_display,
+                        regional_distance_km: data.regional_distance_km,
+                        min_regional_banners: data.min_regional_banners,
+                        fallback_strategy: data.fallback_strategy,
+                        days_until_event_threshold: data.days_until_event_threshold,
+                    });
+                } else {
+                    setSettings(defaultSettings);
+                }
+            } catch (e) {
+                console.warn('carousel_settings load failed', e);
                 setSettings({
-                    id: data.id, // Captura o ID existente (UUID)
-                    rotation_time_seconds: data.rotation_time_seconds,
-                    max_banners_display: data.max_banners_display,
-                    regional_distance_km: data.regional_distance_km,
-                    min_regional_banners: data.min_regional_banners,
-                    fallback_strategy: data.fallback_strategy,
-                    days_until_event_threshold: data.days_until_event_threshold,
+                    rotation_time_seconds: 5,
+                    max_banners_display: 5,
+                    regional_distance_km: 100,
+                    min_regional_banners: 3,
+                    fallback_strategy: 'latest_events',
+                    days_until_event_threshold: 30,
                 });
-            } else {
-                // Se não houver configurações, usa os defaults
-                setSettings(defaultSettings);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
-        fetchUserAndSettings();
+        void fetchUserAndSettings();
     }, [navigate]);
 
     const handleInputChange = (key: keyof CarouselSettingsState, value: string | number) => {
@@ -192,7 +204,7 @@ const AdminCarouselSettings: React.FC = () => {
         }
     };
 
-    if (isLoading || isLoadingProfile || !userId || !settings) {
+    if ((isLoading && !settings) || (isLoadingProfile && !profile) || !userId) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
