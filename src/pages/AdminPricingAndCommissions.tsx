@@ -35,7 +35,7 @@ const AdminPricingAndCommissions: React.FC = () => {
     }, []);
 
     const { profile, isLoading: loadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
 
     useEffect(() => {
         if (!loadingProfile && userId && !isAdminMaster) {
@@ -48,7 +48,7 @@ const AdminPricingAndCommissions: React.FC = () => {
         setSearchParams({ tab: value }, { replace: true });
     };
 
-    if (loadingProfile || !userId) {
+    if ((loadingProfile && !profile) || !userId) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className={`h-10 w-10 animate-spin ${billingSpinner} mx-auto mb-4`} />

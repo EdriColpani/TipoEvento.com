@@ -14,11 +14,19 @@ function parsePlanFeaturesRpc(data: unknown): PlanFeaturesMap {
 }
 
 async function fetchCompanyPlanFeatures(companyId: string): Promise<PlanFeaturesMap> {
-    const { data, error } = await supabase.rpc('get_company_plan_features', {
-        p_company_id: companyId,
-    });
-    if (error) throw new Error(error.message);
-    return parsePlanFeaturesRpc(data);
+    try {
+        const { data, error } = await supabase.rpc('get_company_plan_features', {
+            p_company_id: companyId,
+        });
+        if (error) {
+            console.warn('get_company_plan_features:', error.message);
+            return {};
+        }
+        return parsePlanFeaturesRpc(data);
+    } catch (e) {
+        console.warn('get_company_plan_features failed', e);
+        return {};
+    }
 }
 
 export function useCompanyPlanFeatures(
@@ -33,6 +41,8 @@ export function useCompanyPlanFeatures(
         queryFn: () => fetchCompanyPlanFeatures(companyId!),
         enabled: (options?.enabled ?? true) && !!companyId && !isAdminMaster,
         staleTime: 1000 * 60 * 2,
+        retry: 1,
+        placeholderData: {},
     });
 
     return {

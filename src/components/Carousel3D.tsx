@@ -44,7 +44,7 @@ const Carousel3D: React.FC = () => {
         
         updateWidth();
         window.addEventListener('resize', updateWidth);
-        return () => window.removeEventListener('change', updateWidth);
+        return () => window.removeEventListener('resize', updateWidth);
     }, []);
 
     // Sincroniza o índice quando os itens mudam

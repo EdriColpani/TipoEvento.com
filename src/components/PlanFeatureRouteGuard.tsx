@@ -18,6 +18,14 @@ interface PlanFeatureRouteGuardProps {
     children: React.ReactNode;
 }
 
+function GuardSpinner() {
+    return (
+        <div className="py-20 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-cyan-400 mx-auto" />
+        </div>
+    );
+}
+
 /**
  * Bloqueia rotas do gestor quando o plano da empresa não inclui a funcionalidade.
  * Admin Master ignora. Contrato pendente é tratado pelo ManagerLayout.
@@ -28,40 +36,50 @@ const PlanFeatureRouteGuard: React.FC<PlanFeatureRouteGuardProps> = ({ children 
     const [userId, setUserId] = React.useState<string | undefined>();
 
     React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
+        supabase.auth.getSession().then(({ data: { session } }) => setUserId(session?.user?.id));
     }, []);
 
+    const featureKey = resolveFeatureForPath(location.pathname);
     const { profile, isLoading: loadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER;
-    const isManagerPro = profile?.tipo_usuario_id === MANAGER_PRO;
-    const { company, isLoading: loadingCompany } = useManagerCompany(
-        isManagerPro && !isAdminMaster ? userId : undefined,
+    const tipo = Number(profile?.tipo_usuario_id);
+    const isAdminMaster = tipo === ADMIN_MASTER;
+    const isManagerPro = tipo === MANAGER_PRO;
+    const needsPlanGate = Boolean(featureKey && isManagerPro && !isAdminMaster);
+
+    const { company, isLoading: loadingCompany, isError: companyError } = useManagerCompany(
+        needsPlanGate ? userId : undefined,
     );
-    const { billing, isLoading: loadingBilling } = useCompanyBilling(
-        isManagerPro && !isAdminMaster ? company?.id : undefined,
+    const { billing, isLoading: loadingBilling, isError: billingError } = useCompanyBilling(
+        needsPlanGate && company?.id ? company.id : undefined,
     );
     const billingReady = isCompanyBillingReady(billing);
-    const { features, isLoading: loadingFeatures } = useCompanyPlanFeatures(company?.id, {
-        isAdminMaster,
-        enabled: isManagerPro && !isAdminMaster && !!company?.id,
-    });
+    const { features, isLoading: loadingFeatures, isError: featuresError } = useCompanyPlanFeatures(
+        company?.id,
+        { isAdminMaster, enabled: needsPlanGate && !!company?.id },
+    );
 
-    const featureKey = resolveFeatureForPath(location.pathname);
-    const skipGuard = !isManagerPro || isAdminMaster || !company?.id || !featureKey;
-
-    if (skipGuard) {
+    if (!featureKey || !needsPlanGate) {
         return <>{children}</>;
     }
 
-    if (loadingProfile || loadingCompany || loadingBilling || loadingFeatures) {
-        return (
-            <div className="py-20 text-center">
-                <Loader2 className="h-8 w-8 animate-spin text-cyan-400 mx-auto" />
-            </div>
-        );
+    if (!userId || (loadingProfile && !profile)) {
+        return <GuardSpinner />;
     }
 
-    if (isRouteBlockedByPlan(location.pathname, features, isAdminMaster, billingReady)) {
+    if (!company?.id) {
+        return <>{children}</>;
+    }
+
+    const waitingPlanData =
+        (loadingCompany && !companyError) ||
+        (loadingBilling && !billingError) ||
+        (loadingFeatures && !featuresError);
+
+    if (waitingPlanData) {
+        return <GuardSpinner />;
+    }
+
+    if (isRouteBlockedByPlan(location.pathname, features, false, billingReady)) {
         return (
             <div className="max-w-lg mx-auto py-16 px-4 text-center">
                 <Lock className="h-12 w-12 text-amber-400 mx-auto mb-4" />

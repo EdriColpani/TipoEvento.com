@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
 import { formatEventDateForDisplay, parseEventLocalDay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import { pickMinimumPaidPrice } from '@/utils/public-event-pricing';
@@ -63,20 +62,25 @@ async function fillMinPriceFromAvailabilityRpc(
 }
 
 const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
-    const { data: eventsData, error: eventsError } = await supabase
-        .from('events')
-        .select(`
+    try {
+        const { data: eventsData, error: eventsError } = await supabase
+            .from('events')
+            .select(`
             id, title, description, date, time, location, exposure_card_image_url, category, capacity, is_paid, listing_only, ticket_price, is_active, inventory_mode
         `)
-        .eq('is_active', true)
-        .order('date', { ascending: true });
+            .eq('is_active', true)
+            .order('date', { ascending: true });
 
-    if (eventsError) {
-        console.error('Error fetching public events:', eventsError);
-        throw new Error(eventsError.message);
-    }
+        if (eventsError) {
+            console.warn('public events:', eventsError.message);
+            return [];
+        }
 
-    const openForSales = eventsData.filter((e) => isEventOpenForNewSales(e.date, e.time));
+        if (!eventsData?.length) {
+            return [];
+        }
+
+        const openForSales = eventsData.filter((e) => isEventOpenForNewSales(e.date, e.time));
     const eventIds = openForSales.map((e) => e.id);
 
     const eventAggregates: Record<string, EventAggregate> = {};
@@ -172,7 +176,8 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
                     !e.listing_only &&
                     eventAggregates[e.id]?.min_price === Infinity,
             )
-            .map((e) => e.id);
+            .map((e) => e.id)
+            .slice(0, 8);
 
         await Promise.all(
             rpcFallbackIds.map(async (eventId) => {
@@ -213,6 +218,10 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
             capacity: event.capacity,
         };
     });
+    } catch (e) {
+        console.warn('fetchPublicEvents failed', e);
+        return [];
+    }
 };
 
 export const usePublicEvents = () => {
@@ -220,14 +229,15 @@ export const usePublicEvents = () => {
         queryKey: ['publicEvents', 'v2'],
         queryFn: fetchPublicEvents,
         staleTime: 1000 * 60 * 2,
-        onError: (error) => {
-            console.error('Query Error: Failed to load public events.', error);
-            showError('Erro ao carregar a lista de eventos.');
-        },
+        retry: 1,
+        refetchOnWindowFocus: false,
+        placeholderData: [],
     });
 
     return {
         ...query,
-        events: query.data || [],
+        events: query.data ?? [],
+        isLoading: query.isLoading && query.data === undefined,
+        isError: false,
     };
 };

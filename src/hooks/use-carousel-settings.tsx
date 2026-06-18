@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
 
 export interface CarouselSettings {
     rotation_time_seconds: number;
@@ -21,45 +20,49 @@ const DEFAULT_SETTINGS: CarouselSettings = {
 };
 
 const fetchCarouselSettings = async (): Promise<CarouselSettings> => {
-    // Busca o único registro de configurações
-    const { data, error } = await supabase
-        .from('carousel_settings')
-        .select('*')
-        .limit(1)
-        .single();
+    try {
+        const { data, error } = await supabase
+            .from('carousel_settings')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 = No rows found
-        console.error("Error fetching carousel settings:", error);
-        // Em caso de erro, retorna defaults
+        if (error) {
+            console.warn('carousel_settings:', error.message);
+            return DEFAULT_SETTINGS;
+        }
+
+        if (data) {
+            return {
+                rotation_time_seconds: data.rotation_time_seconds || DEFAULT_SETTINGS.rotation_time_seconds,
+                max_banners_display: data.max_banners_display || DEFAULT_SETTINGS.max_banners_display,
+                regional_distance_km: data.regional_distance_km || DEFAULT_SETTINGS.regional_distance_km,
+                min_regional_banners: data.min_regional_banners || DEFAULT_SETTINGS.min_regional_banners,
+                fallback_strategy: data.fallback_strategy || DEFAULT_SETTINGS.fallback_strategy,
+                days_until_event_threshold:
+                    data.days_until_event_threshold || DEFAULT_SETTINGS.days_until_event_threshold,
+            } as CarouselSettings;
+        }
+
+        return DEFAULT_SETTINGS;
+    } catch (e) {
+        console.warn('carousel_settings failed', e);
         return DEFAULT_SETTINGS;
     }
-    
-    if (data) {
-        return {
-            rotation_time_seconds: data.rotation_time_seconds || DEFAULT_SETTINGS.rotation_time_seconds,
-            max_banners_display: data.max_banners_display || DEFAULT_SETTINGS.max_banners_display,
-            regional_distance_km: data.regional_distance_km || DEFAULT_SETTINGS.regional_distance_km,
-            min_regional_banners: data.min_regional_banners || DEFAULT_SETTINGS.min_regional_banners,
-            fallback_strategy: data.fallback_strategy || DEFAULT_SETTINGS.fallback_strategy,
-            days_until_event_threshold: data.days_until_event_threshold || DEFAULT_SETTINGS.days_until_event_threshold,
-        } as CarouselSettings;
-    }
-    
-    return DEFAULT_SETTINGS;
 };
 
 export const useCarouselSettings = () => {
     const query = useQuery({
         queryKey: ['carouselSettings'],
         queryFn: fetchCarouselSettings,
-        staleTime: 1000 * 60 * 10, // 10 minutes
-        onError: (error) => {
-            console.error("Query Error: Failed to load carousel settings.", error);
-        }
+        staleTime: 1000 * 60 * 10,
+        retry: 1,
+        refetchOnWindowFocus: false,
+        placeholderData: DEFAULT_SETTINGS,
     });
 
     return {
         ...query,
-        settings: query.data || DEFAULT_SETTINGS,
+        settings: query.data ?? DEFAULT_SETTINGS,
     };
 };

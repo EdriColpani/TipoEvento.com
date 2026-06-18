@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
 
 interface UserType {
     id: number;
@@ -8,28 +7,31 @@ interface UserType {
 }
 
 const fetchUserTypes = async (): Promise<UserType[]> => {
-    // A política RLS permite que usuários autenticados leiam esta tabela
-    const { data, error } = await supabase
-        .from('tipo_usuario')
-        .select('id, nome');
+    try {
+        const { data, error } = await supabase
+            .from('tipo_usuario')
+            .select('id, nome');
 
-    if (error) {
-        console.error("Error fetching user types:", error);
-        throw new Error(error.message);
+        if (error) {
+            console.warn('tipo_usuario:', error.message);
+            return [];
+        }
+
+        return data as UserType[];
+    } catch (e) {
+        console.warn('tipo_usuario failed', e);
+        return [];
     }
-    
-    return data as UserType[];
 };
 
 export const useUserType = (userTypeId: number | undefined) => {
     const { data: userTypes, isLoading, isError } = useQuery({
         queryKey: ['userTypes'],
         queryFn: fetchUserTypes,
-        staleTime: Infinity, // Tipos de usuário raramente mudam
-        onError: (error) => {
-            console.error("Query Error: Failed to load user types.", error);
-            // Não exibimos um toast de erro aqui, pois é um dado de fundo
-        }
+        staleTime: Infinity,
+        retry: 1,
+        placeholderData: [],
+        enabled: userTypeId !== undefined,
     });
 
     const getUserTypeName = (id: number | undefined): string => {

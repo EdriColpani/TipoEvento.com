@@ -38,14 +38,15 @@ const AuthStatusMenu: React.FC = () => {
     }, []);
 
     const userId = session?.user?.id;
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const isAuthenticated = Boolean(userId);
+    const { profile, isLoading: isLoadingProfile } = useProfile(isAuthenticated ? userId : undefined);
     
     const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile);
     
-    // Obtém o nome base do tipo de usuário
-    const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(profile?.tipo_usuario_id);
+    const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(
+        isAuthenticated ? profile?.tipo_usuario_id : undefined,
+    );
     
-    // NOVO: Busca dados da empresa se for Gestor PRO (tipo 2)
     const isManagerPro = Number(profile?.tipo_usuario_id) === 2;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
 
@@ -70,8 +71,20 @@ const AuthStatusMenu: React.FC = () => {
         }
     };
 
-    if (loadingSession || isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany)) {
-        // Pode retornar um Skeleton ou null durante o carregamento inicial
+    if (loadingSession) {
+        return (
+            <div
+                className={`w-10 h-10 rounded-full animate-pulse ${
+                    isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'
+                }`}
+            ></div>
+        );
+    }
+
+    if (
+        isAuthenticated &&
+        (isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany))
+    ) {
         return (
             <div
                 className={`w-10 h-10 rounded-full animate-pulse ${

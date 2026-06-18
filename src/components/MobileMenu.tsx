@@ -38,14 +38,15 @@ const MobileMenu: React.FC = () => {
     }, []);
 
     const userId = session?.user?.id;
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const isAuthenticated = Boolean(userId);
+    const { profile, isLoading: isLoadingProfile } = useProfile(isAuthenticated ? userId : undefined);
     const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile);
     
-    // Obtém o nome base do tipo de usuário
-    const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(profile?.tipo_usuario_id); 
+    const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(
+        isAuthenticated ? profile?.tipo_usuario_id : undefined,
+    );
     
-    // NOVO: Busca dados da empresa se for Gestor PRO (tipo 2)
-    const isManagerPro = profile?.tipo_usuario_id === MANAGER_USER_TYPE_ID;
+    const isManagerPro = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
     const landingUi = useLandingUiOptional();
     const { showPreLaunchExperience } = usePublicLaunchMode();
@@ -92,7 +93,10 @@ const MobileMenu: React.FC = () => {
               { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
           ];
 
-    const isUserLoading = loadingSession || isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany);
+    const isUserLoading =
+        loadingSession ||
+        (isAuthenticated &&
+            (isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany)));
     const isLoggedIn = session && profile;
     const isManager = isLoggedIn && (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2);
     

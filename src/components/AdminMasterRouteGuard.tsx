@@ -13,15 +13,15 @@ const AdminMasterRouteGuard: React.FC = () => {
     const [loadingSession, setLoadingSession] = React.useState(true);
 
     React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUserId(session?.user?.id);
             setLoadingSession(false);
         });
     }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
 
-    if (loadingSession || isLoadingProfile) {
+    if (loadingSession || (isLoadingProfile && !profile)) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />

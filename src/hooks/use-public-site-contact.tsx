@@ -9,21 +9,31 @@ import {
 export const PUBLIC_SITE_CONTACT_QUERY_KEY = ['publicSiteContact'] as const;
 
 async function fetchPublicSiteContact(): Promise<PublicSiteContact> {
-    const { data, error } = await supabase.rpc('get_public_contact_info');
-    if (error) {
-        if (error.message?.includes('function') || error.code === '42883') {
+    try {
+        const { data, error } = await supabase.rpc('get_public_contact_info');
+        if (error) {
+            if (error.message?.includes('function') || error.code === '42883') {
+                return DEFAULT_PUBLIC_SITE_CONTACT;
+            }
+            console.warn('get_public_contact_info:', error.message);
             return DEFAULT_PUBLIC_SITE_CONTACT;
         }
-        throw new Error(error.message);
+        return parsePublicSiteContact(data);
+    } catch (e) {
+        console.warn('get_public_contact_info failed', e);
+        return DEFAULT_PUBLIC_SITE_CONTACT;
     }
-    return parsePublicSiteContact(data);
 }
 
 export function usePublicSiteContact() {
     const query = useQuery({
         queryKey: [...PUBLIC_SITE_CONTACT_QUERY_KEY],
         queryFn: fetchPublicSiteContact,
-        staleTime: 60_000,
+        staleTime: 5 * 60_000,
+        gcTime: 30 * 60_000,
+        retry: 1,
+        refetchOnWindowFocus: false,
+        placeholderData: DEFAULT_PUBLIC_SITE_CONTACT,
     });
 
     return {

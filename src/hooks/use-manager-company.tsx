@@ -24,8 +24,8 @@ const fetchCompanyId = async (userId: string): Promise<CompanyData | null> => {
         .maybeSingle();
 
     if (companyError && companyError.code !== 'PGRST116') {
-        console.error('Error fetching companies row for manager:', companyError);
-        throw new Error(companyError.message);
+        console.warn('Error fetching companies row for manager:', companyError);
+        return null;
     }
 
     if (!companyRow) {
@@ -44,11 +44,8 @@ export const useManagerCompany = (userId: string | undefined) => {
         queryKey: ['managerCompany', userId],
         queryFn: () => fetchCompanyId(userId!),
         enabled: !!userId,
-        staleTime: 1000 * 60 * 5, // 5 minutes
-        onError: (error) => {
-            console.error("Query Error: Failed to load company data.", error);
-            // Removido o toast de erro aqui, pois a ausência de empresa é um estado esperado para PF
-        }
+        staleTime: 1000 * 60 * 5,
+        retry: 1,
     });
 
     return {
