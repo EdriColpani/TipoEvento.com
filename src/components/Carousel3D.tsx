@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Loader2, AlertTriangle } from 'lucide-react'
 import { useCarouselBanners } from '@/hooks/use-carousel-banners';
 import { useCarouselSettings } from '@/hooks/use-carousel-settings';
 import { useNavigate } from 'react-router-dom';
+import SiteLogo from '@/components/SiteLogo';
 
 // Dimensões Máximas Solicitadas
 const MAX_WIDTH = 770;
@@ -116,11 +117,7 @@ const Carousel3D: React.FC = () => {
                     className="w-full border border-yellow-500/30 rounded-3xl p-8 flex flex-col items-center justify-center bg-black/80"
                     style={{ minHeight: `${Math.max(placeholderHeight, 280)}px` }}
                 >
-                    <img
-                        src="/logo-eventfest.png"
-                        alt="EventFest"
-                        className="h-20 sm:h-28 w-auto object-contain opacity-90 mb-6"
-                    />
+                    <SiteLogo className="h-20 sm:h-28 opacity-90 mb-6" />
                     <p className="text-yellow-500 text-lg sm:text-xl font-semibold text-center">
                         Nenhum banner ativo no momento
                     </p>

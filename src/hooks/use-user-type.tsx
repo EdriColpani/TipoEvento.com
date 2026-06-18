@@ -34,14 +34,15 @@ export const useUserType = (userTypeId: number | undefined) => {
 
     const getUserTypeName = (id: number | undefined): string => {
         if (id === undefined || !userTypes) return 'Carregando...';
-        
-        const type = userTypes.find(t => t.id === id);
+
+        const tipo = Number(id);
+        const type = userTypes.find((t) => Number(t.id) === tipo);
         
         // Mapeamento para nomes mais amigáveis, se necessário
         if (type) {
-            if (type.id === 1) return 'Administrador Master';
-            if (type.id === 2) return 'Gestor';
-            if (type.id === 3) return 'Cliente';
+            if (tipo === 1) return 'Administrador Master';
+            if (tipo === 2) return 'Gestor';
+            if (tipo === 3) return 'Cliente';
             return type.nome;
         }
         
