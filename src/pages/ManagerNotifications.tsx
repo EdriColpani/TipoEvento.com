@@ -41,7 +41,7 @@ const ManagerNotifications: React.FC = () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
                 showError("Sessão expirada. Faça login novamente.");
-                navigate('/manager/login');
+                navigate('/login');
                 return;
             }
             setUserId(user.id);
@@ -230,7 +230,7 @@ const ManagerNotifications: React.FC = () => {
                         <div className="flex items-center justify-between p-4 bg-black/60 rounded-xl border border-yellow-500/20">
                             <div>
                                 <p className="text-white font-medium">Nova Venda (Notificação no Sistema)</p>
-                                <p className="text-gray-400 text-xs">Alerta visual no Dashboard PRO.</p>
+                                <p className="text-gray-400 text-xs">Alerta visual no Dashboard.</p>
                             </div>
                             <Switch 
                                 checked={settings.newSaleSystem} 
@@ -285,7 +285,7 @@ const ManagerNotifications: React.FC = () => {
                         <div className="flex items-center justify-between p-4 bg-black/60 rounded-xl border border-yellow-500/20">
                             <div>
                                 <p className="text-white font-medium">Ingressos com Baixo Estoque (Sistema)</p>
-                                <p className="text-gray-400 text-xs">Alerta visual no Dashboard PRO.</p>
+                                <p className="text-gray-400 text-xs">Alerta visual no Dashboard.</p>
                             </div>
                             <Switch 
                                 checked={settings.lowStockSystem} 

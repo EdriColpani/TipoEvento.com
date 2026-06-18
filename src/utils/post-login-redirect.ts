@@ -76,7 +76,7 @@ export async function resolvePostLoginRedirect(
     if (userType === 2) {
         return {
             path: await resolveManagerPostLoginPath(userId),
-            message: 'Login de Gestor PRO realizado com sucesso!',
+            message: 'Login de gestor realizado com sucesso!',
         };
     }
     if (userType === 3) {

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { resolveWebhookPayment } from './mp-ticket-payment.ts';
 import { extractMpPaymentFinancials, resolveSplitAmounts } from './mp-payment-financials.ts';
+import { triggerChargebackNotifyFromWebhook } from '../_shared/credit-topup-chargeback-notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -194,6 +195,12 @@ serve(async (req) => {
         const topupOrderId = externalReference.slice(CREDIT_TOPUP_PREFIX.length);
         console.log(`[MP Webhook] Credit top-up: ${topupOrderId}, status=${paymentStatus}`);
 
+        const CREDIT_TOPUP_CHARGEBACK_STATUSES = new Set([
+            'charged_back',
+            'refunded',
+            'partially_refunded',
+        ]);
+
         if (paymentStatus === 'approved' || paymentStatus === 'authorized') {
             const { data: settleData, error: settleErr } = await supabaseService.rpc('credit_topup_settle', {
                 p_topup_order_id: topupOrderId,
@@ -210,6 +217,32 @@ serve(async (req) => {
                 });
             }
             console.log('[MP Webhook] credit_topup_settle result:', settleData);
+        } else if (CREDIT_TOPUP_CHARGEBACK_STATUSES.has(paymentStatus)) {
+            const chargebackReason = paymentStatusDetail
+                ? `Chargeback/refund Mercado Pago (${paymentStatus}: ${paymentStatusDetail}).`
+                : `Chargeback/refund Mercado Pago (${paymentStatus}).`;
+            const { data: chargebackData, error: chargebackErr } = await supabaseService.rpc(
+                'credit_topup_handle_mp_chargeback',
+                {
+                    p_topup_order_id: topupOrderId,
+                    p_mp_payment_id: mpPaymentId,
+                    p_mp_status: paymentStatus,
+                    p_reason: chargebackReason,
+                },
+            );
+            if (chargebackErr) {
+                console.error('[MP Webhook] credit_topup_handle_mp_chargeback:', chargebackErr);
+                return new Response(JSON.stringify({ error: chargebackErr.message }), {
+                    status: 500,
+                    headers: corsHeaders,
+                });
+            }
+            console.log('[MP Webhook] credit_topup_handle_mp_chargeback result:', chargebackData);
+            const absorb = Number((chargebackData as Record<string, unknown>)?.platform_absorb ?? 0);
+            const caseId = (chargebackData as Record<string, unknown>)?.chargeback_case_id as string | undefined;
+            if ((chargebackData as Record<string, unknown>)?.ok && absorb > 0 && caseId) {
+                await triggerChargebackNotifyFromWebhook(supabaseService, caseId, absorb);
+            }
         } else {
             await supabaseService
                 .from('credit_topup_orders')

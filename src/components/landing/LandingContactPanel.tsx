@@ -19,6 +19,7 @@ export type LandingContactPanelProps = {
     sendingContact: boolean;
     onSendContact: () => void;
     isMobile?: boolean;
+    defaultOpen?: boolean;
 };
 
 const LandingContactPanel: React.FC<LandingContactPanelProps> = ({
@@ -33,34 +34,38 @@ const LandingContactPanel: React.FC<LandingContactPanelProps> = ({
     sendingContact,
     onSendContact,
     isMobile,
+    defaultOpen = false,
 }) => {
     const { contactOpen, closeContact } = useLandingUi();
+    const isOpen = defaultOpen || contactOpen;
 
     return (
         <div
             id="landing-contact-panel"
             className={cn(
                 'grid transition-all duration-500 ease-in-out scroll-mt-28',
-                contactOpen
+                isOpen
                     ? 'grid-rows-[1fr] opacity-100 mb-10'
                     : 'grid-rows-[0fr] opacity-0 mb-0 pointer-events-none',
             )}
-            aria-hidden={!contactOpen}
+            aria-hidden={!isOpen}
         >
             <div className="overflow-hidden min-h-0">
                 <div className="flex items-center justify-between gap-3 mb-4">
                     <p className="text-sm text-cyan-300/90">Fale com a EventFest</p>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={closeContact}
-                        className="text-gray-400 hover:text-cyan-400 hover:bg-cyan-400/10 shrink-0"
-                        aria-label="Fechar contato"
-                    >
-                        <X className="h-5 w-5 mr-1" />
-                        Fechar
-                    </Button>
+                    {!defaultOpen ? (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={closeContact}
+                            className="text-gray-400 hover:text-cyan-400 hover:bg-cyan-400/10 shrink-0"
+                            aria-label="Fechar contato"
+                        >
+                            <X className="h-5 w-5 mr-1" />
+                            Fechar
+                        </Button>
+                    ) : null}
                 </div>
                 <div
                     className={cn(

@@ -326,7 +326,7 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
             }
 
             dismissToast(toastId);
-            showSuccess("Cadastro como Gestor PF realizado com sucesso! Redirecionando para o Dashboard PRO.");
+            showSuccess('Cadastro como gestor PF realizado com sucesso! Redirecionando para o Dashboard.');
             queryClient.invalidateQueries({ queryKey: ['profile', userId] }); // Invalida o cache do perfil
             onClose(); // Fecha o modal
             navigate('/manager/dashboard'); // Redireciona para o dashboard do gestor

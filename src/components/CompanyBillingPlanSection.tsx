@@ -150,6 +150,9 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
 
             const { data, error } = await supabase.rpc(rpcName, {
                 p_company_id: companyId,
+                p_user_agent:
+                    typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 2000) : null,
+                p_scrolled_to_end: hasScrolledToEnd,
                 ...(isUpgrade
                     ? { p_new_plan: pendingPlan, p_contract_id: pendingContract.id }
                     : { p_plan: pendingPlan, p_contract_id: pendingContract.id }),

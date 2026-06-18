@@ -59,7 +59,7 @@ const ManagerEditEvent: React.FC = () => {
 
             if (!user) {
                 showError('Sessão expirada ou não autenticada.');
-                navigate('/manager/login');
+                navigate('/login');
                 setIsFetching(false);
                 return;
             }

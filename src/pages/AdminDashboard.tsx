@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2, Wallet, Activity } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2, Wallet, Activity, Globe } from 'lucide-react';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { EMPTY_ADMIN_METRICS, useAdminDashboardStats } from '@/hooks/use-admin-dashboard-stats';
+import { useAdminCreditTopupChargebackSummary } from '@/hooks/use-credit-reports';
 import { showError } from '@/utils/toast';
+
+function money(v: number | undefined | null): string {
+    return Number(v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
 
 const getActivityStatusClasses = (status: string) => {
     switch (status) {
@@ -19,6 +25,7 @@ const getActivityStatusClasses = (status: string) => {
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
     const { data, isLoading, isError, error } = useAdminDashboardStats(true);
+    const chargebackSummary = useAdminCreditTopupChargebackSummary(null, null);
 
     useEffect(() => {
         if (isError && error) {
@@ -64,6 +71,30 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-gray-400 text-sm sm:text-base">Visão geral e gerenciamento da saúde da plataforma EventFest.</p>
             </div>
 
+            {chargebackSummary.data?.has_platform_loss_alert && (
+                <Alert className="mb-6 border-red-500/50 bg-red-500/10">
+                    <AlertTriangle className="h-4 w-4 text-red-400" />
+                    <AlertTitle className="text-red-300">Chargebacks de recarga — absorção EventFest</AlertTitle>
+                    <AlertDescription className="text-red-200/90 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <span>
+                            {chargebackSummary.data.cases_with_platform_absorb} caso(s) com perda não recuperada
+                            (total {money(chargebackSummary.data.total_platform_absorb)}).
+                        </span>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-red-400/50 text-red-200 hover:bg-red-500/20 shrink-0"
+                            onClick={() =>
+                                navigate('/admin/settings/credit-reports', { state: { creditTab: 'chargebacks' } })
+                            }
+                        >
+                            Ver chargebacks
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div className="bg-black border border-yellow-500/30 rounded-2xl p-6 hover:border-yellow-500/60 transition-all duration-300">
                     <div className="flex items-center justify-between mb-4">
@@ -103,7 +134,7 @@ const AdminDashboard: React.FC = () => {
                         </div>
                         <div className="text-gray-400 text-sm">
                             Empresas cadastradas <span className="text-gray-500">·</span>{' '}
-                            <span className="text-purple-400">{metrics.manager_profiles}</span> gestores PRO
+                            <span className="text-purple-400">{metrics.manager_profiles}</span> gestores
                         </div>
                     </div>
                 </div>
@@ -233,6 +264,14 @@ const AdminDashboard: React.FC = () => {
                         >
                             <Wallet className="h-4 w-4 mr-2" />
                             Relatórios Créditos EventFest
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => navigate('/admin/settings/public-launch')}
+                            className="w-full bg-black/60 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 py-3 transition-all duration-300 cursor-pointer flex items-center justify-center text-sm sm:text-base"
+                        >
+                            <Globe className="h-4 w-4 mr-2" />
+                            Site Público (Pré-lançamento)
                         </Button>
                         <Button
                             type="button"

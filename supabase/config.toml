@@ -85,3 +85,6 @@ verify_jwt = false
 
 [functions.revoke-entry-qr]
 verify_jwt = false
+
+[functions.run-credit-chargeback-notify-job]
+verify_jwt = false

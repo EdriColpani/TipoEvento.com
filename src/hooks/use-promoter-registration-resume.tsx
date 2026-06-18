@@ -9,6 +9,7 @@ import {
     MANAGER_COMPANY_REGISTER_PATH,
 } from '@/utils/manager-company-registration';
 import { peekComplimentaryReturnPath } from '@/utils/complimentary-auth-return';
+import { isRegistrationBlockedByPreview } from '@/utils/public-launch-registration-block';
 
 /**
  * Após confirmar e-mail, o Supabase pode redirecionar para / ou /login.
@@ -28,6 +29,10 @@ export function usePromoterRegistrationResume() {
                 return;
             }
 
+            if (await isRegistrationBlockedByPreview()) {
+                return;
+            }
+
             const {
                 data: { session },
             } = await supabase.auth.getSession();
@@ -44,9 +49,10 @@ export function usePromoterRegistrationResume() {
 
         void resumeIfNeeded();
 
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (cancelled || !session?.user || !isAuthEmailConfirmed(session.user)) return;
             if (location.pathname.startsWith('/cortesia/') || peekComplimentaryReturnPath()) return;
+            if (await isRegistrationBlockedByPreview()) return;
             const hasDraft = Boolean(sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY));
             const pendingPromoter = hasPendingPromoterRegistration(session.user);
             if ((hasDraft || pendingPromoter) && location.pathname !== MANAGER_COMPANY_REGISTER_PATH) {

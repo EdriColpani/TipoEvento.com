@@ -4,6 +4,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { showError } from '@/utils/toast';
+import { LOGIN_PATH } from '@/utils/auth-routes';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -31,7 +32,7 @@ const AdminMasterRouteGuard: React.FC = () => {
     // 1. Check if logged in
     if (!userId || !profile) {
         showError("Acesso negado. Faça login.");
-        return <Navigate to="/manager/login" replace />;
+        return <Navigate to={LOGIN_PATH} replace />;
     }
 
     // 2. Check if user is Admin Master (tipo_usuario_id = 1); Number() evita falha se vier como string do DB

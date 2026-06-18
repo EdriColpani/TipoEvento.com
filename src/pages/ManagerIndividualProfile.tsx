@@ -127,7 +127,7 @@ const ManagerIndividualProfile: React.FC = () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
                 showError("Sessão expirada. Faça login novamente.");
-                navigate('/manager/login');
+                navigate('/login');
                 return;
             }
             setUserId(user.id);
@@ -316,7 +316,7 @@ const ManagerIndividualProfile: React.FC = () => {
                         Dados Pessoais Obrigatórios
                     </CardTitle>
                     <CardDescription className="text-gray-400 text-sm">
-                        Estes dados são essenciais para a validação da sua conta PRO como Pessoa Física.
+                        Estes dados são essenciais para a validação da sua conta de gestor como Pessoa Física.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

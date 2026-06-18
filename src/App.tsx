@@ -2,15 +2,16 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import ClientHomeRoute from "./components/ClientHomeRoute";
+import PublicLaunchRouteGuard from "./components/PublicLaunchRouteGuard";
+import PublicLaunchRegistrationGuard from "./components/PublicLaunchRegistrationGuard";
 import NotFound from "./pages/NotFound";
 import EventDetails from "./pages/EventDetails";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import MyTickets from "./pages/MyTickets";
-import ManagerLogin from "./pages/ManagerLogin";
 import ManagerDashboard from "./pages/ManagerDashboard";
 import ManagerCreateEvent from "./pages/ManagerCreateEvent";
 import ManagerEventsList from "./pages/ManagerEventsList";
@@ -32,6 +33,7 @@ import ManagerWristbandsList from "./pages/ManagerWristbandsList";
 import ManagerManageWristband from "./pages/ManagerManageWristband";
 import ManagerReports from "./pages/ManagerReports";
 import AdminCompaniesTicketInventoryReport from "./pages/AdminCompaniesTicketInventoryReport";
+import AdminContractAcceptancesReport from "./pages/AdminContractAcceptancesReport";
 import WristbandMovementsReports from "./pages/WristbandMovementsReports";
 import FinancialReports from "./pages/FinancialReports";
 import EventTicketDetailsPage from "./pages/EventTicketDetailsPage";
@@ -66,6 +68,7 @@ import AdminListingMonthlyBilling from "./pages/AdminListingMonthlyBilling";
 import AdminContactMessages from "./pages/AdminContactMessages";
 import AdminEventGeoBackfill from "./pages/AdminEventGeoBackfill";
 import AdminCheckoutObservability from "./pages/AdminCheckoutObservability";
+import AdminPublicLaunchSettings from "./pages/AdminPublicLaunchSettings";
 import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
 import ManagerConsumptionLicenseBilling from "./pages/ManagerConsumptionLicenseBilling";
 import SalesReports from "./pages/SalesReports"; // NOVO
@@ -90,8 +93,9 @@ function AppRoutes() {
   return (
         <Routes>
           {/* Public/Client Routes */}
-          <Route path="/" element={<ClientLayout />}> {/* Wrap client routes with ClientLayout */}
-            <Route index element={<Index />} />
+          <Route path="/" element={<ClientLayout />}>
+            <Route element={<PublicLaunchRouteGuard />}>
+            <Route index element={<ClientHomeRoute />} />
             <Route path="events/:id" element={<EventDetails />} />
             <Route path="events/:eventId/inscricao" element={<EventInscriptionPage />} />
             <Route path="events/:eventId/inscricao/sucesso" element={<EventInscriptionSuccessPage />} />
@@ -104,6 +108,7 @@ function AppRoutes() {
             <Route path="wallet/consumo" element={<ClientCreditMenu />} />
             <Route path="cortesia/pacote" element={<ComplimentaryBundlePage />} />
             <Route path="cortesia/resgatar" element={<ComplimentarySeatRedeemPage />} />
+            </Route>
           </Route>
 
           {/* Reset fora do ClientLayout: evita header “já logado” na sessão de recovery */}
@@ -113,13 +118,15 @@ function AppRoutes() {
           <Route path="/validator" element={<TicketValidator />} />
           <Route path="/validador" element={<TicketValidator />} />
           
-          {/* Manager Login (outside layout for specific styling) */}
-          <Route path="/manager/login" element={<ManagerLogin />} />
+          {/* Legado: redireciona login antigo do gestor para rota única */}
+          <Route path="/manager/login" element={<Navigate to="/login" replace />} />
           
           {/* Manager Registration Routes (Accessible by logged-in clients) */}
-          <Route path="/manager/register" element={<ManagerRegister />} />
-          <Route path="/manager/register/account" element={<ManagerPromoterAccountRegister />} />
-          <Route path="/manager/register/company" element={<ManagerCompanyRegister />} />
+          <Route element={<PublicLaunchRegistrationGuard />}>
+            <Route path="/manager/register" element={<ManagerRegister />} />
+            <Route path="/manager/register/account" element={<ManagerPromoterAccountRegister />} />
+            <Route path="/manager/register/company" element={<ManagerCompanyRegister />} />
+          </Route>
           
           {/* Manager Routes (Protected by ManagerLayout, which handles auth/redirect) */}
           <Route element={<ManagerLayout />}>
@@ -148,6 +155,7 @@ function AppRoutes() {
             <Route path="/manager/reports/credit-spends" element={<ManagerCreditSpendsReport />} />
             <Route path="/manager/reports/credit-accounting" element={<ManagerCreditAccountingReport />} />
             <Route path="/manager/reports/admin-ticket-inventory" element={<AdminCompaniesTicketInventoryReport />} />
+            <Route path="/manager/reports/admin-contract-acceptances" element={<AdminContractAcceptancesReport />} />
             <Route path="/manager/credit/settlements" element={<ManagerCreditSettlements />} />
             <Route path="/manager/validation-keys" element={<ManagerValidationKeys />} />
             <Route path="/manager/settings" element={<ManagerSettings />} />
@@ -176,6 +184,7 @@ function AppRoutes() {
                 <Route path="/admin/settings/contact-messages" element={<AdminContactMessages />} />
                 <Route path="/admin/settings/event-geo-backfill" element={<AdminEventGeoBackfill />} />
                 <Route path="/admin/settings/checkout-observability" element={<AdminCheckoutObservability />} />
+                <Route path="/admin/settings/public-launch" element={<AdminPublicLaunchSettings />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 

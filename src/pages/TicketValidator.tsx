@@ -262,7 +262,7 @@ const TicketValidator: React.FC = () => {
                 qr_malformed: 'QR inválido.',
                 digital_only: 'Evento só aceita QR do aplicativo do cliente.',
                 subscription_lapsed:
-                    'Assinatura do evento vencida. O gestor deve renovar a mensalidade no painel PRO.',
+                    'Assinatura do evento vencida. O gestor deve renovar a mensalidade no painel.',
             };
             const result: ValidationResult = {
                 ...(typeof raw === 'object' && raw !== null ? raw : {}),

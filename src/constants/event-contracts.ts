@@ -33,7 +33,7 @@ export const LEGACY_CONTRACT_TYPE_LABELS: Record<string, string> = {
 };
 
 export const PLATFORM_CONTRACT_TYPE_LABELS: Record<PlatformContractType, string> = {
-    company_registration: 'Cadastro da empresa (Gestor PRO)',
+    company_registration: 'Cadastro da empresa (Gestor)',
     client_terms: 'Termos do cliente (comprador de ingressos)',
 };
 

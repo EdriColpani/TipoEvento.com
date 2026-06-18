@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
 import { Button } from '@/components/ui/button';
@@ -26,9 +27,13 @@ import {
     useAdminCreditReconciliation,
     useAdminCreditRefundCases,
     useAdminCreditSettlements,
+    useAdminCreditTopupChargebacks,
+    useAdminCreditTopupChargebackSummary,
+    fetchAdminCreditTopupChargebacksExport,
     useAdminPlatformBillingRevenue,
 } from '@/hooks/use-credit-reports';
 import { adminCreditRefund } from '@/utils/credit-manager-payout';
+import { exportCreditTopupChargebacksCsv } from '@/utils/export-credit-topup-chargebacks-csv';
 import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number | undefined | null): string {
@@ -65,6 +70,7 @@ const ADMIN_CREDIT_REPORT_TABS = new Set([
     'position',
     'revenue',
     'mp-recon',
+    'chargebacks',
 ]);
 
 const AdminCreditReports: React.FC = () => {
@@ -86,6 +92,11 @@ const AdminCreditReports: React.FC = () => {
     const [revenueEndDate, setRevenueEndDate] = useState('');
     const [mpIssuesStartDate, setMpIssuesStartDate] = useState('');
     const [mpIssuesEndDate, setMpIssuesEndDate] = useState('');
+    const [chargebackStartDate, setChargebackStartDate] = useState('');
+    const [chargebackEndDate, setChargebackEndDate] = useState('');
+    const [chargebackAbsorbOnly, setChargebackAbsorbOnly] = useState(false);
+    const [chargebackExporting, setChargebackExporting] = useState(false);
+    const [chargebackNotifying, setChargebackNotifying] = useState(false);
 
     useEffect(() => {
         if (requestedTab && ADMIN_CREDIT_REPORT_TABS.has(requestedTab)) {
@@ -123,6 +134,15 @@ const AdminCreditReports: React.FC = () => {
     const audit = useAdminCreditAuditLog();
     const settlements = useAdminCreditSettlements();
     const refundCases = useAdminCreditRefundCases();
+    const chargebackSummary = useAdminCreditTopupChargebackSummary(
+        chargebackStartDate || null,
+        chargebackEndDate || null,
+    );
+    const chargebacks = useAdminCreditTopupChargebacks(
+        chargebackStartDate || null,
+        chargebackEndDate || null,
+        chargebackAbsorbOnly,
+    );
 
     const handleRefund = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -148,6 +168,54 @@ const AdminCreditReports: React.FC = () => {
             showError(err instanceof Error ? err.message : 'Erro ao estornar.');
         } finally {
             setRefunding(false);
+        }
+    };
+
+    const handleChargebackExport = async () => {
+        setChargebackExporting(true);
+        try {
+            const rows = await fetchAdminCreditTopupChargebacksExport(
+                chargebackStartDate || null,
+                chargebackEndDate || null,
+                chargebackAbsorbOnly,
+            );
+            exportCreditTopupChargebacksCsv(rows);
+            showSuccess(`CSV exportado (${rows.length} linhas).`);
+        } catch (err: unknown) {
+            showError(err instanceof Error ? err.message : 'Erro ao exportar CSV.');
+        } finally {
+            setChargebackExporting(false);
+        }
+    };
+
+    const handleChargebackNotify = async (digestMode = false) => {
+        setChargebackNotifying(true);
+        try {
+            const { data, error } = await supabase.functions.invoke('run-credit-chargeback-notify-job', {
+                body: { digestMode, limit: 50 },
+            });
+            if (error) throw error;
+            const payload = data as {
+                success?: boolean;
+                emailsSent?: number;
+                emailsFailed?: number;
+                casesProcessed?: number;
+                error?: string;
+            };
+            if (payload?.error) throw new Error(payload.error);
+            if ((payload?.casesProcessed ?? 0) === 0) {
+                showSuccess('Nenhum alerta pendente para envio.');
+            } else {
+                showSuccess(
+                    `Alertas enviados: ${payload.emailsSent ?? 0} e-mail(s), ${payload.casesProcessed ?? 0} caso(s).`,
+                );
+            }
+            queryClient.invalidateQueries({ queryKey: ['adminCreditTopupChargebacks'] });
+            queryClient.invalidateQueries({ queryKey: ['adminCreditTopupChargebackSummary'] });
+        } catch (err: unknown) {
+            showError(err instanceof Error ? err.message : 'Erro ao enviar alertas.');
+        } finally {
+            setChargebackNotifying(false);
         }
     };
 
@@ -199,6 +267,15 @@ const AdminCreditReports: React.FC = () => {
                     </TabsTrigger>
                     <TabsTrigger value="mp-recon" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
                         Conciliação MP
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="chargebacks"
+                        className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black relative"
+                    >
+                        <AlertTriangle className="h-4 w-4 mr-1" /> Chargebacks
+                        {(chargebackSummary.data?.cases_with_platform_absorb ?? 0) > 0 && (
+                            <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-red-500" title="Absorção EventFest pendente" />
+                        )}
                     </TabsTrigger>
                 </TabsList>
 
@@ -748,6 +825,213 @@ const AdminCreditReports: React.FC = () => {
                                         value={money(platformRevenue.data?.totals?.consolidated_revenue_net)}
                                     />
                                 </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="chargebacks">
+                    {(chargebackSummary.data?.has_platform_loss_alert ?? false) && (
+                        <Alert className="mb-4 border-red-500/50 bg-red-500/10 text-red-200">
+                            <AlertTriangle className="h-4 w-4 text-red-400" />
+                            <AlertTitle className="text-red-300">Absorção EventFest em chargebacks</AlertTitle>
+                            <AlertDescription className="text-red-200/90">
+                                {chargebackSummary.data?.cases_with_platform_absorb ?? 0} caso(s) com perda não recuperada
+                                do cliente nem dos gestores — total{' '}
+                                <strong>{money(chargebackSummary.data?.total_platform_absorb)}</strong>.
+                                Revise os casos abaixo e a conciliação com o Mercado Pago.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    <Card className="bg-black border-yellow-500/30 mb-4">
+                        <CardHeader>
+                            <CardTitle className="text-white">Chargebacks de recarga</CardTitle>
+                            <CardDescription className="text-gray-400">
+                                Estornos MP em recargas de crédito: débito na carteira, clawback proporcional ao gestor e absorção EventFest.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div>
+                                <Label className="text-gray-300">Início</Label>
+                                <Input
+                                    type="date"
+                                    value={chargebackStartDate}
+                                    onChange={(e) => setChargebackStartDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-gray-300">Fim</Label>
+                                <Input
+                                    type="date"
+                                    value={chargebackEndDate}
+                                    onChange={(e) => setChargebackEndDate(e.target.value)}
+                                    className="bg-black border-yellow-500/30 text-white mt-1"
+                                />
+                            </div>
+                            <div className="flex items-end">
+                                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={chargebackAbsorbOnly}
+                                        onChange={(e) => setChargebackAbsorbOnly(e.target.checked)}
+                                        className="rounded border-yellow-500/50"
+                                    />
+                                    Somente com absorção EventFest
+                                </label>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-black border-yellow-500/30 mb-4">
+                        <CardHeader>
+                            <CardTitle className="text-white">Resumo do período</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {chargebackSummary.isLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                                    <Metric label="Total chargebacks" value={String(chargebackSummary.data?.total_cases ?? 0)} />
+                                    <Metric
+                                        label="Crédito concedido (estornado)"
+                                        value={money(chargebackSummary.data?.total_credit_granted)}
+                                    />
+                                    <Metric
+                                        label="Recuperado da carteira"
+                                        value={money(chargebackSummary.data?.total_wallet_debit)}
+                                    />
+                                    <Metric
+                                        label="Clawback gestores"
+                                        value={money(chargebackSummary.data?.total_clawback_manager)}
+                                    />
+                                    <Metric
+                                        label="Absorção EventFest"
+                                        value={money(chargebackSummary.data?.total_platform_absorb)}
+                                        ok={(chargebackSummary.data?.total_platform_absorb ?? 0) === 0 ? true : false}
+                                    />
+                                    <Metric
+                                        label="Casos com absorção"
+                                        value={String(chargebackSummary.data?.cases_with_platform_absorb ?? 0)}
+                                        ok={(chargebackSummary.data?.cases_with_platform_absorb ?? 0) === 0 ? true : false}
+                                    />
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-black border-yellow-500/30">
+                        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                                <CardTitle className="text-white">Casos ({chargebacks.data?.total ?? 0})</CardTitle>
+                                <CardDescription className="text-gray-400 text-sm mt-1">
+                                    Exporte para contabilidade ou dispare alertas por e-mail pendentes.
+                                </CardDescription>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={chargebackExporting}
+                                    className="border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10"
+                                    onClick={handleChargebackExport}
+                                >
+                                    {chargebackExporting ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                    ) : (
+                                        <FileSpreadsheet className="h-4 w-4 mr-1" />
+                                    )}
+                                    Exportar CSV
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={chargebackNotifying}
+                                    className="border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                    onClick={() => handleChargebackNotify(true)}
+                                >
+                                    {chargebackNotifying ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                    ) : (
+                                        <AlertTriangle className="h-4 w-4 mr-1" />
+                                    )}
+                                    Enviar alertas pendentes
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="overflow-x-auto max-h-[32rem]">
+                            {chargebacks.isLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                            ) : (chargebacks.data?.items ?? []).length === 0 ? (
+                                <p className="text-gray-500 text-sm text-center py-8">Nenhum chargeback no período.</p>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="border-yellow-500/20">
+                                            <TableHead className="text-yellow-500">Data</TableHead>
+                                            <TableHead className="text-yellow-500">MP status</TableHead>
+                                            <TableHead className="text-yellow-500">Cliente</TableHead>
+                                            <TableHead className="text-yellow-500 text-right">Crédito</TableHead>
+                                            <TableHead className="text-yellow-500 text-right">Carteira</TableHead>
+                                            <TableHead className="text-yellow-500 text-right">Clawback</TableHead>
+                                            <TableHead className="text-yellow-500 text-right">Absorção</TableHead>
+                                            <TableHead className="text-yellow-500">Alerta</TableHead>
+                                            <TableHead className="text-yellow-500">MP ID</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {chargebacks.data?.items.map((row) => (
+                                            <TableRow
+                                                key={row.id}
+                                                className={`border-yellow-500/10 ${row.platform_absorb > 0 ? 'bg-red-500/5' : ''}`}
+                                            >
+                                                <TableCell className="text-gray-400 text-xs whitespace-nowrap">
+                                                    {dt(row.created_at)}
+                                                </TableCell>
+                                                <TableCell className="text-gray-300 text-xs">{row.mp_status}</TableCell>
+                                                <TableCell
+                                                    className="text-gray-300 text-xs font-mono truncate max-w-[8rem]"
+                                                    title={row.client_user_id}
+                                                >
+                                                    {row.client_user_id}
+                                                </TableCell>
+                                                <TableCell className="text-right text-yellow-400 text-xs">
+                                                    {money(row.credit_granted_amount)}
+                                                </TableCell>
+                                                <TableCell className="text-right text-gray-300 text-xs">
+                                                    {money(row.wallet_debit)}
+                                                </TableCell>
+                                                <TableCell className="text-right text-gray-300 text-xs">
+                                                    {money(row.clawback_manager_total)}
+                                                    <span className="text-gray-500 ml-1">({row.clawback_settlement_count})</span>
+                                                </TableCell>
+                                                <TableCell
+                                                    className={`text-right text-xs font-medium ${
+                                                        row.platform_absorb > 0 ? 'text-red-400' : 'text-green-400'
+                                                    }`}
+                                                >
+                                                    {money(row.platform_absorb)}
+                                                </TableCell>
+                                                <TableCell className="text-gray-400 text-xs whitespace-nowrap">
+                                                    {row.platform_absorb > 0
+                                                        ? row.admin_notified_at
+                                                            ? dt(row.admin_notified_at)
+                                                            : 'Pendente'
+                                                        : '—'}
+                                                </TableCell>
+                                                <TableCell
+                                                    className="text-gray-500 text-xs font-mono truncate max-w-[8rem]"
+                                                    title={row.mp_payment_id}
+                                                >
+                                                    {row.mp_payment_id}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
                             )}
                         </CardContent>
                     </Card>

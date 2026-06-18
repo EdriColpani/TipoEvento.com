@@ -35,6 +35,10 @@ import { useProfile, ProfileData } from '@/hooks/use-profile';
 import { useQueryClient } from '@tanstack/react-query';
 
 import MultiLineEditor from '@/components/MultiLineEditor'; // Importando o editor
+import {
+    buildContractAcceptanceAuditMeta,
+    recordContractAcceptance,
+} from '@/utils/contract-acceptance-audit';
 
 import { useQuery } from '@tanstack/react-query'; // Importando useQuery
 
@@ -165,6 +169,7 @@ const Profile: React.FC = () => {
     const [isCepLoading, setIsCepLoading] = useState(false);
 
     const [agreedToTerms, setAgreedToTerms] = useState(false); // NOVO: Estado de concordância
+    const [termsScrolledToEnd, setTermsScrolledToEnd] = useState(false);
 
 
 
@@ -681,35 +686,19 @@ const Profile: React.FC = () => {
                 agreedToTerms &&
                 clientTermsContract.id !== profile.contract_version_accepted_id
             ) {
-
-                const { error: acceptanceError } = await supabase
-
-                    .from('contract_acceptances')
-
-                    .upsert({
-
-                        user_id: userId,
-
-                        contract_id: clientTermsContract.id,
-
-                        contract_version: clientTermsContract.version,
-
-                        contract_type: clientTermsContract.contract_type,
-
-                    }, { onConflict: 'user_id, contract_type' }); // Garante 1 aceite por tipo por usuário
-
-
-
-                if (acceptanceError) {
-
-                    console.error("Erro ao registrar aceite de contrato:", acceptanceError);
-
-                    showError("Perfil atualizado, mas houve um erro ao registrar o aceite do contrato.");
-
-                    // Não retornamos aqui para permitir que o perfil seja salvo mesmo com erro no aceite
-
+                try {
+                    await recordContractAcceptance({
+                        contractId: clientTermsContract.id,
+                        contractType: clientTermsContract.contract_type,
+                        userId,
+                        audit: buildContractAcceptanceAuditMeta('profile', {
+                            scrolledToEnd: termsScrolledToEnd,
+                        }),
+                    });
+                } catch (acceptanceError) {
+                    console.error('Erro ao registrar aceite de contrato:', acceptanceError);
+                    showError('Perfil atualizado, mas houve um erro ao registrar o aceite do contrato.');
                 }
-
             }
 
 
@@ -882,7 +871,7 @@ const Profile: React.FC = () => {
 
     const fullName = profile?.first_name + (profile?.last_name ? ` ${profile.last_name}` : '');
 
-    const userRoleDisplay = profile?.tipo_usuario_id === 3 ? 'Cliente' : 'Gestor PRO'; // Simplificado para exibição
+    const userRoleDisplay = profile?.tipo_usuario_id === 3 ? 'Cliente' : 'Gestor';
 
 
 
@@ -1595,7 +1584,10 @@ const Profile: React.FC = () => {
 
                                                             <MultiLineEditor
 
-                                                                onAgree={setAgreedToTerms}
+                                                                onAgree={(agreed, context) => {
+                                                                    setAgreedToTerms(agreed);
+                                                                    setTermsScrolledToEnd(context?.scrolledToEnd ?? false);
+                                                                }}
 
                                                                 initialAgreedState={agreedToTerms}
 

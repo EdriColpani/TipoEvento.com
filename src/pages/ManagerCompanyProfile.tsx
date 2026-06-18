@@ -103,7 +103,7 @@ const ManagerCompanyProfile: React.FC = () => {
         supabase.auth.getUser().then(({ data: { user } }) => {
             if (!user) {
                 showError("Sessão expirada. Faça login novamente.");
-                navigate('/manager/login');
+                navigate('/login');
                 return;
             }
             setUserId(user.id);
@@ -297,7 +297,7 @@ const ManagerCompanyProfile: React.FC = () => {
                 <div className="bg-red-500/20 border border-red-500/50 text-red-400 p-6 rounded-xl mb-8">
                     <i className="fas fa-exclamation-triangle text-2xl mb-3"></i>
                     <h3 className="font-semibold text-white mb-2">Empresa Não Cadastrada</h3>
-                    <p className="text-sm">Sua conta PRO (PJ) não está associada a uma empresa. Por favor, complete o cadastro.</p>
+                    <p className="text-sm">Sua conta de gestor (PJ) não está associada a uma empresa. Por favor, complete o cadastro.</p>
                     <Button 
                         onClick={() => navigate('/manager/register/company')}
                         className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600"

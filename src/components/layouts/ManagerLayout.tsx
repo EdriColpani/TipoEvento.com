@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, Crown, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity } from 'lucide-react';
+import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity } from 'lucide-react';
 import PlanFeatureRouteGuard from '@/components/PlanFeatureRouteGuard';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import {
@@ -18,6 +18,7 @@ import { useUserType } from '@/hooks/use-user-type';
 import { useProfileStatus } from '@/hooks/use-profile-status';
 import NotificationBell from '@/components/NotificationBell';
 import { showError, showSuccess } from '@/utils/toast';
+import { LOGIN_PATH } from '@/utils/auth-routes';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useDevice } from '@/hooks/use-device';
@@ -151,7 +152,7 @@ const ManagerLayout: React.FC = () => {
         if (!billingGateToastShown.current) {
             billingGateToastShown.current = true;
             showError(
-                'Confirme o plano e aceite o contrato da empresa na aba Plano e cobrança para acessar o painel PRO.',
+                'Confirme o plano e aceite o contrato da empresa na aba Plano e cobrança para acessar o painel do gestor.',
             );
         }
         navigate(MANAGER_BILLING_SETUP_PATH, { replace: true });
@@ -276,7 +277,7 @@ const ManagerLayout: React.FC = () => {
         } finally {
             setUserId(undefined);
             setLoadingSession(false);
-            navigate('/manager/login', { replace: true });
+            navigate(LOGIN_PATH, { replace: true });
         }
     };
 
@@ -301,7 +302,10 @@ const ManagerLayout: React.FC = () => {
     // Redirect unauthenticated users to login after loading is complete
     if (!userId && !loadingSession) { // Ensure loadingSession is false before redirecting
         if (location.pathname.startsWith('/manager') || location.pathname.startsWith('/admin')) {
-            navigate('/manager/login');
+            navigate(LOGIN_PATH, {
+                replace: true,
+                state: { from: `${location.pathname}${location.search}` },
+            });
             return null; // Prevent rendering anything else
         }
     }
@@ -319,7 +323,7 @@ const ManagerLayout: React.FC = () => {
     }
     
     const navIconByPath: Record<string, React.ReactNode> = {
-        '/manager/dashboard': <Crown className="mr-2 h-4 w-4" />,
+        '/manager/dashboard': <LayoutDashboard className="mr-2 h-4 w-4" />,
         '/manager/events': <CalendarDays className="mr-2 h-4 w-4" />,
         '/manager/events/create': <Plus className="mr-2 h-4 w-4" />,
         '/manager/events/banners': <Image className="mr-2 h-4 w-4" />,
@@ -390,7 +394,7 @@ const ManagerLayout: React.FC = () => {
 
     // Adiciona links específicos do Admin Master
     if (isAdminMaster) {
-        allNavItems.splice(1, 0, { path: '/admin/dashboard', label: 'Dashboard Admin', icon: <Crown className="mr-2 h-4 w-4" /> });
+        allNavItems.splice(1, 0, { path: '/admin/dashboard', label: 'Dashboard Admin', icon: <Shield className="mr-2 h-4 w-4" /> });
     }
     
     const handleNavClick = (path: string, closeMobile = false) => {
@@ -431,7 +435,7 @@ const ManagerLayout: React.FC = () => {
     // FILTRAGEM: Remove o item cuja rota é a rota atual
     const navItems = allNavItems.filter(item => item.path !== location.pathname);
     
-    const dashboardTitle = isAdminMaster && location.pathname.startsWith('/admin') ? 'ADMIN' : 'PRO';
+    const dashboardTitle = isAdminMaster && location.pathname.startsWith('/admin') ? 'ADMIN' : 'Gestor';
     
     const userName = profile?.first_name || 'Gestor';
     
@@ -469,7 +473,7 @@ const ManagerLayout: React.FC = () => {
                                     variant="outline"
                                     className="hidden md:flex items-center bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/30 hover:border-yellow-500 transition-all duration-300 cursor-pointer px-4 py-2 h-10"
                                 >
-                                    <Crown className="h-5 w-5 mr-2" />
+                                    <User className="h-5 w-5 mr-2" />
                                     <span className="font-semibold">{userName}</span>
                                     <span className="text-gray-400 text-xs ml-2 hidden lg:block">{userRoleDisplay}</span>
                                     <ChevronDown className="ml-2 h-4 w-4" />
@@ -659,7 +663,7 @@ const ManagerLayout: React.FC = () => {
                                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 [-webkit-overflow-scrolling:touch]">
                                     <div className="flex items-center space-x-3 p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
                                         <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center text-black font-bold">
-                                            <Crown className="h-5 w-5" />
+                                            <User className="h-5 w-5" />
                                         </div>
                                         <div>
                                             <div className="text-white font-semibold">{userName}</div>
@@ -858,7 +862,7 @@ const ManagerLayout: React.FC = () => {
                                 ⚠
                             </span>
                             <p>
-                                Para liberar o <strong>Dashboard PRO</strong> e o restante do menu, confirme o
+                                Para liberar o <strong>Dashboard</strong> e o restante do menu, confirme o
                                 plano e aceite o contrato na aba <strong>Plano e cobrança</strong> abaixo.
                             </p>
                         </div>

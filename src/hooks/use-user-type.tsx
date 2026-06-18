@@ -40,7 +40,7 @@ export const useUserType = (userTypeId: number | undefined) => {
         // Mapeamento para nomes mais amigáveis, se necessário
         if (type) {
             if (type.id === 1) return 'Administrador Master';
-            if (type.id === 2) return 'Gestor PRO';
+            if (type.id === 2) return 'Gestor';
             if (type.id === 3) return 'Cliente';
             return type.nome;
         }

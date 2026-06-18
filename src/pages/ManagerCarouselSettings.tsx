@@ -55,7 +55,7 @@ const ManagerCarouselSettings: React.FC = () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
                 showError("Sessão expirada. Faça login novamente.");
-                navigate('/manager/login');
+                navigate('/login');
                 return;
             }
             setUserId(user.id);

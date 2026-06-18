@@ -9,6 +9,7 @@ import {
     isComplimentaryReturnPath,
     resolveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
+import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -31,6 +32,7 @@ const Login: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(true);
+    const { showPreLaunchExperience } = usePublicLaunchMode();
 
     const completeAuthenticatedRedirect = async (userId: string) => {
         try {
@@ -133,7 +135,9 @@ const Login: React.FC = () => {
                         EventFest
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">Acessar Conta</h1>
-                    <p className="text-gray-400 text-sm sm:text-base">Bem-vindo de volta!</p>
+                    <p className="text-gray-400 text-sm sm:text-base">
+                        Cliente, gestor ou administrador — um único acesso para todos.
+                    </p>
                 </div>
                 <div className="bg-black/80 backdrop-blur-sm border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/15">
                     <form onSubmit={handleLogin} className="space-y-5 sm:space-y-6">
@@ -216,20 +220,27 @@ const Login: React.FC = () => {
                             </Button>
                         </div>
                         <div className="text-center pt-4 border-t border-cyan-500/25">
-                            <p className="text-gray-400 text-sm">
-                                Não tem uma conta?{' '}
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        navigate('/register', {
-                                            state: returnTo ? { from: returnTo } : undefined,
-                                        })
-                                    }
-                                    className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
-                                >
-                                    Cadastre-se
-                                </button>
-                            </p>
+                            {showPreLaunchExperience ? (
+                                <p className="text-gray-400 text-sm">
+                                    Cadastros temporariamente indisponíveis. Estamos em fase de lançamento — use o
+                                    formulário de contato na página inicial.
+                                </p>
+                            ) : (
+                                <p className="text-gray-400 text-sm">
+                                    Não tem uma conta?{' '}
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            navigate('/register', {
+                                                state: returnTo ? { from: returnTo } : undefined,
+                                            })
+                                        }
+                                        className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
+                                    >
+                                        Cadastre-se
+                                    </button>
+                                </p>
+                            )}
                         </div>
                     </form>
                 </div>
