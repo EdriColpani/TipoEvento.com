@@ -1,11 +1,13 @@
 import React from 'react';
-import { Bell, AlertTriangle } from 'lucide-react';
+import { Bell, AlertTriangle, Mail } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerNotifications } from '@/hooks/use-manager-notifications';
+import { useAdminContactInboxSummary } from '@/hooks/use-admin-contact-inbox';
 import { supabase } from '@/integrations/supabase/client';
+import type { ManagerNotificationItem } from '@/hooks/use-manager-notifications';
 
 interface NotificationBellProps {
     hasPendingNotifications: boolean;
@@ -30,20 +32,47 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
     const userId = session?.user?.id;
     const { profile } = useProfile(userId);
 
-    const isManager = profile && (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2);
-    const isClient = profile && profile.tipo_usuario_id === 3;
+    const tipo = Number(profile?.tipo_usuario_id);
+    const isAdminMaster = profile && tipo === 1;
+    const isGestor = profile && tipo === 2;
+    const isManager = Boolean(isAdminMaster || isGestor);
+    const isClient = profile && tipo === 3;
 
     const {
         notifications: managerNotifications,
-        hasPendingNotifications: hasManagerNotifications,
         isLoading: isLoadingManagerNotifications,
-    } = useManagerNotifications(userId, Boolean(isManager));
+    } = useManagerNotifications(userId, isManager);
 
-    const showManagerAlert = isManager && hasManagerNotifications;
-    const managerCount = managerNotifications.length;
+    const { newCount: newContactCount, isLoading: isLoadingContactInbox } =
+        useAdminContactInboxSummary(Boolean(isAdminMaster));
+
+    const contactNotifications: ManagerNotificationItem[] =
+        newContactCount > 0
+            ? [
+                  {
+                      id: 'contact_messages:new',
+                      type: 'contact_message',
+                      title: 'Mensagens de contato',
+                      message:
+                          newContactCount === 1
+                              ? '1 nova mensagem enviada pelo formulário público do site.'
+                              : `${newContactCount} novas mensagens enviadas pelo formulário público do site.`,
+                      link: '/admin/settings/contact-messages',
+                      icon: Mail,
+                      color: 'text-cyan-400',
+                      bgColor: 'bg-cyan-500/10',
+                      borderColor: 'border-cyan-500/30',
+                  },
+              ]
+            : [];
+
+    const allManagerNotifications = [...contactNotifications, ...managerNotifications];
+    const showManagerAlert = isManager && allManagerNotifications.length > 0;
+    const managerCount = allManagerNotifications.length;
     const clientHasAlert = isClient && hasPendingNotifications;
     const badgeCount = showManagerAlert ? managerCount : clientHasAlert ? 1 : 0;
-    const isLoadingBell = loading || (isManager && isLoadingManagerNotifications);
+    const isLoadingBell =
+        loading || (isManager && isLoadingManagerNotifications) || (isAdminMaster && isLoadingContactInbox);
 
     if (isLoadingBell) {
         return (
@@ -78,7 +107,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                 </button>
             </PopoverTrigger>
             <PopoverContent
-                className={`w-80 bg-black/90 border text-white p-0 ${
+                className={`z-[200] w-80 bg-black/95 border text-white p-0 ${
                     isLandingPage ? 'border-cyan-400/30' : 'border-yellow-500/30'
                 }`}
             >
@@ -90,7 +119,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                 <div className="p-4 max-h-80 overflow-y-auto">
                     {showManagerAlert ? (
                         <div className="space-y-3">
-                            {managerNotifications.map((notif) => (
+                            {allManagerNotifications.map((notif) => (
                                 <div
                                     key={notif.id}
                                     className={`flex items-start p-3 ${notif.bgColor} border ${notif.borderColor} rounded-lg`}

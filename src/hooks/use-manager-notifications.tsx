@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 
 export type ManagerNotificationItem = {
     id: string;
-    type: 'low_stock';
+    type: 'low_stock' | 'contact_message';
     title: string;
     message: string;
     link: string;

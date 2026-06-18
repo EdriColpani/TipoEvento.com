@@ -6,6 +6,7 @@ import ScrollToTop from '@/components/ScrollToTop';
 import { useDevice } from '@/hooks/use-device';
 import { LandingUiProvider, useLandingUi, useLandingUiOptional } from '@/contexts/LandingUiContext';
 import LandingModals from '@/components/landing/LandingModals';
+import SiteLogo from '@/components/SiteLogo';
 
 const ClientLandingModalsHost: React.FC = () => {
     const { activeModal, closeModal } = useLandingUi();
@@ -87,16 +88,10 @@ const ClientLayout: React.FC = () => {
             >
                 <div className={`max-w-7xl mx-auto flex items-center justify-between ${isMobile ? 'px-3 py-3' : 'px-4 sm:px-6 py-4'}`}>
                     <div className="flex items-center space-x-4 sm:space-x-8">
-                        <div 
-                            className="cursor-pointer"
+                        <SiteLogo
+                            className={isMobile ? 'h-[4.25rem] min-w-[10rem]' : 'h-24 min-w-[14rem]'}
                             onClick={() => navigate('/')}
-                        >
-                            <img
-                                src="/logo-eventfest.png"
-                                alt="EventFest"
-                                className={isMobile ? 'h-12 w-auto object-contain' : 'h-16 w-auto object-contain'}
-                            />
-                        </div>
+                        />
                         <nav className="hidden md:flex items-center space-x-8">
                             <ClientLayoutNav isLandingPage={isLandingPage} showPreLaunchNav={usePreLaunchNav} />
                         </nav>
@@ -110,7 +105,7 @@ const ClientLayout: React.FC = () => {
                     </div>
                 </div>
             </header>
-            <main className={isMobile ? 'pt-[4.75rem]' : 'pt-24'}>
+            <main className={isMobile ? 'pt-[5.5rem]' : 'pt-28'}>
                 <ScrollToTop />
                 <LandingUiProvider>
                     <Outlet />

@@ -46,7 +46,7 @@ const AuthStatusMenu: React.FC = () => {
     const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(profile?.tipo_usuario_id);
     
     // NOVO: Busca dados da empresa se for Gestor PRO (tipo 2)
-    const isManagerPro = profile?.tipo_usuario_id === 2;
+    const isManagerPro = Number(profile?.tipo_usuario_id) === 2;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
 
     const handleLogout = async () => {
@@ -83,9 +83,10 @@ const AuthStatusMenu: React.FC = () => {
 
     if (session && profile) {
         const initials = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : 'U';
-        const isManager = profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2;
-        const isClient = profile.tipo_usuario_id === 3;
-        const isAdmin = profile.tipo_usuario_id === 1; 
+        const tipo = Number(profile.tipo_usuario_id);
+        const isManager = tipo === 1 || tipo === 2;
+        const isClient = tipo === 3;
+        const isAdmin = tipo === 1; 
         
         const fullName = profile.first_name + (profile.last_name ? ` ${profile.last_name}` : '');
         
