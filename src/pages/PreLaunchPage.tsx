@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Loader2, Sparkles, Ticket, Shield, LayoutDashboard, Rocket } from 'lucide-react';
+import { Loader2, Sparkles, Ticket, Shield, LayoutDashboard, Rocket, QrCode, Wallet, Store, BarChart3 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useDevice } from '@/hooks/use-device';
 import { useLandingUi } from '@/contexts/LandingUiContext';
@@ -13,12 +13,15 @@ import {
     PRE_LAUNCH_BENEFITS,
     PRE_LAUNCH_HERO,
     PRE_LAUNCH_STATUS_MESSAGE,
+    PRE_LAUNCH_MANAGER_INTRO,
+    PRE_LAUNCH_MANAGER_PILLARS,
 } from '@/constants/landing-content';
 import { formatPhoneBR } from '@/utils/phone-format';
 import { showError, showSuccess } from '@/utils/toast';
 import { cn } from '@/lib/utils';
 
 const BENEFIT_ICONS = [Ticket, LayoutDashboard, Shield, Sparkles] as const;
+const MANAGER_PILLAR_ICONS = [QrCode, Wallet, Store, BarChart3] as const;
 
 const PreLaunchPage: React.FC = () => {
     const { isMobile } = useDevice();
@@ -163,6 +166,55 @@ const PreLaunchPage: React.FC = () => {
                             );
                         })}
                     </div>
+                </div>
+            </section>
+
+            <section id="gestores" className="px-4 sm:px-6 py-12 sm:py-16 border-t border-cyan-400/10 bg-gradient-to-b from-cyan-500/5 to-transparent">
+                <div className="max-w-5xl mx-auto">
+                    <h2 className="text-2xl sm:text-3xl font-serif text-cyan-300 mb-4 text-center">
+                        {PRE_LAUNCH_MANAGER_INTRO.title}
+                    </h2>
+                    <p className="text-gray-300 text-base sm:text-lg leading-relaxed text-center max-w-3xl mx-auto mb-4">
+                        {PRE_LAUNCH_MANAGER_INTRO.problem}
+                    </p>
+                    <p className="text-cyan-200/90 text-sm sm:text-base text-center max-w-2xl mx-auto mb-10 font-medium">
+                        {PRE_LAUNCH_MANAGER_INTRO.promise}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        {PRE_LAUNCH_MANAGER_PILLARS.map((item, index) => {
+                            const Icon = MANAGER_PILLAR_ICONS[index] ?? Sparkles;
+                            return (
+                                <Card
+                                    key={item.title}
+                                    className="bg-black/70 border border-cyan-400/25 p-6 hover:border-cyan-400/45 transition-colors"
+                                >
+                                    <div className="flex items-start gap-4">
+                                        <div className="shrink-0 w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-400/20 to-blue-500/20 flex items-center justify-center">
+                                            <Icon className="h-5 w-5 text-cyan-300" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-semibold mb-2">{item.title}</h3>
+                                            <p className="text-gray-400 text-sm leading-relaxed">{item.body}</p>
+                                        </div>
+                                    </div>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                    <p className="text-center mt-8">
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                openContact();
+                                window.setTimeout(() => {
+                                    document.getElementById('contato')?.scrollIntoView({ behavior: 'smooth' });
+                                }, 100);
+                            }}
+                            className="bg-gradient-to-r from-cyan-400 to-blue-500 text-black hover:from-cyan-300 hover:to-blue-400 px-8 py-6 text-base font-semibold border-0"
+                        >
+                            Quero saber mais para meu evento
+                        </Button>
+                    </p>
                 </div>
             </section>
 

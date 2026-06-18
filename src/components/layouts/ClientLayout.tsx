@@ -35,6 +35,7 @@ const ClientLayoutNav: React.FC<{ isLandingPage: boolean; showPreLaunchNav: bool
             <>
                 <a href="/#home" className={linkClass}>Início</a>
                 <a href="/#sobre" className={linkClass}>Sobre</a>
+                <a href="/#gestores" className={linkClass}>Gestores</a>
                 <a href="/#solucao" className={linkClass}>Solução</a>
                 <a
                     href="/#contato"
