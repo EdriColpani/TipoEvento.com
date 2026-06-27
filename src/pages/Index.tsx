@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,8 +19,8 @@ import { useLandingUi } from '@/contexts/LandingUiContext';
 import LandingContactPanel from '@/components/landing/LandingContactPanel';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { formatPhoneBR } from '@/utils/phone-format';
-import { useProfile } from '@/hooks/use-profile';
 import { navigateFromPromoterCta } from '@/utils/promoter-registration-flow';
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { formatPublicMinPrice } from '@/utils/public-event-pricing';
 import { usePublicSiteContact } from '@/hooks/use-public-site-contact';
 
@@ -83,9 +83,8 @@ function applyAdvancedFilters(events: PublicEvent[], filters: AdvancedFiltersSta
 
 const Index: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, profile } = usePublicSiteAuth();
     const [isPromoterCtaLoading, setIsPromoterCtaLoading] = useState(false);
-    const { profile } = useProfile(userId);
     const { isMobile, isTablet } = useDevice();
     
     const { events: allEvents, isLoading: isLoadingEvents, isError: isErrorEvents } = usePublicEvents();
@@ -165,12 +164,6 @@ const Index: React.FC = () => {
 
     const totalPages = Math.max(1, Math.ceil(filteredEvents.length / EVENTS_PER_PAGE));
 
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setUserId(session?.user?.id);
-        });
-    }, []);
-
     const handleEventClick = (event: PublicEvent) => {
         navigate(`/events/${event.id}`);
     };
@@ -182,9 +175,6 @@ const Index: React.FC = () => {
                 data: { user },
             } = await supabase.auth.getUser();
             const activeUserId = user?.id ?? userId;
-            if (user?.id && user.id !== userId) {
-                setUserId(user.id);
-            }
             await navigateFromPromoterCta(navigate, activeUserId, profile);
         } finally {
             setIsPromoterCtaLoading(false);

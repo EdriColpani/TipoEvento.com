@@ -75,10 +75,7 @@ const ManagerLayout: React.FC = () => {
     }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const { hasPendingNotifications, loading: isLoadingNotificationStatus } = useProfileStatus(
-        profile,
-        isLoadingProfile,
-    );
+    const { hasPendingNotifications } = useProfileStatus(profile, isLoadingProfile, userId);
     const { userTypeName: baseUserTypeName } = useUserType(userId ? profile?.tipo_usuario_id : undefined);
     
     const isManagerPro = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
@@ -469,8 +466,9 @@ const ManagerLayout: React.FC = () => {
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
                         <NotificationBell
+                            userId={userId}
+                            profile={profile}
                             hasPendingNotifications={hasPendingNotifications}
-                            loading={isLoadingProfile || isLoadingNotificationStatus}
                         />
                         
                         {/* Dropdown Menu para Gestor/Admin */}

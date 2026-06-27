@@ -269,7 +269,7 @@ const Profile: React.FC = () => {
 
     }, [profile, clientTermsContract, isLoadingClientTerms]);
 
-    const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile);
+    const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile, userId);
 
 
 
