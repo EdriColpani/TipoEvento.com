@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from "@/components/ui/button";
@@ -6,49 +6,33 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { showSuccess, showError } from '@/utils/toast';
 import { useProfileStatus } from '@/hooks/use-profile-status';
-import { useProfile, ProfileData } from '@/hooks/use-profile';
 import NotificationBell from './NotificationBell';
-import { Shield, LayoutDashboard } from 'lucide-react'; // Importando ícone para Admin
-import { useUserType } from '@/hooks/use-user-type'; // Importando novo hook
-import { useManagerCompany } from '@/hooks/use-manager-company'; // NOVO: Importando hook da empresa
-import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
+import { Shield, LayoutDashboard } from 'lucide-react';
+import { useUserType } from '@/hooks/use-user-type';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
 
 const AuthStatusMenu: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const [session, setSession] = useState<any>(null);
-    const [loadingSession, setLoadingSession] = useState(true);
     const isLandingPage = location.pathname === '/';
-    const { showPreLaunchExperience } = usePublicLaunchMode();
+    const {
+        userId,
+        profile,
+        sessionReady,
+        profileLoading,
+        isAuthenticated,
+        showPreLaunchExperience,
+    } = usePublicSiteContext();
 
-    useEffect(() => {
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-            setSession(currentSession);
-            setLoadingSession(false);
-        });
+    const { hasPendingNotifications } = useProfileStatus(profile, profileLoading, userId);
 
-        supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-            setSession(initialSession);
-            setLoadingSession(false);
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, []);
-
-    const userId = session?.user?.id;
-    const isAuthenticated = Boolean(userId);
-    const { profile, isLoading: isLoadingProfile } = useProfile(isAuthenticated ? userId : undefined);
-    
-    const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile);
-    
-    const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(
+    const { userTypeName: baseUserTypeName } = useUserType(
         isAuthenticated ? profile?.tipo_usuario_id : undefined,
     );
-    
+
     const isManagerPro = Number(profile?.tipo_usuario_id) === 2;
-    const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
+    const { company } = useManagerCompany(isManagerPro ? userId : undefined);
 
     const handleLogout = async () => {
         try {
@@ -56,22 +40,19 @@ const AuthStatusMenu: React.FC = () => {
 
             const sessionMissing = error?.message?.toLowerCase().includes('auth session missing');
 
-            // Quando a sessão já expirou, o Supabase pode retornar "Auth session missing!".
-            // Nesse caso, tratamos como logout bem-sucedido para não travar o usuário.
             if (error && !sessionMissing) {
                 showError('Erro ao sair: ' + error.message);
             } else {
                 showSuccess('Sessão encerrada.');
             }
-        } catch (err: unknown) {
+        } catch {
             showSuccess('Sessão encerrada.');
         } finally {
-            setSession(null);
             navigate('/login', { replace: true });
         }
     };
 
-    if (loadingSession) {
+    if (!sessionReady) {
         return (
             <div
                 className={`w-10 h-10 rounded-full animate-pulse ${
@@ -81,10 +62,7 @@ const AuthStatusMenu: React.FC = () => {
         );
     }
 
-    if (
-        isAuthenticated &&
-        (isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany))
-    ) {
+    if (isAuthenticated && profileLoading && !profile) {
         return (
             <div
                 className={`w-10 h-10 rounded-full animate-pulse ${
@@ -94,32 +72,29 @@ const AuthStatusMenu: React.FC = () => {
         );
     }
 
-    if (session && profile) {
+    if (isAuthenticated && profile) {
         const initials = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : 'U';
         const tipo = Number(profile.tipo_usuario_id);
         const isManager = tipo === 1 || tipo === 2;
         const isClient = tipo === 3;
-        const isAdmin = tipo === 1; 
-        
+        const isAdmin = tipo === 1;
+
         const fullName = profile.first_name + (profile.last_name ? ` ${profile.last_name}` : '');
-        
+
         let userRoleDisplay = baseUserTypeName;
         if (isManagerPro) {
-            // Se for Gestor PRO (tipo 2), verifica se tem empresa
             userRoleDisplay = company?.id ? `${baseUserTypeName} (PJ)` : `${baseUserTypeName} (PF)`;
         }
 
-
         return (
             <div className="flex items-center space-x-4">
-                {/* Ícone de Notificação (Agora é um Popover) */}
-                <NotificationBell 
-                    hasPendingNotifications={hasPendingNotifications} 
-                    loading={statusLoading} 
+                <NotificationBell
+                    userId={userId}
+                    profile={profile}
+                    hasPendingNotifications={hasPendingNotifications}
                     isLandingPage={isLandingPage}
                 />
 
-                {/* Menu de Perfil */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <div
@@ -154,35 +129,34 @@ const AuthStatusMenu: React.FC = () => {
                             {fullName}
                         </DropdownMenuLabel>
                         <DropdownMenuLabel className="text-gray-400 text-xs pt-0">
-                            {userRoleDisplay}
+                            {userRoleDisplay || 'Usuário'}
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator className={isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'} />
-                        <DropdownMenuItem 
-                            onClick={() => navigate('/profile')} 
+                        <DropdownMenuItem
+                            onClick={() => navigate('/profile')}
                             className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
                         >
                             <i className="fas fa-user-circle mr-2"></i>
                             Editar Perfil
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
-                            onClick={() => navigate('/tickets')} 
+                        <DropdownMenuItem
+                            onClick={() => navigate('/tickets')}
                             className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
                         >
                             <i className="fas fa-ticket-alt mr-2"></i>
                             Meus Ingressos
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
-                            onClick={() => navigate('/wallet')} 
+                        <DropdownMenuItem
+                            onClick={() => navigate('/wallet')}
                             className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
                         >
                             <i className="fas fa-wallet mr-2"></i>
                             Carteira EventFest
                         </DropdownMenuItem>
-                        
-                        {/* NOVO: Cadastrar Eventos para Clientes (Tipo 3) */}
+
                         {isClient && !showPreLaunchExperience && (
-                            <DropdownMenuItem 
-                                onClick={() => navigate('/manager/register')} 
+                            <DropdownMenuItem
+                                onClick={() => navigate('/manager/register')}
                                 className={`cursor-pointer text-green-400 font-semibold ${
                                     isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'
                                 }`}
@@ -193,8 +167,8 @@ const AuthStatusMenu: React.FC = () => {
                         )}
 
                         {isManager && (
-                            <DropdownMenuItem 
-                                onClick={() => navigate('/manager/dashboard')} 
+                            <DropdownMenuItem
+                                onClick={() => navigate('/manager/dashboard')}
                                 className={`cursor-pointer font-semibold ${
                                     isLandingPage ? 'hover:bg-cyan-400/10 text-cyan-300' : 'hover:bg-yellow-500/10 text-yellow-500'
                                 }`}
@@ -204,8 +178,8 @@ const AuthStatusMenu: React.FC = () => {
                             </DropdownMenuItem>
                         )}
                         {isAdmin && (
-                            <DropdownMenuItem 
-                                onClick={() => navigate('/admin/dashboard')} 
+                            <DropdownMenuItem
+                                onClick={() => navigate('/admin/dashboard')}
                                 className={`cursor-pointer text-red-400 font-semibold ${
                                     isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'
                                 }`}
@@ -215,8 +189,8 @@ const AuthStatusMenu: React.FC = () => {
                             </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator className={isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'} />
-                        <DropdownMenuItem 
-                            onClick={handleLogout} 
+                        <DropdownMenuItem
+                            onClick={handleLogout}
                             className="cursor-pointer hover:bg-red-500/10 text-red-400"
                         >
                             <i className="fas fa-sign-out-alt mr-2"></i>
@@ -228,7 +202,6 @@ const AuthStatusMenu: React.FC = () => {
         );
     }
 
-    // Se não estiver logado, retorna os botões de Login/Cadastro
     return (
         <div className="flex items-center space-x-3">
             <Button

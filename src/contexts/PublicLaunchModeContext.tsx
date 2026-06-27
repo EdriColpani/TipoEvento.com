@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import {
     canBypassPublicLaunchPreview,
-    normalizePublicLaunchMode,
     type PublicLaunchMode,
 } from '@/utils/public-launch-access';
 import {
@@ -12,20 +11,25 @@ import {
     fetchPublicLaunchMode,
 } from '@/hooks/use-public-launch-mode';
 
-type PublicLaunchModeContextValue = {
+export type PublicSiteContextValue = {
+    userId: string | undefined;
+    profile: ReturnType<typeof useProfile>['profile'];
+    sessionReady: boolean;
+    profileLoading: boolean;
+    isAuthenticated: boolean;
+    tipoUsuarioId: number | undefined;
     mode: PublicLaunchMode;
     isPreview: boolean;
     canBypassPreview: boolean;
     showPreLaunchExperience: boolean;
-    isLoading: boolean;
     isError: boolean;
 };
 
-const PublicLaunchModeContext = createContext<PublicLaunchModeContextValue | null>(null);
+const PublicSiteContext = createContext<PublicSiteContextValue | null>(null);
 
 export function PublicLaunchModeProvider({ children }: { children: React.ReactNode }) {
     const [userId, setUserId] = useState<string | undefined>(undefined);
-    const [authReady, setAuthReady] = useState(false);
+    const [sessionReady, setSessionReady] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -33,14 +37,14 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (cancelled) return;
             setUserId(session?.user?.id);
-            setAuthReady(true);
+            setSessionReady(true);
         });
 
         const {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, session) => {
             setUserId(session?.user?.id);
-            setAuthReady(true);
+            setSessionReady(true);
         });
 
         return () => {
@@ -49,7 +53,7 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         };
     }, []);
 
-    const { profile, isLoading: isLoadingProfile } = useProfile(authReady && userId ? userId : undefined);
+    const { profile, isLoading: profileLoading } = useProfile(sessionReady && userId ? userId : undefined);
 
     const query = useQuery({
         queryKey: [...PUBLIC_LAUNCH_MODE_QUERY_KEY],
@@ -61,19 +65,17 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         placeholderData: 'preview' as PublicLaunchMode,
     });
 
-    const value = useMemo<PublicLaunchModeContextValue>(() => {
+    const value = useMemo<PublicSiteContextValue>(() => {
         const mode = query.data ?? 'preview';
         const tipo = Number(profile?.tipo_usuario_id);
         const isClient = tipo === 3;
-        const loggedIn = authReady && Boolean(userId);
+        const loggedIn = sessionReady && Boolean(userId);
         const isPreview = mode === 'preview';
         const canBypassPreview = canBypassPublicLaunchPreview(profile?.tipo_usuario_id);
 
-        // Visitante anônimo: pré-lançamento conforme configuração
-        // Logado: só cliente (tipo 3) vê pré-lançamento; admin/gestor sempre vitrine completa
         let showPreLaunchExperience = isPreview && !loggedIn;
         if (loggedIn) {
-            if (isLoadingProfile) {
+            if (profileLoading) {
                 showPreLaunchExperience = false;
             } else {
                 showPreLaunchExperience = isPreview && isClient;
@@ -81,24 +83,37 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         }
 
         return {
+            userId,
+            profile,
+            sessionReady,
+            profileLoading,
+            isAuthenticated: loggedIn,
+            tipoUsuarioId: profile?.tipo_usuario_id,
             mode,
             isPreview,
             canBypassPreview,
             showPreLaunchExperience,
-            isLoading: false,
             isError: query.isError,
         };
-    }, [query.data, query.isError, profile?.tipo_usuario_id, authReady, userId, isLoadingProfile]);
+    }, [query.data, query.isError, profile, profileLoading, sessionReady, userId]);
 
-    return (
-        <PublicLaunchModeContext.Provider value={value}>{children}</PublicLaunchModeContext.Provider>
-    );
+    return <PublicSiteContext.Provider value={value}>{children}</PublicSiteContext.Provider>;
 }
 
-export function usePublicLaunchModeContext(): PublicLaunchModeContextValue {
-    const ctx = useContext(PublicLaunchModeContext);
+export function usePublicSiteContext(): PublicSiteContextValue {
+    const ctx = useContext(PublicSiteContext);
     if (!ctx) {
-        throw new Error('usePublicLaunchModeContext must be used within PublicLaunchModeProvider');
+        throw new Error('usePublicSiteContext must be used within PublicLaunchModeProvider');
     }
     return ctx;
+}
+
+export function usePublicLaunchModeContext(): PublicSiteContextValue {
+    return usePublicSiteContext();
+}
+
+export function usePublicSiteAuth() {
+    const { userId, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId } =
+        usePublicSiteContext();
+    return { userId, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId };
 }

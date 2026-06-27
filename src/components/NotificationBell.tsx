@@ -3,34 +3,29 @@ import { Bell, AlertTriangle, Mail } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { useProfile } from '@/hooks/use-profile';
 import { useManagerNotifications } from '@/hooks/use-manager-notifications';
 import { useAdminContactInboxSummary } from '@/hooks/use-admin-contact-inbox';
-import { supabase } from '@/integrations/supabase/client';
 import type { ManagerNotificationItem } from '@/hooks/use-manager-notifications';
+import type { ProfileData } from '@/hooks/use-profile';
 
 interface NotificationBellProps {
+    userId?: string | null;
+    profile?: ProfileData | null;
     hasPendingNotifications: boolean;
-    loading: boolean;
+    loading?: boolean;
     isLandingPage?: boolean;
 }
 
 const NotificationBell: React.FC<NotificationBellProps> = ({
+    userId: userIdProp,
+    profile: profileProp,
     hasPendingNotifications,
-    loading,
+    loading = false,
     isLandingPage = false,
 }) => {
     const navigate = useNavigate();
-    const [session, setSession] = React.useState<{ user?: { id?: string } } | null>(null);
-
-    React.useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-            setSession(currentSession);
-        });
-    }, []);
-
-    const userId = session?.user?.id;
-    const { profile } = useProfile(userId);
+    const userId = userIdProp ?? undefined;
+    const profile = profileProp ?? undefined;
 
     const tipo = Number(profile?.tipo_usuario_id);
     const isAdminMaster = profile && tipo === 1;
@@ -74,17 +69,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
     const isLoadingBell =
         loading || (isManager && isLoadingManagerNotifications) || (isAdminMaster && isLoadingContactInbox);
 
-    if (isLoadingBell) {
-        return (
-            <div
-                className={`w-8 h-8 rounded-full animate-pulse ${
-                    isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'
-                }`}
-            />
-        );
-    }
-
-    if (!userId) {
+    if (!userId || !profile) {
         return null;
     }
 
@@ -95,7 +80,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                     type="button"
                     className={`relative p-2 rounded-lg transition-colors cursor-pointer ${
                         isLandingPage ? 'text-cyan-300 hover:bg-cyan-400/10' : 'text-yellow-500 hover:bg-yellow-500/10'
-                    }`}
+                    } ${isLoadingBell ? 'opacity-70' : ''}`}
                     title={badgeCount > 0 ? 'Notificações pendentes' : 'Nenhuma notificação'}
                 >
                     <i className="fas fa-bell text-lg" />
@@ -117,7 +102,11 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                     </h4>
                 </div>
                 <div className="p-4 max-h-80 overflow-y-auto">
-                    {showManagerAlert ? (
+                    {isLoadingBell ? (
+                        <div className="text-center py-6">
+                            <p className="text-gray-400 text-sm">Carregando notificações...</p>
+                        </div>
+                    ) : showManagerAlert ? (
                         <div className="space-y-3">
                             {allManagerNotifications.map((notif) => (
                                 <div

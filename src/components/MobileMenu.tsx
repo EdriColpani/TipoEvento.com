@@ -1,16 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, Bell, User, LogOut, LayoutDashboard } from 'lucide-react';
+import { Menu, Bell, User, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from '@/integrations/supabase/client';
 import { useProfileStatus } from '@/hooks/use-profile-status';
-import { useProfile } from '@/hooks/use-profile';
-import { useUserType } from '@/hooks/use-user-type'; // Importando novo hook
+import { useUserType } from '@/hooks/use-user-type';
 import { showSuccess, showError } from '@/utils/toast';
-import { useManagerCompany } from '@/hooks/use-manager-company'; // NOVO: Importando hook da empresa
+import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useLandingUiOptional } from '@/contexts/LandingUiContext';
-import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
+import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
 
 const MANAGER_USER_TYPE_ID = 2;
 
@@ -18,38 +17,24 @@ const MobileMenu: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const [isOpen, setIsOpen] = useState(false);
-    const [session, setSession] = useState<any>(null);
-    const [loadingSession, setLoadingSession] = useState(true);
+    const {
+        userId,
+        profile,
+        sessionReady,
+        profileLoading,
+        isAuthenticated,
+        showPreLaunchExperience,
+    } = usePublicSiteContext();
 
-    useEffect(() => {
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-            setSession(currentSession);
-            setLoadingSession(false);
-        });
+    const { hasPendingNotifications } = useProfileStatus(profile, profileLoading, userId);
 
-        supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-            setSession(initialSession);
-            setLoadingSession(false);
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, []);
-
-    const userId = session?.user?.id;
-    const isAuthenticated = Boolean(userId);
-    const { profile, isLoading: isLoadingProfile } = useProfile(isAuthenticated ? userId : undefined);
-    const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile);
-    
-    const { userTypeName: baseUserTypeName, isLoadingUserType } = useUserType(
+    const { userTypeName: baseUserTypeName } = useUserType(
         isAuthenticated ? profile?.tipo_usuario_id : undefined,
     );
-    
+
     const isManagerPro = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
-    const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
+    const { company } = useManagerCompany(isManagerPro ? userId : undefined);
     const landingUi = useLandingUiOptional();
-    const { showPreLaunchExperience } = usePublicLaunchMode();
     const isHomePreLaunch = showPreLaunchExperience && location.pathname === '/';
 
     const handleNavigation = (path: string, loginReturnTo?: string) => {
@@ -93,20 +78,16 @@ const MobileMenu: React.FC = () => {
               { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
           ];
 
-    const isUserLoading =
-        loadingSession ||
-        (isAuthenticated &&
-            (isLoadingProfile || statusLoading || isLoadingUserType || (isManagerPro && isLoadingCompany)));
-    const isLoggedIn = session && profile;
+    const isUserLoading = !sessionReady || (isAuthenticated && profileLoading && !profile);
+    const isLoggedIn = isAuthenticated && profile;
     const isManager = isLoggedIn && (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2);
-    
+
     const fullName = profile?.first_name + (profile?.last_name ? ` ${profile.last_name}` : '');
-    
+
     let userRoleDisplay = baseUserTypeName;
     if (isManagerPro) {
         userRoleDisplay = company?.id ? `${baseUserTypeName} (PJ)` : `${baseUserTypeName} (PF)`;
     }
-
 
     return (
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -122,7 +103,7 @@ const MobileMenu: React.FC = () => {
                 <SheetHeader className="shrink-0 border-b border-yellow-500/20 p-6">
                     <SheetTitle className="text-3xl font-serif text-yellow-500">EventFest</SheetTitle>
                 </SheetHeader>
-                
+
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-6 [-webkit-overflow-scrolling:touch]">
                     {isUserLoading ? (
                         <div className="flex items-center space-x-4">
@@ -137,11 +118,11 @@ const MobileMenu: React.FC = () => {
                                 </div>
                                 <div className="min-w-0">
                                     <div className="text-white font-semibold truncate">{fullName || 'Usuário'}</div>
-                                    <div className="text-gray-400 text-sm truncate">{userRoleDisplay}</div>
+                                    <div className="text-gray-400 text-sm truncate">{userRoleDisplay || 'Usuário'}</div>
                                 </div>
                             </div>
 
-                            <Button 
+                            <Button
                                 onClick={() => handleNavigation('/profile')}
                                 variant="ghost"
                                 className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
@@ -150,7 +131,7 @@ const MobileMenu: React.FC = () => {
                                 Editar Perfil
                                 {hasPendingNotifications && <Bell className="ml-auto h-5 w-5 text-red-500 animate-pulse" />}
                             </Button>
-                            <Button 
+                            <Button
                                 onClick={() => handleNavigation('/tickets')}
                                 variant="ghost"
                                 className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
@@ -158,7 +139,7 @@ const MobileMenu: React.FC = () => {
                                 <i className="fas fa-ticket-alt mr-3 w-5"></i>
                                 Meus Ingressos
                             </Button>
-                            <Button 
+                            <Button
                                 onClick={() => handleNavigation('/wallet')}
                                 variant="ghost"
                                 className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
@@ -167,7 +148,7 @@ const MobileMenu: React.FC = () => {
                                 Carteira EventFest
                             </Button>
                             {isManager && (
-                                <Button 
+                                <Button
                                     onClick={() => handleNavigation('/manager/dashboard')}
                                     variant="ghost"
                                     className="w-full justify-start text-lg py-6 text-yellow-500 font-semibold hover:bg-yellow-500/10"
@@ -177,7 +158,7 @@ const MobileMenu: React.FC = () => {
                                 </Button>
                             )}
                             <div className="border-t border-yellow-500/20 pt-4">
-                                <Button 
+                                <Button
                                     onClick={handleLogout}
                                     variant="ghost"
                                     className="w-full justify-start text-lg py-6 text-red-400 hover:bg-red-500/10"
@@ -213,7 +194,7 @@ const MobileMenu: React.FC = () => {
 
                     <div className="border-t border-yellow-500/20 pt-6 space-y-2">
                         {navItems.map(item => (
-                            <a 
+                            <a
                                 key={item.path}
                                 href={item.path}
                                 onClick={(e) => {
