@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCarouselBanners } from '@/hooks/use-carousel-banners';
 import { useCarouselSettings } from '@/hooks/use-carousel-settings';
 import { useNavigate } from 'react-router-dom';
-import SiteLogo from '@/components/SiteLogo';
 
 // Dimensões Máximas Solicitadas
 const MAX_WIDTH = 770;
@@ -87,46 +86,8 @@ const Carousel3D: React.FC = () => {
     // Define quantos itens renderizar (Aumentado para 9, mas limitado a 7 em telas pequenas)
     const maxRendered = containerWidth < 640 ? 7 : 9; 
 
-    if (isLoading) {
-        return (
-            <div className="w-full flex flex-col items-center justify-center py-20 bg-black">
-                <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
-                <p className="text-gray-400 ml-4">Carregando destaques...</p>
-            </div>
-        );
-    }
-    
-    if (isError) {
-        return (
-            <div className="w-full flex flex-col items-center justify-center py-20 bg-black">
-                <AlertTriangle className="h-10 w-10 text-red-500" />
-                <p className="text-red-400 mt-4 text-center px-4">
-                    Não foi possível carregar os destaques. Tente atualizar a página.
-                </p>
-            </div>
-        );
-    }
-
-    if (totalItems === 0) {
-        const placeholderWidth = Math.min(containerWidth > 0 ? containerWidth - BANNER_MARGIN : MAX_WIDTH, MAX_WIDTH);
-        const placeholderHeight = placeholderWidth / ASPECT_RATIO_FIXED;
-
-        return (
-            <div className="w-full flex flex-col items-center justify-center bg-black">
-                <div
-                    className="w-full border border-yellow-500/30 rounded-3xl p-8 flex flex-col items-center justify-center bg-black/80"
-                    style={{ minHeight: `${Math.max(placeholderHeight, 280)}px` }}
-                >
-                    <SiteLogo className="h-20 sm:h-28 opacity-90 mb-6" />
-                    <p className="text-yellow-500 text-lg sm:text-xl font-semibold text-center">
-                        Nenhum banner ativo no momento
-                    </p>
-                    <p className="text-gray-400 text-sm sm:text-base text-center mt-2 max-w-md px-4">
-                        Não há destaques em exibição no carrossel. Volte em breve para conferir eventos e promoções.
-                    </p>
-                </div>
-            </div>
-        );
+    if (isLoading || isError || totalItems === 0) {
+        return null;
     }
     
     // --- Lógica de Renderização dos Itens Visíveis ---
