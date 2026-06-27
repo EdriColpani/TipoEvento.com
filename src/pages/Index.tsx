@@ -13,7 +13,8 @@ import { trackAdvancedFilterUse } from '@/utils/metrics';
 import { usePublicEvents, PublicEvent } from '@/hooks/use-public-events';
 import { useDevice } from '@/hooks/use-device';
 import { Loader2, AlertTriangle } from 'lucide-react';
-import Carousel3D from '@/components/Carousel3D'; // Importando o novo carrossel
+import Carousel3D from '@/components/Carousel3D';
+import { useCarouselBanners } from '@/hooks/use-carousel-banners';
 import { showSuccess, showError } from '@/utils/toast'; // Importando toast
 import { useLandingUi } from '@/contexts/LandingUiContext';
 import LandingContactPanel from '@/components/landing/LandingContactPanel';
@@ -88,6 +89,8 @@ const Index: React.FC = () => {
     const { isMobile, isTablet } = useDevice();
     
     const { events: allEvents, isLoading: isLoadingEvents, isError: isErrorEvents } = usePublicEvents();
+    const { banners: carouselBanners } = useCarouselBanners();
+    const showCarousel = carouselBanners.length > 0;
 
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
@@ -292,13 +295,14 @@ const Index: React.FC = () => {
     `;
 
     return (
-        <div className="landing-ef-theme">
+        <div className="landing-ef-theme" id="home">
             <style>{efThemeStyles}</style>
-            {/* NOVO: Carrossel 3D */}
-            <section id="carousel" className="pt-0 bg-black">
-                <Carousel3D />
-            </section>
-            
+            {showCarousel ? (
+                <section id="carousel" className="pt-0 bg-black">
+                    <Carousel3D />
+                </section>
+            ) : null}
+
             <section
                 id="eventos"
                 className={cn(
