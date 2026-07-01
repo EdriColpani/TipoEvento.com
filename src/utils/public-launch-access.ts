@@ -3,9 +3,9 @@ export type PublicLaunchMode = 'preview' | 'live';
 export const ADMIN_MASTER_USER_TYPE_ID = 1;
 export const MANAGER_PRO_USER_TYPE_ID = 2;
 
-/** Rotas do ClientLayout liberadas mesmo em modo preview (visitantes). */
-export const PUBLIC_LAUNCH_ALLOWED_PATHS = new Set([
-    '/',
+/** Rotas liberadas para visitantes não logados. */
+export const GUEST_ALLOWED_PATHS = new Set([
+    '/informacoes',
     '/login',
     '/forgot-password',
 ]);
@@ -17,6 +17,16 @@ export const PUBLIC_LAUNCH_REGISTRATION_PATHS = [
     '/manager/register/account',
     '/manager/register/company',
 ] as const;
+
+/** @deprecated Use GUEST_ALLOWED_PATHS */
+export const PUBLIC_LAUNCH_ALLOWED_PATHS = GUEST_ALLOWED_PATHS;
+
+export function isGuestAllowedPath(pathname: string): boolean {
+    if (GUEST_ALLOWED_PATHS.has(pathname)) {
+        return true;
+    }
+    return isPublicLaunchRegistrationPath(pathname);
+}
 
 export function isPublicLaunchRegistrationPath(pathname: string): boolean {
     return (
@@ -35,6 +45,7 @@ export function canBypassPublicLaunchPreview(tipoUsuarioId: unknown): boolean {
     return tipo === ADMIN_MASTER_USER_TYPE_ID || tipo === MANAGER_PRO_USER_TYPE_ID;
 }
 
+/** @deprecated Use isGuestAllowedPath */
 export function isPublicLaunchRestrictedPath(pathname: string): boolean {
-    return !PUBLIC_LAUNCH_ALLOWED_PATHS.has(pathname);
+    return !isGuestAllowedPath(pathname);
 }

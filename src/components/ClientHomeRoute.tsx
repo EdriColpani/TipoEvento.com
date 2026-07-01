@@ -1,15 +1,8 @@
 import React from 'react';
 import Index from '@/pages/Index';
-import PreLaunchPage from '@/pages/PreLaunchPage';
-import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 
+/** Home vitrine — só alcançável com usuário logado (ClientAuthGate). */
 const ClientHomeRoute: React.FC = () => {
-    const { showPreLaunchExperience } = usePublicLaunchMode();
-
-    if (showPreLaunchExperience) {
-        return <PreLaunchPage />;
-    }
-
     return <Index />;
 };
 

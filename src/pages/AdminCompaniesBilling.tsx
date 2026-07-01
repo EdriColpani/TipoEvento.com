@@ -4,11 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Building2, Edit, Loader2, Search } from 'lucide-react';
+import { ArrowLeft, Building2, Edit, Loader2, Search, Store } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminCompaniesBilling, AdminCompanyBillingRow } from '@/hooks/use-admin-companies-billing';
 import { getBillingPlanLabel, isCompanyBillingReady } from '@/constants/billing-plans';
+import { COMPANY_KIND_LABELS } from '@/constants/company-kind';
 import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
 import AdminCompanyBillingEditDialog from '@/components/AdminCompanyBillingEditDialog';
 import { format } from 'date-fns';
@@ -91,14 +92,23 @@ const AdminCompaniesBilling: React.FC = () => {
                         Visualize e altere o plano comercial de cada empresa (inclui downgrade).
                     </p>
                 </div>
-                <Button
-                    variant="outline"
-                    onClick={() => navigate('/admin/dashboard')}
-                    className="border-yellow-500/30 text-yellow-500"
-                >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Voltar
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                        onClick={() => navigate('/admin/settings/partner-companies/create')}
+                        className="bg-yellow-500 text-black hover:bg-yellow-600"
+                    >
+                        <Store className="mr-2 h-4 w-4" />
+                        Nova empresa parceira
+                    </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => navigate('/admin/dashboard')}
+                        className="border-yellow-500/30 text-yellow-500"
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Voltar
+                    </Button>
+                </div>
             </div>
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
@@ -133,6 +143,7 @@ const AdminCompaniesBilling: React.FC = () => {
                                     <TableRow className="border-yellow-500/20 hover:bg-transparent">
                                         <TableHead className="text-gray-400">Empresa</TableHead>
                                         <TableHead className="text-gray-400">CNPJ</TableHead>
+                                        <TableHead className="text-gray-400">Tipo</TableHead>
                                         <TableHead className="text-gray-400">Plano</TableHead>
                                         <TableHead className="text-gray-400">Mín. ingressos</TableHead>
                                         <TableHead className="text-gray-400">Inatividade</TableHead>
@@ -165,6 +176,10 @@ const AdminCompaniesBilling: React.FC = () => {
                                                 </TableCell>
                                                 <TableCell className="text-gray-300 text-sm">
                                                     {formatCnpj(company.cnpj)}
+                                                </TableCell>
+                                                <TableCell className="text-gray-300 text-sm">
+                                                    {COMPANY_KIND_LABELS[company.company_kind ?? 'organizer'] ??
+                                                        'Organizador'}
                                                 </TableCell>
                                                 <TableCell className="text-yellow-500/90 text-sm">
                                                     {getBillingPlanLabel(company.billing_plan)}

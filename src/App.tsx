@@ -4,7 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import ClientHomeRoute from "./components/ClientHomeRoute";
-import PublicLaunchRouteGuard from "./components/PublicLaunchRouteGuard";
+import InformacoesPage from "./pages/InformacoesPage";
+import ClientAuthGate from "./components/ClientAuthGate";
 import PublicLaunchRegistrationGuard from "./components/PublicLaunchRegistrationGuard";
 import NotFound from "./pages/NotFound";
 import EventDetails from "./pages/EventDetails";
@@ -27,6 +28,8 @@ import ManagerCreditPdv from "./pages/ManagerCreditPdv";
 import ManagerCreditSpendsReport from "./pages/ManagerCreditSpendsReport";
 import ManagerCreditAccountingReport from "./pages/ManagerCreditAccountingReport";
 import ManagerCreditSettlements from "./pages/ManagerCreditSettlements";
+import ManagerPdvOperators from "./pages/ManagerPdvOperators";
+import AdminCreatePartnerCompany from "./pages/AdminCreatePartnerCompany";
 import AdminCreditReports from "./pages/AdminCreditReports";
 import ManagerCreateWristband from "./pages/ManagerCreateWristband"; 
 import ManagerWristbandsList from "./pages/ManagerWristbandsList"; 
@@ -103,7 +106,8 @@ function AppRoutes() {
         <Routes>
           {/* Public/Client Routes */}
           <Route path="/" element={<ClientLayout />}>
-            <Route element={<PublicLaunchRouteGuard />}>
+            <Route element={<ClientAuthGate />}>
+            <Route path="informacoes" element={<InformacoesPage />} />
             <Route index element={<ClientHomeRoute />} />
             <Route path="events/:id" element={<EventDetails />} />
             <Route path="events/:eventId/inscricao" element={<EventInscriptionPage />} />
@@ -173,6 +177,7 @@ function AppRoutes() {
             <Route path="/manager/settings/notifications" element={<ManagerNotifications />} />
             <Route path="/manager/settings/payment" element={<ManagerPaymentSettings />} />
             <Route path="/manager/settings/history" element={<ManagerSettingsHistory />} />
+            <Route path="/manager/settings/pdv-operators" element={<ManagerPdvOperators />} />
             <Route path="/manager/credit/establishments" element={<ManagerCreditEstablishments />} />
             <Route path="/manager/credit/pdv" element={<ManagerCreditPdv />} />
           </Route>
@@ -186,6 +191,7 @@ function AppRoutes() {
                 <Route path="/admin/settings/commission-tiers" element={<AdminCommissionTiers />} />
                 <Route path="/admin/settings/contracts" element={<AdminEventContracts />} />
                 <Route path="/admin/settings/companies-billing" element={<AdminCompaniesBilling />} />
+                <Route path="/admin/settings/partner-companies/create" element={<AdminCreatePartnerCompany />} />
                 <Route path="/admin/settings/plan-features" element={<AdminPlanFeatures />} />
                 <Route path="/admin/settings/monthly-invoices" element={<AdminListingMonthlyBilling />} />
                 <Route path="/admin/settings/listing-monthly-billing" element={<AdminListingMonthlyRedirect />} />

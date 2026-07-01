@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Loader2, Sparkles, Ticket, Shield, LayoutDashboard, Rocket, QrCode, Wallet, Store, BarChart3 } from 'lucide-react';
+import { Sparkles, Ticket, Shield, LayoutDashboard, Rocket, QrCode, Wallet, Store, BarChart3 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useDevice } from '@/hooks/use-device';
 import { useLandingUi } from '@/contexts/LandingUiContext';
@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 const BENEFIT_ICONS = [Ticket, LayoutDashboard, Shield, Sparkles] as const;
 const MANAGER_PILLAR_ICONS = [QrCode, Wallet, Store, BarChart3] as const;
 
-const PreLaunchPage: React.FC = () => {
+const InformacoesPage: React.FC = () => {
     const { isMobile } = useDevice();
     const { openContact } = useLandingUi();
     const { contact: publicContact } = usePublicSiteContact();
@@ -36,25 +36,9 @@ const PreLaunchPage: React.FC = () => {
     const [sendingContact, setSendingContact] = useState(false);
 
     useEffect(() => {
-        document.title = 'EventFest — Em breve';
-        let meta = document.querySelector('meta[name="robots"]') as HTMLMetaElement | null;
-        const created = !meta;
-        if (!meta) {
-            meta = document.createElement('meta');
-            meta.setAttribute('name', 'robots');
-            document.head.appendChild(meta);
-        }
-        const previous = meta.getAttribute('content');
-        meta.setAttribute('content', 'noindex, nofollow');
-
+        document.title = 'EventFest — Informações';
         return () => {
             document.title = 'EventFest';
-            if (created && meta?.parentNode) {
-                meta.parentNode.removeChild(meta);
-            } else if (meta) {
-                if (previous) meta.setAttribute('content', previous);
-                else meta.removeAttribute('content');
-            }
         };
     }, []);
 
@@ -266,4 +250,4 @@ const PreLaunchPage: React.FC = () => {
     );
 };
 
-export default PreLaunchPage;
+export default InformacoesPage;

@@ -24,6 +24,7 @@ interface BillingPlanOptionCardProps {
     isUpgrade: boolean;
     isDowngradeBlocked: boolean;
     lockedUpgrade: boolean;
+    isRecommended?: boolean;
     onAction: () => void;
 }
 
@@ -36,6 +37,7 @@ const BillingPlanOptionCard: React.FC<BillingPlanOptionCardProps> = ({
     isUpgrade,
     isDowngradeBlocked,
     lockedUpgrade,
+    isRecommended = false,
     onAction,
 }) => {
     const showConfirmCurrent = isCurrent && !billingReady && canSelect;
@@ -45,12 +47,17 @@ const BillingPlanOptionCard: React.FC<BillingPlanOptionCardProps> = ({
         <article
             className={`flex flex-col h-full rounded-2xl border p-5 gap-4 ${
                 isCurrent ? billingCardCurrent : billingCardDefault
-            }`}
+            } ${isRecommended && !isCurrent ? 'ring-2 ring-yellow-500/70 border-yellow-500/50' : ''}`}
         >
             <header className="space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                     <h3 className="text-white font-semibold text-lg leading-snug">{plan.label}</h3>
                     {isCurrent && <span className={billingBadgeCurrent}>Plano atual</span>}
+                    {isRecommended && !isCurrent && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-500/15 text-yellow-300 ring-1 ring-yellow-500/40">
+                            Recomendado
+                        </span>
+                    )}
                 </div>
                 <p className="text-cyan-300/90 text-sm font-medium">{plan.tagline}</p>
             </header>

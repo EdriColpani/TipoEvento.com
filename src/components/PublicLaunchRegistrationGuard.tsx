@@ -3,10 +3,10 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 
 const PublicLaunchRegistrationGuard: React.FC = () => {
-    const { showPreLaunchExperience } = usePublicLaunchMode();
+    const { isPreview } = usePublicLaunchMode();
 
-    if (showPreLaunchExperience) {
-        return <Navigate to="/" replace />;
+    if (isPreview) {
+        return <Navigate to="/informacoes" replace />;
     }
 
     return <Outlet />;

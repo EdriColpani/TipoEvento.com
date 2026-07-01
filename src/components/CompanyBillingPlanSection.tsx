@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -52,6 +53,8 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     isAdminMaster = false,
 }) => {
     const queryClient = useQueryClient();
+    const [searchParams] = useSearchParams();
+    const urlRecommendedPlan = searchParams.get('plan') as BillingPlanCode | null;
     const { billing, isLoading, invalidate } = useCompanyBilling(companyId);
     const feeOverrides = useMemo(
         () => ({
@@ -73,6 +76,27 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     const [pendingLicenseChargeId, setPendingLicenseChargeId] = useState<string | null>(null);
     const [inactivityPayDialogOpen, setInactivityPayDialogOpen] = useState(false);
     const [inactivityPayLoading, setInactivityPayLoading] = useState(false);
+
+    const { data: companyKind } = useQuery({
+        queryKey: ['companyKind', companyId],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('companies')
+                .select('company_kind')
+                .eq('id', companyId)
+                .maybeSingle();
+            if (error) throw error;
+            return (data?.company_kind as string | null) ?? 'organizer';
+        },
+        enabled: Boolean(companyId),
+        staleTime: 60_000,
+    });
+
+    const recommendedPlan = useMemo(() => {
+        if (urlRecommendedPlan) return urlRecommendedPlan;
+        if (companyKind === 'partner') return 'consumption_or_license' as BillingPlanCode;
+        return null;
+    }, [urlRecommendedPlan, companyKind]);
 
     const pendingDefinition = pendingPlan ? getBillingPlanDefinition(pendingPlan) : undefined;
 
@@ -401,6 +425,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                     isUpgrade={!!isUpgrade}
                                     isDowngradeBlocked={isDowngradeBlocked}
                                     lockedUpgrade={!!lockedUpgrade}
+                                    isRecommended={recommendedPlan === plan.code}
                                     onAction={() => openPlanAction(plan.code)}
                                 />
                             );

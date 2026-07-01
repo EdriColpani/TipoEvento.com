@@ -1,4 +1,17 @@
 -- Permissões de menu/funcionalidade por plano comercial (configurável pelo Admin Master)
+--
+-- Pré-requisito: enum billing_plan_type (criado em 20260517120000_company_billing_plans.sql).
+-- Bloco abaixo permite rodar esta migration mesmo se o enum ainda não existir no banco.
+DO $$ BEGIN
+  CREATE TYPE public.billing_plan_type AS ENUM (
+    'listing_monthly',
+    'ticket_commission',
+    'ticket_plus_consumption',
+    'consumption_or_license'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.billing_plan_features (
   billing_plan public.billing_plan_type NOT NULL,
@@ -79,15 +92,15 @@ INSERT INTO public.billing_plan_features (billing_plan, feature_key, enabled) VA
   ('consumption_or_license', 'events', true),
   ('consumption_or_license', 'events_create', true),
   ('consumption_or_license', 'events_banners', true),
-  ('consumption_or_license', 'wristbands', true),
-  ('consumption_or_license', 'validation_keys', true),
+  ('consumption_or_license', 'wristbands', false),
+  ('consumption_or_license', 'validation_keys', false),
   ('consumption_or_license', 'reports', true),
-  ('consumption_or_license', 'reports_financial', true),
-  ('consumption_or_license', 'reports_sales', true),
+  ('consumption_or_license', 'reports_financial', false),
+  ('consumption_or_license', 'reports_sales', false),
   ('consumption_or_license', 'reports_events', true),
-  ('consumption_or_license', 'reports_audience', true),
+  ('consumption_or_license', 'reports_audience', false),
   ('consumption_or_license', 'reports_registrations', true),
-  ('consumption_or_license', 'reports_wristband_movements', true),
+  ('consumption_or_license', 'reports_wristband_movements', false),
   ('consumption_or_license', 'reports_listing_monthly', false),
   ('consumption_or_license', 'settings', true)
 ON CONFLICT (billing_plan, feature_key) DO NOTHING;

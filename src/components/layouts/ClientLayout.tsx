@@ -7,39 +7,36 @@ import { useDevice } from '@/hooks/use-device';
 import { LandingUiProvider, useLandingUi, useLandingUiOptional } from '@/contexts/LandingUiContext';
 import LandingModals from '@/components/landing/LandingModals';
 import SiteLogo from '@/components/SiteLogo';
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 
 const ClientLandingModalsHost: React.FC = () => {
     const { activeModal, closeModal } = useLandingUi();
     return <LandingModals activeModal={activeModal} onClose={closeModal} />;
 };
 
-import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
-
-const ClientLayoutNav: React.FC<{ isLandingPage: boolean; showPreLaunchNav: boolean }> = ({
-    isLandingPage,
-    showPreLaunchNav,
-}) => {
+const ClientLayoutNav: React.FC<{ isInformacoesPage: boolean }> = ({ isInformacoesPage }) => {
     const landingUi = useLandingUiOptional();
     const linkClass = `text-white transition-colors duration-300 cursor-pointer ${
-        isLandingPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
+        isInformacoesPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
     }`;
 
     const handleContatoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         if (!landingUi) return;
         e.preventDefault();
         landingUi.openContact();
-        document.getElementById('contato')?.scrollIntoView({ behavior: 'smooth' });
+        const contactId = isInformacoesPage ? 'contato' : 'contato';
+        document.getElementById(contactId)?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    if (showPreLaunchNav) {
+    if (isInformacoesPage) {
         return (
             <>
-                <a href="/#home" className={linkClass}>Início</a>
-                <a href="/#sobre" className={linkClass}>Sobre</a>
-                <a href="/#gestores" className={linkClass}>Gestores</a>
-                <a href="/#solucao" className={linkClass}>Solução</a>
+                <a href="/informacoes#home" className={linkClass}>Início</a>
+                <a href="/informacoes#sobre" className={linkClass}>Sobre</a>
+                <a href="/informacoes#gestores" className={linkClass}>Gestores</a>
+                <a href="/informacoes#solucao" className={linkClass}>Solução</a>
                 <a
-                    href="/#contato"
+                    href="/informacoes#contato"
                     onClick={handleContatoClick}
                     className={`${linkClass} ${landingUi?.contactOpen ? 'text-cyan-400' : ''}`}
                     aria-expanded={landingUi?.contactOpen}
@@ -71,33 +68,35 @@ const ClientLayout: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { device, isMobile } = useDevice();
-    const { showPreLaunchExperience } = usePublicLaunchMode();
-    const isLandingPage = location.pathname === '/';
-    const usePreLaunchNav = showPreLaunchExperience && isLandingPage;
+    const { isAuthenticated } = usePublicSiteAuth();
+    const isInformacoesPage = location.pathname === '/informacoes';
 
     useEffect(() => {
         document.documentElement.setAttribute('data-device', device);
     }, [device]);
 
+    const handleLogoClick = () => {
+        navigate(isAuthenticated ? '/' : '/informacoes');
+    };
+
     return (
         <div className={`min-h-screen bg-black text-white ${isMobile ? 'device-mobile' : `device-${device}`}`} data-device={device}>
             <header
                 className={`fixed top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md border-b ${
-                    isLandingPage ? 'border-cyan-400/30' : 'border-yellow-500/20'
+                    isInformacoesPage ? 'border-cyan-400/30' : 'border-yellow-500/20'
                 }`}
             >
                 <div className={`max-w-7xl mx-auto flex items-center justify-between ${isMobile ? 'px-3 py-3' : 'px-4 sm:px-6 py-4'}`}>
                     <div className="flex items-center space-x-4 sm:space-x-8">
                         <SiteLogo
                             className={isMobile ? 'h-[4.25rem] min-w-[10rem]' : 'h-24 min-w-[14rem]'}
-                            onClick={() => navigate('/')}
+                            onClick={handleLogoClick}
                         />
                         <nav className="hidden md:flex items-center space-x-8">
-                            <ClientLayoutNav isLandingPage={isLandingPage} showPreLaunchNav={usePreLaunchNav} />
+                            <ClientLayoutNav isInformacoesPage={isInformacoesPage} />
                         </nav>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
-                        {/* O campo de busca foi removido daqui e movido para Index.tsx */}
                         <div className="hidden md:block">
                             <AuthStatusMenu />
                         </div>

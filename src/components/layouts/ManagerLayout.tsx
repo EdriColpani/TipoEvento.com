@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Globe, Share2 } from 'lucide-react';
+import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Globe, Share2, Store } from 'lucide-react';
 import SiteLogo from '@/components/SiteLogo';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import {
@@ -18,9 +19,13 @@ import { useUserType } from '@/hooks/use-user-type';
 import { useProfileStatus } from '@/hooks/use-profile-status';
 import NotificationBell from '@/components/NotificationBell';
 import PlanFeatureRouteGuard from '@/components/PlanFeatureRouteGuard';
+import PdvOperatorRouteGuard from '@/components/PdvOperatorRouteGuard';
 import { showError, showSuccess } from '@/utils/toast';
 import { LOGIN_PATH } from '@/utils/auth-routes';
+import { signOutSession } from '@/utils/sign-out-session';
 import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
+import { acceptCompanyMemberInvites } from '@/utils/company-members';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useDevice } from '@/hooks/use-device';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
@@ -52,6 +57,7 @@ const MANAGER_USER_TYPE_ID = 2;
 const ManagerLayout: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const queryClient = useQueryClient();
     const headerRef = useRef<HTMLElement>(null);
     const [headerHeight, setHeaderHeight] = useState(0);
     const [userId, setUserId] = useState<string | undefined>(undefined);
@@ -74,12 +80,30 @@ const ManagerLayout: React.FC = () => {
         });
     }, []);
 
+    useEffect(() => {
+        if (!userId) return;
+        acceptCompanyMemberInvites()
+            .then((accepted) => {
+                if (accepted > 0) {
+                    showSuccess(
+                        accepted === 1
+                            ? 'Convite de empresa aceito. Bem-vindo ao painel!'
+                            : `${accepted} convites de empresa aceitos.`,
+                    );
+                }
+            })
+            .catch(() => {
+                /* convites opcionais — falha silenciosa */
+            });
+    }, [userId]);
+
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const { hasPendingNotifications } = useProfileStatus(profile, isLoadingProfile, userId);
     const { userTypeName: baseUserTypeName } = useUserType(userId ? profile?.tipo_usuario_id : undefined);
     
     const isManagerPro = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
     const { company, isLoading: isLoadingCompany } = useManagerCompany(isManagerPro ? userId : undefined);
+    const { context: companyContext } = useManagerCompanyContext(isManagerPro ? userId : undefined);
     const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_USER_TYPE_ID;
     const needsBillingGateCheck = isManagerPro && !isAdminMaster && !!company?.id;
     const { billing, isLoading: isLoadingBilling } = useCompanyBilling(
@@ -273,22 +297,15 @@ const ManagerLayout: React.FC = () => {
 
     const handleLogout = async () => {
         try {
-            const { error } = await supabase.auth.signOut({ scope: 'local' });
-            const sessionMissing = error?.message?.toLowerCase().includes('auth session missing');
-
-            // Se a sessão já expirou, o Supabase pode retornar erro "Auth session missing!".
-            // Nesse caso, ainda assim tratamos como logout para destravar o usuário.
-            if (error && !sessionMissing) {
-                showError('Erro ao sair: ' + error.message);
-            } else {
-                showSuccess('Sessão encerrada.');
-            }
+            await signOutSession();
+            showSuccess('Sessão encerrada.');
         } catch {
             showSuccess('Sessão encerrada.');
         } finally {
             setUserId(undefined);
             setLoadingSession(false);
-            navigate(LOGIN_PATH, { replace: true });
+            queryClient.clear();
+            navigate('/informacoes', { replace: true });
         }
     };
 
@@ -332,6 +349,7 @@ const ManagerLayout: React.FC = () => {
         '/manager/events/banners/create': <Plus className="mr-2 h-4 w-4" />,
         '/manager/wristbands': <QrCode className="mr-2 h-4 w-4" />,
         '/manager/validation-keys': <Key className="mr-2 h-4 w-4" />,
+        '/manager/credit/establishments': <Store className="mr-2 h-4 w-4" />,
         '/manager/credit/pdv': <CreditCard className="mr-2 h-4 w-4" />,
         '/manager/reports': <BarChart3 className="mr-2 h-4 w-4" />,
         '/manager/settings': <Settings className="mr-2 h-4 w-4" />,
@@ -357,30 +375,21 @@ const ManagerLayout: React.FC = () => {
         );
     }
 
-    const canShowCreditPdvNav = companyAllowsCreditConsumption(billing?.billing_plan ?? null);
-    if (canShowCreditPdvNav) {
-        const pdvItem = {
-            path: '/manager/credit/pdv',
-            label: 'PDV',
-            featureKey: 'reports' as const,
-        };
-        const alreadyHasPdv = filteredManagerNav.some((item) => item.path === pdvItem.path);
-        if (!alreadyHasPdv) {
-            const validationIndex = filteredManagerNav.findIndex(
-                (item) => item.path === '/manager/validation-keys',
-            );
-            const reportsIndex = filteredManagerNav.findIndex(
-                (item) => item.path === '/manager/reports',
-            );
+    const canShowCreditNav = companyAllowsCreditConsumption(billing?.billing_plan ?? null);
+    if (!canShowCreditNav) {
+        filteredManagerNav = filteredManagerNav.filter(
+            (item) =>
+                !item.path.startsWith('/manager/credit/establishments') &&
+                !item.path.startsWith('/manager/credit/pdv'),
+        );
+    }
 
-            if (validationIndex >= 0) {
-                filteredManagerNav.splice(validationIndex + 1, 0, pdvItem);
-            } else if (reportsIndex >= 0) {
-                filteredManagerNav.splice(reportsIndex, 0, pdvItem);
-            } else {
-                filteredManagerNav.push(pdvItem);
-            }
-        }
+    if (companyContext?.isPdvOperator && !isAdminMaster) {
+        filteredManagerNav = filteredManagerNav.filter((item) =>
+            item.path === '/manager/credit/pdv' ||
+            item.path === '/manager/credit/establishments' ||
+            item.path === '/manager/settings',
+        );
     }
 
     const baseNavItems = [
@@ -659,7 +668,10 @@ const ManagerLayout: React.FC = () => {
                                 
                                 <DropdownMenuSeparator className="bg-yellow-500/20" />
                                 <DropdownMenuItem 
-                                    onClick={() => void handleLogout()}
+                                    onSelect={(e) => {
+                                        e.preventDefault();
+                                        void handleLogout();
+                                    }}
                                     className="cursor-pointer hover:bg-red-500/10 text-red-400"
                                 >
                                     <LogOut className="mr-2 h-4 w-4" />
@@ -849,7 +861,8 @@ const ManagerLayout: React.FC = () => {
                                     </nav>
                                     <div className="border-t border-yellow-500/20 pt-4">
                                         <Button
-                                            onClick={handleLogout}
+                                            type="button"
+                                            onClick={() => void handleLogout()}
                                             className="w-full justify-start bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 transition-all duration-300 cursor-pointer"
                                         >
                                             <LogOut className="mr-2 h-5 w-5" />
@@ -901,7 +914,9 @@ const ManagerLayout: React.FC = () => {
                         </div>
                     )}
                 <PlanFeatureRouteGuard>
-                    <Outlet />
+                    <PdvOperatorRouteGuard userId={userId}>
+                        <Outlet />
+                    </PdvOperatorRouteGuard>
                 </PlanFeatureRouteGuard>
             </main>
         </div>

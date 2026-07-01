@@ -19,11 +19,12 @@ const MobileMenu: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const {
         userId,
+        userEmail,
         profile,
         sessionReady,
         profileLoading,
         isAuthenticated,
-        showPreLaunchExperience,
+        isPreview,
     } = usePublicSiteContext();
 
     const { hasPendingNotifications } = useProfileStatus(profile, profileLoading, userId);
@@ -35,7 +36,22 @@ const MobileMenu: React.FC = () => {
     const isManagerPro = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
     const { company } = useManagerCompany(isManagerPro ? userId : undefined);
     const landingUi = useLandingUiOptional();
-    const isHomePreLaunch = showPreLaunchExperience && location.pathname === '/';
+    const isInformacoesPage = location.pathname === '/informacoes';
+
+    const navItems = isInformacoesPage
+        ? [
+              { path: '/informacoes#home', label: 'Início', icon: 'fas fa-home' },
+              { path: '/informacoes#sobre', label: 'Sobre', icon: 'fas fa-info-circle' },
+              { path: '/informacoes#gestores', label: 'Gestores', icon: 'fas fa-briefcase' },
+              { path: '/informacoes#solucao', label: 'Solução', icon: 'fas fa-star' },
+              { path: '/informacoes#contato', label: 'Contato', icon: 'fas fa-envelope' },
+          ]
+        : [
+              { path: '/', label: 'Home', icon: 'fas fa-home' },
+              { path: '/#eventos', label: 'Eventos', icon: 'fas fa-calendar-alt' },
+              { path: '/#categorias', label: 'Categorias', icon: 'fas fa-th-large' },
+              { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
+          ];
 
     const handleNavigation = (path: string, loginReturnTo?: string) => {
         setIsOpen(false);
@@ -59,30 +75,18 @@ const MobileMenu: React.FC = () => {
         } catch {
             showSuccess('Sessão encerrada com sucesso.');
         } finally {
-            handleNavigation('/login');
+            handleNavigation('/informacoes');
         }
     };
 
-    const navItems = isHomePreLaunch
-        ? [
-              { path: '/#home', label: 'Início', icon: 'fas fa-home' },
-              { path: '/#sobre', label: 'Sobre', icon: 'fas fa-info-circle' },
-              { path: '/#gestores', label: 'Gestores', icon: 'fas fa-briefcase' },
-              { path: '/#solucao', label: 'Solução', icon: 'fas fa-star' },
-              { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
-          ]
-        : [
-              { path: '/', label: 'Home', icon: 'fas fa-home' },
-              { path: '/#eventos', label: 'Eventos', icon: 'fas fa-calendar-alt' },
-              { path: '/#categorias', label: 'Categorias', icon: 'fas fa-th-large' },
-              { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
-          ];
+    const isUserLoading = !sessionReady;
+    const isLoggedIn = isAuthenticated;
+    const isManager = isLoggedIn && profile && (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2);
 
-    const isUserLoading = !sessionReady || (isAuthenticated && profileLoading && !profile);
-    const isLoggedIn = isAuthenticated && profile;
-    const isManager = isLoggedIn && (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2);
-
-    const fullName = profile?.first_name + (profile?.last_name ? ` ${profile.last_name}` : '');
+    const fullName =
+        [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
+        userEmail?.split('@')[0] ||
+        'Usuário';
 
     let userRoleDisplay = baseUserTypeName;
     if (isManagerPro) {
@@ -118,7 +122,9 @@ const MobileMenu: React.FC = () => {
                                 </div>
                                 <div className="min-w-0">
                                     <div className="text-white font-semibold truncate">{fullName || 'Usuário'}</div>
-                                    <div className="text-gray-400 text-sm truncate">{userRoleDisplay || 'Usuário'}</div>
+                                    <div className="text-gray-400 text-sm truncate">
+                                        {userRoleDisplay || userEmail || 'Conta EventFest'}
+                                    </div>
                                 </div>
                             </div>
 
@@ -181,7 +187,7 @@ const MobileMenu: React.FC = () => {
                             >
                                 Login
                             </Button>
-                            {!showPreLaunchExperience ? (
+                            {!isPreview ? (
                                 <Button
                                     onClick={() => handleNavigation('/register')}
                                     className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
@@ -198,7 +204,7 @@ const MobileMenu: React.FC = () => {
                                 key={item.path}
                                 href={item.path}
                                 onClick={(e) => {
-                                    if (item.path === '/#contato' && landingUi) {
+                                    if (item.path.endsWith('#contato') && landingUi) {
                                         e.preventDefault();
                                         landingUi.openContact();
                                     }
