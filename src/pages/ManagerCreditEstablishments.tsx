@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
 import {
     useCreditEstablishments,
     saveCreditEstablishment,
@@ -50,6 +51,7 @@ const ManagerCreditEstablishments: React.FC = () => {
     const [savingProduct, setSavingProduct] = useState(false);
 
     const { company } = useManagerCompany(userId);
+    const { context: companyContext } = useManagerCompanyContext(userId);
     const { billing } = useCompanyBilling(company?.id);
     const { data, isLoading, invalidate } = useCreditEstablishments(company?.id);
     const {
@@ -63,6 +65,7 @@ const ManagerCreditEstablishments: React.FC = () => {
 
     const supportsCredit =
         isHybridPlan(billing?.billing_plan) || isConsumptionOrLicensePlan(billing?.billing_plan);
+    const canManageEstablishments = !companyContext?.isPdvOperator && (companyContext?.isCompanyOwner ?? true);
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
@@ -227,9 +230,19 @@ const ManagerCreditEstablishments: React.FC = () => {
             <Card className="bg-black border-yellow-500/30 mb-6">
                 <CardHeader>
                     <CardTitle className="text-white text-lg">
-                        {editing ? 'Editar estabelecimento' : 'Novo estabelecimento'}
+                        {canManageEstablishments
+                            ? editing
+                                ? 'Editar estabelecimento'
+                                : 'Novo estabelecimento'
+                            : 'Estabelecimentos disponíveis'}
                     </CardTitle>
+                    {!canManageEstablishments && (
+                        <CardDescription className="text-gray-400">
+                            Como operador PDV, você gerencia produtos nos estabelecimentos já cadastrados pelo proprietário.
+                        </CardDescription>
+                    )}
                 </CardHeader>
+                {canManageEstablishments ? (
                 <CardContent className="space-y-4">
                     <div>
                         <Label className="text-gray-300">Nome</Label>
@@ -274,6 +287,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                         )}
                     </div>
                 </CardContent>
+                ) : null}
             </Card>
 
             <Card className="bg-black border-yellow-500/30">
@@ -306,11 +320,23 @@ const ManagerCreditEstablishments: React.FC = () => {
                                         </p>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button size="sm" variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={() => startEdit(item)}>
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
-                                        <Button size="sm" variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={() => toggleActive(item)}>
-                                            <Power className="h-4 w-4" />
+                                        {canManageEstablishments && (
+                                            <>
+                                                <Button size="sm" variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={() => startEdit(item)}>
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button size="sm" variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={() => toggleActive(item)}>
+                                                    <Power className="h-4 w-4" />
+                                                </Button>
+                                            </>
+                                        )}
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="border-yellow-500/40 text-yellow-500"
+                                            onClick={() => setCatalogEstablishmentId(item.id)}
+                                        >
+                                            Produtos
                                         </Button>
                                     </div>
                                 </li>

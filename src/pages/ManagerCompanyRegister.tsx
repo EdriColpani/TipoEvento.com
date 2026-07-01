@@ -15,6 +15,10 @@ import {
     MANAGER_ACCOUNT_REGISTER_PATH,
     MANAGER_COMPANY_REGISTER_PATH,
 } from '@/utils/promoter-registration-flow';
+import {
+    companyKindFromUseCase,
+    loadManagerRegistrationUseCase,
+} from '@/constants/company-kind';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 
 const ManagerCompanyRegister: React.FC = () => {
@@ -134,10 +138,15 @@ const ManagerCompanyRegister: React.FC = () => {
         const toastId = showLoading('Registrando empresa e perfil de gestor...');
 
         try {
-            await finalizeManagerCompanyRegistration(userId, values, queryClient);
+            const companyKind = companyKindFromUseCase(loadManagerRegistrationUseCase());
+            await finalizeManagerCompanyRegistration(userId, values, queryClient, companyKind);
             dismissToast(toastId);
             showSuccess('Registro de Gestor (Empresa) concluído com sucesso!');
-            navigate('/manager/dashboard');
+            if (companyKind === 'partner') {
+                navigate('/manager/settings/company-profile?tab=billing&plan=consumption_or_license');
+            } else {
+                navigate('/manager/dashboard');
+            }
         } catch (e: unknown) {
             dismissToast(toastId);
             console.error('Supabase Save Error:', e);

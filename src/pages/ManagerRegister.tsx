@@ -9,6 +9,7 @@ import { showError, showSuccess } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import ManagerTypeSelectionDialog from '@/components/ManagerTypeSelectionDialog';
+import ManagerUseCaseSelectionDialog from '@/components/ManagerUseCaseSelectionDialog';
 import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegisterDialog';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActivePlatformContract } from '@/utils/fetchPlatformContract';
@@ -16,6 +17,10 @@ import {
     buildContractAcceptanceAuditMeta,
     recordContractAcceptance,
 } from '@/utils/contract-acceptance-audit';
+import {
+    saveManagerRegistrationUseCase,
+    type ManagerRegistrationUseCase,
+} from '@/constants/company-kind';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -26,7 +31,9 @@ const ManagerRegister: React.FC = () => {
     const [termsScrolledToEnd, setTermsScrolledToEnd] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTypeSelectionModal, setShowTypeSelectionModal] = useState(false);
-    const [showIndividualRegisterModal, setShowIndividualRegisterModal] = useState(false); // NOVO: Estado para o modal PF
+    const [showUseCaseModal, setShowUseCaseModal] = useState(false);
+    const [registrationUseCase, setRegistrationUseCase] = useState<ManagerRegistrationUseCase>('organizer');
+    const [showIndividualRegisterModal, setShowIndividualRegisterModal] = useState(false);
 
     const [userId, setUserId] = useState<string | undefined>(undefined);
     React.useEffect(() => {
@@ -86,13 +93,27 @@ const ManagerRegister: React.FC = () => {
             return;
         }
 
+        setShowUseCaseModal(true);
+    };
+
+    const handleSelectUseCase = (useCase: ManagerRegistrationUseCase) => {
+        setRegistrationUseCase(useCase);
+        saveManagerRegistrationUseCase(useCase);
+        setShowUseCaseModal(false);
         setShowTypeSelectionModal(true);
     };
 
     const handleSelectManagerType = (type: 'individual' | 'company') => {
-        setShowTypeSelectionModal(false); // Fecha o modal de seleção
-        setIsSubmitting(true); 
-        
+        setShowTypeSelectionModal(false);
+        setIsSubmitting(true);
+
+        if (registrationUseCase === 'partner' && type === 'individual') {
+            showError('Empresas parceiras devem se cadastrar como Pessoa Jurídica.');
+            setIsSubmitting(false);
+            setShowTypeSelectionModal(true);
+            return;
+        }
+
         if (type === 'individual') {
             // Abre o modal de registro individual
             setShowIndividualRegisterModal(true);
@@ -183,7 +204,13 @@ const ManagerRegister: React.FC = () => {
                 )}
             </div>
 
-            {/* Modal de Seleção de Tipo de Gestor */}
+            <ManagerUseCaseSelectionDialog
+                isOpen={showUseCaseModal}
+                onClose={() => setShowUseCaseModal(false)}
+                onSelectUseCase={handleSelectUseCase}
+                isSubmitting={isSubmitting}
+            />
+
             <ManagerTypeSelectionDialog
                 isOpen={showTypeSelectionModal}
                 onClose={() => setShowTypeSelectionModal(false)}

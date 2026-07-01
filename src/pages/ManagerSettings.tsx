@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings, User, Building, Bell, CreditCard, History, Loader2, Store, ShoppingBag, Banknote, Globe, Share2 } from 'lucide-react';
+import { Settings, User, Building, Bell, CreditCard, History, Loader2, Store, ShoppingBag, Banknote, Globe, Share2, Users } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
 
@@ -15,6 +16,7 @@ const ManagerSettings: React.FC = () => {
     const [userId, setUserId] = useState<string | undefined>(undefined);
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const { company } = useManagerCompany(userId);
+    const { context: companyContext } = useManagerCompanyContext(userId);
     const { billing } = useCompanyBilling(company?.id);
 
     useEffect(() => {
@@ -76,13 +78,24 @@ const ManagerSettings: React.FC = () => {
                 description: "Cobrar consumo escaneando o QR da carteira do cliente.",
                 path: "/manager/credit/pdv",
             },
-            {
-                icon: <Banknote className="h-6 w-6 text-yellow-500" />,
-                title: "Repasses — Crédito",
-                description: "Liquidações liberadas e registro de payout ao gestor.",
-                path: "/manager/credit/settlements",
-            },
         );
+
+        if (companyContext?.isCompanyOwner) {
+            settingsOptions.push(
+                {
+                    icon: <Users className="h-6 w-6 text-yellow-500" />,
+                    title: "Operadores PDV",
+                    description: "Convide funcionários do balcão (acesso restrito ao PDV e produtos).",
+                    path: "/manager/settings/pdv-operators",
+                },
+                {
+                    icon: <Banknote className="h-6 w-6 text-yellow-500" />,
+                    title: "Repasses — Crédito",
+                    description: "Liquidações liberadas e registro de payout ao gestor.",
+                    path: "/manager/credit/settlements",
+                },
+            );
+        }
     }
 
     if (isLoadingProfile) {
@@ -91,6 +104,14 @@ const ManagerSettings: React.FC = () => {
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
                 <p className="text-gray-400">Carregando configurações...</p>
             </div>
+        );
+    }
+
+    if (companyContext?.isPdvOperator) {
+        settingsOptions = settingsOptions.filter((opt) =>
+            opt.path === '/manager/settings/individual-profile' ||
+            opt.path === '/manager/credit/pdv' ||
+            opt.path === '/manager/credit/establishments',
         );
     }
 

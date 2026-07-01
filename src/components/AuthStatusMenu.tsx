@@ -1,10 +1,10 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { showSuccess, showError } from '@/utils/toast';
+import { showSuccess } from '@/utils/toast';
+import { signOutSession } from '@/utils/sign-out-session';
 import { useProfileStatus } from '@/hooks/use-profile-status';
 import NotificationBell from './NotificationBell';
 import { Shield, LayoutDashboard } from 'lucide-react';
@@ -15,14 +15,15 @@ import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
 const AuthStatusMenu: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const isLandingPage = location.pathname === '/';
+    const isLandingPage = location.pathname === '/' || location.pathname === '/informacoes';
     const {
         userId,
+        userEmail,
         profile,
         sessionReady,
         profileLoading,
         isAuthenticated,
-        showPreLaunchExperience,
+        isPreview,
     } = usePublicSiteContext();
 
     const { hasPendingNotifications } = useProfileStatus(profile, profileLoading, userId);
@@ -36,19 +37,12 @@ const AuthStatusMenu: React.FC = () => {
 
     const handleLogout = async () => {
         try {
-            const { error } = await supabase.auth.signOut({ scope: 'local' });
-
-            const sessionMissing = error?.message?.toLowerCase().includes('auth session missing');
-
-            if (error && !sessionMissing) {
-                showError('Erro ao sair: ' + error.message);
-            } else {
-                showSuccess('Sessão encerrada.');
-            }
+            await signOutSession();
+            showSuccess('Sessão encerrada.');
         } catch {
             showSuccess('Sessão encerrada.');
         } finally {
-            navigate('/login', { replace: true });
+            navigate('/informacoes', { replace: true });
         }
     };
 
@@ -62,38 +56,32 @@ const AuthStatusMenu: React.FC = () => {
         );
     }
 
-    if (isAuthenticated && profileLoading && !profile) {
-        return (
-            <div
-                className={`w-10 h-10 rounded-full animate-pulse ${
-                    isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'
-                }`}
-            ></div>
-        );
-    }
-
-    if (isAuthenticated && profile) {
-        const initials = profile.first_name ? profile.first_name.charAt(0).toUpperCase() : 'U';
-        const tipo = Number(profile.tipo_usuario_id);
+    if (isAuthenticated) {
+        const displayName =
+            [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
+            userEmail?.split('@')[0] ||
+            'Usuário';
+        const initials = displayName.charAt(0).toUpperCase();
+        const tipo = Number(profile?.tipo_usuario_id);
         const isManager = tipo === 1 || tipo === 2;
         const isClient = tipo === 3;
         const isAdmin = tipo === 1;
 
-        const fullName = profile.first_name + (profile.last_name ? ` ${profile.last_name}` : '');
-
-        let userRoleDisplay = baseUserTypeName;
+        let userRoleDisplay = baseUserTypeName || 'Conta EventFest';
         if (isManagerPro) {
             userRoleDisplay = company?.id ? `${baseUserTypeName} (PJ)` : `${baseUserTypeName} (PF)`;
         }
 
         return (
             <div className="flex items-center space-x-4">
-                <NotificationBell
-                    userId={userId}
-                    profile={profile}
-                    hasPendingNotifications={hasPendingNotifications}
-                    isLandingPage={isLandingPage}
-                />
+                {profile ? (
+                    <NotificationBell
+                        userId={userId}
+                        profile={profile}
+                        hasPendingNotifications={hasPendingNotifications}
+                        isLandingPage={isLandingPage}
+                    />
+                ) : null}
 
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -102,10 +90,10 @@ const AuthStatusMenu: React.FC = () => {
                                 isLandingPage
                                     ? 'border-cyan-400/60 hover:border-blue-500'
                                     : 'border-yellow-500/50 hover:border-yellow-500'
-                            }`}
+                            } ${profileLoading && !profile ? 'opacity-70' : ''}`}
                         >
                             <Avatar className="h-8 w-8">
-                                <AvatarImage src={profile.avatar_url || undefined} alt={profile.first_name} />
+                                <AvatarImage src={profile?.avatar_url || undefined} alt={displayName} />
                                 <AvatarFallback
                                     className={`text-black font-bold text-sm ${
                                         isLandingPage ? 'bg-cyan-400' : 'bg-yellow-500'
@@ -126,10 +114,10 @@ const AuthStatusMenu: React.FC = () => {
                                 isLandingPage ? 'text-cyan-300' : 'text-yellow-500'
                             }`}
                         >
-                            {fullName}
+                            {displayName}
                         </DropdownMenuLabel>
-                        <DropdownMenuLabel className="text-gray-400 text-xs pt-0">
-                            {userRoleDisplay || 'Usuário'}
+                        <DropdownMenuLabel className="text-gray-400 text-xs pt-0 truncate max-w-[200px]">
+                            {userEmail || userRoleDisplay}
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator className={isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'} />
                         <DropdownMenuItem
@@ -154,7 +142,7 @@ const AuthStatusMenu: React.FC = () => {
                             Carteira EventFest
                         </DropdownMenuItem>
 
-                        {isClient && !showPreLaunchExperience && (
+                        {profile && isClient && !isPreview && (
                             <DropdownMenuItem
                                 onClick={() => navigate('/manager/register')}
                                 className={`cursor-pointer text-green-400 font-semibold ${
@@ -166,7 +154,7 @@ const AuthStatusMenu: React.FC = () => {
                             </DropdownMenuItem>
                         )}
 
-                        {isManager && (
+                        {profile && isManager && (
                             <DropdownMenuItem
                                 onClick={() => navigate('/manager/dashboard')}
                                 className={`cursor-pointer font-semibold ${
@@ -177,7 +165,7 @@ const AuthStatusMenu: React.FC = () => {
                                 Dashboard
                             </DropdownMenuItem>
                         )}
-                        {isAdmin && (
+                        {profile && isAdmin && (
                             <DropdownMenuItem
                                 onClick={() => navigate('/admin/dashboard')}
                                 className={`cursor-pointer text-red-400 font-semibold ${
@@ -216,7 +204,7 @@ const AuthStatusMenu: React.FC = () => {
             >
                 Login
             </Button>
-            {!showPreLaunchExperience ? (
+            {!isPreview ? (
                 <Button
                     onClick={() => navigate('/register')}
                     className={`border bg-transparent transition-all duration-300 cursor-pointer px-4 ${

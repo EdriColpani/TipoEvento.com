@@ -32,7 +32,7 @@ const Login: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(true);
-    const { showPreLaunchExperience } = usePublicLaunchMode();
+    const { isPreview } = usePublicLaunchMode();
 
     const completeAuthenticatedRedirect = async (userId: string) => {
         try {
@@ -55,7 +55,21 @@ const Login: React.FC = () => {
     useEffect(() => {
         let cancelled = false;
 
+        const isAuthCallbackUrl = () => {
+            const hash = window.location.hash;
+            const search = window.location.search;
+            return (
+                hash.includes('access_token') ||
+                hash.includes('type=signup') ||
+                hash.includes('type=recovery') ||
+                search.includes('code=')
+            );
+        };
+
         const handleEmailConfirmationReturn = async () => {
+            if (!isAuthCallbackUrl()) {
+                return;
+            }
             const { data: { session } } = await supabase.auth.getSession();
             if (cancelled || !session?.user?.id || !isAuthEmailConfirmed(session.user)) {
                 return;
@@ -65,8 +79,11 @@ const Login: React.FC = () => {
 
         void handleEmailConfirmationReturn();
 
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (cancelled || !session?.user?.id || !isAuthEmailConfirmed(session.user)) {
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (cancelled || event !== 'SIGNED_IN') {
+                return;
+            }
+            if (!session?.user?.id || !isAuthEmailConfirmed(session.user)) {
                 return;
             }
             void completeAuthenticatedRedirect(session.user.id);
@@ -213,17 +230,17 @@ const Login: React.FC = () => {
                             </Button>
                             <Button
                                 type="button"
-                                onClick={() => navigate('/')}
+                                onClick={() => navigate('/informacoes')}
                                 className="w-full bg-transparent border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
                             >
                                 Voltar
                             </Button>
                         </div>
                         <div className="text-center pt-4 border-t border-cyan-500/25">
-                            {showPreLaunchExperience ? (
+                            {isPreview ? (
                                 <p className="text-gray-400 text-sm">
                                     Cadastros temporariamente indisponíveis. Estamos em fase de lançamento — use o
-                                    formulário de contato na página inicial.
+                                    formulário de contato na página de informações.
                                 </p>
                             ) : (
                                 <p className="text-gray-400 text-sm">

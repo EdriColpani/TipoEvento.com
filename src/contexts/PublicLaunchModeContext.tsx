@@ -13,6 +13,7 @@ import {
 
 export type PublicSiteContextValue = {
     userId: string | undefined;
+    userEmail: string | undefined;
     profile: ReturnType<typeof useProfile>['profile'];
     sessionReady: boolean;
     profileLoading: boolean;
@@ -21,14 +22,25 @@ export type PublicSiteContextValue = {
     mode: PublicLaunchMode;
     isPreview: boolean;
     canBypassPreview: boolean;
-    showPreLaunchExperience: boolean;
     isError: boolean;
 };
 
 const PublicSiteContext = createContext<PublicSiteContextValue | null>(null);
 
+function applySession(
+    session: { user?: { id?: string; email?: string | null } } | null,
+    setUserId: (id: string | undefined) => void,
+    setUserEmail: (email: string | undefined) => void,
+    setSessionReady: (ready: boolean) => void,
+) {
+    setUserId(session?.user?.id);
+    setUserEmail(session?.user?.email ?? undefined);
+    setSessionReady(true);
+}
+
 export function PublicLaunchModeProvider({ children }: { children: React.ReactNode }) {
     const [userId, setUserId] = useState<string | undefined>(undefined);
+    const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
     const [sessionReady, setSessionReady] = useState(false);
 
     useEffect(() => {
@@ -36,15 +48,13 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
 
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (cancelled) return;
-            setUserId(session?.user?.id);
-            setSessionReady(true);
+            applySession(session, setUserId, setUserEmail, setSessionReady);
         });
 
         const {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUserId(session?.user?.id);
-            setSessionReady(true);
+            applySession(session, setUserId, setUserEmail, setSessionReady);
         });
 
         return () => {
@@ -67,23 +77,13 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
 
     const value = useMemo<PublicSiteContextValue>(() => {
         const mode = query.data ?? 'preview';
-        const tipo = Number(profile?.tipo_usuario_id);
-        const isClient = tipo === 3;
         const loggedIn = sessionReady && Boolean(userId);
         const isPreview = mode === 'preview';
         const canBypassPreview = canBypassPublicLaunchPreview(profile?.tipo_usuario_id);
 
-        let showPreLaunchExperience = isPreview && !loggedIn;
-        if (loggedIn) {
-            if (profileLoading) {
-                showPreLaunchExperience = false;
-            } else {
-                showPreLaunchExperience = isPreview && isClient;
-            }
-        }
-
         return {
             userId,
+            userEmail,
             profile,
             sessionReady,
             profileLoading,
@@ -92,10 +92,9 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
             mode,
             isPreview,
             canBypassPreview,
-            showPreLaunchExperience,
             isError: query.isError,
         };
-    }, [query.data, query.isError, profile, profileLoading, sessionReady, userId]);
+    }, [query.data, query.isError, profile, profileLoading, sessionReady, userEmail, userId]);
 
     return <PublicSiteContext.Provider value={value}>{children}</PublicSiteContext.Provider>;
 }
@@ -113,7 +112,7 @@ export function usePublicLaunchModeContext(): PublicSiteContextValue {
 }
 
 export function usePublicSiteAuth() {
-    const { userId, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId } =
+    const { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId } =
         usePublicSiteContext();
-    return { userId, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId };
+    return { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId };
 }

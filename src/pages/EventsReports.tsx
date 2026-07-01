@@ -24,6 +24,7 @@ const MANAGER_PRO_USER_TYPE_ID = 2;
 const EventReports: React.FC = () => {
     const navigate = useNavigate();
     const [userId, setUserId] = useState<string | undefined>(undefined);
+    const [sessionReady, setSessionReady] = useState(false);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -32,7 +33,25 @@ const EventReports: React.FC = () => {
     });
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
+        let cancelled = false;
+
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (cancelled) return;
+            setUserId(session?.user?.id);
+            setSessionReady(true);
+        });
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, session) => {
+            setUserId(session?.user?.id);
+            setSessionReady(true);
+        });
+
+        return () => {
+            cancelled = true;
+            subscription.unsubscribe();
+        };
     }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
@@ -64,17 +83,43 @@ const EventReports: React.FC = () => {
         data: eventReports = [],
         isLoading: isLoadingEventReports,
         isError: isReportError,
-    } = useEventsReport(userId, isAdminMaster, reportFilters, Boolean(canAccess));
+    } = useEventsReport(
+        userId,
+        isAdminMaster,
+        reportFilters,
+        Boolean(sessionReady && userId && !isLoadingProfile && canAccess),
+    );
 
     useEffect(() => {
         if (isReportError) showError('Erro ao carregar relatório de eventos.');
     }, [isReportError]);
 
-    if (!userId || isLoadingProfile) {
+    if (!sessionReady) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
                 <p>Carregando sessão...</p>
+            </div>
+        );
+    }
+
+    if (!userId) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20 px-4">
+                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Sessão expirada</h1>
+                <p className="text-gray-400 mb-6">Faça login novamente para ver o relatório.</p>
+                <Button onClick={() => navigate('/login')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Ir para login
+                </Button>
+            </div>
+        );
+    }
+
+    if (isLoadingProfile) {
+        return (
+            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
+                <p>Carregando perfil...</p>
             </div>
         );
     }
@@ -116,8 +161,9 @@ const EventReports: React.FC = () => {
             'Data Fim',
             'Local',
             'Empresa',
-            'Total de Ingressos Gerados',
+            'Total de Ingressos',
             'Total de Ingressos Vendidos',
+            'Sobra (não vendidos)',
             'Percentual de Ocupação',
         ];
         const rows = eventReports.map((report) => [
@@ -129,6 +175,7 @@ const EventReports: React.FC = () => {
             report.company_name,
             report.total_wristbands_generated,
             report.total_wristbands_sold,
+            report.total_wristbands_remaining,
             report.occupancy_percentage.toFixed(2) + '%',
         ]);
 
@@ -165,8 +212,8 @@ const EventReports: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Filtros</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Lista só os eventos que você pode gerir (como na tela de eventos). “Geradas” = ingressos individuais criados nos
-                        lotes; “Vendidas” = já atribuídas a um comprador.
+                        Lista só os eventos que você pode gerir. “Total” e “Sobra” usam o estoque por lote (modo contador);
+                        “Vendidas” = ingressos confirmados.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -272,7 +319,7 @@ const EventReports: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white text-xl">Detalhes dos Eventos</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Visão por evento: ocupação = vendidas ÷ geradas (ingressos individuais nos lotes).
+                        Visão por evento: ocupação = vendidas ÷ total do estoque.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -291,8 +338,9 @@ const EventReports: React.FC = () => {
                                         <TableHead className="text-center text-gray-400 font-semibold py-3">Início</TableHead>
                                         <TableHead className="text-center text-gray-400 font-semibold py-3">Fim</TableHead>
                                         <TableHead className="text-left text-gray-400 font-semibold py-3">Local</TableHead>
-                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Ingressos Gerados</TableHead>
-                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Ingressos Vendidos</TableHead>
+                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Total</TableHead>
+                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Vendidos</TableHead>
+                                        <TableHead className="text-right text-gray-400 font-semibold py-3">Sobra</TableHead>
                                         <TableHead className="text-right text-gray-400 font-semibold py-3">% Ocupação</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -307,6 +355,7 @@ const EventReports: React.FC = () => {
                                             <TableCell className="py-3 text-white truncate max-w-[150px]">{report.location}</TableCell>
                                             <TableCell className="py-3 text-right text-white">{report.total_wristbands_generated}</TableCell>
                                             <TableCell className="py-3 text-right text-white">{report.total_wristbands_sold}</TableCell>
+                                            <TableCell className="py-3 text-right text-green-400">{report.total_wristbands_remaining}</TableCell>
                                             <TableCell className="py-3 text-right text-yellow-500">{(report.occupancy_percentage ?? 0).toFixed(2)}%</TableCell>
                                         </TableRow>
                                     ))}

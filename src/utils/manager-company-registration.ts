@@ -1,6 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { CompanyFormData } from '@/components/CompanyForm';
+import type { CompanyKind } from '@/constants/company-kind';
+import { clearManagerRegistrationUseCase } from '@/constants/company-kind';
 
 export const MANAGER_COMPANY_REGISTER_DRAFT_KEY = 'eventfest_manager_company_register_draft';
 export const MANAGER_COMPANY_REGISTER_PATH = '/manager/register/company';
@@ -52,6 +54,7 @@ export async function finalizeManagerCompanyRegistration(
     activeUserId: string,
     values: CompanyFormData,
     queryClient?: QueryClient,
+    companyKind: CompanyKind = 'organizer',
 ): Promise<string> {
     const dataToSave = {
         cnpj: values.cnpj.replace(/\D/g, ''),
@@ -66,6 +69,7 @@ export async function finalizeManagerCompanyRegistration(
         city: values.city || null,
         state: values.state || null,
         complement: values.complement || null,
+        company_kind: companyKind,
     };
 
     const { error: profileUpdateError } = await supabase
@@ -125,6 +129,7 @@ export async function finalizeManagerCompanyRegistration(
 
     await clearPendingPromoterMetadata();
     clearCompanyRegisterDraft();
+    clearManagerRegistrationUseCase();
 
     if (queryClient) {
         queryClient.invalidateQueries({ queryKey: ['managerCompany', activeUserId] });

@@ -1,4 +1,5 @@
 -- Planos de cobrança por empresa (Fase 1A + 1B)
+-- Pode rodar em bancos sem migrations anteriores de contratos (bootstrap mínimo abaixo).
 
 DO $$ BEGIN
   CREATE TYPE public.billing_plan_type AS ENUM (
@@ -11,12 +12,110 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Função usada nas policies (normalmente em 20260322000001_user_companies_companies_rls_gestor.sql)
+CREATE OR REPLACE FUNCTION public.user_is_admin_master_for_rls()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND p.tipo_usuario_id = 1
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.user_is_admin_master_for_rls() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_is_admin_master_for_rls() TO authenticated;
+
+-- Bootstrap mínimo: event_contracts + contract_acceptances (sem FK inline em companies)
+CREATE TABLE IF NOT EXISTS public.event_contracts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  version VARCHAR(20) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  content TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT FALSE,
+  contract_type TEXT NOT NULL DEFAULT 'other',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL
+);
+
+ALTER TABLE public.event_contracts
+  ADD COLUMN IF NOT EXISTS contract_type TEXT NOT NULL DEFAULT 'other';
+
+-- Índice único: não força version sozinha (banco pode ter 1.1 em tipos diferentes).
+-- Padrão do projeto: idx_event_contracts_version_type_unique (20260319000015).
+DO $$
+BEGIN
+  IF to_regclass('public.event_contracts') IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'idx_event_contracts_version_type_unique'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM public.event_contracts
+    GROUP BY version, contract_type
+    HAVING count(*) > 1
+  ) THEN
+    CREATE UNIQUE INDEX idx_event_contracts_version_type_unique
+      ON public.event_contracts (version, contract_type);
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.contract_acceptances (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+  contract_id UUID NOT NULL REFERENCES public.event_contracts(id) ON DELETE CASCADE,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  contract_version TEXT NOT NULL,
+  contract_type TEXT NOT NULL
+);
+
 ALTER TABLE public.companies
   ADD COLUMN IF NOT EXISTS billing_plan public.billing_plan_type,
   ADD COLUMN IF NOT EXISTS billing_plan_accepted_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS billing_contract_id UUID REFERENCES public.event_contracts(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS billing_plan_locked_until TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS requires_billing_reacceptance BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE public.companies
+  ADD COLUMN IF NOT EXISTS billing_contract_id UUID;
+
+ALTER TABLE public.companies
+  ADD COLUMN IF NOT EXISTS contract_version_accepted_id UUID;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_schema = 'public'
+      AND table_name = 'companies'
+      AND constraint_name = 'companies_billing_contract_id_fkey'
+  ) THEN
+    ALTER TABLE public.companies
+      ADD CONSTRAINT companies_billing_contract_id_fkey
+      FOREIGN KEY (billing_contract_id) REFERENCES public.event_contracts(id) ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_schema = 'public'
+      AND table_name = 'companies'
+      AND constraint_name = 'companies_contract_version_accepted_id_fkey'
+  ) THEN
+    ALTER TABLE public.companies
+      ADD CONSTRAINT companies_contract_version_accepted_id_fkey
+      FOREIGN KEY (contract_version_accepted_id) REFERENCES public.event_contracts(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 COMMENT ON COLUMN public.companies.billing_plan IS 'Modelo comercial único da empresa.';
 COMMENT ON COLUMN public.companies.requires_billing_reacceptance IS 'true quando admin publica nova versão de contrato do plano.';
