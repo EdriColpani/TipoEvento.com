@@ -8,7 +8,10 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { adminCreatePartnerCompany } from '@/utils/company-members';
-import { showError, showSuccess } from '@/utils/toast';
+import { sendPartnerOwnerInviteEmail } from '@/utils/partner-owner-invite';
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { RpcTimeoutError } from '@/utils/supabase-rpc';
+import { adminBtnOutline } from '@/constants/billing-ui';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -38,7 +41,13 @@ const AdminCreatePartnerCompany: React.FC = () => {
             showError('Informe CNPJ e razão social.');
             return;
         }
+        const resolvedOwnerEmail = (ownerEmail.trim() || email.trim()).toLowerCase();
+        if (!resolvedOwnerEmail || !resolvedOwnerEmail.includes('@')) {
+            showError('Informe o e-mail do gestor (dono). Sem ele não é possível enviar o convite para criar a senha.');
+            return;
+        }
         setSaving(true);
+        const loadingToast = showLoading('Criando empresa parceira e enviando convite...');
         try {
             const result = await adminCreatePartnerCompany({
                 cnpj,
@@ -46,21 +55,43 @@ const AdminCreatePartnerCompany: React.FC = () => {
                 tradeName: tradeName.trim() || undefined,
                 email: email.trim() || undefined,
                 phone: phone.trim() || undefined,
-                ownerEmail: ownerEmail.trim() || email.trim() || undefined,
+                ownerEmail: resolvedOwnerEmail,
             });
 
+            const inviteEmail = await sendPartnerOwnerInviteEmail({
+                companyId: result.company_id,
+                ownerEmail: resolvedOwnerEmail,
+                companyName: tradeName.trim() || corporateName.trim(),
+            });
+
+            if (!inviteEmail.ok) {
+                throw new Error(
+                    inviteEmail.message ||
+                        'Empresa criada, mas o e-mail de convite não foi enviado. O gestor não conseguirá criar a senha.',
+                );
+            }
+
             if (result.owner_invite?.linked_immediately) {
-                showSuccess('Empresa parceira criada e gestor vinculado.');
-            } else if (result.owner_invite?.message) {
-                showSuccess(`Empresa parceira criada. ${result.owner_invite.message}`);
+                showSuccess(
+                    inviteEmail.message ||
+                        'Empresa parceira criada. E-mail enviado ao gestor (conta já existente — deve entrar pelo link).',
+                );
             } else {
-                showSuccess('Empresa parceira criada. O gestor deve aceitar o plano no primeiro acesso.');
+                showSuccess(
+                    inviteEmail.message ||
+                        'Empresa parceira criada. E-mail enviado ao gestor para criar a senha e acessar.',
+                );
             }
 
             navigate('/admin/settings/companies-billing');
         } catch (err: unknown) {
-            showError(err instanceof Error ? err.message : 'Erro ao criar empresa parceira.');
+            if (err instanceof RpcTimeoutError) {
+                showError('Tempo esgotado. Rode supabase/scripts/FIX_PARCEIRO_AGORA.sql no Supabase e tente de novo.');
+            } else {
+                showError(err instanceof Error ? err.message : 'Erro ao criar empresa parceira.');
+            }
         } finally {
+            dismissToast(loadingToast);
             setSaving(false);
         }
     };
@@ -95,9 +126,9 @@ const AdminCreatePartnerCompany: React.FC = () => {
                     </p>
                 </div>
                 <Button
-                    variant="outline"
+                    type="button"
                     onClick={() => navigate('/admin/settings/companies-billing')}
-                    className="border-yellow-500/30 text-yellow-500"
+                    className={adminBtnOutline}
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar
@@ -161,14 +192,18 @@ const AdminCreatePartnerCompany: React.FC = () => {
                             </div>
                         </div>
                         <div className="grid gap-2 border-t border-yellow-500/20 pt-4">
-                            <Label className="text-gray-300">E-mail do gestor (dono)</Label>
+                            <Label className="text-gray-300">E-mail do gestor (dono) *</Label>
                             <Input
                                 type="email"
+                                required
                                 value={ownerEmail}
                                 onChange={(e) => setOwnerEmail(e.target.value)}
                                 placeholder="Se vazio, usa o e-mail corporativo"
                                 className="bg-black/60 border-yellow-500/30 text-white"
                             />
+                            <p className="text-xs text-gray-500">
+                                Obrigatório. Enviaremos um e-mail com link para o gestor criar a senha e acessar o painel.
+                            </p>
                         </div>
                         <Button
                             type="submit"

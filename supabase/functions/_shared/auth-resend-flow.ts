@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.46.0";
 import {
   buildAuthEmail,
+  buildPartnerOwnerInviteEmail,
   sanitizeAuthRedirectTo,
   sendViaResend,
 } from "./eventfest-mail.ts";
+
+const PASSWORD_SETUP_REQUIRED_KEY = "password_setup_required";
+const INVITED_PARTNER_OWNER_KEY = "invited_partner_owner";
 
 export function getAuthRedirect(redirectPath?: string): string {
   const productionOrigin = (
@@ -180,4 +184,138 @@ export async function registerUserAndSendConfirmation(
     redirectPath: input.redirectPath,
     userName: typeof metadata.name === "string" ? metadata.name : undefined,
   });
+}
+
+function isExistingUserLinkError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    (lower.includes("already") &&
+      (lower.includes("registered") || lower.includes("exists") || lower.includes("confirmed"))) ||
+    lower.includes("user already") ||
+    lower.includes("email address has already been registered")
+  );
+}
+
+async function markPartnerPasswordSetupRequired(
+  admin: SupabaseClient,
+  input: { userId?: string; email: string; existingMetadata?: Record<string, unknown> },
+): Promise<void> {
+  let userId = input.userId;
+  if (!userId) {
+    const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (!error && data?.users?.length) {
+      const match = data.users.find(
+        (u) => (u.email ?? "").trim().toLowerCase() === input.email.trim().toLowerCase(),
+      );
+      userId = match?.id;
+    }
+  }
+  if (!userId) return;
+
+  const { data: userData } = await admin.auth.admin.getUserById(userId);
+  const meta = {
+    ...((userData?.user?.user_metadata ?? {}) as Record<string, unknown>),
+    ...(input.existingMetadata ?? {}),
+    [PASSWORD_SETUP_REQUIRED_KEY]: true,
+    [INVITED_PARTNER_OWNER_KEY]: true,
+  };
+
+  await admin.auth.admin.updateUserById(userId, { user_metadata: meta });
+}
+
+/** Convite obrigatório ao gestor dono de empresa parceira (criar senha ou link de acesso). */
+export async function invitePartnerOwnerViaResend(
+  admin: SupabaseClient,
+  input: {
+    email: string;
+    companyName: string;
+    redirectPath?: string;
+  },
+): Promise<
+  | { ok: true; mode: "invite" | "recovery" }
+  | { ok: false; message: string; error?: string }
+> {
+  const email = input.email.trim().toLowerCase();
+  const companyName = input.companyName.trim() || "Empresa parceira";
+  const passwordRedirectPath = input.redirectPath ?? "/reset-password";
+
+  async function sendPartnerPasswordLink(
+    linkType: "invite" | "recovery",
+  ): Promise<{ ok: true; mode: typeof linkType } | { ok: false; message: string }> {
+    const redirectTo = getAuthRedirect(passwordRedirectPath);
+
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: linkType,
+      email,
+      options: {
+        redirectTo,
+        data: {
+          [INVITED_PARTNER_OWNER_KEY]: true,
+          [PASSWORD_SETUP_REQUIRED_KEY]: true,
+        },
+      },
+    });
+
+    if (linkError) {
+      return { ok: false, message: linkError.message };
+    }
+
+    const rawActionLink = linkData?.properties?.action_link;
+    if (!rawActionLink) {
+      return { ok: false, message: "no_action_link" };
+    }
+
+    await markPartnerPasswordSetupRequired(admin, {
+      userId: linkData.user?.id,
+      email,
+      existingMetadata: { [INVITED_PARTNER_OWNER_KEY]: true },
+    });
+
+    const actionUrl = fixActionLinkRedirect(rawActionLink, redirectTo);
+    const content = buildPartnerOwnerInviteEmail({
+      companyName,
+      actionUrl,
+      isNewAccount: true,
+    });
+
+    const sendResult = await sendViaResend({
+      to: email,
+      subject: content.subject,
+      html: content.html,
+    });
+
+    if (!sendResult.ok) {
+      console.error("[invite-partner-owner] Resend:", sendResult.detail);
+      return {
+        ok: false,
+        message: "Falha ao enviar e-mail. Verifique a configuração da Resend.",
+      };
+    }
+
+    console.info(`[invite-partner-owner] ok → ${email} (${linkType})`);
+    return { ok: true, mode: linkType };
+  }
+
+  const inviteResult = await sendPartnerPasswordLink("invite");
+  if (inviteResult.ok) {
+    return { ok: true, mode: inviteResult.mode };
+  }
+
+  if (isExistingUserLinkError(inviteResult.message)) {
+    const recoveryResult = await sendPartnerPasswordLink("recovery");
+    if (recoveryResult.ok) {
+      return { ok: true, mode: recoveryResult.mode };
+    }
+    return {
+      ok: false,
+      error: "recovery_failed",
+      message: translateGenerateLinkError(recoveryResult.message),
+    };
+  }
+
+  return {
+    ok: false,
+    error: "invite_failed",
+    message: translateGenerateLinkError(inviteResult.message),
+  };
 }

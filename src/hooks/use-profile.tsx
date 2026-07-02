@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
 
 interface ProfileData {
     first_name: string;
@@ -26,41 +25,70 @@ interface ProfileData {
 const fetchProfile = async (userId: string): Promise<ProfileData | null> => {
     if (!userId) return null;
 
-    const { data, error } = await supabase
-        .from('profiles')
-        .select(`
+    const fullSelect = `
             first_name, last_name, avatar_url, cpf, rg, birth_date, gender, 
             cep, rua, bairro, cidade, estado, numero, complemento,
             tipo_usuario_id, natureza_juridica_id, public_id, contract_version_accepted_id
-        `)
+        `;
+
+    const { data, error } = await supabase
+        .from('profiles')
+        .select(fullSelect)
         .eq('id', userId)
         .single();
 
+    let row = data;
+
     if (error) {
-        console.error("Error fetching profile:", error);
-        return null;
+        console.warn('Error fetching full profile, trying minimal select:', error.message);
+        const { data: minimal, error: minimalError } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, avatar_url, tipo_usuario_id, natureza_juridica_id, public_id')
+            .eq('id', userId)
+            .single();
+
+        if (minimalError || !minimal) {
+            console.error('Error fetching profile:', minimalError ?? error);
+            return null;
+        }
+        row = {
+            ...minimal,
+            cpf: '',
+            rg: '',
+            birth_date: '',
+            gender: '',
+            cep: '',
+            rua: '',
+            bairro: '',
+            cidade: '',
+            estado: '',
+            numero: '',
+            complemento: '',
+            contract_version_accepted_id: null,
+        };
     }
-    
-    // Mapeia dados para garantir que campos que podem ser NULL no DB sejam strings vazias no frontend
+
+    if (!row) return null;
+
     return {
-        first_name: data.first_name || '',
-        last_name: data.last_name || '', // Mapeando last_name
-        avatar_url: data.avatar_url || null,
-        cpf: data.cpf || '',
-        rg: data.rg || '',
-        birth_date: data.birth_date || '',
-        gender: data.gender || '',
-        cep: data.cep || '',
-        rua: data.rua || '',
-        bairro: data.bairro || '',
-        cidade: data.cidade || '',
-        estado: data.estado || '',
-        numero: data.numero || '',
-        complemento: data.complemento || '',
-        tipo_usuario_id: data.tipo_usuario_id,
-        natureza_juridica_id: data.natureza_juridica_id, // Mapeando natureza jurídica
-        public_id: data.public_id || 'N/A', // Mapeando public_id
-        contract_version_accepted_id: data.contract_version_accepted_id ?? null,
+        first_name: row.first_name || '',
+        last_name: row.last_name || '',
+        avatar_url: row.avatar_url || null,
+        cpf: row.cpf || '',
+        rg: row.rg || '',
+        birth_date: row.birth_date || '',
+        gender: row.gender || '',
+        cep: row.cep || '',
+        rua: row.rua || '',
+        bairro: row.bairro || '',
+        cidade: row.cidade || '',
+        estado: row.estado || '',
+        numero: row.numero || '',
+        complemento: row.complemento || '',
+        tipo_usuario_id: row.tipo_usuario_id,
+        natureza_juridica_id: row.natureza_juridica_id,
+        public_id: row.public_id || 'N/A',
+        contract_version_accepted_id: row.contract_version_accepted_id ?? null,
     } as ProfileData;
 };
 
