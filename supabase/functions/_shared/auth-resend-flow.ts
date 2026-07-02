@@ -198,18 +198,9 @@ function isExistingUserLinkError(message: string): boolean {
 
 async function markPartnerPasswordSetupRequired(
   admin: SupabaseClient,
-  input: { userId?: string; email: string; existingMetadata?: Record<string, unknown> },
+  input: { userId?: string; existingMetadata?: Record<string, unknown> },
 ): Promise<void> {
-  let userId = input.userId;
-  if (!userId) {
-    const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    if (!error && data?.users?.length) {
-      const match = data.users.find(
-        (u) => (u.email ?? "").trim().toLowerCase() === input.email.trim().toLowerCase(),
-      );
-      userId = match?.id;
-    }
-  }
+  const userId = input.userId;
   if (!userId) return;
 
   const { data: userData } = await admin.auth.admin.getUserById(userId);
@@ -267,7 +258,6 @@ export async function invitePartnerOwnerViaResend(
 
     await markPartnerPasswordSetupRequired(admin, {
       userId: linkData.user?.id,
-      email,
       existingMetadata: { [INVITED_PARTNER_OWNER_KEY]: true },
     });
 
