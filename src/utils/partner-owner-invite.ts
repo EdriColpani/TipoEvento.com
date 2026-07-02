@@ -21,8 +21,12 @@ export async function sendPartnerOwnerInviteEmail(input: {
     }
 
     try {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 25_000);
+
         const response = await fetch(`${supabaseUrl}/functions/v1/invite-partner-company-owner`, {
             method: 'POST',
+            signal: controller.signal,
             headers: {
                 'Content-Type': 'application/json',
                 apikey: supabaseAnonKey,
@@ -34,6 +38,8 @@ export async function sendPartnerOwnerInviteEmail(input: {
                 companyName: input.companyName.trim(),
             }),
         });
+
+        window.clearTimeout(timer);
 
         const data = (await response.json().catch(() => ({}))) as {
             success?: boolean;
@@ -63,6 +69,9 @@ export async function sendPartnerOwnerInviteEmail(input: {
         };
     } catch (error) {
         console.error('[sendPartnerOwnerInviteEmail]:', error);
+        if (error instanceof Error && error.name === 'AbortError') {
+            return { ok: false, message: 'Tempo esgotado ao enviar o e-mail. Tente "Enviar convite" na lista de empresas.' };
+        }
         return { ok: false, message: 'Erro de rede ao enviar o e-mail de convite.' };
     }
 }

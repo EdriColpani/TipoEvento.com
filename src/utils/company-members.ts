@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { CompanyMemberRole } from '@/constants/company-roles';
-import { callRpc, RpcTimeoutError } from '@/utils/supabase-rpc';
+import { callRpc } from '@/utils/supabase-rpc';
 
 export type CompanyMemberRow = {
     user_id: string;
@@ -63,14 +63,6 @@ async function adminCreatePartnerCompanyDirect(input: {
     }
 
     const companyId = company.id as string;
-
-    const { error: planError } = await supabase.rpc('admin_set_company_billing_plan', {
-        p_company_id: companyId,
-        p_plan: 'consumption_or_license',
-    });
-    if (planError) {
-        console.warn('[adminCreatePartnerCompanyDirect] admin_set_company_billing_plan:', planError.message);
-    }
 
     const ownerEmail = (input.ownerEmail || input.email || '').trim().toLowerCase();
     let ownerInvite: { linked_immediately?: boolean; message?: string } | undefined;
@@ -156,30 +148,19 @@ export async function adminCreatePartnerCompany(input: {
         p_owner_email: input.ownerEmail ?? input.email ?? null,
     };
 
-    let data: {
+    // Insert direto primeiro — RPC antiga em produção costuma travar 8s+.
+    try {
+        const direct = await adminCreatePartnerCompanyDirect(input);
+        return { ...direct, warnings: [] as string[] };
+    } catch (directErr) {
+        console.warn('[adminCreatePartnerCompany] insert direto falhou — tentando RPC.', directErr);
+    }
+
+    const data = await callRpc<{
         success: boolean;
         company_id: string;
         owner_invite?: { linked_immediately?: boolean; message?: string };
-        usedFallback?: boolean;
-    };
-
-    try {
-        data = await callRpc<typeof data>('admin_create_partner_company', rpcArgs, 8_000);
-    } catch (err) {
-        const useFallback =
-            err instanceof RpcTimeoutError ||
-            (err instanceof Error &&
-                (/does not exist/i.test(err.message) ||
-                    /permission denied/i.test(err.message) ||
-                    /42501/.test(err.message)));
-
-        if (useFallback) {
-            console.warn('[adminCreatePartnerCompany] RPC indisponível — insert direto (admin).', err);
-            data = await adminCreatePartnerCompanyDirect(input);
-        } else {
-            throw err;
-        }
-    }
+    }>('admin_create_partner_company', rpcArgs, 10_000);
 
     return { ...data, warnings: [] as string[] };
 }

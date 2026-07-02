@@ -1,23 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Building2, Loader2, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { useProfile } from '@/hooks/use-profile';
 import { adminCreatePartnerCompany } from '@/utils/company-members';
 import { sendPartnerOwnerInviteEmail } from '@/utils/partner-owner-invite';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { RpcTimeoutError } from '@/utils/supabase-rpc';
 import { adminBtnOutline } from '@/constants/billing-ui';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const AdminCreatePartnerCompany: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, sessionReady } = useAuthUserId();
     const [saving, setSaving] = useState(false);
     const [cnpj, setCnpj] = useState('');
     const [corporateName, setCorporateName] = useState('');
@@ -28,12 +27,6 @@ const AdminCreatePartnerCompany: React.FC = () => {
 
     const { profile, isLoading: loadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setUserId(session?.user?.id);
-        });
-    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -47,7 +40,7 @@ const AdminCreatePartnerCompany: React.FC = () => {
             return;
         }
         setSaving(true);
-        const loadingToast = showLoading('Criando empresa parceira e enviando convite...');
+        let loadingToast = showLoading('Criando empresa parceira...');
         try {
             const result = await adminCreatePartnerCompany({
                 cnpj,
@@ -58,6 +51,8 @@ const AdminCreatePartnerCompany: React.FC = () => {
                 ownerEmail: resolvedOwnerEmail,
             });
 
+            dismissToast(loadingToast);
+            loadingToast = showLoading('Enviando e-mail de convite ao gestor...');
             const inviteEmail = await sendPartnerOwnerInviteEmail({
                 companyId: result.company_id,
                 ownerEmail: resolvedOwnerEmail,
@@ -85,18 +80,14 @@ const AdminCreatePartnerCompany: React.FC = () => {
 
             navigate('/admin/settings/companies-billing');
         } catch (err: unknown) {
-            if (err instanceof RpcTimeoutError) {
-                showError('Tempo esgotado. Rode supabase/scripts/FIX_PARCEIRO_AGORA.sql no Supabase e tente de novo.');
-            } else {
-                showError(err instanceof Error ? err.message : 'Erro ao criar empresa parceira.');
-            }
+            showError(err instanceof Error ? err.message : 'Erro ao criar empresa parceira.');
         } finally {
             dismissToast(loadingToast);
             setSaving(false);
         }
     };
 
-    if (loadingProfile || !userId) {
+    if (!sessionReady || (loadingProfile && !profile)) {
         return (
             <div className="max-w-3xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
