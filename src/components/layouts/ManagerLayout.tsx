@@ -82,19 +82,22 @@ const ManagerLayout: React.FC = () => {
 
     useEffect(() => {
         if (!userId) return;
-        acceptCompanyMemberInvites()
-            .then((accepted) => {
-                if (accepted > 0) {
-                    showSuccess(
-                        accepted === 1
-                            ? 'Convite de empresa aceito. Bem-vindo ao painel!'
-                            : `${accepted} convites de empresa aceitos.`,
-                    );
-                }
-            })
-            .catch(() => {
-                /* convites opcionais — falha silenciosa */
-            });
+        const timer = window.setTimeout(() => {
+            acceptCompanyMemberInvites()
+                .then((accepted) => {
+                    if (accepted > 0) {
+                        showSuccess(
+                            accepted === 1
+                                ? 'Convite de empresa aceito. Bem-vindo ao painel!'
+                                : `${accepted} convites de empresa aceitos.`,
+                        );
+                    }
+                })
+                .catch(() => {
+                    /* convites opcionais — falha silenciosa */
+                });
+        }, 0);
+        return () => window.clearTimeout(timer);
     }, [userId]);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);

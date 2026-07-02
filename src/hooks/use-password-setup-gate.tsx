@@ -16,6 +16,7 @@ export function usePasswordSetupGate() {
 
     useEffect(() => {
         if (location.pathname === RESET_PASSWORD_PATH) return;
+        if (location.pathname.startsWith('/admin')) return;
 
         let cancelled = false;
 
