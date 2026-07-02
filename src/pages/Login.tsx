@@ -10,6 +10,11 @@ import {
     resolveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
 import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
+import {
+    isPartnerOwnerInviteCallback,
+    RESET_PASSWORD_PATH,
+    userMustSetPartnerPassword,
+} from '@/utils/partner-password-setup';
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -55,38 +60,81 @@ const Login: React.FC = () => {
     useEffect(() => {
         let cancelled = false;
 
+        const hash = window.location.hash;
+        if (
+            hash.includes('type=invite') ||
+            hash.includes('type=recovery') ||
+            hash.includes('type=magiclink')
+        ) {
+            navigate(`${RESET_PASSWORD_PATH}${hash}`, { replace: true });
+            return;
+        }
+
+        const redirectIfPasswordSetupRequired = async () => {
+            const { data } = await supabase.auth.getUser();
+            if (cancelled || !data.user) {
+                return false;
+            }
+            if (!(await userMustSetPartnerPassword(data.user))) {
+                return false;
+            }
+            navigate(RESET_PASSWORD_PATH, { replace: true });
+            return true;
+        };
+
         const isAuthCallbackUrl = () => {
-            const hash = window.location.hash;
+            const currentHash = window.location.hash;
             const search = window.location.search;
             return (
-                hash.includes('access_token') ||
-                hash.includes('type=signup') ||
-                hash.includes('type=recovery') ||
+                currentHash.includes('access_token') ||
+                currentHash.includes('type=signup') ||
                 search.includes('code=')
             );
         };
 
-        const handleEmailConfirmationReturn = async () => {
-            if (!isAuthCallbackUrl()) {
-                return;
-            }
+        const handleAuthReturn = async () => {
             const { data: { session } } = await supabase.auth.getSession();
-            if (cancelled || !session?.user?.id || !isAuthEmailConfirmed(session.user)) {
+            if (cancelled || !session?.user?.id) {
                 return;
             }
+
+            if (await redirectIfPasswordSetupRequired()) {
+                return;
+            }
+
+            if (!isAuthCallbackUrl() || !isAuthEmailConfirmed(session.user)) {
+                if (!isAuthCallbackUrl() && isAuthEmailConfirmed(session.user)) {
+                    if (!(await userMustSetPartnerPassword(session.user))) {
+                        await completeAuthenticatedRedirect(session.user.id);
+                    }
+                }
+                return;
+            }
+
             await completeAuthenticatedRedirect(session.user.id);
         };
 
-        void handleEmailConfirmationReturn();
+        void handleAuthReturn();
 
         const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-            if (cancelled || event !== 'SIGNED_IN') {
+            if (cancelled || event !== 'SIGNED_IN' || !session?.user?.id) {
                 return;
             }
-            if (!session?.user?.id || !isAuthEmailConfirmed(session.user)) {
-                return;
-            }
-            void completeAuthenticatedRedirect(session.user.id);
+            void (async () => {
+                if (await redirectIfPasswordSetupRequired()) {
+                    return;
+                }
+                if (isPartnerOwnerInviteCallback()) {
+                    navigate(`${RESET_PASSWORD_PATH}${window.location.hash}`, { replace: true });
+                    return;
+                }
+                if (!isAuthEmailConfirmed(session.user)) {
+                    return;
+                }
+                if (isAuthCallbackUrl()) {
+                    await completeAuthenticatedRedirect(session.user.id);
+                }
+            })();
         });
 
         return () => {

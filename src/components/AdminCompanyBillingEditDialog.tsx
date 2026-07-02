@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, History } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { adminBtnOutline, billingBtnSolid } from '@/constants/billing-ui';
 import {
     BILLING_PLANS,
     BILLING_CHANGE_TYPE_LABELS,
@@ -271,9 +272,8 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                             </p>
                             <Button
                                 type="button"
-                                variant="outline"
                                 size="sm"
-                                className="border-orange-500/40 text-orange-300 hover:bg-orange-500/10"
+                                className="bg-transparent border border-orange-500/40 text-orange-300 hover:bg-orange-500/10"
                                 disabled={isSaving}
                                 onClick={() =>
                                     void (async () => {
@@ -310,9 +310,8 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                         </p>
                         <Button
                             type="button"
-                            variant="outline"
                             size="sm"
-                            className="border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            className={adminBtnOutline}
                             disabled={isSaving}
                             onClick={() =>
                                 void (async () => {
@@ -467,8 +466,7 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                 <DialogFooter className="gap-2 sm:gap-0">
                     <Button
                         type="button"
-                        variant="outline"
-                        className="border-yellow-500/30 text-yellow-500"
+                        className={adminBtnOutline}
                         onClick={() => onOpenChange(false)}
                         disabled={isSaving}
                     >
@@ -476,7 +474,7 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                     </Button>
                     <Button
                         type="button"
-                        className="bg-yellow-500 text-black hover:bg-yellow-600"
+                        className={billingBtnSolid}
                         onClick={handleSave}
                         disabled={isSaving}
                     >

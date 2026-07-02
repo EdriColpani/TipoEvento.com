@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
 import {
     canBypassPublicLaunchPreview,
     type PublicLaunchMode,
@@ -19,6 +20,7 @@ export type PublicSiteContextValue = {
     profileLoading: boolean;
     isAuthenticated: boolean;
     tipoUsuarioId: number | undefined;
+    roleLoading: boolean;
     mode: PublicLaunchMode;
     isPreview: boolean;
     canBypassPreview: boolean;
@@ -64,6 +66,9 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
     }, []);
 
     const { profile, isLoading: profileLoading } = useProfile(sessionReady && userId ? userId : undefined);
+    const { tipoUsuarioId: roleTipo, isLoading: roleLoading } = useUserRole(
+        sessionReady && userId ? userId : undefined,
+    );
 
     const query = useQuery({
         queryKey: [...PUBLIC_LAUNCH_MODE_QUERY_KEY],
@@ -79,7 +84,7 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         const mode = query.data ?? 'preview';
         const loggedIn = sessionReady && Boolean(userId);
         const isPreview = mode === 'preview';
-        const canBypassPreview = canBypassPublicLaunchPreview(profile?.tipo_usuario_id);
+        const canBypassPreview = canBypassPublicLaunchPreview(roleTipo ?? profile?.tipo_usuario_id);
 
         return {
             userId,
@@ -88,13 +93,14 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
             sessionReady,
             profileLoading,
             isAuthenticated: loggedIn,
-            tipoUsuarioId: profile?.tipo_usuario_id,
+            tipoUsuarioId: roleTipo ?? profile?.tipo_usuario_id,
+            roleLoading,
             mode,
             isPreview,
             canBypassPreview,
             isError: query.isError,
         };
-    }, [query.data, query.isError, profile, profileLoading, sessionReady, userEmail, userId]);
+    }, [query.data, query.isError, profile, profileLoading, roleLoading, roleTipo, sessionReady, userEmail, userId]);
 
     return <PublicSiteContext.Provider value={value}>{children}</PublicSiteContext.Provider>;
 }
@@ -112,7 +118,7 @@ export function usePublicLaunchModeContext(): PublicSiteContextValue {
 }
 
 export function usePublicSiteAuth() {
-    const { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId } =
+    const { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId, roleLoading } =
         usePublicSiteContext();
-    return { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId };
+    return { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId, roleLoading };
 }

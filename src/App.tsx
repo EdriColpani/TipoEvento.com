@@ -88,6 +88,7 @@ import ManagerComplimentaryBundlesReport from "./pages/ManagerComplimentaryBundl
 import ComplimentaryBundlePage from "./pages/ComplimentaryBundlePage";
 import ComplimentarySeatRedeemPage from "./pages/ComplimentarySeatRedeemPage";
 import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
+import { usePasswordSetupGate } from "./hooks/use-password-setup-gate";
 import { PublicLaunchModeProvider } from "./contexts/PublicLaunchModeContext";
 
 const queryClient = new QueryClient({
@@ -101,6 +102,7 @@ const queryClient = new QueryClient({
 
 function AppRoutes() {
   usePromoterRegistrationResume();
+  usePasswordSetupGate();
 
   return (
         <Routes>

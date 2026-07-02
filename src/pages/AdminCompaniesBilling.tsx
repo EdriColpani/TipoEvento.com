@@ -12,6 +12,8 @@ import { getBillingPlanLabel, isCompanyBillingReady } from '@/constants/billing-
 import { COMPANY_KIND_LABELS } from '@/constants/company-kind';
 import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
 import AdminCompanyBillingEditDialog from '@/components/AdminCompanyBillingEditDialog';
+import AdminPartnerCompanyActions from '@/components/AdminPartnerCompanyActions';
+import { adminBtnOutline, billingBtnSolid } from '@/constants/billing-ui';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -95,15 +97,15 @@ const AdminCompaniesBilling: React.FC = () => {
                 <div className="flex flex-col sm:flex-row gap-2">
                     <Button
                         onClick={() => navigate('/admin/settings/partner-companies/create')}
-                        className="bg-yellow-500 text-black hover:bg-yellow-600"
+                        className={billingBtnSolid}
                     >
                         <Store className="mr-2 h-4 w-4" />
                         Nova empresa parceira
                     </Button>
                     <Button
-                        variant="outline"
+                        type="button"
                         onClick={() => navigate('/admin/dashboard')}
-                        className="border-yellow-500/30 text-yellow-500"
+                        className={adminBtnOutline}
                     >
                         <ArrowLeft className="mr-2 h-4 w-4" />
                         Voltar
@@ -138,7 +140,7 @@ const AdminCompaniesBilling: React.FC = () => {
                         <p className="text-gray-400 text-center py-8">Nenhuma empresa encontrada.</p>
                     ) : (
                         <div className="overflow-x-auto">
-                            <Table className="min-w-[900px]">
+                            <Table className="min-w-[1100px]">
                                 <TableHeader>
                                     <TableRow className="border-yellow-500/20 hover:bg-transparent">
                                         <TableHead className="text-gray-400">Empresa</TableHead>
@@ -232,15 +234,23 @@ const AdminCompaniesBilling: React.FC = () => {
                                                         : '—'}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="border-yellow-500/30 text-yellow-500"
-                                                        onClick={() => openEdit(company)}
-                                                    >
-                                                        <Edit className="h-4 w-4 mr-1" />
-                                                        Alterar plano
-                                                    </Button>
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            className={adminBtnOutline}
+                                                            onClick={() => openEdit(company)}
+                                                        >
+                                                            <Edit className="h-4 w-4 mr-1" />
+                                                            Alterar plano
+                                                        </Button>
+                                                        {company.company_kind === 'partner' && (
+                                                            <AdminPartnerCompanyActions
+                                                                company={company}
+                                                                onChanged={invalidate}
+                                                            />
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         );

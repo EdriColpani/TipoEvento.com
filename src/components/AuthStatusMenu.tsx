@@ -24,15 +24,18 @@ const AuthStatusMenu: React.FC = () => {
         profileLoading,
         isAuthenticated,
         isPreview,
+        tipoUsuarioId,
     } = usePublicSiteContext();
 
     const { hasPendingNotifications } = useProfileStatus(profile, profileLoading, userId);
 
+    const resolvedTipo = Number(tipoUsuarioId ?? profile?.tipo_usuario_id);
+
     const { userTypeName: baseUserTypeName } = useUserType(
-        isAuthenticated ? profile?.tipo_usuario_id : undefined,
+        isAuthenticated && Number.isFinite(resolvedTipo) ? resolvedTipo : undefined,
     );
 
-    const isManagerPro = Number(profile?.tipo_usuario_id) === 2;
+    const isManagerPro = resolvedTipo === 2;
     const { company } = useManagerCompany(isManagerPro ? userId : undefined);
 
     const handleLogout = async () => {
@@ -62,7 +65,7 @@ const AuthStatusMenu: React.FC = () => {
             userEmail?.split('@')[0] ||
             'Usuário';
         const initials = displayName.charAt(0).toUpperCase();
-        const tipo = Number(profile?.tipo_usuario_id);
+        const tipo = resolvedTipo;
         const isManager = tipo === 1 || tipo === 2;
         const isClient = tipo === 3;
         const isAdmin = tipo === 1;
@@ -127,22 +130,26 @@ const AuthStatusMenu: React.FC = () => {
                             <i className="fas fa-user-circle mr-2"></i>
                             Editar Perfil
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                            onClick={() => navigate('/tickets')}
-                            className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
-                        >
-                            <i className="fas fa-ticket-alt mr-2"></i>
-                            Meus Ingressos
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                            onClick={() => navigate('/wallet')}
-                            className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
-                        >
-                            <i className="fas fa-wallet mr-2"></i>
-                            Carteira EventFest
-                        </DropdownMenuItem>
+                        {isClient ? (
+                            <>
+                                <DropdownMenuItem
+                                    onClick={() => navigate('/tickets')}
+                                    className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
+                                >
+                                    <i className="fas fa-ticket-alt mr-2"></i>
+                                    Meus Ingressos
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={() => navigate('/wallet')}
+                                    className={`cursor-pointer ${isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'}`}
+                                >
+                                    <i className="fas fa-wallet mr-2"></i>
+                                    Carteira EventFest
+                                </DropdownMenuItem>
+                            </>
+                        ) : null}
 
-                        {profile && isClient && !isPreview && (
+                        {isClient && !isPreview && (
                             <DropdownMenuItem
                                 onClick={() => navigate('/manager/register')}
                                 className={`cursor-pointer text-green-400 font-semibold ${
@@ -154,7 +161,7 @@ const AuthStatusMenu: React.FC = () => {
                             </DropdownMenuItem>
                         )}
 
-                        {profile && isManager && (
+                        {isManager && (
                             <DropdownMenuItem
                                 onClick={() => navigate('/manager/dashboard')}
                                 className={`cursor-pointer font-semibold ${
@@ -165,7 +172,7 @@ const AuthStatusMenu: React.FC = () => {
                                 Dashboard
                             </DropdownMenuItem>
                         )}
-                        {profile && isAdmin && (
+                        {isAdmin && (
                             <DropdownMenuItem
                                 onClick={() => navigate('/admin/dashboard')}
                                 className={`cursor-pointer text-red-400 font-semibold ${
@@ -178,7 +185,10 @@ const AuthStatusMenu: React.FC = () => {
                         )}
                         <DropdownMenuSeparator className={isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'} />
                         <DropdownMenuItem
-                            onClick={handleLogout}
+                            onSelect={(e) => {
+                                e.preventDefault();
+                                void handleLogout();
+                            }}
                             className="cursor-pointer hover:bg-red-500/10 text-red-400"
                         >
                             <i className="fas fa-sign-out-alt mr-2"></i>

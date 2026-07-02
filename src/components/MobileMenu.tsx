@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, Bell, User, LogOut, LayoutDashboard } from 'lucide-react';
+import { Menu, Bell, User, LogOut, LayoutDashboard, Shield } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { supabase } from '@/integrations/supabase/client';
+import { signOutSession } from '@/utils/sign-out-session';
 import { useProfileStatus } from '@/hooks/use-profile-status';
 import { useUserType } from '@/hooks/use-user-type';
-import { showSuccess, showError } from '@/utils/toast';
+import { showSuccess } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useLandingUiOptional } from '@/contexts/LandingUiContext';
 import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
@@ -25,15 +25,18 @@ const MobileMenu: React.FC = () => {
         profileLoading,
         isAuthenticated,
         isPreview,
+        tipoUsuarioId,
     } = usePublicSiteContext();
+
+    const resolvedTipo = Number(tipoUsuarioId ?? profile?.tipo_usuario_id);
 
     const { hasPendingNotifications } = useProfileStatus(profile, profileLoading, userId);
 
     const { userTypeName: baseUserTypeName } = useUserType(
-        isAuthenticated ? profile?.tipo_usuario_id : undefined,
+        isAuthenticated && Number.isFinite(resolvedTipo) ? resolvedTipo : undefined,
     );
 
-    const isManagerPro = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
+    const isManagerPro = resolvedTipo === MANAGER_USER_TYPE_ID;
     const { company } = useManagerCompany(isManagerPro ? userId : undefined);
     const landingUi = useLandingUiOptional();
     const isInformacoesPage = location.pathname === '/informacoes';
@@ -64,14 +67,8 @@ const MobileMenu: React.FC = () => {
 
     const handleLogout = async () => {
         try {
-            const { error } = await supabase.auth.signOut({ scope: 'local' });
-            const sessionMissing = error?.message?.toLowerCase().includes('auth session missing');
-
-            if (error && !sessionMissing) {
-                showError('Erro ao sair: ' + error.message);
-            } else {
-                showSuccess('Sessão encerrada com sucesso.');
-            }
+            await signOutSession();
+            showSuccess('Sessão encerrada com sucesso.');
         } catch {
             showSuccess('Sessão encerrada com sucesso.');
         } finally {
@@ -81,7 +78,9 @@ const MobileMenu: React.FC = () => {
 
     const isUserLoading = !sessionReady;
     const isLoggedIn = isAuthenticated;
-    const isManager = isLoggedIn && profile && (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2);
+    const isManager = isLoggedIn && (resolvedTipo === 1 || resolvedTipo === 2);
+    const isAdmin = isLoggedIn && resolvedTipo === 1;
+    const isClient = isLoggedIn && resolvedTipo === 3;
 
     const fullName =
         [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
@@ -137,22 +136,26 @@ const MobileMenu: React.FC = () => {
                                 Editar Perfil
                                 {hasPendingNotifications && <Bell className="ml-auto h-5 w-5 text-red-500 animate-pulse" />}
                             </Button>
-                            <Button
-                                onClick={() => handleNavigation('/tickets')}
-                                variant="ghost"
-                                className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
-                            >
-                                <i className="fas fa-ticket-alt mr-3 w-5"></i>
-                                Meus Ingressos
-                            </Button>
-                            <Button
-                                onClick={() => handleNavigation('/wallet')}
-                                variant="ghost"
-                                className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
-                            >
-                                <i className="fas fa-wallet mr-3 w-5"></i>
-                                Carteira EventFest
-                            </Button>
+                            {isClient ? (
+                                <>
+                                    <Button
+                                        onClick={() => handleNavigation('/tickets')}
+                                        variant="ghost"
+                                        className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
+                                    >
+                                        <i className="fas fa-ticket-alt mr-3 w-5"></i>
+                                        Meus Ingressos
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleNavigation('/wallet')}
+                                        variant="ghost"
+                                        className="w-full justify-start text-lg py-6 text-white hover:bg-yellow-500/10"
+                                    >
+                                        <i className="fas fa-wallet mr-3 w-5"></i>
+                                        Carteira EventFest
+                                    </Button>
+                                </>
+                            ) : null}
                             {isManager && (
                                 <Button
                                     onClick={() => handleNavigation('/manager/dashboard')}
@@ -163,9 +166,19 @@ const MobileMenu: React.FC = () => {
                                     Dashboard
                                 </Button>
                             )}
+                            {isAdmin && (
+                                <Button
+                                    onClick={() => handleNavigation('/admin/dashboard')}
+                                    variant="ghost"
+                                    className="w-full justify-start text-lg py-6 text-red-400 font-semibold hover:bg-red-500/10"
+                                >
+                                    <Shield className="mr-3 h-5 w-5" />
+                                    Dashboard Admin
+                                </Button>
+                            )}
                             <div className="border-t border-yellow-500/20 pt-4">
                                 <Button
-                                    onClick={handleLogout}
+                                    onClick={() => void handleLogout()}
                                     variant="ghost"
                                     className="w-full justify-start text-lg py-6 text-red-400 hover:bg-red-500/10"
                                 >

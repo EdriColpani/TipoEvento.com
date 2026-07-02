@@ -342,6 +342,36 @@ ${codeBlock}`;
   });
 }
 
+/** Convite ao gestor dono de empresa parceira (criar senha ou entrar). */
+export function buildPartnerOwnerInviteEmail(input: {
+  companyName: string;
+  actionUrl: string;
+  isNewAccount: boolean;
+}): { subject: string; html: string } {
+  const company = escapeHtml(input.companyName.trim() || "sua empresa");
+  const title = input.isNewAccount
+    ? "Convite para gestor — empresa parceira"
+    : "Acesso à empresa parceira";
+
+  const intro = input.isNewAccount
+    ? `Você foi convidado para ser gestor da empresa parceira <strong style="color:#fff;">${company}</strong> na EventFest. Clique no botão abaixo para criar sua senha e acessar o painel.`
+    : `Você foi adicionado como gestor da empresa parceira <strong style="color:#fff;">${company}</strong>. Use o botão abaixo para entrar na EventFest e aceitar o plano no primeiro acesso.`;
+
+  const ctaLabel = input.isNewAccount ? "Criar senha e acessar" : "Entrar na EventFest";
+
+  return {
+    subject: `EventFest — Gestor da empresa ${input.companyName.trim() || "parceira"}`,
+    html: wrapEventFestEmailLayout({
+      title,
+      intro,
+      ctaLabel,
+      ctaUrl: input.actionUrl,
+      footerNote:
+        "Você recebeu este e-mail porque um administrador EventFest cadastrou sua empresa como parceira de consumo.",
+    }),
+  };
+}
+
 export function buildComplimentaryBundleEmailHtml(input: {
   recipientName: string;
   eventTitle: string;

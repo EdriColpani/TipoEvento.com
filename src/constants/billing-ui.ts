@@ -1,21 +1,24 @@
-/** Padrão visual — área de planos/cobrança (ciano, branco, vermelho para perigo). */
+/** Padrão visual — área de planos/cobrança (ciano sobre fundo escuro). */
 
 const btnBase = 'inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40 disabled:pointer-events-none disabled:opacity-50';
 
 /** Primário: fundo ciano, texto preto (Adicionar faixa, Nova cobrança, Confirmar) */
 export const billingBtnSolid = `${btnBase} bg-cyan-400 text-black hover:bg-cyan-300 font-semibold shadow-sm shadow-cyan-500/25`;
 
-/** Voltar / ação invertida: fundo branco, texto ciano */
-export const billingBtnBack = `${btnBase} bg-white text-cyan-500 hover:bg-gray-100 border-0 font-medium shadow-sm`;
+/** Voltar / secundário: contorno ciano, fundo escuro */
+export const billingBtnBack = `${btnBase} bg-transparent border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 font-medium`;
 
 /** Secundário: contorno ciano, fundo transparente (Mostrar histórico, Cancelar) */
 export const billingBtnGhost = `${btnBase} bg-transparent border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 font-medium`;
 
 /** Confirmar plano em card âmbar */
-export const billingBtnOutline = `${btnBase} bg-white text-cyan-500 hover:bg-gray-100 border-0 font-semibold shadow-sm`;
+export const billingBtnOutline = `${btnBase} bg-transparent border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 font-semibold`;
 
-/** Ícone editar na tabela: branco + borda ciano */
-export const billingBtnIconEdit = `${btnBase} h-8 w-8 p-0 bg-white border border-cyan-500/50 text-cyan-500 hover:bg-cyan-50`;
+/** Ícone editar na tabela */
+export const billingBtnIconEdit = `${btnBase} h-8 w-8 p-0 bg-transparent border border-cyan-500/50 text-cyan-500 hover:bg-cyan-500/10`;
+
+/** Contorno amarelo (painel gestor / empresas admin) */
+export const adminBtnOutline = `${btnBase} bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 font-medium`;
 
 /** Ícone desativar / perigo: borda vermelha */
 export const billingBtnIconDanger = `${btnBase} h-8 w-8 p-0 bg-transparent border border-red-500/50 text-red-500 hover:bg-red-500/10`;
