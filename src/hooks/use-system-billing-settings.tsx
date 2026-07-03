@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { DEFAULT_LISTING_MONTHLY_FEE, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
+import { restGet } from '@/utils/supabase-rest';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export interface SystemBillingSettings {
     min_event_tickets_default: number;
@@ -22,59 +24,81 @@ export interface SystemBillingSettings {
 const DEFAULT_COMMISSION_PCT = 8;
 const DEFAULT_LICENSE_FEE = 99.99;
 
-async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
-    const { data, error } = await supabase
-        .from('system_billing_settings')
-        .select(
-            'min_event_tickets_default, listing_monthly_default_fee, hybrid_consumption_commission_pct, consumption_license_commission_pct, consumption_license_default_fee, hybrid_plan_notes, consumption_plan_notes, hybrid_consumption_module_enabled, consumption_module_enabled, ticket_inactivity_enabled, ticket_inactivity_fee_default, ticket_inactivity_auto_deactivate_enabled, ticket_inactivity_auto_deactivate_days, updated_at',
-        )
-        .eq('id', 1)
-        .maybeSingle();
+const SETTINGS_SELECT =
+    'min_event_tickets_default,listing_monthly_default_fee,hybrid_consumption_commission_pct,consumption_license_commission_pct,consumption_license_default_fee,hybrid_plan_notes,consumption_plan_notes,hybrid_consumption_module_enabled,consumption_module_enabled,ticket_inactivity_enabled,ticket_inactivity_fee_default,ticket_inactivity_auto_deactivate_enabled,ticket_inactivity_auto_deactivate_days,updated_at';
 
-    if (error) {
-        if (error.code === '42P01' || error.message?.includes('does not exist')) {
-            return {
-                min_event_tickets_default: DEFAULT_MIN_EVENT_TICKETS,
-                listing_monthly_default_fee: DEFAULT_LISTING_MONTHLY_FEE,
-                hybrid_consumption_commission_pct: DEFAULT_COMMISSION_PCT,
-                consumption_license_commission_pct: DEFAULT_COMMISSION_PCT,
-                consumption_license_default_fee: DEFAULT_LICENSE_FEE,
-                hybrid_plan_notes: null,
-                consumption_plan_notes: null,
-                hybrid_consumption_module_enabled: false,
-                consumption_module_enabled: false,
-                ticket_inactivity_enabled: true,
-                ticket_inactivity_fee_default: 0,
-                ticket_inactivity_auto_deactivate_enabled: false,
-                ticket_inactivity_auto_deactivate_days: 30,
-                updated_at: null,
-            };
-        }
-        throw new Error(error.message);
-    }
+export const DEFAULT_SYSTEM_BILLING_SETTINGS: SystemBillingSettings = {
+    min_event_tickets_default: DEFAULT_MIN_EVENT_TICKETS,
+    listing_monthly_default_fee: DEFAULT_LISTING_MONTHLY_FEE,
+    hybrid_consumption_commission_pct: DEFAULT_COMMISSION_PCT,
+    consumption_license_commission_pct: DEFAULT_COMMISSION_PCT,
+    consumption_license_default_fee: DEFAULT_LICENSE_FEE,
+    hybrid_plan_notes: null,
+    consumption_plan_notes: null,
+    hybrid_consumption_module_enabled: false,
+    consumption_module_enabled: false,
+    ticket_inactivity_enabled: true,
+    ticket_inactivity_fee_default: 0,
+    ticket_inactivity_auto_deactivate_enabled: false,
+    ticket_inactivity_auto_deactivate_days: 30,
+    updated_at: null,
+};
 
+function mapSystemBillingSettings(data: Record<string, unknown> | null | undefined): SystemBillingSettings {
+    if (!data) return DEFAULT_SYSTEM_BILLING_SETTINGS;
     return {
-        min_event_tickets_default: Number(data?.min_event_tickets_default ?? DEFAULT_MIN_EVENT_TICKETS),
-        listing_monthly_default_fee: Number(data?.listing_monthly_default_fee ?? DEFAULT_LISTING_MONTHLY_FEE),
+        min_event_tickets_default: Number(data.min_event_tickets_default ?? DEFAULT_MIN_EVENT_TICKETS),
+        listing_monthly_default_fee: Number(data.listing_monthly_default_fee ?? DEFAULT_LISTING_MONTHLY_FEE),
         hybrid_consumption_commission_pct: Number(
-            data?.hybrid_consumption_commission_pct ?? DEFAULT_COMMISSION_PCT,
+            data.hybrid_consumption_commission_pct ?? DEFAULT_COMMISSION_PCT,
         ),
         consumption_license_commission_pct: Number(
-            data?.consumption_license_commission_pct ?? DEFAULT_COMMISSION_PCT,
+            data.consumption_license_commission_pct ?? DEFAULT_COMMISSION_PCT,
         ),
         consumption_license_default_fee: Number(
-            data?.consumption_license_default_fee ?? DEFAULT_LICENSE_FEE,
+            data.consumption_license_default_fee ?? DEFAULT_LICENSE_FEE,
         ),
-        hybrid_plan_notes: (data?.hybrid_plan_notes as string | null) ?? null,
-        consumption_plan_notes: (data?.consumption_plan_notes as string | null) ?? null,
-        hybrid_consumption_module_enabled: data?.hybrid_consumption_module_enabled === true,
-        consumption_module_enabled: data?.consumption_module_enabled === true,
-        ticket_inactivity_enabled: data?.ticket_inactivity_enabled !== false,
-        ticket_inactivity_fee_default: Number(data?.ticket_inactivity_fee_default ?? 0),
-        ticket_inactivity_auto_deactivate_enabled: data?.ticket_inactivity_auto_deactivate_enabled === true,
-        ticket_inactivity_auto_deactivate_days: Number(data?.ticket_inactivity_auto_deactivate_days ?? 30),
-        updated_at: data?.updated_at ?? null,
+        hybrid_plan_notes: (data.hybrid_plan_notes as string | null) ?? null,
+        consumption_plan_notes: (data.consumption_plan_notes as string | null) ?? null,
+        hybrid_consumption_module_enabled: data.hybrid_consumption_module_enabled === true,
+        consumption_module_enabled: data.consumption_module_enabled === true,
+        ticket_inactivity_enabled: data.ticket_inactivity_enabled !== false,
+        ticket_inactivity_fee_default: Number(data.ticket_inactivity_fee_default ?? 0),
+        ticket_inactivity_auto_deactivate_enabled: data.ticket_inactivity_auto_deactivate_enabled === true,
+        ticket_inactivity_auto_deactivate_days: Number(data.ticket_inactivity_auto_deactivate_days ?? 30),
+        updated_at: (data.updated_at as string | null) ?? null,
     };
+}
+
+async function fetchSystemBillingSettings(): Promise<SystemBillingSettings> {
+    try {
+        const rows = await restGet<Record<string, unknown>[]>(
+            `system_billing_settings?id=eq.1&select=${SETTINGS_SELECT}&limit=1`,
+            8_000,
+        );
+        if (rows?.[0]) return mapSystemBillingSettings(rows[0]);
+    } catch (restError) {
+        console.warn('[useSystemBillingSettings] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase
+            .from('system_billing_settings')
+            .select(SETTINGS_SELECT.replace(/,/g, ', '))
+            .eq('id', 1)
+            .maybeSingle(),
+        8_000,
+        { data: null, error: { message: 'timeout', code: 'TIMEOUT' } as { message: string; code: string } },
+    );
+
+    if (error?.code === '42P01' || error?.message?.includes('does not exist')) {
+        return DEFAULT_SYSTEM_BILLING_SETTINGS;
+    }
+    if (error && error.code !== 'PGRST116' && error.code !== 'TIMEOUT') {
+        console.warn('[useSystemBillingSettings]', error.message);
+    }
+
+    return mapSystemBillingSettings(data as Record<string, unknown> | null);
 }
 
 export function useSystemBillingSettings(enabled: boolean) {
@@ -82,9 +106,11 @@ export function useSystemBillingSettings(enabled: boolean) {
 
     const query = useQuery({
         queryKey: ['systemBillingSettings'],
-        queryFn: fetchSystemBillingSettings,
+        queryFn: () => withTimeout(fetchSystemBillingSettings(), 10_000, DEFAULT_SYSTEM_BILLING_SETTINGS),
         enabled,
         staleTime: 1000 * 60 * 2,
+        retry: 1,
+        placeholderData: DEFAULT_SYSTEM_BILLING_SETTINGS,
     });
 
     return {

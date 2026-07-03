@@ -98,7 +98,7 @@ export function useCompanyBilling(companyId: string | undefined) {
 
     const query = useQuery({
         queryKey: ['companyBilling', companyId],
-        queryFn: () => fetchCompanyBilling(companyId!),
+        queryFn: () => withTimeout(fetchCompanyBilling(companyId!), 12_000, null),
         enabled: !!companyId,
         staleTime: 1000 * 60 * 2,
         retry: 1,
