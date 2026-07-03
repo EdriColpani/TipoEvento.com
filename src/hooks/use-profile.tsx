@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { withTimeout } from '@/utils/promise-timeout';
+import { restGet } from '@/utils/supabase-rest';
 
 interface ProfileData {
     first_name: string;
@@ -24,6 +26,38 @@ interface ProfileData {
 
 const fetchProfile = async (userId: string): Promise<ProfileData | null> => {
     if (!userId) return null;
+
+    try {
+        const rows = await restGet<Record<string, unknown>[]>(
+            `profiles?id=eq.${userId}&select=first_name,last_name,avatar_url,tipo_usuario_id,natureza_juridica_id,public_id,cpf,rg,birth_date,gender,cep,rua,bairro,cidade,estado,numero,complemento,contract_version_accepted_id&limit=1`,
+            8_000,
+        );
+        const row = rows[0];
+        if (row) {
+            return {
+                first_name: String(row.first_name || ''),
+                last_name: String(row.last_name || ''),
+                avatar_url: (row.avatar_url as string | null) || null,
+                cpf: String(row.cpf || ''),
+                rg: String(row.rg || ''),
+                birth_date: String(row.birth_date || ''),
+                gender: String(row.gender || ''),
+                cep: String(row.cep || ''),
+                rua: String(row.rua || ''),
+                bairro: String(row.bairro || ''),
+                cidade: String(row.cidade || ''),
+                estado: String(row.estado || ''),
+                numero: String(row.numero || ''),
+                complemento: String(row.complemento || ''),
+                tipo_usuario_id: Number(row.tipo_usuario_id),
+                natureza_juridica_id: (row.natureza_juridica_id as number | null) ?? null,
+                public_id: String(row.public_id || 'N/A'),
+                contract_version_accepted_id: (row.contract_version_accepted_id as string | null) ?? null,
+            } as ProfileData;
+        }
+    } catch (restError) {
+        console.warn('[useProfile] REST falhou, tentando supabase client:', restError);
+    }
 
     const fullSelect = `
             first_name, last_name, avatar_url, cpf, rg, birth_date, gender, 
@@ -97,7 +131,7 @@ export const useProfile = (userId: string | undefined) => {
 
     const query = useQuery({
         queryKey: ['profile', userId],
-        queryFn: () => fetchProfile(userId!),
+        queryFn: () => withTimeout(fetchProfile(userId!), 10_000, null),
         enabled: !!userId,
         staleTime: 1000 * 60 * 5,
         retry: 2,

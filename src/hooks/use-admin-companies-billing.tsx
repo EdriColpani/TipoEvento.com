@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import type { BillingPlanCode } from '@/constants/billing-plans';
+import type { CompanyKind } from '@/constants/company-kind';
+import { supabase } from '@/integrations/supabase/client';
+import { restGet } from '@/utils/supabase-rest';
 
 export interface AdminCompanyBillingRow {
     id: string;
@@ -33,11 +35,22 @@ export interface CompanyBillingHistoryRow {
 }
 
 async function fetchAdminCompaniesBilling(): Promise<AdminCompanyBillingRow[]> {
+    const select =
+        'id,corporate_name,trade_name,cnpj,email,company_kind,billing_plan,billing_plan_accepted_at,billing_contract_id,billing_plan_locked_until,requires_billing_reacceptance,listing_monthly_fee,consumption_license_fee,min_event_tickets,min_event_tickets_customized,ticket_inactivity_blocked,created_at';
+
+    try {
+        const data = await restGet<AdminCompanyBillingRow[]>(
+            `companies?select=${select}&order=corporate_name.asc`,
+            12_000,
+        );
+        return data ?? [];
+    } catch (restError) {
+        console.warn('[useAdminCompaniesBilling] REST falhou:', restError);
+    }
+
     const { data, error } = await supabase
         .from('companies')
-        .select(
-            'id, corporate_name, trade_name, cnpj, email, company_kind, billing_plan, billing_plan_accepted_at, billing_contract_id, billing_plan_locked_until, requires_billing_reacceptance, listing_monthly_fee, consumption_license_fee, min_event_tickets, min_event_tickets_customized, ticket_inactivity_blocked, created_at',
-        )
+        .select(select)
         .order('corporate_name', { ascending: true });
 
     if (error) throw new Error(error.message);

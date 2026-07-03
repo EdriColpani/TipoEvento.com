@@ -12,7 +12,8 @@ type SiteLogoProps = {
 const SiteLogo: React.FC<SiteLogoProps> = ({
     className,
     onClick,
-    transparentOnDark = true,
+    /** PNG transparente — não precisa de mix-blend. */
+    transparentOnDark = false,
 }) => (
     <img
         src={SITE_LOGO_SRC}
