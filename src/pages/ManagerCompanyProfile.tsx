@@ -12,6 +12,9 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { Loader2, Building, ArrowLeft } from 'lucide-react';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useProfile } from '@/hooks/use-profile';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
+import { restGet } from '@/utils/supabase-rest';
+import { withTimeout } from '@/utils/promise-timeout';
 import CompanyForm, { createCompanySchema, CompanyFormData } from '@/components/CompanyForm';
 import ManagerCompanyTabs from '@/components/ManagerCompanyTabs'; // Importando o novo componente
 
@@ -93,25 +96,13 @@ type CompanyProfileData = z.infer<typeof companyProfileSchema> & { id?: string }
 
 const ManagerCompanyProfile: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId, sessionReady } = useAuthUserId();
     const [isFetching, setIsFetching] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isCepLoading, setIsCepLoading] = useState(false);
-    
-    // 1. Obter o ID da empresa e o perfil do usuário
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            if (!user) {
-                showError("Sessão expirada. Faça login novamente.");
-                navigate('/login');
-                return;
-            }
-            setUserId(user.id);
-        });
-    }, [navigate]);
-    
-    const { company, isLoading: isLoadingCompany } = useManagerCompany(userId || undefined);
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+
+    const { company, isLoading: isLoadingCompany } = useManagerCompany(userId);
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const companyId = company?.id;
     const isAdminMaster = profile?.tipo_usuario_id === 1;
 
@@ -136,44 +127,63 @@ const ManagerCompanyProfile: React.FC = () => {
     // 2. Fetch Company Details using companyId
     useEffect(() => {
         const fetchProfileDetails = async () => {
-            if (!userId || isLoadingCompany || isLoadingProfile) return;
+            if (!sessionReady) return;
+
+            if (!userId) {
+                showError('Sessão expirada. Faça login novamente.');
+                navigate('/login');
+                setIsFetching(false);
+                return;
+            }
+
+            if (isLoadingCompany || isLoadingProfile) return;
 
             if (!companyId) {
                 setIsFetching(false);
                 return;
             }
 
-            const { data, error } = await supabase
-                .from('companies')
-                .select('*')
-                .eq('id', companyId)
-                .single();
-
-            if (error && error.code !== 'PGRST116') { 
-                console.error("Error fetching company profile:", error);
-                showError("Erro ao carregar perfil da empresa.");
+            let data: Record<string, unknown> | null = null;
+            try {
+                const rows = await restGet<Record<string, unknown>[]>(
+                    `companies?id=eq.${companyId}&limit=1`,
+                    10_000,
+                );
+                data = rows?.[0] ?? null;
+            } catch (restError) {
+                console.warn('[ManagerCompanyProfile] REST falhou:', restError);
+                const { data: row, error } = await withTimeout(
+                    supabase.from('companies').select('*').eq('id', companyId).single(),
+                    10_000,
+                    { data: null, error: { code: 'TIMEOUT', message: 'timeout' } as { code: string; message: string } },
+                );
+                if (error && error.code !== 'PGRST116' && error.code !== 'TIMEOUT') {
+                    console.error('Error fetching company profile:', error);
+                    showError('Erro ao carregar perfil da empresa.');
+                }
+                data = row as Record<string, unknown> | null;
             }
 
             if (data) {
                 form.reset({
-                    cnpj: formatCNPJ(data.cnpj || ''),
-                    corporate_name: data.corporate_name || '',
-                    trade_name: data.trade_name || '',
-                    phone: formatPhone(data.phone || ''),
-                    email: data.email || '', 
-                    cep: formatCEP(data.cep || ''),
-                    street: data.street || '',
-                    neighborhood: data.neighborhood || '',
-                    city: data.city || '',
-                    state: data.state || '',
-                    number: data.number || '',
-                    complement: data.complement || '',
+                    cnpj: formatCNPJ(String(data.cnpj || '')),
+                    corporate_name: String(data.corporate_name || ''),
+                    trade_name: String(data.trade_name || ''),
+                    phone: formatPhone(String(data.phone || '')),
+                    email: String(data.email || ''),
+                    cep: formatCEP(String(data.cep || '')),
+                    street: String(data.street || ''),
+                    neighborhood: String(data.neighborhood || ''),
+                    city: String(data.city || ''),
+                    state: String(data.state || ''),
+                    number: String(data.number || ''),
+                    complement: String(data.complement || ''),
                 });
             }
             setIsFetching(false);
         };
-        fetchProfileDetails();
-    }, [userId, companyId, isLoadingCompany, isLoadingProfile, form]);
+        void fetchProfileDetails();
+    }, [userId, sessionReady, companyId, isLoadingCompany, isLoadingProfile, form, navigate]);
 
     // Function to fetch address via ViaCEP
     const fetchAddressByCep = async (cep: string) => {
@@ -282,7 +292,7 @@ const ManagerCompanyProfile: React.FC = () => {
         }
     };
 
-    if (isFetching || isLoadingCompany || isLoadingProfile) {
+    if (!sessionReady || isFetching || isLoadingCompany || isLoadingProfile) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
