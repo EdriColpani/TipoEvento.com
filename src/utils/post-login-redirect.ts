@@ -10,7 +10,9 @@ import {
     MANAGER_COMPANY_REGISTER_DRAFT_KEY,
     MANAGER_COMPANY_REGISTER_PATH,
 } from '@/utils/manager-company-registration';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export type PostLoginRedirect = {
     path: string;
@@ -20,6 +22,7 @@ export type PostLoginRedirect = {
 export async function resolvePostLoginRedirect(
     userId: string,
     returnTo: unknown,
+    authUser?: User | null,
 ): Promise<PostLoginRedirect> {
     const complimentaryPath = resolveComplimentaryReturnPath(returnTo);
     if (complimentaryPath) {
@@ -48,9 +51,13 @@ export async function resolvePostLoginRedirect(
         };
     }
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    let user = authUser ?? null;
+    if (!user) {
+        const {
+            data: { session },
+        } = await supabase.auth.getSession();
+        user = session?.user ?? null;
+    }
     if (hasPendingPromoterRegistration(user) && !resolveComplimentaryReturnPath(undefined)) {
         return {
             path: MANAGER_COMPANY_REGISTER_PATH,
@@ -58,11 +65,11 @@ export async function resolvePostLoginRedirect(
         };
     }
 
-    const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('tipo_usuario_id')
-        .eq('id', userId)
-        .single();
+    const { data: profileData, error: profileError } = await withTimeout(
+        supabase.from('profiles').select('tipo_usuario_id').eq('id', userId).single(),
+        8000,
+        { data: null, error: { message: 'timeout' } as { message: string } },
+    );
 
     if (profileError || !profileData) {
         throw new Error('PROFILE_NOT_FOUND');
@@ -75,7 +82,7 @@ export async function resolvePostLoginRedirect(
     }
     if (userType === 2) {
         return {
-            path: await resolveManagerPostLoginPath(userId),
+            path: await withTimeout(resolveManagerPostLoginPath(userId), 6000, '/manager/dashboard'),
             message: 'Login de gestor realizado com sucesso!',
         };
     }

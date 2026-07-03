@@ -63,24 +63,20 @@ async function fillMinPriceFromAvailabilityRpc(
 
 const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
     try {
-        const { data: eventsData, error: eventsError } = await supabase
-            .from('events')
-            .select(`
-            id, title, description, date, time, location, exposure_card_image_url, category, capacity, is_paid, listing_only, ticket_price, is_active, inventory_mode
-        `)
-            .eq('is_active', true)
-            .order('date', { ascending: true });
+        const { data: eventsData, error: eventsError } = await supabase.rpc('get_public_vitrine_events');
 
         if (eventsError) {
-            console.warn('public events:', eventsError.message);
-            return [];
+            console.error('[usePublicEvents] get_public_vitrine_events:', eventsError.message);
+            throw eventsError;
         }
 
         if (!eventsData?.length) {
             return [];
         }
 
-        const openForSales = eventsData.filter((e) => isEventOpenForNewSales(e.date, e.time));
+        const openForSales = eventsData.filter((e) =>
+            isEventOpenForNewSales(e.date, e.event_time ?? e.time),
+        );
     const eventIds = openForSales.map((e) => e.id);
 
     const eventAggregates: Record<string, EventAggregate> = {};
@@ -206,7 +202,7 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
             description: event.description,
             date: formatEventDateForDisplay(event.date) || String(event.date ?? ''),
             raw_date: parseEventLocalDay(event.date),
-            time: event.time,
+            time: event.event_time ?? event.time,
             location: event.location,
             image_url: event.exposure_card_image_url,
             category: event.category,
@@ -219,25 +215,24 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
         };
     });
     } catch (e) {
-        console.warn('fetchPublicEvents failed', e);
-        return [];
+        console.error('[usePublicEvents] fetch failed', e);
+        throw e;
     }
 };
 
 export const usePublicEvents = () => {
     const query = useQuery({
-        queryKey: ['publicEvents', 'v2'],
+        queryKey: ['publicEvents', 'v3-rpc'],
         queryFn: fetchPublicEvents,
         staleTime: 1000 * 60 * 2,
-        retry: 1,
+        retry: 2,
         refetchOnWindowFocus: false,
-        placeholderData: [],
     });
 
     return {
         ...query,
         events: query.data ?? [],
-        isLoading: query.isLoading && query.data === undefined,
-        isError: false,
+        isLoading: query.isLoading,
+        isError: query.isError,
     };
 };

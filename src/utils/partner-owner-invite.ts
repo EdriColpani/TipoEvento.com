@@ -1,4 +1,29 @@
-import { supabase, supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
+import { supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
+import { withTimeout } from '@/utils/promise-timeout';
+
+function readCachedAccessToken(): string | null {
+    try {
+        const ref = new URL(supabaseUrl).hostname.split('.')[0];
+        const raw = localStorage.getItem(`sb-${ref}-auth-token`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { access_token?: string };
+        return parsed.access_token ?? null;
+    } catch {
+        return null;
+    }
+}
+
+async function getAccessToken(): Promise<string | null> {
+    const cached = readCachedAccessToken();
+    if (cached) return cached;
+    const { supabase } = await import('@/integrations/supabase/client');
+    const { data } = await withTimeout(
+        supabase.auth.getSession(),
+        3_000,
+        { data: { session: null } },
+    );
+    return data.session?.access_token ?? null;
+}
 
 export type PartnerOwnerInviteResult =
     | { ok: true; mode?: string; message?: string }
@@ -14,8 +39,7 @@ export async function sendPartnerOwnerInviteEmail(input: {
         return { ok: false, message: 'Configuração do Supabase ausente no app.' };
     }
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
+    const accessToken = await getAccessToken();
     if (!accessToken) {
         return { ok: false, message: 'Sessão expirada. Faça login novamente.' };
     }

@@ -1,27 +1,15 @@
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
-import { useProfile } from '@/hooks/use-profile';
-import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { showError } from '@/utils/toast';
 import { LOGIN_PATH } from '@/utils/auth-routes';
-
-const ADMIN_MASTER_USER_TYPE_ID = 1;
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
+import { ADMIN_MASTER_USER_TYPE_ID } from '@/utils/public-launch-access';
 
 const AdminMasterRouteGuard: React.FC = () => {
-    const [userId, setUserId] = React.useState<string | undefined>(undefined);
-    const [loadingSession, setLoadingSession] = React.useState(true);
+    const { userId, sessionReady, profile, profileLoading, tipoUsuarioId } = usePublicSiteAuth();
 
-    React.useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setUserId(session?.user?.id);
-            setLoadingSession(false);
-        });
-    }, []);
-
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-
-    if (loadingSession || (isLoadingProfile && !profile)) {
+    if (!sessionReady || (profileLoading && !profile)) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
@@ -29,21 +17,16 @@ const AdminMasterRouteGuard: React.FC = () => {
         );
     }
 
-    // 1. Check if logged in
     if (!userId || !profile) {
-        showError("Acesso negado. Faça login.");
+        showError('Acesso negado. Faça login.');
         return <Navigate to={LOGIN_PATH} replace />;
     }
 
-    // 2. Check if user is Admin Master (tipo_usuario_id = 1); Number() evita falha se vier como string do DB
-    if (Number(profile.tipo_usuario_id) !== ADMIN_MASTER_USER_TYPE_ID) {
-        showError("Acesso negado. Você não tem permissão de Administrador Master.");
-        
-        // Redirect non-admin masters to the manager dashboard
+    if (Number(tipoUsuarioId ?? profile.tipo_usuario_id) !== ADMIN_MASTER_USER_TYPE_ID) {
+        showError('Acesso negado. Você não tem permissão de Administrador Master.');
         return <Navigate to="/manager/dashboard" replace />;
     }
 
-    // If authenticated and is Admin Master, render the nested route
     return <Outlet />;
 };
 

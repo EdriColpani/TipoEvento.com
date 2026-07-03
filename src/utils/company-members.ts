@@ -1,6 +1,8 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
 import type { CompanyMemberRole } from '@/constants/company-roles';
-import { callRpc } from '@/utils/supabase-rpc';
+import { RpcTimeoutError } from '@/utils/supabase-rpc';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export type CompanyMemberRow = {
     user_id: string;
@@ -17,6 +19,16 @@ export type PendingCompanyInvite = {
     created_at: string;
 };
 
+export type PartnerCompanyAddress = {
+    cep: string;
+    street: string;
+    number: string;
+    complement?: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+};
+
 function normalizeCnpj(raw: string): string {
     return raw.replace(/\D/g, '');
 }
@@ -26,7 +38,75 @@ function normalizePhone(raw: string | undefined): string | null {
     return digits || null;
 }
 
-/** Fallback quando a RPC antiga ainda está no banco (travava 20s+). */
+function normalizeCep(raw: string): string {
+    return raw.replace(/\D/g, '');
+}
+
+function readCachedAccessToken(): string | null {
+    try {
+        const ref = new URL(supabaseUrl).hostname.split('.')[0];
+        const raw = localStorage.getItem(`sb-${ref}-auth-token`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { access_token?: string };
+        return parsed.access_token ?? null;
+    } catch {
+        return null;
+    }
+}
+
+async function restInsertPartnerCompany(
+    payload: Record<string, unknown>,
+): Promise<{ id: string }> {
+    const token = readCachedAccessToken();
+    if (!token) {
+        throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 10_000);
+
+    try {
+        const response = await fetch(`${supabaseUrl}/rest/v1/companies?select=id`, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                apikey: supabaseAnonKey,
+                Authorization: `Bearer ${token}`,
+                Prefer: 'return=representation',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = (await response.json().catch(() => null)) as
+            | { id?: string; message?: string; code?: string }[]
+            | { id?: string; message?: string; code?: string }
+            | null;
+
+        if (!response.ok) {
+            const row = Array.isArray(data) ? data[0] : data;
+            const message = row?.message ?? 'Erro ao gravar empresa.';
+            if (row?.code === '23505' || message.includes('duplicate')) {
+                throw new Error('CNPJ já cadastrado.');
+            }
+            throw new Error(message);
+        }
+
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row?.id) {
+            throw new Error('Empresa criada, mas o ID não foi retornado.');
+        }
+        return { id: row.id };
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Tempo esgotado ao gravar a empresa. Tente novamente.');
+        }
+        throw error;
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
 async function adminCreatePartnerCompanyDirect(input: {
     cnpj: string;
     corporateName: string;
@@ -34,52 +114,69 @@ async function adminCreatePartnerCompanyDirect(input: {
     email?: string;
     phone?: string;
     ownerEmail?: string;
+    address: PartnerCompanyAddress;
 }) {
     const cnpj = normalizeCnpj(input.cnpj);
     if (cnpj.length !== 14) {
         throw new Error('CNPJ inválido.');
     }
 
-    const { data: company, error: companyError } = await supabase
-        .from('companies')
-        .insert({
-            cnpj,
-            corporate_name: input.corporateName.trim(),
-            trade_name: input.tradeName?.trim() || null,
-            email: input.email?.trim() || null,
-            phone: normalizePhone(input.phone),
-            company_kind: 'partner',
-            billing_plan: 'consumption_or_license',
-            requires_billing_reacceptance: true,
-        })
-        .select('id')
-        .single();
-
-    if (companyError) {
-        if (companyError.message?.includes('duplicate') || companyError.code === '23505') {
-            throw new Error('CNPJ já cadastrado.');
-        }
-        throw new Error(companyError.message);
+    const cep = normalizeCep(input.address.cep);
+    if (cep.length !== 8) {
+        throw new Error('CEP inválido (8 dígitos).');
     }
 
-    const companyId = company.id as string;
+    const company = await restInsertPartnerCompany({
+        cnpj,
+        corporate_name: input.corporateName.trim(),
+        trade_name: input.tradeName?.trim() || null,
+        email: input.email?.trim() || null,
+        phone: normalizePhone(input.phone),
+        cep,
+        street: input.address.street.trim(),
+        number: input.address.number.trim(),
+        complement: input.address.complement?.trim() || null,
+        neighborhood: input.address.neighborhood.trim(),
+        city: input.address.city.trim(),
+        state: input.address.state.trim().toUpperCase(),
+        company_kind: 'partner',
+        billing_plan: 'consumption_or_license',
+        requires_billing_reacceptance: true,
+    });
 
+    const companyId = company.id;
     const ownerEmail = (input.ownerEmail || input.email || '').trim().toLowerCase();
     let ownerInvite: { linked_immediately?: boolean; message?: string } | undefined;
 
     if (ownerEmail && ownerEmail.includes('@')) {
-        const { error: inviteError } = await supabase.from('company_member_invites').insert({
-            company_id: companyId,
-            email: ownerEmail,
-            role: 'owner',
-        });
-        if (inviteError && !inviteError.message?.includes('duplicate')) {
-            console.warn('[adminCreatePartnerCompanyDirect] invite:', inviteError.message);
-        } else {
-            ownerInvite = {
-                linked_immediately: false,
-                message: 'Convite registrado. O gestor deve entrar com este e-mail.',
-            };
+        const token = readCachedAccessToken();
+        if (token) {
+            const controller = new AbortController();
+            const timer = window.setTimeout(() => controller.abort(), 5_000);
+            try {
+                await fetch(`${supabaseUrl}/rest/v1/company_member_invites`, {
+                    method: 'POST',
+                    signal: controller.signal,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        apikey: supabaseAnonKey,
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        company_id: companyId,
+                        email: ownerEmail,
+                        role: 'owner',
+                    }),
+                });
+                ownerInvite = {
+                    linked_immediately: false,
+                    message: 'Convite registrado. O gestor deve entrar com este e-mail.',
+                };
+            } catch {
+                console.warn('[adminCreatePartnerCompanyDirect] invite insert timeout');
+            } finally {
+                window.clearTimeout(timer);
+            }
         }
     }
 
@@ -138,6 +235,7 @@ export async function adminCreatePartnerCompany(input: {
     email?: string;
     phone?: string;
     ownerEmail?: string;
+    address: PartnerCompanyAddress;
 }) {
     const rpcArgs = {
         p_cnpj: input.cnpj,
@@ -146,36 +244,64 @@ export async function adminCreatePartnerCompany(input: {
         p_email: input.email ?? null,
         p_phone: input.phone ?? null,
         p_owner_email: input.ownerEmail ?? input.email ?? null,
+        p_cep: normalizeCep(input.address.cep),
+        p_street: input.address.street.trim(),
+        p_number: input.address.number.trim(),
+        p_complement: input.address.complement?.trim() || null,
+        p_neighborhood: input.address.neighborhood.trim(),
+        p_city: input.address.city.trim(),
+        p_state: input.address.state.trim().toUpperCase(),
     };
 
-    // Insert direto primeiro — RPC antiga em produção costuma travar 8s+.
     try {
-        const direct = await adminCreatePartnerCompanyDirect(input);
-        return { ...direct, warnings: [] as string[] };
-    } catch (directErr) {
-        console.warn('[adminCreatePartnerCompany] insert direto falhou — tentando RPC.', directErr);
+        const data = await callRpcRest<{
+            success: boolean;
+            company_id: string;
+            owner_invite?: { linked_immediately?: boolean; message?: string };
+        }>('admin_create_partner_company', rpcArgs, 12_000);
+
+        return { ...data, warnings: [] as string[] };
+    } catch (rpcErr) {
+        if (rpcErr instanceof RpcTimeoutError) {
+            console.warn('[adminCreatePartnerCompany] RPC timeout — tentando REST insert.');
+        } else {
+            const msg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr);
+            if (
+                msg.includes('CNPJ já cadastrado') ||
+                msg.includes('CNPJ inválido') ||
+                msg.includes('razão social') ||
+                msg.includes('CEP') ||
+                msg.includes('logradouro') ||
+                msg.includes('número') ||
+                msg.includes('bairro') ||
+                msg.includes('cidade') ||
+                msg.includes('UF') ||
+                msg.includes('Admin Master')
+            ) {
+                throw rpcErr;
+            }
+            console.warn('[adminCreatePartnerCompany] RPC falhou — tentando REST insert.', rpcErr);
+        }
     }
 
-    const data = await callRpc<{
-        success: boolean;
-        company_id: string;
-        owner_invite?: { linked_immediately?: boolean; message?: string };
-    }>('admin_create_partner_company', rpcArgs, 10_000);
-
-    return { ...data, warnings: [] as string[] };
+    const direct = await adminCreatePartnerCompanyDirect(input);
+    return { ...direct, warnings: [] as string[] };
 }
 
-/** E-mail do convite pendente de dono (gestor) da empresa parceira. */
 export async function fetchPartnerOwnerInviteEmail(companyId: string): Promise<string | null> {
-    const { data: pendingInvite, error: inviteError } = await supabase
-        .from('company_member_invites')
-        .select('email')
-        .eq('company_id', companyId)
-        .eq('role', 'owner')
-        .is('accepted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const { data: pendingInvite, error: inviteError } = await withTimeout(
+        supabase
+            .from('company_member_invites')
+            .select('email')
+            .eq('company_id', companyId)
+            .eq('role', 'owner')
+            .is('accepted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        5_000,
+        { data: null, error: { message: 'timeout' } },
+    );
 
     if (inviteError) {
         console.warn('[fetchPartnerOwnerInviteEmail]', inviteError.message);
