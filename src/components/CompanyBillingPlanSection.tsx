@@ -41,6 +41,7 @@ import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
+import { restGet } from '@/utils/supabase-rest';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { billingBtnGhost, billingBtnSolid } from '@/constants/billing-ui';
@@ -78,20 +79,35 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     const [pendingLicenseChargeId, setPendingLicenseChargeId] = useState<string | null>(null);
     const [inactivityPayDialogOpen, setInactivityPayDialogOpen] = useState(false);
     const [inactivityPayLoading, setInactivityPayLoading] = useState(false);
+    const [loadingCapReached, setLoadingCapReached] = useState(false);
+
+    useEffect(() => {
+        setLoadingCapReached(false);
+        const timer = window.setTimeout(() => setLoadingCapReached(true), 6_000);
+        return () => window.clearTimeout(timer);
+    }, [companyId]);
 
     const { data: companyKind } = useQuery({
         queryKey: ['companyKind', companyId],
         queryFn: async () => {
-            const { data, error } = await supabase
-                .from('companies')
-                .select('company_kind')
-                .eq('id', companyId)
-                .maybeSingle();
-            if (error) throw error;
-            return (data?.company_kind as string | null) ?? 'organizer';
+            try {
+                const rows = await restGet<{ company_kind: string }[]>(
+                    `companies?id=eq.${companyId}&select=company_kind&limit=1`,
+                    6_000,
+                );
+                return rows?.[0]?.company_kind ?? 'organizer';
+            } catch {
+                const { data } = await withTimeout(
+                    supabase.from('companies').select('company_kind').eq('id', companyId).maybeSingle(),
+                    6_000,
+                    { data: null, error: null },
+                );
+                return (data?.company_kind as string | null) ?? 'organizer';
+            }
         },
         enabled: Boolean(companyId),
         staleTime: 60_000,
+        retry: 1,
     });
 
     const recommendedPlan = useMemo(() => {
@@ -280,7 +296,9 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
         }
     };
 
-    if (isLoading || isLoadingCatalog) {
+    const showBillingSpinner = (isLoading || isLoadingCatalog) && !loadingCapReached;
+
+    if (showBillingSpinner) {
         return (
             <Card className="bg-black border border-cyan-500/30 rounded-2xl p-8 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-cyan-400 mx-auto" />

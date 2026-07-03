@@ -1,6 +1,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { BillingPlanCode } from '@/constants/billing-plans';
 import { getContractTypesForBillingPlan } from '@/constants/event-contracts';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export interface BillingPlanContractRow {
     id: string;
@@ -19,15 +21,24 @@ function pickBestContract(rows: BillingPlanContractRow[]): BillingPlanContractRo
 
 /** Busca via RPC (SECURITY DEFINER — não depende de RLS em event_contracts). */
 async function fetchViaRpc(plan: BillingPlanCode): Promise<BillingPlanContractRow | null> {
-    const { data, error } = await supabase.rpc('get_event_contract_for_billing_plan', {
-        p_plan: plan,
-    });
+    try {
+        const data = await callRpcRest<unknown>('get_event_contract_for_billing_plan', { p_plan: plan }, 8_000);
+        if (!data || typeof data !== 'object') return null;
+        return data as BillingPlanContractRow;
+    } catch (restError) {
+        console.warn('[fetchBillingPlanContract] REST RPC falhou:', restError);
+    }
 
-    if (error) {
-        // Função ainda não aplicada no banco — caller usa fallback
-        if (error.code === 'PGRST202' || error.message?.includes('Could not find the function')) {
-            return null;
-        }
+    const { data, error } = await withTimeout(
+        supabase.rpc('get_event_contract_for_billing_plan', { p_plan: plan }),
+        8_000,
+        { data: null, error: { message: 'timeout', code: 'TIMEOUT' } as { message: string; code: string } },
+    );
+
+    if (error?.code === 'PGRST202' || error?.message?.includes('Could not find the function')) {
+        return null;
+    }
+    if (error && error.code !== 'TIMEOUT') {
         throw new Error(error.message);
     }
 
