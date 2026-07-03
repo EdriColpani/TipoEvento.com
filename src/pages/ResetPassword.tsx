@@ -6,6 +6,8 @@ import SiteLogo from '@/components/SiteLogo';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
 import { acceptCompanyMemberInvites } from '@/utils/company-members';
+import { updatePasswordViaRest } from '@/utils/auth-rest';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { MANAGER_BILLING_SETUP_PATH } from '@/constants/manager-billing-gate';
 import { resolvePostLoginRedirect } from '@/utils/post-login-redirect';
 import { withTimeout } from '@/utils/promise-timeout';
@@ -38,9 +40,20 @@ const ResetPassword = () => {
         let cancelled = false;
 
         const syncSession = async () => {
+            const cached = readCachedAuthSession();
+            if (cached.userId) {
+                const partnerSetup =
+                    hashIndicatesPasswordSetup() ||
+                    (await userMustSetPartnerPassword({ id: cached.userId } as { id: string }));
+                setIsPartnerSetup(partnerSetup);
+                setValidSession(true);
+                setReady(true);
+                return;
+            }
+
             const {
                 data: { session },
-            } = await withTimeout(supabase.auth.getSession(), 6_000, { data: { session: null } });
+            } = await withTimeout(supabase.auth.getSession(), 4_000, { data: { session: null } });
             if (cancelled) return;
             const user = session?.user;
             const partnerSetup =
@@ -84,24 +97,28 @@ const ResetPassword = () => {
         const wasPartnerSetup = isPartnerSetup || hashIndicatesPasswordSetup();
 
         try {
-            const { data: updateData, error } = await withTimeout(
-                supabase.auth.updateUser({
-                    password,
-                    data: {
-                        [PASSWORD_SETUP_REQUIRED_KEY]: false,
-                        [INVITED_PARTNER_OWNER_KEY]: false,
-                    },
-                }),
-                12_000,
-                { data: { user: null }, error: { message: 'Tempo esgotado ao salvar a senha.' } },
-            );
+            const metadata = {
+                [PASSWORD_SETUP_REQUIRED_KEY]: false,
+                [INVITED_PARTNER_OWNER_KEY]: false,
+            };
 
-            if (error?.message) {
-                showError(error.message || 'Não foi possível atualizar a senha.');
-                return;
+            let user: { id?: string } | null | undefined;
+            const restResult = await updatePasswordViaRest(password, metadata);
+            if (restResult.error?.message) {
+                const { data: updateData, error } = await withTimeout(
+                    supabase.auth.updateUser({ password, data: metadata }),
+                    12_000,
+                    { data: { user: null }, error: { message: 'Tempo esgotado ao salvar a senha.' } },
+                );
+                if (error?.message) {
+                    showError(error.message || restResult.error.message);
+                    return;
+                }
+                user = updateData?.user;
+            } else {
+                user = restResult.user;
             }
 
-            const user = updateData?.user;
             if (!user?.id) {
                 showError('Senha salva, mas a sessão não foi confirmada. Tente entrar com a nova senha.');
                 navigate('/login', { replace: true });
@@ -109,32 +126,27 @@ const ResetPassword = () => {
             }
 
             if (wasPartnerSetup) {
-                try {
-                    await withTimeout(acceptCompanyMemberInvites(), 6_000, 0);
-                } catch (inviteError) {
+                void withTimeout(acceptCompanyMemberInvites(), 6_000, 0).catch((inviteError) => {
                     console.warn('[ResetPassword] accept invites:', inviteError);
-                }
+                });
 
-                let targetPath = MANAGER_BILLING_SETUP_PATH;
-                let message = 'Senha criada! Aceite o plano da empresa para continuar.';
+                const cachedUserId = user.id;
+                showSuccess('Senha criada! Redirecionando…');
+                navigate(MANAGER_BILLING_SETUP_PATH, { replace: true });
 
-                try {
-                    const resolved = await withTimeout(
-                        resolvePostLoginRedirect(user.id, undefined, user),
-                        8_000,
-                        {
-                            path: MANAGER_BILLING_SETUP_PATH,
-                            message,
-                        },
-                    );
-                    targetPath = resolved.path;
-                    message = resolved.message || message;
-                } catch (redirectError) {
-                    console.warn('[ResetPassword] post-login redirect:', redirectError);
-                }
-
-                showSuccess(message);
-                navigate(targetPath, { replace: true });
+                void withTimeout(
+                    resolvePostLoginRedirect(cachedUserId, undefined, { id: cachedUserId } as { id: string }),
+                    8_000,
+                    { path: MANAGER_BILLING_SETUP_PATH, message: '' },
+                )
+                    .then((resolved) => {
+                        if (resolved.path && resolved.path !== MANAGER_BILLING_SETUP_PATH) {
+                            navigate(resolved.path, { replace: true });
+                        }
+                    })
+                    .catch((redirectError) => {
+                        console.warn('[ResetPassword] post-login redirect:', redirectError);
+                    });
                 return;
             }
 

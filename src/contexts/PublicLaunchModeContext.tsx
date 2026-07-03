@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import {
     canBypassPublicLaunchPreview,
     type PublicLaunchMode,
@@ -29,21 +30,30 @@ export type PublicSiteContextValue = {
 const PublicSiteContext = createContext<PublicSiteContextValue | null>(null);
 
 export function PublicLaunchModeProvider({ children }: { children: React.ReactNode }) {
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
-    const [sessionReady, setSessionReady] = useState(false);
+    const cached = readCachedAuthSession();
+    const [userId, setUserId] = useState<string | undefined>(cached.userId);
+    const [userEmail, setUserEmail] = useState<string | undefined>(cached.userEmail);
+    const [sessionReady, setSessionReady] = useState(Boolean(cached.userId));
 
     useEffect(() => {
         let cancelled = false;
+        let readyTimeout: ReturnType<typeof setTimeout> | undefined;
 
         const applySession = (session: { user?: { id?: string; email?: string | null } } | null) => {
             if (cancelled) return;
+            if (readyTimeout) {
+                clearTimeout(readyTimeout);
+                readyTimeout = undefined;
+            }
             setUserId(session?.user?.id);
             setUserEmail(session?.user?.email ?? undefined);
             setSessionReady(true);
         };
 
-        // Sessão inicial do storage local (obrigatório — onAuthStateChange sozinho pode não disparar).
+        readyTimeout = window.setTimeout(() => {
+            if (!cancelled) setSessionReady(true);
+        }, 3000);
+
         void supabase.auth.getSession().then(({ data: { session } }) => {
             applySession(session);
         });
@@ -56,11 +66,12 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
 
         return () => {
             cancelled = true;
+            if (readyTimeout) clearTimeout(readyTimeout);
             subscription.unsubscribe();
         };
     }, []);
 
-    const { profile, isLoading: profileLoading } = useProfile(sessionReady && userId ? userId : undefined);
+    const { profile, isLoading: profileLoading } = useProfile(userId);
 
     const query = useQuery({
         queryKey: [...PUBLIC_LAUNCH_MODE_QUERY_KEY],

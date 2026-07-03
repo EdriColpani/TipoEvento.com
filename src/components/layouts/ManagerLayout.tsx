@@ -256,14 +256,16 @@ const ManagerLayout: React.FC = () => {
         navigate,
     ]);
 
-    const isLayoutLoading =
-        !sessionReady ||
-        (isLoadingProfile && !profile) ||
-        (isManagerPro && isLoadingCompany) ||
-        (needsBillingGateCheck && isLoadingBilling) ||
-        (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
-        (isListingPlan && isLoadingListingSubscription) ||
-        (isConsumptionLicensePlan && isLoadingConsumptionLicense);
+    const isAdminRoute = location.pathname.startsWith('/admin');
+    const isLayoutLoading = isAdminRoute
+        ? !sessionReady
+        : !sessionReady ||
+          (isLoadingProfile && !profile) ||
+          (isManagerPro && isLoadingCompany) ||
+          (needsBillingGateCheck && isLoadingBilling) ||
+          (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
+          (isListingPlan && isLoadingListingSubscription) ||
+          (isConsumptionLicensePlan && isLoadingConsumptionLicense);
 
     useEffect(() => {
         if (isLayoutLoading) return;

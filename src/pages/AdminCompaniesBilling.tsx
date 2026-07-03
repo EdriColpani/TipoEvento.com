@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Building2, Edit, Loader2, Search, Store } from 'lucide-react';
-import { useAuthUserId } from '@/hooks/use-auth-user-id';
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { useAdminCompaniesBilling, AdminCompanyBillingRow } from '@/hooks/use-admin-companies-billing';
 import { getBillingPlanLabel, isCompanyBillingReady } from '@/constants/billing-plans';
 import { COMPANY_KIND_LABELS } from '@/constants/company-kind';
@@ -25,13 +25,13 @@ function formatCnpj(value: string | null): string {
 
 const AdminCompaniesBilling: React.FC = () => {
     const navigate = useNavigate();
-    const { userId, sessionReady } = useAuthUserId();
+    const { userId, sessionReady } = usePublicSiteAuth();
     const [search, setSearch] = useState('');
     const [editingCompany, setEditingCompany] = useState<AdminCompanyBillingRow | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
 
     const { companies, isLoading, isError, invalidate } = useAdminCompaniesBilling(
-        sessionReady && !!userId,
+        Boolean(userId),
     );
 
     const filtered = useMemo(() => {
@@ -57,7 +57,7 @@ const AdminCompaniesBilling: React.FC = () => {
         setDialogOpen(true);
     };
 
-    if (!sessionReady) {
+    if (!sessionReady && !userId) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
