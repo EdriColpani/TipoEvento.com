@@ -98,7 +98,7 @@ export async function saveCreditEstablishmentProduct(input: {
     productId?: string | null;
     active?: boolean;
 }) {
-    const { data, error } = await supabase.rpc('save_credit_establishment_product', {
+    const args = {
         p_company_id: input.companyId,
         p_establishment_id: input.establishmentId,
         p_name: input.name,
@@ -106,8 +106,24 @@ export async function saveCreditEstablishmentProduct(input: {
         p_description: input.description ?? null,
         p_product_id: input.productId ?? null,
         p_active: input.active ?? true,
-    });
-    if (error) throw error;
+    };
+
+    try {
+        return await callRpcRest<{ ok: boolean; product_id: string }>(
+            'save_credit_establishment_product',
+            args,
+            15_000,
+        );
+    } catch (restError) {
+        console.warn('[saveCreditEstablishmentProduct] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('save_credit_establishment_product', args),
+        15_000,
+        { data: null, error: { message: 'Tempo esgotado ao salvar produto.' } as { message: string } },
+    );
+    if (error?.message) throw new Error(error.message);
     return data as { ok: boolean; product_id: string };
 }
 
@@ -117,12 +133,28 @@ export async function setCreditEstablishmentProductActive(input: {
     productId: string;
     active: boolean;
 }) {
-    const { data, error } = await supabase.rpc('set_credit_establishment_product_active', {
+    const args = {
         p_company_id: input.companyId,
         p_establishment_id: input.establishmentId,
         p_product_id: input.productId,
         p_active: input.active,
-    });
-    if (error) throw error;
+    };
+
+    try {
+        return await callRpcRest<{ ok: boolean; active: boolean }>(
+            'set_credit_establishment_product_active',
+            args,
+            12_000,
+        );
+    } catch (restError) {
+        console.warn('[setCreditEstablishmentProductActive] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('set_credit_establishment_product_active', args),
+        12_000,
+        { data: null, error: { message: 'Tempo esgotado.' } as { message: string } },
+    );
+    if (error?.message) throw new Error(error.message);
     return data as { ok: boolean; active: boolean };
 }

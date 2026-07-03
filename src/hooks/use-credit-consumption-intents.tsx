@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
+import { generateRandomUuid } from '@/utils/random-id';
 
 export type CreditConsumptionIntentStatus =
     | 'new'
@@ -98,7 +99,7 @@ export function useManagerCreditConsumptionIntents(
         enabled: !!companyId,
         staleTime: 10_000,
         retry: 1,
-        refetchInterval: 15_000,
+        refetchInterval: (query) => (query.state.error ? false : 15_000),
     });
 
     const invalidate = () => {
@@ -126,7 +127,7 @@ export async function confirmManagerCreditConsumptionIntent(input: {
     intentId: string;
     idempotencyKey?: string;
 }) {
-    const key = input.idempotencyKey ?? crypto.randomUUID();
+    const key = input.idempotencyKey ?? generateRandomUuid();
     const { data, error } = await supabase.functions.invoke('confirm-credit-consumption-intent-manager', {
         body: { intentId: input.intentId, idempotencyKey: key },
         headers: { 'x-idempotency-key': key },
