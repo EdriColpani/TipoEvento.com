@@ -22,6 +22,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCreditEstablishments } from '@/hooks/use-credit-establishments';
 import { useCreditEstablishmentProducts } from '@/hooks/use-credit-establishment-products';
@@ -57,7 +58,7 @@ function formatMoney(value: number): string {
 
 const ManagerCreditPdv: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, sessionReady } = useAuthUserId();
     const [establishmentId, setEstablishmentId] = useState('');
     const [walletToken, setWalletToken] = useState('');
     const [resolved, setResolved] = useState<ResolvedClient | null>(null);
@@ -77,8 +78,8 @@ const ManagerCreditPdv: React.FC = () => {
     const [historyPeriodFilter, setHistoryPeriodFilter] = useState<'all' | 'today' | '7d' | '30d'>('7d');
     const [historyOperatorFilter, setHistoryOperatorFilter] = useState<string>('all');
 
-    const { company } = useManagerCompany(userId);
-    const { billing } = useCompanyBilling(company?.id);
+    const { company, isLoading: loadingCompany } = useManagerCompany(userId);
+    const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
     const { data, isLoading } = useCreditEstablishments(company?.id);
     const { data: productsData, isLoading: loadingProducts } = useCreditEstablishmentProducts(
         company?.id,
@@ -89,6 +90,11 @@ const ManagerCreditPdv: React.FC = () => {
 
     const supportsCredit =
         isHybridPlan(billing?.billing_plan) || isConsumptionOrLicensePlan(billing?.billing_plan);
+
+    const planStillLoading =
+        !sessionReady ||
+        loadingCompany ||
+        (Boolean(company?.id) && loadingBilling && billing === undefined);
 
     const activeEstablishments = useMemo(
         () => (data?.items ?? []).filter((e) => e.active && e.credit_acceptance_enabled),
@@ -103,10 +109,6 @@ const ManagerCreditPdv: React.FC = () => {
         () => (productsData?.items ?? []).filter((p) => p.active),
         [productsData?.items],
     );
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     useEffect(() => {
         if (!establishmentId && activeEstablishments.length > 0) {
@@ -338,12 +340,27 @@ const ManagerCreditPdv: React.FC = () => {
         }
     };
 
+    if (planStillLoading) {
+        return (
+            <div className="max-w-3xl mx-auto text-center py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Carregando plano da empresa...</p>
+            </div>
+        );
+    }
+
     if (!supportsCredit) {
         return (
             <div className="max-w-3xl mx-auto text-center py-16 text-gray-400">
-                Plano não habilita PDV de crédito.
-                <Button variant="outline" className="mt-4 block mx-auto" onClick={() => navigate('/manager/settings')}>
-                    Voltar
+                Plano não habilita PDV de crédito. Confirme o plano{' '}
+                <strong className="text-white">Consumo / licença</strong> em Configurações → Perfil da
+                Empresa → Plano.
+                <Button
+                    variant="outline"
+                    className="mt-4 block mx-auto bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                    onClick={() => navigate('/manager/settings/company-profile?tab=billing')}
+                >
+                    Ir para Plano e cobrança
                 </Button>
             </div>
         );

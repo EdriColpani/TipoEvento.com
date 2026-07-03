@@ -14,6 +14,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
 import {
@@ -36,7 +37,7 @@ type EventOption = { id: string; title: string };
 
 const ManagerCreditEstablishments: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, sessionReady } = useAuthUserId();
     const [events, setEvents] = useState<EventOption[]>([]);
     const [editing, setEditing] = useState<CreditEstablishment | null>(null);
     const [name, setName] = useState('');
@@ -52,7 +53,7 @@ const ManagerCreditEstablishments: React.FC = () => {
 
     const { company } = useManagerCompany(userId);
     const { context: companyContext } = useManagerCompanyContext(userId);
-    const { billing } = useCompanyBilling(company?.id);
+    const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
     const { data, isLoading, invalidate } = useCreditEstablishments(company?.id);
     const {
         data: productsData,
@@ -67,9 +68,8 @@ const ManagerCreditEstablishments: React.FC = () => {
         isHybridPlan(billing?.billing_plan) || isConsumptionOrLicensePlan(billing?.billing_plan);
     const canManageEstablishments = !companyContext?.isPdvOperator && (companyContext?.isCompanyOwner ?? true);
 
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
+    const planStillLoading =
+        !sessionReady || (Boolean(company?.id) && loadingBilling && billing === undefined);
 
     useEffect(() => {
         if (!company?.id) return;
@@ -196,6 +196,15 @@ const ManagerCreditEstablishments: React.FC = () => {
             showError(e instanceof Error ? e.message : 'Erro ao alterar status do produto.');
         }
     };
+
+    if (planStillLoading) {
+        return (
+            <div className="max-w-3xl mx-auto text-center py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Carregando plano da empresa...</p>
+            </div>
+        );
+    }
 
     if (!supportsCredit) {
         return (
