@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export type CreditEstablishmentProduct = {
     id: string;
@@ -25,16 +27,37 @@ async function fetchEstablishmentProducts(
     companyId: string,
     establishmentId: string,
 ): Promise<ProductsPayload> {
-    const { data, error } = await supabase.rpc('list_credit_establishment_products', {
-        p_company_id: companyId,
-        p_establishment_id: establishmentId,
-    });
-    if (error) throw error;
-    const payload = (data ?? {}) as ProductsPayload;
-    return {
-        ...payload,
-        items: payload?.items ?? [],
+    const fallback: ProductsPayload = {
+        company_id: companyId,
+        establishment_id: establishmentId,
+        module_enabled: false,
+        company_allows_credit: false,
+        items: [],
     };
+
+    try {
+        const data = await callRpcRest<ProductsPayload>(
+            'list_credit_establishment_products',
+            { p_company_id: companyId, p_establishment_id: establishmentId },
+            10_000,
+        );
+        return { ...fallback, ...data, items: data?.items ?? [] };
+    } catch (restError) {
+        console.warn('[useCreditEstablishmentProducts] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('list_credit_establishment_products', {
+            p_company_id: companyId,
+            p_establishment_id: establishmentId,
+        }),
+        10_000,
+        { data: null, error: { message: 'timeout' } as { message: string } },
+    );
+
+    if (error?.message && error.message !== 'timeout') throw error;
+    const payload = (data ?? {}) as ProductsPayload;
+    return { ...fallback, ...payload, items: payload?.items ?? [] };
 }
 
 export function useCreditEstablishmentProducts(
@@ -45,9 +68,16 @@ export function useCreditEstablishmentProducts(
 
     const query = useQuery({
         queryKey: ['creditEstablishmentProducts', companyId, establishmentId],
-        queryFn: () => fetchEstablishmentProducts(companyId!, establishmentId!),
+        queryFn: () => withTimeout(fetchEstablishmentProducts(companyId!, establishmentId!), 12_000, {
+            company_id: companyId!,
+            establishment_id: establishmentId!,
+            module_enabled: false,
+            company_allows_credit: false,
+            items: [],
+        }),
         enabled: !!companyId && !!establishmentId,
         staleTime: 30_000,
+        retry: 1,
     });
 
     const invalidate = () => {

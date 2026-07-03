@@ -80,7 +80,7 @@ const ManagerCreditPdv: React.FC = () => {
 
     const { company, isLoading: loadingCompany } = useManagerCompany(userId);
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
-    const { data, isLoading } = useCreditEstablishments(company?.id);
+    const { data, isLoading, isFetching } = useCreditEstablishments(company?.id);
     const { data: productsData, isLoading: loadingProducts } = useCreditEstablishmentProducts(
         company?.id,
         establishmentId || undefined,
@@ -381,7 +381,7 @@ const ManagerCreditPdv: React.FC = () => {
                     <CardTitle className="text-white text-lg">Ponto de venda</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    {isLoading ? (
+                    {isLoading && isFetching && !(data?.items?.length) ? (
                         <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
                     ) : activeEstablishments.length === 0 ? (
                         <p className="text-sm text-amber-400">
