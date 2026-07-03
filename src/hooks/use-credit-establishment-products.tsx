@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export type CreditEstablishmentProduct = {
     id: string;
@@ -25,16 +27,37 @@ async function fetchEstablishmentProducts(
     companyId: string,
     establishmentId: string,
 ): Promise<ProductsPayload> {
-    const { data, error } = await supabase.rpc('list_credit_establishment_products', {
-        p_company_id: companyId,
-        p_establishment_id: establishmentId,
-    });
-    if (error) throw error;
-    const payload = (data ?? {}) as ProductsPayload;
-    return {
-        ...payload,
-        items: payload?.items ?? [],
+    const fallback: ProductsPayload = {
+        company_id: companyId,
+        establishment_id: establishmentId,
+        module_enabled: false,
+        company_allows_credit: false,
+        items: [],
     };
+
+    try {
+        const data = await callRpcRest<ProductsPayload>(
+            'list_credit_establishment_products',
+            { p_company_id: companyId, p_establishment_id: establishmentId },
+            10_000,
+        );
+        return { ...fallback, ...data, items: data?.items ?? [] };
+    } catch (restError) {
+        console.warn('[useCreditEstablishmentProducts] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('list_credit_establishment_products', {
+            p_company_id: companyId,
+            p_establishment_id: establishmentId,
+        }),
+        10_000,
+        { data: null, error: { message: 'timeout' } as { message: string } },
+    );
+
+    if (error?.message && error.message !== 'timeout') throw error;
+    const payload = (data ?? {}) as ProductsPayload;
+    return { ...fallback, ...payload, items: payload?.items ?? [] };
 }
 
 export function useCreditEstablishmentProducts(
@@ -45,9 +68,16 @@ export function useCreditEstablishmentProducts(
 
     const query = useQuery({
         queryKey: ['creditEstablishmentProducts', companyId, establishmentId],
-        queryFn: () => fetchEstablishmentProducts(companyId!, establishmentId!),
+        queryFn: () => withTimeout(fetchEstablishmentProducts(companyId!, establishmentId!), 12_000, {
+            company_id: companyId!,
+            establishment_id: establishmentId!,
+            module_enabled: false,
+            company_allows_credit: false,
+            items: [],
+        }),
         enabled: !!companyId && !!establishmentId,
         staleTime: 30_000,
+        retry: 1,
     });
 
     const invalidate = () => {
@@ -68,7 +98,7 @@ export async function saveCreditEstablishmentProduct(input: {
     productId?: string | null;
     active?: boolean;
 }) {
-    const { data, error } = await supabase.rpc('save_credit_establishment_product', {
+    const args = {
         p_company_id: input.companyId,
         p_establishment_id: input.establishmentId,
         p_name: input.name,
@@ -76,8 +106,24 @@ export async function saveCreditEstablishmentProduct(input: {
         p_description: input.description ?? null,
         p_product_id: input.productId ?? null,
         p_active: input.active ?? true,
-    });
-    if (error) throw error;
+    };
+
+    try {
+        return await callRpcRest<{ ok: boolean; product_id: string }>(
+            'save_credit_establishment_product',
+            args,
+            15_000,
+        );
+    } catch (restError) {
+        console.warn('[saveCreditEstablishmentProduct] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('save_credit_establishment_product', args),
+        15_000,
+        { data: null, error: { message: 'Tempo esgotado ao salvar produto.' } as { message: string } },
+    );
+    if (error?.message) throw new Error(error.message);
     return data as { ok: boolean; product_id: string };
 }
 
@@ -87,12 +133,28 @@ export async function setCreditEstablishmentProductActive(input: {
     productId: string;
     active: boolean;
 }) {
-    const { data, error } = await supabase.rpc('set_credit_establishment_product_active', {
+    const args = {
         p_company_id: input.companyId,
         p_establishment_id: input.establishmentId,
         p_product_id: input.productId,
         p_active: input.active,
-    });
-    if (error) throw error;
+    };
+
+    try {
+        return await callRpcRest<{ ok: boolean; active: boolean }>(
+            'set_credit_establishment_product_active',
+            args,
+            12_000,
+        );
+    } catch (restError) {
+        console.warn('[setCreditEstablishmentProductActive] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('set_credit_establishment_product_active', args),
+        12_000,
+        { data: null, error: { message: 'Tempo esgotado.' } as { message: string } },
+    );
+    if (error?.message) throw new Error(error.message);
     return data as { ok: boolean; active: boolean };
 }

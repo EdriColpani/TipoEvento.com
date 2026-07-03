@@ -27,6 +27,7 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCreditEstablishments } from '@/hooks/use-credit-establishments';
 import { useCreditEstablishmentProducts } from '@/hooks/use-credit-establishment-products';
 import { isHybridPlan, isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
+import { generateRandomUuid } from '@/utils/random-id';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 import { showError, showSuccess } from '@/utils/toast';
@@ -80,7 +81,7 @@ const ManagerCreditPdv: React.FC = () => {
 
     const { company, isLoading: loadingCompany } = useManagerCompany(userId);
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
-    const { data, isLoading } = useCreditEstablishments(company?.id);
+    const { data, isLoading, isFetching } = useCreditEstablishments(company?.id);
     const { data: productsData, isLoading: loadingProducts } = useCreditEstablishmentProducts(
         company?.id,
         establishmentId || undefined,
@@ -155,7 +156,7 @@ const ManagerCreditPdv: React.FC = () => {
         }
         setCart((prev) => [
             ...prev,
-            { id: crypto.randomUUID(), productName: productName.trim(), quantity: qty, unitPrice: price },
+            { id: generateRandomUuid(), productName: productName.trim(), quantity: qty, unitPrice: price },
         ]);
         setProductName('');
         setQuantity('1');
@@ -179,7 +180,7 @@ const ManagerCreditPdv: React.FC = () => {
         }
         setCart((prev) => [
             ...prev,
-            { id: crypto.randomUUID(), productName: product.name, quantity: qty, unitPrice: Number(product.unit_price) },
+            { id: generateRandomUuid(), productName: product.name, quantity: qty, unitPrice: Number(product.unit_price) },
         ]);
         setQuantity('1');
         setSelectedCatalogProductId('none');
@@ -198,7 +199,7 @@ const ManagerCreditPdv: React.FC = () => {
         }
         setCharging(true);
         try {
-            const idempotencyKey = crypto.randomUUID();
+            const idempotencyKey = generateRandomUuid();
             const { data: payload, error } = await supabase.functions.invoke('credit-spend-pdv', {
                 body: {
                     walletToken: walletToken.trim(),
@@ -381,7 +382,7 @@ const ManagerCreditPdv: React.FC = () => {
                     <CardTitle className="text-white text-lg">Ponto de venda</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    {isLoading ? (
+                    {isLoading && isFetching && !(data?.items?.length) ? (
                         <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
                     ) : activeEstablishments.length === 0 ? (
                         <p className="text-sm text-amber-400">
@@ -453,8 +454,8 @@ const ManagerCreditPdv: React.FC = () => {
                     <CardTitle className="text-white text-lg">Produtos</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    <div className="rounded-lg border border-yellow-500/20 p-3 space-y-2">
-                        <Label className="text-gray-400 text-xs">Adicionar do catálogo</Label>
+                    <div className="rounded-lg border border-yellow-500/20 p-3 space-y-3">
+                        <p className="text-gray-400 text-xs font-medium">Adicionar do catálogo</p>
                         {loadingProducts ? (
                             <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />
                         ) : activeProducts.length === 0 ? (
@@ -462,10 +463,11 @@ const ManagerCreditPdv: React.FC = () => {
                                 Sem produtos no catálogo deste PDV. Você ainda pode digitar manualmente abaixo.
                             </p>
                         ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                <div className="sm:col-span-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                                <div className="sm:col-span-2 space-y-1">
+                                    <Label className="text-gray-400 text-xs">Produto</Label>
                                     <Select value={selectedCatalogProductId} onValueChange={setSelectedCatalogProductId}>
-                                        <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
+                                        <SelectTrigger className="h-10 w-full bg-black/60 border-yellow-500/30 text-white">
                                             <SelectValue placeholder="Selecione um produto" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-black border-yellow-500/30 text-white">
@@ -478,15 +480,19 @@ const ManagerCreditPdv: React.FC = () => {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div>
+                                <div className="space-y-1">
                                     <Label className="text-gray-400 text-xs">Qtd</Label>
-                                    <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} className="bg-black/60 border-yellow-500/30 text-white" />
+                                    <Input
+                                        value={quantity}
+                                        onChange={(e) => setQuantity(e.target.value)}
+                                        className="h-10 bg-black/60 border-yellow-500/30 text-white"
+                                    />
                                 </div>
                             </div>
                         )}
                         <Button
                             variant="outline"
-                            className="border-yellow-500/40 text-yellow-500"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                             onClick={addCatalogLine}
                             disabled={activeProducts.length === 0}
                         >
@@ -494,26 +500,43 @@ const ManagerCreditPdv: React.FC = () => {
                         </Button>
                     </div>
 
-                    <div className="border-t border-yellow-500/20 pt-3">
-                        <Label className="text-gray-400 text-xs">Adicionar item manual</Label>
+                    <div className="border-t border-yellow-500/20 pt-3 space-y-3">
+                        <p className="text-gray-400 text-xs font-medium">Adicionar item manual</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                            <div className="space-y-1">
+                                <Label className="text-gray-400 text-xs">Nome</Label>
+                                <Input
+                                    value={productName}
+                                    onChange={(e) => setProductName(e.target.value)}
+                                    className="h-10 bg-black/60 border-yellow-500/30 text-white"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-gray-400 text-xs">Qtd</Label>
+                                <Input
+                                    value={quantity}
+                                    onChange={(e) => setQuantity(e.target.value)}
+                                    className="h-10 bg-black/60 border-yellow-500/30 text-white"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-gray-400 text-xs">Preço unit.</Label>
+                                <Input
+                                    value={unitPrice}
+                                    onChange={(e) => setUnitPrice(e.target.value)}
+                                    placeholder="0,00"
+                                    className="h-10 bg-black/60 border-yellow-500/30 text-white"
+                                />
+                            </div>
+                        </div>
+                        <Button
+                            variant="outline"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                            onClick={addLine}
+                        >
+                            Adicionar item
+                        </Button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <div className="sm:col-span-1">
-                            <Label className="text-gray-400 text-xs">Nome</Label>
-                            <Input value={productName} onChange={(e) => setProductName(e.target.value)} className="bg-black/60 border-yellow-500/30 text-white" />
-                        </div>
-                        <div>
-                            <Label className="text-gray-400 text-xs">Qtd</Label>
-                            <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} className="bg-black/60 border-yellow-500/30 text-white" />
-                        </div>
-                        <div>
-                            <Label className="text-gray-400 text-xs">Preço unit.</Label>
-                            <Input value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} placeholder="0,00" className="bg-black/60 border-yellow-500/30 text-white" />
-                        </div>
-                    </div>
-                    <Button variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={addLine}>
-                        Adicionar item
-                    </Button>
                     {cart.length > 0 && (
                         <ul className="space-y-2 border-t border-yellow-500/20 pt-3">
                             {cart.map((line) => (

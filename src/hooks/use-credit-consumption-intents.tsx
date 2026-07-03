@@ -1,6 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
+import { generateRandomUuid } from '@/utils/random-id';
 
 export type CreditConsumptionIntentStatus =
     | 'new'
@@ -51,15 +54,38 @@ async function fetchManagerIntents(
     status?: CreditConsumptionIntentStatus | 'all',
 ): Promise<IntentsPayload> {
     const statusParam = status && status !== 'all' ? status : null;
-    const { data, error } = await supabase.rpc('list_manager_credit_consumption_intents', {
-        p_company_id: companyId,
-        p_status: statusParam,
-        p_limit: 80,
-        p_offset: 0,
-    });
-    if (error) throw error;
+    const fallback: IntentsPayload = { company_id: companyId, items: [] };
+
+    try {
+        const data = await callRpcRest<IntentsPayload>(
+            'list_manager_credit_consumption_intents',
+            {
+                p_company_id: companyId,
+                p_status: statusParam,
+                p_limit: 80,
+                p_offset: 0,
+            },
+            10_000,
+        );
+        return { ...fallback, ...data, items: data?.items ?? [] };
+    } catch (restError) {
+        console.warn('[useManagerCreditConsumptionIntents] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('list_manager_credit_consumption_intents', {
+            p_company_id: companyId,
+            p_status: statusParam,
+            p_limit: 80,
+            p_offset: 0,
+        }),
+        10_000,
+        { data: null, error: { message: 'timeout' } as { message: string } },
+    );
+
+    if (error?.message && error.message !== 'timeout') throw error;
     const payload = (data ?? {}) as IntentsPayload;
-    return { ...payload, items: payload?.items ?? [] };
+    return { ...fallback, ...payload, items: payload?.items ?? [] };
 }
 
 export function useManagerCreditConsumptionIntents(
@@ -69,10 +95,11 @@ export function useManagerCreditConsumptionIntents(
     const queryClient = useQueryClient();
     const query = useQuery({
         queryKey: ['managerCreditConsumptionIntents', companyId, status ?? 'all'],
-        queryFn: () => fetchManagerIntents(companyId!, status),
+        queryFn: () => withTimeout(fetchManagerIntents(companyId!, status), 12_000, { company_id: companyId!, items: [] }),
         enabled: !!companyId,
         staleTime: 10_000,
-        refetchInterval: 15_000,
+        retry: 1,
+        refetchInterval: (query) => (query.state.error ? false : 15_000),
     });
 
     const invalidate = () => {
@@ -100,7 +127,7 @@ export async function confirmManagerCreditConsumptionIntent(input: {
     intentId: string;
     idempotencyKey?: string;
 }) {
-    const key = input.idempotencyKey ?? crypto.randomUUID();
+    const key = input.idempotencyKey ?? generateRandomUuid();
     const { data, error } = await supabase.functions.invoke('confirm-credit-consumption-intent-manager', {
         body: { intentId: input.intentId, idempotencyKey: key },
         headers: { 'x-idempotency-key': key },
