@@ -4,8 +4,7 @@ import { ArrowLeft, Loader2, Save, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
-import { useProfile } from '@/hooks/use-profile';
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import {
     BILLING_PLAN_COLUMNS,
@@ -14,6 +13,9 @@ import {
 } from '@/constants/plan-features';
 import type { BillingPlanCode } from '@/constants/billing-plans';
 import { billingBtnBack, billingBtnSolid, billingSpinner } from '@/constants/billing-ui';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
+import { supabase } from '@/integrations/supabase/client';
 
 const ADMIN_MASTER = 1;
 
@@ -32,49 +34,80 @@ function buildEmptyMatrix(): MatrixCell {
 
 const AdminPlanFeatures: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, sessionReady, tipoUsuarioId } = usePublicSiteAuth();
     const [matrix, setMatrix] = useState<MatrixCell>(buildEmptyMatrix);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
-
-    const { profile, isLoading: loadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER;
+    const isAdminMaster = Number(tipoUsuarioId ?? 0) === ADMIN_MASTER;
 
     useEffect(() => {
-        if (!loadingProfile && userId && !isAdminMaster) {
+        if (!sessionReady) return;
+        if (userId && !isAdminMaster && tipoUsuarioId != null) {
             showError('Acesso negado. Apenas Admin Master.');
             navigate('/manager/dashboard');
         }
-    }, [loadingProfile, userId, isAdminMaster, navigate]);
+    }, [sessionReady, userId, isAdminMaster, tipoUsuarioId, navigate]);
 
     useEffect(() => {
-        if (!isAdminMaster) return;
+        if (!sessionReady || !userId || !isAdminMaster) return;
+
+        let cancelled = false;
+
         const load = async () => {
             setLoading(true);
-            const { data, error } = await supabase.rpc('admin_get_billing_plan_features_matrix');
-            if (error) {
-                showError('Erro ao carregar permissões: ' + error.message);
-                setLoading(false);
-                return;
-            }
-            const next = buildEmptyMatrix();
-            const rows = Array.isArray(data) ? data : [];
-            for (const row of rows as Array<{ billing_plan: string; feature_key: string; enabled: boolean }>) {
-                const plan = row.billing_plan as BillingPlanCode;
-                const key = row.feature_key as PlanFeatureKey;
-                if (next[plan] && key in next[plan]) {
-                    next[plan][key] = !!row.enabled;
+            try {
+                let rows: Array<{ billing_plan: string; feature_key: string; enabled: boolean }> = [];
+
+                try {
+                    const data = await callRpcRest<unknown[]>(
+                        'admin_get_billing_plan_features_matrix',
+                        {},
+                        12_000,
+                    );
+                    rows = Array.isArray(data) ? (data as typeof rows) : [];
+                } catch (restError) {
+                    console.warn('[AdminPlanFeatures] REST falhou:', restError);
+                    const { data, error } = await withTimeout(
+                        supabase.rpc('admin_get_billing_plan_features_matrix'),
+                        12_000,
+                        { data: null, error: { message: 'timeout' } as { message: string } },
+                    );
+                    if (error?.message && error.message !== 'timeout') {
+                        throw new Error(error.message);
+                    }
+                    rows = Array.isArray(data) ? (data as typeof rows) : [];
                 }
+
+                if (cancelled) return;
+
+                const next = buildEmptyMatrix();
+                for (const row of rows) {
+                    const plan = row.billing_plan as BillingPlanCode;
+                    const key = row.feature_key as PlanFeatureKey;
+                    if (next[plan] && key in next[plan]) {
+                        next[plan][key] = !!row.enabled;
+                    }
+                }
+                setMatrix(next);
+            } catch (err) {
+                if (!cancelled) {
+                    showError(
+                        'Erro ao carregar permissões: ' +
+                            (err instanceof Error ? err.message : 'tente novamente'),
+                    );
+                }
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-            setMatrix(next);
-            setLoading(false);
         };
+
         void load();
-    }, [isAdminMaster]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [sessionReady, userId, isAdminMaster]);
 
     const groups = useMemo(() => {
         const g = new Map<string, typeof PLAN_FEATURE_DEFINITIONS>();
@@ -106,17 +139,29 @@ const AdminPlanFeatures: React.FC = () => {
                 });
             }
         }
-        const { error } = await supabase.rpc('admin_save_billing_plan_features', { p_rows: rows });
-        dismissToast(toastId);
-        setSaving(false);
-        if (error) {
-            showError('Falha ao salvar: ' + error.message);
-            return;
+
+        try {
+            try {
+                await callRpcRest('admin_save_billing_plan_features', { p_rows: rows }, 15_000);
+            } catch (restError) {
+                console.warn('[AdminPlanFeatures] save REST falhou:', restError);
+                const { error } = await withTimeout(
+                    supabase.rpc('admin_save_billing_plan_features', { p_rows: rows }),
+                    15_000,
+                    { error: { message: 'timeout' } as { message: string } },
+                );
+                if (error?.message) throw new Error(error.message);
+            }
+            showSuccess('Permissões por plano atualizadas.');
+        } catch (err) {
+            showError('Falha ao salvar: ' + (err instanceof Error ? err.message : 'tente novamente'));
+        } finally {
+            dismissToast(toastId);
+            setSaving(false);
         }
-        showSuccess('Permissões por plano atualizadas.');
     };
 
-    if (loadingProfile || !userId || loading) {
+    if (!sessionReady || !userId || loading) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className={`h-10 w-10 animate-spin ${billingSpinner} mx-auto mb-4`} />
@@ -156,8 +201,9 @@ const AdminPlanFeatures: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-cyan-400 text-lg">Matriz plano × funcionalidade</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Ex.: plano Divulgação sem Ingressos nem Chaves de validação. Contratos legais em Admin
-                        → Contratos.
+                        Plano Consumo / licença: parceiros não usam Eventos nem Ingressos (só PDV e
+                        estabelecimentos). Empresas parceiras também têm bloqueio extra por{' '}
+                        <code className="text-cyan-300">company_kind=partner</code>.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">

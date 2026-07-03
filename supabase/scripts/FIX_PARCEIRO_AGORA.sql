@@ -118,3 +118,23 @@ FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public'
   AND p.proname = 'admin_create_partner_company';
+
+-- 4) Gestor parceiro pode confirmar plano Consumo / licença
+CREATE OR REPLACE FUNCTION public.billing_plan_selectable_by_gestor(p_plan public.billing_plan_type)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT p_plan IN (
+    'listing_monthly'::public.billing_plan_type,
+    'ticket_commission'::public.billing_plan_type,
+    'ticket_plus_consumption'::public.billing_plan_type,
+    'consumption_or_license'::public.billing_plan_type
+  );
+$$;
+
+SELECT CASE
+  WHEN public.billing_plan_selectable_by_gestor('consumption_or_license'::public.billing_plan_type)
+    THEN 'plano_consumo_liberado_ok'
+  ELSE 'ERRO: rode a migration 20260730130000_fix_partner_billing_plan_confirm.sql'
+END AS status_plano_parceiro;
