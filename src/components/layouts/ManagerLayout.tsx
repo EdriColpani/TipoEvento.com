@@ -7,6 +7,7 @@ import SiteLogo from '@/components/SiteLogo';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import {
     filterNavItemsByPlanFeatures,
+    filterNavItemsForPartnerCompany,
     isNavPathLockedByPlan,
     isRouteBlockedByPlan,
     MANAGER_NAV_ITEMS,
@@ -61,6 +62,7 @@ const ManagerLayout: React.FC = () => {
     const headerRef = useRef<HTMLElement>(null);
     const [headerHeight, setHeaderHeight] = useState(0);
     const { userId, sessionReady } = useAuthUserId();
+    const [layoutWaitExpired, setLayoutWaitExpired] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { isMobile, isTablet } = useDevice();
 
@@ -268,6 +270,15 @@ const ManagerLayout: React.FC = () => {
           (isConsumptionLicensePlan && isLoadingConsumptionLicense);
 
     useEffect(() => {
+        if (!isLayoutLoading) {
+            setLayoutWaitExpired(false);
+            return;
+        }
+        const timer = window.setTimeout(() => setLayoutWaitExpired(true), 10_000);
+        return () => window.clearTimeout(timer);
+    }, [isLayoutLoading]);
+
+    useEffect(() => {
         if (isLayoutLoading) return;
 
         const el = headerRef.current;
@@ -305,7 +316,7 @@ const ManagerLayout: React.FC = () => {
     };
 
     // Show loading spinner while session or profile/company data is being fetched
-    if (isLayoutLoading) {
+    if (isLayoutLoading && !layoutWaitExpired) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
@@ -385,6 +396,10 @@ const ManagerLayout: React.FC = () => {
             item.path === '/manager/credit/establishments' ||
             item.path === '/manager/settings',
         );
+    }
+
+    if (companyContext?.isPartnerCompany && !isAdminMaster) {
+        filteredManagerNav = filterNavItemsForPartnerCompany(filteredManagerNav);
     }
 
     const baseNavItems = [

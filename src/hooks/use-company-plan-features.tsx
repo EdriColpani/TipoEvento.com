@@ -2,6 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PlanFeatureKey, PlanFeaturesMap } from '@/constants/plan-features';
 import { PLAN_FEATURE_KEYS } from '@/constants/plan-features';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 
 function parsePlanFeaturesRpc(data: unknown): PlanFeaturesMap {
     if (!data || typeof data !== 'object') return {};
@@ -15,9 +17,20 @@ function parsePlanFeaturesRpc(data: unknown): PlanFeaturesMap {
 
 async function fetchCompanyPlanFeatures(companyId: string): Promise<PlanFeaturesMap> {
     try {
-        const { data, error } = await supabase.rpc('get_company_plan_features', {
+        const data = await callRpcRest<unknown>('get_company_plan_features', {
             p_company_id: companyId,
-        });
+        }, 8_000);
+        return parsePlanFeaturesRpc(data);
+    } catch (restError) {
+        console.warn('[useCompanyPlanFeatures] REST RPC falhou:', restError);
+    }
+
+    try {
+        const { data, error } = await withTimeout(
+            supabase.rpc('get_company_plan_features', { p_company_id: companyId }),
+            8_000,
+            { data: null, error: { message: 'timeout' } as { message: string } },
+        );
         if (error) {
             console.warn('get_company_plan_features:', error.message);
             return {};

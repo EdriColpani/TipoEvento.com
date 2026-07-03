@@ -1,10 +1,29 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { restGet } from '@/utils/supabase-rest';
+
+type UserCompanyLink = { company_id: string | null; is_primary: boolean | null };
+
+function pickPrimaryCompanyId(rows: UserCompanyLink[]): string | null {
+    const primary = rows.find((r) => r.is_primary === true && r.company_id);
+    if (primary?.company_id) return primary.company_id;
+    const first = rows.find((r) => r.company_id != null);
+    return first?.company_id ?? null;
+}
+
+/** Resolve company_id via REST (rápido; evita deadlock do supabase-js). */
+export async function fetchManagerPrimaryCompanyIdRest(userId: string): Promise<string | null> {
+    const rows = await restGet<UserCompanyLink[]>(
+        `user_companies?user_id=eq.${userId}&select=company_id,is_primary`,
+        8_000,
+    );
+    if (!rows?.length) return null;
+    return pickPrimaryCompanyId(rows);
+}
 
 /**
  * Resolve `company_id` do gestor a partir de `user_companies`.
  * - Prioriza vínculo com `is_primary === true`.
  * - Se nenhum estiver marcado como principal (legado / dados antigos), usa qualquer vínculo do usuário.
- * Evita depender só de `is_primary` e de `.single()` com join (que pode gerar 406 / PGRST116 indevidos).
  */
 export async function fetchManagerPrimaryCompanyId(
     client: SupabaseClient,

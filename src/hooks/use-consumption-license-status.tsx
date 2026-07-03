@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 import type { BillingPlanCode } from '@/constants/billing-plans';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export interface ConsumptionLicenseStatus {
     requires_license: boolean;
@@ -14,10 +16,31 @@ export interface ConsumptionLicenseStatus {
 }
 
 async function fetchConsumptionLicenseStatus(companyId: string): Promise<ConsumptionLicenseStatus> {
-    const { data, error } = await supabase.rpc('get_company_consumption_license_status', {
-        p_company_id: companyId,
-    });
-    if (error) throw new Error(error.message);
+    try {
+        const data = await callRpcRest<Record<string, unknown>>(
+            'get_company_consumption_license_status',
+            { p_company_id: companyId },
+            8_000,
+        );
+        return {
+            requires_license: data.requires_license === true,
+            is_paid: data.is_paid === true,
+            blocks_consumption: data.blocks_consumption === true,
+            charge_id: typeof data.charge_id === 'string' ? data.charge_id : undefined,
+            amount: typeof data.amount === 'number' ? data.amount : undefined,
+            status: typeof data.status === 'string' ? data.status : undefined,
+            reference_month: typeof data.reference_month === 'string' ? data.reference_month : undefined,
+        };
+    } catch (restError) {
+        console.warn('[useConsumptionLicenseStatus] REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('get_company_consumption_license_status', { p_company_id: companyId }),
+        8_000,
+        { data: null, error: { message: 'timeout' } as { message: string } },
+    );
+    if (error?.message && error.message !== 'timeout') throw new Error(error.message);
 
     const row = (data ?? {}) as Record<string, unknown>;
     return {

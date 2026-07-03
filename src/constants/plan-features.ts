@@ -80,6 +80,25 @@ export const MANAGER_NAV_ITEMS: ManagerNavItemConfig[] = [
     { path: '/manager/settings', label: 'Configurações', featureKey: 'settings' },
 ];
 
+/** Rotas bloqueadas para empresa parceira (consumo — sem eventos nem ingressos). */
+export const PARTNER_BLOCKED_NAV_PREFIXES = [
+    '/manager/events',
+    '/manager/wristbands',
+    '/manager/validation-keys',
+] as const;
+
+export function isPartnerCompanyBlockedPath(pathname: string): boolean {
+    return PARTNER_BLOCKED_NAV_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function filterNavItemsForPartnerCompany(
+    items: ManagerNavItemConfig[],
+): ManagerNavItemConfig[] {
+    return items.filter(
+        (item) => !PARTNER_BLOCKED_NAV_PREFIXES.some((prefix) => item.path.startsWith(prefix)),
+    );
+}
+
 /** Rotas protegidas (ordem: prefixos mais longos primeiro). */
 export const ROUTE_PLAN_FEATURE_RULES: Array<{ pathPrefix: string; featureKey: PlanFeatureKey }> = [
     { pathPrefix: '/manager/reports/financial', featureKey: 'reports_financial' },

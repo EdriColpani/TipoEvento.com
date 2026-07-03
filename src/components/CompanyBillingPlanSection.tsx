@@ -39,6 +39,8 @@ import { redirectToPlanPaymentCheckout } from '@/utils/plan-payment-checkout';
 import { companyAllowsTicketSales, isListingMonthlyPlan } from '@/utils/company-billing-rules';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { billingBtnGhost, billingBtnSolid } from '@/constants/billing-ui';
@@ -172,7 +174,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                 ? 'request_company_billing_plan_upgrade'
                 : 'confirm_company_billing_plan';
 
-            const { data, error } = await supabase.rpc(rpcName, {
+            const rpcArgs = {
                 p_company_id: companyId,
                 p_user_agent:
                     typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 2000) : null,
@@ -180,9 +182,21 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                 ...(isUpgrade
                     ? { p_new_plan: pendingPlan, p_contract_id: pendingContract.id }
                     : { p_plan: pendingPlan, p_contract_id: pendingContract.id }),
-            });
+            };
 
-            if (error) throw error;
+            let data: unknown = null;
+            try {
+                data = await callRpcRest(rpcName, rpcArgs, 20_000);
+            } catch (restError) {
+                console.warn('[CompanyBillingPlanSection] REST RPC falhou:', restError);
+                const { data: fallbackData, error } = await withTimeout(
+                    supabase.rpc(rpcName, rpcArgs),
+                    20_000,
+                    { data: null, error: { message: 'timeout' } as { message: string } },
+                );
+                if (error?.message && error.message !== 'timeout') throw error;
+                data = fallbackData;
+            }
             if (data && typeof data === 'object' && 'success' in data && !data.success) {
                 throw new Error('Não foi possível salvar o plano.');
             }
@@ -255,9 +269,11 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                       ? e.message
                       : '';
             const msg =
-                raw.includes('Downgrade de plano') && !isAdminMaster
-                    ? BILLING_DOWNGRADE_GESTOR_MESSAGE
-                    : raw || 'Erro ao salvar plano.';
+                raw.includes('Este plano ainda não está disponível')
+                    ? 'Este plano ainda não está disponível para gestores. Peça ao Admin Master para aplicar as migrations de plano consumo no Supabase, ou confirme o plano pelo painel admin.'
+                    : raw.includes('Downgrade de plano') && !isAdminMaster
+                      ? BILLING_DOWNGRADE_GESTOR_MESSAGE
+                      : raw || 'Erro ao salvar plano.';
             showError(msg);
         } finally {
             setIsSubmitting(false);

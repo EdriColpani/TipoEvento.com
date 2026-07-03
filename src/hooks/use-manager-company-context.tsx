@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import { fetchManagerPrimaryCompanyId, fetchManagerPrimaryCompanyIdRest } from '@/utils/manager-scope';
 import type { CompanyKind } from '@/constants/company-kind';
 import type { CompanyMemberRole } from '@/constants/company-roles';
+import { restGet } from '@/utils/supabase-rest';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export interface ManagerCompanyContext {
     companyId: string | null;
@@ -14,7 +16,16 @@ export interface ManagerCompanyContext {
 }
 
 async function fetchManagerCompanyContext(userId: string): Promise<ManagerCompanyContext> {
-    const companyId = await fetchManagerPrimaryCompanyId(supabase, userId);
+    let companyId: string | null = null;
+    try {
+        companyId = await fetchManagerPrimaryCompanyIdRest(userId);
+    } catch {
+        /* fallback */
+    }
+    if (!companyId) {
+        companyId = await withTimeout(fetchManagerPrimaryCompanyId(supabase, userId), 8_000, null);
+    }
+
     if (!companyId) {
         return {
             companyId: null,
@@ -26,18 +37,40 @@ async function fetchManagerCompanyContext(userId: string): Promise<ManagerCompan
         };
     }
 
-    const [{ data: companyRow }, { data: linkRow }] = await Promise.all([
-        supabase.from('companies').select('company_kind').eq('id', companyId).maybeSingle(),
-        supabase
-            .from('user_companies')
-            .select('role')
-            .eq('user_id', userId)
-            .eq('company_id', companyId)
-            .maybeSingle(),
-    ]);
+    let companyKind: CompanyKind = 'organizer';
+    let memberRole: CompanyMemberRole = 'owner';
 
-    const companyKind = (companyRow?.company_kind as CompanyKind | undefined) ?? 'organizer';
-    const memberRole = (linkRow?.role as CompanyMemberRole | undefined) ?? 'owner';
+    try {
+        const [companyRows, linkRows] = await Promise.all([
+            restGet<{ company_kind: CompanyKind }[]>(
+                `companies?id=eq.${companyId}&select=company_kind&limit=1`,
+                6_000,
+            ),
+            restGet<{ role: CompanyMemberRole }[]>(
+                `user_companies?user_id=eq.${userId}&company_id=eq.${companyId}&select=role&limit=1`,
+                6_000,
+            ),
+        ]);
+        companyKind = companyRows?.[0]?.company_kind ?? 'organizer';
+        memberRole = linkRows?.[0]?.role ?? 'owner';
+    } catch (restError) {
+        console.warn('[useManagerCompanyContext] REST falhou:', restError);
+        const [{ data: companyRow }, { data: linkRow }] = await withTimeout(
+            Promise.all([
+                supabase.from('companies').select('company_kind').eq('id', companyId).maybeSingle(),
+                supabase
+                    .from('user_companies')
+                    .select('role')
+                    .eq('user_id', userId)
+                    .eq('company_id', companyId)
+                    .maybeSingle(),
+            ]),
+            8_000,
+            [{ data: null }, { data: null }],
+        );
+        companyKind = (companyRow?.company_kind as CompanyKind | undefined) ?? 'organizer';
+        memberRole = (linkRow?.role as CompanyMemberRole | undefined) ?? 'owner';
+    }
 
     return {
         companyId,

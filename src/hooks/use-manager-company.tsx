@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import { fetchManagerPrimaryCompanyId, fetchManagerPrimaryCompanyIdRest } from '@/utils/manager-scope';
+import { restGet } from '@/utils/supabase-rest';
+import { withTimeout } from '@/utils/promise-timeout';
 
 interface CompanyData {
     id: string;
@@ -11,28 +13,39 @@ interface CompanyData {
 const fetchCompanyId = async (userId: string): Promise<CompanyData | null> => {
     if (!userId) return null;
 
-    const companyId = await fetchManagerPrimaryCompanyId(supabase, userId);
-    if (!companyId) {
-        return null;
+    let companyId: string | null = null;
+    try {
+        companyId = await fetchManagerPrimaryCompanyIdRest(userId);
+    } catch (restLinkError) {
+        console.warn('[useManagerCompany] REST user_companies falhou:', restLinkError);
     }
 
-    // Query direta em `companies` evita embed/join que em alguns ambientes retorna 406 ou objeto vazio por RLS.
-    const { data: companyRow, error: companyError } = await supabase
-        .from('companies')
-        .select('id, cnpj, corporate_name')
-        .eq('id', companyId)
-        .maybeSingle();
+    if (!companyId) {
+        companyId = await withTimeout(fetchManagerPrimaryCompanyId(supabase, userId), 8_000, null);
+    }
+    if (!companyId) return null;
 
-    if (companyError && companyError.code !== 'PGRST116') {
+    try {
+        const rows = await restGet<CompanyData[]>(
+            `companies?id=eq.${companyId}&select=id,cnpj,corporate_name&limit=1`,
+            8_000,
+        );
+        if (rows[0]) return rows[0];
+    } catch (restCompanyError) {
+        console.warn('[useManagerCompany] REST companies falhou:', restCompanyError);
+    }
+
+    const { data: companyRow, error: companyError } = await withTimeout(
+        supabase.from('companies').select('id, cnpj, corporate_name').eq('id', companyId).maybeSingle(),
+        8_000,
+        { data: null, error: { message: 'timeout' } as { message: string } },
+    );
+
+    if (companyError && companyError.message !== 'timeout' && companyError.code !== 'PGRST116') {
         console.warn('Error fetching companies row for manager:', companyError);
-        return null;
     }
 
     if (!companyRow) {
-        // Vínculo existe em user_companies mas a linha em companies não veio (RLS/embed). Ainda assim o UUID é válido para FK em events.
-        console.warn(
-            '[useManagerCompany] company_id resolvido sem leitura da linha em companies; usando id apenas.',
-        );
         return { id: companyId, cnpj: '', corporate_name: '' };
     }
 
@@ -51,6 +64,7 @@ export const useManagerCompany = (userId: string | undefined) => {
     return {
         ...query,
         company: query.data,
+        isLoading: query.isLoading,
     };
 };
 
