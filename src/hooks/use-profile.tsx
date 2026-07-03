@@ -100,7 +100,7 @@ export const useProfile = (userId: string | undefined) => {
         queryFn: () => fetchProfile(userId!),
         enabled: !!userId,
         staleTime: 1000 * 60 * 5,
-        retry: 1,
+        retry: 2,
     });
 
     return {

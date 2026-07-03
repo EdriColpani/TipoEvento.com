@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { Subscription } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import SiteLogo from '@/components/SiteLogo';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,6 +8,7 @@ import { showError, showSuccess } from '@/utils/toast';
 import { acceptCompanyMemberInvites } from '@/utils/company-members';
 import { MANAGER_BILLING_SETUP_PATH } from '@/constants/manager-billing-gate';
 import { resolvePostLoginRedirect } from '@/utils/post-login-redirect';
+import { withTimeout } from '@/utils/promise-timeout';
 import {
     INVITED_PARTNER_OWNER_KEY,
     PASSWORD_SETUP_REQUIRED_KEY,
@@ -22,13 +24,9 @@ function hashIndicatesPasswordSetup(): boolean {
     );
 }
 
-/**
- * Destino dos links de convite/recovery do gestor parceiro.
- * O Supabase redireciona com #access_token=...&type=invite|recovery|magiclink.
- */
 const ResetPassword = () => {
     const navigate = useNavigate();
-    const submittingRef = useRef(false);
+    const authSubRef = useRef<Subscription | null>(null);
     const [ready, setReady] = useState(false);
     const [validSession, setValidSession] = useState(false);
     const [isPartnerSetup, setIsPartnerSetup] = useState(() => hashIndicatesPasswordSetup());
@@ -42,7 +40,7 @@ const ResetPassword = () => {
         const syncSession = async () => {
             const {
                 data: { session },
-            } = await supabase.auth.getSession();
+            } = await withTimeout(supabase.auth.getSession(), 6_000, { data: { session: null } });
             if (cancelled) return;
             const user = session?.user;
             const partnerSetup =
@@ -54,16 +52,17 @@ const ResetPassword = () => {
 
         void syncSession();
 
-        // Não chamar RPC/getUser aqui — evita deadlock com updateUser no submit.
         const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!cancelled && !submittingRef.current) {
+            if (!cancelled) {
                 setValidSession(!!session);
             }
         });
+        authSubRef.current = sub.subscription;
 
         return () => {
             cancelled = true;
             sub.subscription.unsubscribe();
+            authSubRef.current = null;
         };
     }, []);
 
@@ -78,74 +77,74 @@ const ResetPassword = () => {
             return;
         }
 
-        submittingRef.current = true;
         setLoading(true);
+        authSubRef.current?.unsubscribe();
+        authSubRef.current = null;
 
         const wasPartnerSetup = isPartnerSetup || hashIndicatesPasswordSetup();
 
         try {
-            const { error } = await supabase.auth.updateUser({
-                password,
-                data: {
-                    [PASSWORD_SETUP_REQUIRED_KEY]: false,
-                    [INVITED_PARTNER_OWNER_KEY]: false,
-                },
-            });
-            if (error) {
+            const { data: updateData, error } = await withTimeout(
+                supabase.auth.updateUser({
+                    password,
+                    data: {
+                        [PASSWORD_SETUP_REQUIRED_KEY]: false,
+                        [INVITED_PARTNER_OWNER_KEY]: false,
+                    },
+                }),
+                12_000,
+                { data: { user: null }, error: { message: 'Tempo esgotado ao salvar a senha.' } },
+            );
+
+            if (error?.message) {
                 showError(error.message || 'Não foi possível atualizar a senha.');
+                return;
+            }
+
+            const user = updateData?.user;
+            if (!user?.id) {
+                showError('Senha salva, mas a sessão não foi confirmada. Tente entrar com a nova senha.');
+                navigate('/login', { replace: true });
                 return;
             }
 
             if (wasPartnerSetup) {
                 try {
-                    await acceptCompanyMemberInvites();
+                    await withTimeout(acceptCompanyMemberInvites(), 6_000, 0);
                 } catch (inviteError) {
                     console.warn('[ResetPassword] accept invites:', inviteError);
                 }
 
-                await supabase.auth.refreshSession();
+                let targetPath = MANAGER_BILLING_SETUP_PATH;
+                let message = 'Senha criada! Aceite o plano da empresa para continuar.';
 
-                const {
-                    data: { user },
-                } = await supabase.auth.getUser();
-
-                if (user?.id) {
-                    let targetPath = MANAGER_BILLING_SETUP_PATH;
-                    let message = 'Senha criada! Aceite o plano da empresa para continuar.';
-
-                    try {
-                        const resolved = await resolvePostLoginRedirect(user.id);
-                        targetPath = resolved.path;
-                        message = resolved.message || message;
-                    } catch (redirectError) {
-                        console.warn('[ResetPassword] post-login redirect:', redirectError);
-                    }
-
-                    try {
-                        window.history.replaceState(null, '', `${window.location.origin}${targetPath}`);
-                    } catch {
-                        /* ignore */
-                    }
-
-                    showSuccess(message);
-                    navigate(targetPath, { replace: true });
-                    return;
+                try {
+                    const resolved = await withTimeout(
+                        resolvePostLoginRedirect(user.id, undefined, user),
+                        8_000,
+                        {
+                            path: MANAGER_BILLING_SETUP_PATH,
+                            message,
+                        },
+                    );
+                    targetPath = resolved.path;
+                    message = resolved.message || message;
+                } catch (redirectError) {
+                    console.warn('[ResetPassword] post-login redirect:', redirectError);
                 }
+
+                showSuccess(message);
+                navigate(targetPath, { replace: true });
+                return;
             }
 
             showSuccess('Senha atualizada. Entre de novo com a nova senha.');
             await supabase.auth.signOut({ scope: 'local' });
-            try {
-                window.history.replaceState(null, '', `${window.location.origin}/login`);
-            } catch {
-                /* ignore */
-            }
             navigate('/login', { replace: true });
         } catch (err) {
             console.error('[ResetPassword] submit:', err);
             showError('Não foi possível salvar a senha. Tente novamente.');
         } finally {
-            submittingRef.current = false;
             setLoading(false);
         }
     };

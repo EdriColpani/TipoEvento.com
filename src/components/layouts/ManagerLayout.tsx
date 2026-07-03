@@ -13,7 +13,7 @@ import {
 } from '@/constants/plan-features';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from "@/components/ui/dropdown-menu";
-import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserType } from '@/hooks/use-user-type';
 import { useProfileStatus } from '@/hooks/use-profile-status';
@@ -60,8 +60,7 @@ const ManagerLayout: React.FC = () => {
     const queryClient = useQueryClient();
     const headerRef = useRef<HTMLElement>(null);
     const [headerHeight, setHeaderHeight] = useState(0);
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    const [loadingSession, setLoadingSession] = useState(true);
+    const { userId, sessionReady } = useAuthUserId();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const { isMobile, isTablet } = useDevice();
 
@@ -72,13 +71,6 @@ const ManagerLayout: React.FC = () => {
                location.pathname.startsWith('/manager/settings/backup-database') ||
                location.pathname.startsWith('/manager/settings/history');
     }, [location.pathname]);
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setUserId(session?.user?.id);
-            setLoadingSession(false);
-        });
-    }, []);
 
     useEffect(() => {
         if (!userId) return;
@@ -265,8 +257,8 @@ const ManagerLayout: React.FC = () => {
     ]);
 
     const isLayoutLoading =
-        loadingSession ||
-        isLoadingProfile ||
+        !sessionReady ||
+        (isLoadingProfile && !profile) ||
         (isManagerPro && isLoadingCompany) ||
         (needsBillingGateCheck && isLoadingBilling) ||
         (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
@@ -305,8 +297,6 @@ const ManagerLayout: React.FC = () => {
         } catch {
             showSuccess('Sessão encerrada.');
         } finally {
-            setUserId(undefined);
-            setLoadingSession(false);
             queryClient.clear();
             navigate('/informacoes', { replace: true });
         }
@@ -322,7 +312,7 @@ const ManagerLayout: React.FC = () => {
     }
 
     // Redirect unauthenticated users to login after loading is complete
-    if (!userId && !loadingSession) { // Ensure loadingSession is false before redirecting
+    if (!userId && sessionReady) {
         if (location.pathname.startsWith('/manager') || location.pathname.startsWith('/admin')) {
             navigate(LOGIN_PATH, {
                 replace: true,

@@ -39,9 +39,9 @@ const Login: React.FC = () => {
     const [rememberMe, setRememberMe] = useState(true);
     const { isPreview } = usePublicLaunchMode();
 
-    const completeAuthenticatedRedirect = async (userId: string) => {
+    const completeAuthenticatedRedirect = async (userId: string, authUser?: import('@supabase/supabase-js').User | null) => {
         try {
-            const { path, message } = await resolvePostLoginRedirect(userId, returnTo);
+            const { path, message } = await resolvePostLoginRedirect(userId, returnTo, authUser);
             showSuccess(message);
             navigate(path, { replace: true });
         } catch (error) {
@@ -71,11 +71,14 @@ const Login: React.FC = () => {
         }
 
         const redirectIfPasswordSetupRequired = async () => {
-            const { data } = await supabase.auth.getUser();
-            if (cancelled || !data.user) {
+            const {
+                data: { session },
+            } = await supabase.auth.getSession();
+            const user = session?.user;
+            if (cancelled || !user) {
                 return false;
             }
-            if (!(await userMustSetPartnerPassword(data.user))) {
+            if (!(await userMustSetPartnerPassword(user))) {
                 return false;
             }
             navigate(RESET_PASSWORD_PATH, { replace: true });
@@ -105,13 +108,13 @@ const Login: React.FC = () => {
             if (!isAuthCallbackUrl() || !isAuthEmailConfirmed(session.user)) {
                 if (!isAuthCallbackUrl() && isAuthEmailConfirmed(session.user)) {
                     if (!(await userMustSetPartnerPassword(session.user))) {
-                        await completeAuthenticatedRedirect(session.user.id);
+                        await completeAuthenticatedRedirect(session.user.id, session.user);
                     }
                 }
                 return;
             }
 
-            await completeAuthenticatedRedirect(session.user.id);
+            await completeAuthenticatedRedirect(session.user.id, session.user);
         };
 
         void handleAuthReturn();
@@ -132,7 +135,7 @@ const Login: React.FC = () => {
                     return;
                 }
                 if (isAuthCallbackUrl()) {
-                    await completeAuthenticatedRedirect(session.user.id);
+                    await completeAuthenticatedRedirect(session.user.id, session.user);
                 }
             })();
         });
@@ -169,7 +172,7 @@ const Login: React.FC = () => {
                     return;
                 }
 
-                await completeAuthenticatedRedirect(user.id);
+                await completeAuthenticatedRedirect(user.id, user);
             } else {
                 showError("Login falhou. Verifique seu e-mail e senha.");
             }

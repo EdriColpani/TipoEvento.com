@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
-import { isGuestAllowedPath } from '@/utils/public-launch-access';
+import { isGuestAllowedPath, ADMIN_MASTER_USER_TYPE_ID } from '@/utils/public-launch-access';
 import { isStaffUserType, resolveRoleHomePath } from '@/utils/role-home-path';
+import { withTimeout } from '@/utils/promise-timeout';
 
 const PUBLIC_HOME_PATHS = new Set(['/', '/informacoes']);
 
@@ -32,16 +33,29 @@ const ClientAuthGate: React.FC = () => {
             return;
         }
 
-        if (PUBLIC_HOME_PATHS.has(path) && isStaffUserType(tipoUsuarioId)) {
+        if (PUBLIC_HOME_PATHS.has(path) && isStaffUserType(Number(tipoUsuarioId))) {
+            let cancelled = false;
             setRedirecting(true);
-            void resolveRoleHomePath(userId, tipoUsuarioId).then((target) => {
-                if (target !== path) {
-                    navigate(target, { replace: true });
-                } else {
-                    setRedirecting(false);
-                }
-            });
-            return;
+
+            const fallback =
+                tipoUsuarioId === ADMIN_MASTER_USER_TYPE_ID
+                    ? '/admin/dashboard'
+                    : '/manager/dashboard';
+
+            void withTimeout(resolveRoleHomePath(userId, tipoUsuarioId), 6000, fallback).then(
+                (target) => {
+                    if (cancelled) return;
+                    if (target !== path) {
+                        navigate(target, { replace: true });
+                    } else {
+                        setRedirecting(false);
+                    }
+                },
+            );
+
+            return () => {
+                cancelled = true;
+            };
         }
 
         setRedirecting(false);
@@ -55,7 +69,13 @@ const ClientAuthGate: React.FC = () => {
         userId,
     ]);
 
-    if (!sessionReady || (isAuthenticated && roleLoading && PUBLIC_HOME_PATHS.has(location.pathname))) {
+    const waitingForRole =
+        isAuthenticated &&
+        tipoUsuarioId == null &&
+        roleLoading &&
+        PUBLIC_HOME_PATHS.has(location.pathname);
+
+    if (!sessionReady || waitingForRole) {
         return (
             <div className="flex min-h-[50vh] flex-col items-center justify-center bg-black px-4">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />

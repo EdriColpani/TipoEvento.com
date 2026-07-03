@@ -1,5 +1,5 @@
 import type { User } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpc } from '@/utils/supabase-rpc';
 
 export const PASSWORD_SETUP_REQUIRED_KEY = 'password_setup_required';
 export const INVITED_PARTNER_OWNER_KEY = 'invited_partner_owner';
@@ -27,10 +27,11 @@ export async function userMustSetPartnerPassword(user: User | null | undefined):
     if (userNeedsPasswordSetup(user)) return true;
     if (!user?.id) return false;
 
-    const { data, error } = await supabase.rpc('user_must_set_partner_password');
-    if (error) {
-        console.warn('[userMustSetPartnerPassword]', error.message);
+    try {
+        const data = await callRpc<boolean>('user_must_set_partner_password', {}, 4000);
+        return Boolean(data);
+    } catch (error) {
+        console.warn('[userMustSetPartnerPassword]', error);
         return false;
     }
-    return Boolean(data);
 }

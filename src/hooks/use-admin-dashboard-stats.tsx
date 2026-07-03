@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export type AdminDashboardMetrics = {
   total_profiles: number;
@@ -53,9 +54,13 @@ function coerceMetrics(raw: unknown): AdminDashboardMetrics | null {
 
 async function measureApiLatencyMs(): Promise<number> {
   const t0 = performance.now();
-  const { error } = await supabase.from('events').select('id').limit(1);
+  const { error } = await withTimeout(
+    supabase.from('events').select('id').limit(1),
+    5000,
+    { data: null, error: { message: 'timeout' } },
+  );
   const ms = Math.round(performance.now() - t0);
-  if (error) return Math.round(ms);
+  if (error) return Math.max(ms, 200);
   return ms;
 }
 
@@ -157,10 +162,11 @@ export function useAdminDashboardStats(enabled: boolean) {
     queryKey: ['admin_dashboard_stats'],
     enabled,
     staleTime: 60_000,
+    retry: 1,
     queryFn: async () => {
       const [metrics, recentActivity, apiLatencyMs] = await Promise.all([
-        fetchMetrics(),
-        fetchRecentActivity(),
+        withTimeout(fetchMetrics(), 12_000, EMPTY_ADMIN_METRICS),
+        withTimeout(fetchRecentActivity(), 12_000, [] as AdminActivityItem[]),
         measureApiLatencyMs(),
       ]);
       return { metrics, recentActivity, apiLatencyMs };
