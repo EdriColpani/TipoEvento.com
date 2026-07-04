@@ -40,7 +40,7 @@ function formatMoney(value: number): string {
 const ClientCreditWallet: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { balance, isLoading, ledger, refresh, status: accountStatus } = useClientCreditWallet();
+    const { balance, isBalanceLoading, isLedgerLoading, ledger, refresh, status: accountStatus } = useClientCreditWallet();
     const { data: walletStatus, isLoading: statusLoading } = useCreditWalletStatus();
     const { data: network, isLoading: networkLoading } = useCreditAcceptanceNetwork(true);
     const [customAmount, setCustomAmount] = useState('');
@@ -197,7 +197,7 @@ const ClientCreditWallet: React.FC = () => {
                 <CardHeader>
                     <CardDescription className="text-gray-400">Saldo disponível</CardDescription>
                     <CardTitle className="text-3xl text-yellow-400">
-                        {isLoading ? (
+                        {isBalanceLoading ? (
                             <Loader2 className="h-8 w-8 animate-spin" />
                         ) : (
                             formatMoney(balance)
@@ -405,7 +405,7 @@ const ClientCreditWallet: React.FC = () => {
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    {isLoading ? (
+                    {isLedgerLoading ? (
                         <div className="flex justify-center py-8">
                             <Loader2 className="h-8 w-8 animate-spin text-yellow-500" />
                         </div>
