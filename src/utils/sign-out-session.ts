@@ -1,8 +1,11 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseUrl } from '@/integrations/supabase/client';
+import { withTimeout } from '@/utils/promise-timeout';
 
-/** Remove tokens locais do Supabase (fallback se signOut não limpar tudo). */
-function clearSupabaseAuthStorage(): void {
+/** Remove tokens locais do Supabase (não usa getSession — evita deadlock). */
+export function clearAuthSessionStorage(): void {
     try {
+        const ref = new URL(supabaseUrl).hostname.split('.')[0];
+        localStorage.removeItem(`sb-${ref}-auth-token`);
         for (const key of Object.keys(localStorage)) {
             if (key.startsWith('sb-') && key.includes('auth-token')) {
                 localStorage.removeItem(key);
@@ -15,23 +18,13 @@ function clearSupabaseAuthStorage(): void {
 
 /** Encerra sessão local de forma confiável (gestor, cliente, admin). */
 export async function signOutSession(): Promise<void> {
-    try {
-        await supabase.auth.signOut({ scope: 'local' });
-    } catch {
-        /* continua limpando storage */
-    }
+    clearAuthSessionStorage();
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-        try {
-            await supabase.auth.signOut();
-        } catch {
-            clearSupabaseAuthStorage();
-        }
-    }
+    await withTimeout(
+        supabase.auth.signOut({ scope: 'local' }).catch(() => undefined),
+        4_000,
+        undefined,
+    );
 
-    const { data: { session: after } } = await supabase.auth.getSession();
-    if (after) {
-        clearSupabaseAuthStorage();
-    }
+    clearAuthSessionStorage();
 }

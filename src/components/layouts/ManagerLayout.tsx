@@ -304,13 +304,13 @@ const ManagerLayout: React.FC = () => {
     }, [isLayoutLoading, isMobile, isTablet]);
 
     const handleLogout = async () => {
+        queryClient.clear();
         try {
             await signOutSession();
             showSuccess('Sessão encerrada.');
         } catch {
             showSuccess('Sessão encerrada.');
         } finally {
-            queryClient.clear();
             navigate('/informacoes', { replace: true });
         }
     };
