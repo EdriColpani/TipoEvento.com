@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, ScanLine, ShoppingBag, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, QrCode, ScanLine, ShoppingBag, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,8 @@ import { useCreditEstablishments } from '@/hooks/use-credit-establishments';
 import { useCreditEstablishmentProducts } from '@/hooks/use-credit-establishment-products';
 import { isHybridPlan, isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 import { generateRandomUuid } from '@/utils/random-id';
+import { isWalletQrToken } from '@/constants/wallet-qr';
+import { useHtml5QrScanner } from '@/hooks/use-html5-qr-scanner';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 import { showError, showSuccess } from '@/utils/toast';
@@ -39,6 +41,8 @@ import {
     useManagerCreditConsumptionIntents,
     type CreditConsumptionIntentStatus,
 } from '@/hooks/use-credit-consumption-intents';
+
+const PDV_WALLET_QR_READER_ID = 'pdv-wallet-qr-reader';
 
 type CartLine = {
     id: string;
@@ -89,6 +93,8 @@ const ManagerCreditPdv: React.FC = () => {
     const { data: intentsData, isLoading: loadingIntents, invalidate: invalidateIntents } =
         useManagerCreditConsumptionIntents(company?.id, intentsStatusFilter);
 
+    const { isScanning, startScanning, stopScanning } = useHtml5QrScanner(PDV_WALLET_QR_READER_ID);
+
     const supportsCredit =
         isHybridPlan(billing?.billing_plan) || isConsumptionOrLicensePlan(billing?.billing_plan);
 
@@ -121,15 +127,25 @@ const ManagerCreditPdv: React.FC = () => {
         setSelectedCatalogProductId('none');
     }, [establishmentId]);
 
-    const resolveClient = async () => {
-        if (!establishmentId || !walletToken.trim()) {
-            showError('Selecione o PDV e cole o QR da carteira do cliente.');
+    const resolveClientWithToken = async (tokenRaw: string) => {
+        const token = tokenRaw.trim();
+        if (!establishmentId) {
+            showError('Selecione o ponto de venda antes de identificar o cliente.');
             return;
         }
+        if (!token) {
+            showError('Leia o QR da carteira do cliente.');
+            return;
+        }
+        if (!isWalletQrToken(token)) {
+            showError('QR inválido. Use o código da Carteira EventFest (EFW...).');
+            return;
+        }
+        setWalletToken(token);
         setResolving(true);
         try {
             const { data: payload, error } = await supabase.functions.invoke('resolve-wallet-qr', {
-                body: { walletToken: walletToken.trim(), establishmentId },
+                body: { walletToken: token, establishmentId },
             });
             if (error) throw new Error(await parseEdgeFunctionError(error, payload));
             if (payload?.error) throw new Error(payload.error);
@@ -145,6 +161,16 @@ const ManagerCreditPdv: React.FC = () => {
         } finally {
             setResolving(false);
         }
+    };
+
+    const resolveClient = () => resolveClientWithToken(walletToken);
+
+    const handleStartWalletScan = () => {
+        if (!establishmentId) {
+            showError('Selecione o ponto de venda antes de escanear.');
+            return;
+        }
+        void startScanning((text) => resolveClientWithToken(text));
     };
 
     const addLine = () => {
@@ -374,7 +400,7 @@ const ManagerCreditPdv: React.FC = () => {
                 PDV — Crédito EventFest
             </h1>
             <p className="text-gray-400 text-sm mb-6">
-                Escaneie o QR da carteira do cliente (app) e registre produtos consumidos.
+                Escaneie o QR da carteira do cliente com a câmera ou leitor USB — a identificação é automática.
             </p>
 
             <Card className="bg-black border-yellow-500/30 mb-4">
@@ -426,20 +452,77 @@ const ManagerCreditPdv: React.FC = () => {
                         Cliente
                     </CardTitle>
                     <CardDescription className="text-gray-400">
-                        Cole o código EFW lido do app do cliente (Carteira EventFest → Mostrar QR).
+                        Cliente: Carteira EventFest → Mostrar QR no PDV. Use a câmera, leitor USB ou digite o código.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    <Input
-                        value={walletToken}
-                        onChange={(e) => setWalletToken(e.target.value)}
-                        placeholder="EFW...."
-                        className="bg-black/60 border-yellow-500/30 text-white font-mono text-xs"
-                    />
-                    <Button onClick={resolveClient} disabled={resolving} className="bg-yellow-500 text-black hover:bg-yellow-600">
-                        {resolving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                        Identificar cliente
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        {!isScanning ? (
+                            <Button
+                                type="button"
+                                className="flex-1 min-h-12 bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                                onClick={handleStartWalletScan}
+                                disabled={resolving || !establishmentId}
+                            >
+                                {resolving ? (
+                                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                                ) : (
+                                    <QrCode className="h-5 w-5 mr-2" />
+                                )}
+                                Escanear QR da carteira
+                            </Button>
+                        ) : (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="flex-1 min-h-12 bg-black/60 border border-red-500/40 text-red-400 hover:bg-red-500/10"
+                                onClick={() => void stopScanning()}
+                            >
+                                <XCircle className="h-5 w-5 mr-2" />
+                                Parar câmera
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className={isScanning ? '' : 'sr-only'} aria-hidden={!isScanning}>
+                        <div
+                            id={PDV_WALLET_QR_READER_ID}
+                            className="relative min-h-[260px] w-full bg-black rounded-lg overflow-hidden border border-yellow-500/30"
+                        />
+                        {isScanning && (
+                            <p className="text-center text-gray-400 text-sm mt-2">
+                                Aponte para o QR no celular do cliente
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="border-t border-yellow-500/20 pt-3 space-y-2">
+                        <p className="text-gray-500 text-xs">Leitor USB ou código manual (Enter confirma)</p>
+                        <Input
+                            value={walletToken}
+                            onChange={(e) => setWalletToken(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    void resolveClient();
+                                }
+                            }}
+                            placeholder="EFW...."
+                            className="bg-black/60 border-yellow-500/30 text-white font-mono text-xs"
+                            disabled={resolving || isScanning}
+                            autoComplete="off"
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={resolveClient}
+                            disabled={resolving || isScanning || !walletToken.trim()}
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
+                        >
+                            {resolving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                            Identificar cliente
+                        </Button>
+                    </div>
                     {resolved && (
                         <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm">
                             <p className="text-green-300 font-medium">{resolved.clientLabel}</p>
