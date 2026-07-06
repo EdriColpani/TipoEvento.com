@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { useMyTickets, TicketData } from '@/hooks/use-my-tickets';
 import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { useMyPurchases } from '@/hooks/use-my-purchases';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { Loader2, Calendar, MapPin, QrCode, History } from 'lucide-react';
 import EventLocationLinks from '@/components/EventLocationLinks';
 import { showSuccess, showError } from '@/utils/toast'; // Importando showSuccess/showError
@@ -147,20 +147,18 @@ const MyTickets: React.FC = () => {
     const location = useLocation();
     const queryClient = useQueryClient(); // Inicializando useQueryClient
     const [searchParams, setSearchParams] = useSearchParams(); // Usando useSearchParams
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    const [loadingSession, setLoadingSession] = useState(true);
+    const { userId, sessionReady } = useAuthUserId();
+    const [sessionWaitExpired, setSessionWaitExpired] = useState(false);
     const [checkingPurchaseId, setCheckingPurchaseId] = useState<string | null>(null);
     const [purchaseStatusFilter, setPurchaseStatusFilter] = useState<'all' | 'pending' | 'paid' | 'failed'>('all');
     const [purchasePage, setPurchasePage] = useState(1);
     const reconciledPurchaseIdsRef = React.useRef<Set<string>>(new Set());
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-            setLoadingSession(false);
-        });
+        const timer = window.setTimeout(() => setSessionWaitExpired(true), 5000);
+        return () => window.clearTimeout(timer);
     }, []);
-    
+
     const { tickets, isLoading, isError } = useMyTickets(userId);
     const { purchases } = useMyPurchases(userId);
     
@@ -278,7 +276,9 @@ const MyTickets: React.FC = () => {
         return map;
     }, [purchases, tickets]);
 
-    if (loadingSession || isLoading) {
+    const waitingSession = !sessionReady && !sessionWaitExpired;
+
+    if (waitingSession || (userId && isLoading)) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center pt-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
@@ -287,7 +287,7 @@ const MyTickets: React.FC = () => {
         );
     }
     
-    if (!userId) {
+    if (!userId && (sessionReady || sessionWaitExpired)) {
         // Redirecionamento se a sessão expirar ou não estiver logado
         navigate('/login', { state: { from: `${location.pathname}${location.search}` } });
         return null;

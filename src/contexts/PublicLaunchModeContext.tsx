@@ -51,7 +51,14 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         };
 
         readyTimeout = window.setTimeout(() => {
-            if (!cancelled) setSessionReady(true);
+            if (!cancelled) {
+                const cached = readCachedAuthSession();
+                if (cached.userId) {
+                    setUserId(cached.userId);
+                    setUserEmail(cached.userEmail);
+                }
+                setSessionReady(true);
+            }
         }, 3000);
 
         void supabase.auth.getSession().then(({ data: { session } }) => {
