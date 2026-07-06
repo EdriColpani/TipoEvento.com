@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,6 +16,7 @@ import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
 const AuthStatusMenu: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const queryClient = useQueryClient();
     const isLandingPage = location.pathname === '/' || location.pathname === '/informacoes';
     const {
         userId,
@@ -39,6 +41,7 @@ const AuthStatusMenu: React.FC = () => {
     const { company } = useManagerCompany(isManagerPro ? userId : undefined);
 
     const handleLogout = async () => {
+        queryClient.clear();
         try {
             await signOutSession();
             showSuccess('Sessão encerrada.');
