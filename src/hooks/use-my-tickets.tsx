@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
 import { isPurchasePaidForEmission } from '@/utils/ticket-display-status';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { withTimeout } from '@/utils/promise-timeout';
 
 export interface TicketData {
     id: string;
@@ -88,9 +90,20 @@ function parseRpcPayload(data: unknown): TicketData[] {
 }
 
 async function fetchViaRpc(): Promise<TicketData[] | null> {
-    const { data, error } = await supabase.rpc('get_my_client_tickets');
-    if (error) {
-        console.warn('get_my_client_tickets:', error.message, error.code);
+    try {
+        const data = await callRpcRest<unknown>('get_my_client_tickets', {}, 15_000);
+        return parseRpcPayload(data);
+    } catch (restError) {
+        console.warn('[useMyTickets] RPC REST falhou:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.rpc('get_my_client_tickets'),
+        15_000,
+        { data: null, error: { message: 'Tempo esgotado ao carregar ingressos.' } as { message: string } },
+    );
+    if (error?.message) {
+        console.warn('get_my_client_tickets:', error.message);
         return null;
     }
     return parseRpcPayload(data);
@@ -200,27 +213,33 @@ async function fetchViaQueries(userId: string): Promise<TicketData[]> {
 const fetchMyTickets = async (userId: string): Promise<TicketData[]> => {
     if (!userId) return [];
 
-    const rpcTickets = await fetchViaRpc();
-    if (rpcTickets !== null && rpcTickets.length > 0) {
-        return rpcTickets;
-    }
+    return withTimeout(
+        (async () => {
+            const rpcTickets = await fetchViaRpc();
+            if (rpcTickets !== null && rpcTickets.length > 0) {
+                return rpcTickets;
+            }
 
-    try {
-        const fromQueries = await fetchViaQueries(userId);
-        if (fromQueries.length > 0) {
-            return fromQueries;
-        }
-        if (rpcTickets !== null) {
-            return rpcTickets;
-        }
-        return fromQueries;
-    } catch (queryErr) {
-        console.error('fetchViaQueries failed:', queryErr);
-        if (rpcTickets !== null) {
-            return rpcTickets;
-        }
-        throw queryErr;
-    }
+            try {
+                const fromQueries = await fetchViaQueries(userId);
+                if (fromQueries.length > 0) {
+                    return fromQueries;
+                }
+                if (rpcTickets !== null) {
+                    return rpcTickets;
+                }
+                return fromQueries;
+            } catch (queryErr) {
+                console.error('fetchViaQueries failed:', queryErr);
+                if (rpcTickets !== null) {
+                    return rpcTickets;
+                }
+                throw queryErr;
+            }
+        })(),
+        20_000,
+        [],
+    );
 };
 
 /** Emite ingressos de uma compra paga (fallback do webhook). */
