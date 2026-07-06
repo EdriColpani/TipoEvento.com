@@ -55,7 +55,7 @@ const fetchCompanyId = async (userId: string): Promise<CompanyData | null> => {
 export const useManagerCompany = (userId: string | undefined) => {
     const query = useQuery({
         queryKey: ['managerCompany', userId],
-        queryFn: () => fetchCompanyId(userId!),
+        queryFn: () => withTimeout(fetchCompanyId(userId!), 15_000, null),
         enabled: !!userId,
         staleTime: 1000 * 60 * 5,
         retry: 1,

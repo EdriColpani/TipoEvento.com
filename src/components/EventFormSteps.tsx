@@ -48,6 +48,8 @@ import EventGrandePorteGuide from '@/components/EventGrandePorteGuide';
 import EventLocationFormFields from '@/components/EventLocationFormFields';
 import { resolveEventGeoOnSave } from '@/utils/google-maps';
 import { cn } from '@/lib/utils';
+import { restGet } from '@/utils/supabase-rest';
+import { withTimeout } from '@/utils/promise-timeout';
 import {
     getOrCreateClientSubmitId,
     persistManagerCreateEventDraftId,
@@ -86,6 +88,131 @@ interface CommissionRange {
     max_tickets: number;
     percentage: number;
     active: boolean;
+}
+
+async function fetchActiveEventContract(): Promise<EventContract | null> {
+    const contractTypes = getContractTypesForBillingPlan(MANAGER_EVENT_CREATION_CONTRACT_TYPE);
+
+    for (const contractType of contractTypes) {
+        try {
+            const rows = await restGet<EventContract[]>(
+                `event_contracts?contract_type=eq.${encodeURIComponent(contractType)}&is_active=eq.true&select=*&limit=1`,
+                8_000,
+            );
+            if (rows[0]) return rows[0];
+        } catch (restError) {
+            console.warn('[EventFormSteps] REST contrato ativo:', restError);
+        }
+    }
+
+    for (const contractType of contractTypes) {
+        try {
+            const rows = await restGet<EventContract[]>(
+                `event_contracts?contract_type=eq.${encodeURIComponent(contractType)}&select=*&order=updated_at.desc,created_at.desc&limit=1`,
+                8_000,
+            );
+            if (rows[0]) {
+                if (!rows[0].is_active) {
+                    console.warn(
+                        '[EventFormSteps] Contrato de ingressos inativo; usando no fluxo. Ative em Admin → Contratos.',
+                        rows[0].id,
+                    );
+                }
+                return rows[0];
+            }
+        } catch (restError) {
+            console.warn('[EventFormSteps] REST contrato mais recente:', restError);
+        }
+    }
+
+    for (const contractType of contractTypes) {
+        const { data: active, error } = await withTimeout(
+            supabase
+                .from('event_contracts')
+                .select('*')
+                .eq('contract_type', contractType)
+                .eq('is_active', true)
+                .maybeSingle(),
+            6_000,
+            { data: null, error: { message: 'timeout', code: 'TIMEOUT' } },
+        );
+
+        if (error?.code === '42501' || error?.message?.includes('permission') || error?.message?.includes('policy')) {
+            console.error('Erro de permissão ao buscar contrato (RLS):', error);
+            showError('Você não tem permissão para ler os contratos. Entre em contato com o administrador.');
+            return null;
+        }
+        if (error && error.code !== 'PGRST116' && error.code !== 'PGRST117' && error.code !== 'TIMEOUT') {
+            console.error('Error fetching active contract:', error);
+            showError('Erro ao carregar o contrato ativo: ' + error.message);
+            return null;
+        }
+        if (active) return active as EventContract;
+    }
+
+    for (const contractType of contractTypes) {
+        const { data: latestData, error: latestError } = await withTimeout(
+            supabase
+                .from('event_contracts')
+                .select('*')
+                .eq('contract_type', contractType)
+                .order('updated_at', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+            6_000,
+            { data: null, error: { message: 'timeout', code: 'TIMEOUT' } },
+        );
+
+        if (latestError?.code === '42501' || latestError?.message?.includes('permission')) {
+            showError('Você não tem permissão para ler os contratos. Entre em contato com o administrador.');
+            return null;
+        }
+        if (latestError && latestError.code !== 'PGRST116' && latestError.code !== 'PGRST117' && latestError.code !== 'TIMEOUT') {
+            console.error('Error fetching latest contract:', latestError);
+            showError('Erro ao carregar o contrato: ' + latestError.message);
+            return null;
+        }
+        if (latestData) {
+            if (!latestData.is_active) {
+                console.warn(
+                    '[EventFormSteps] Contrato de ingressos inativo; usando no fluxo. Ative em Admin → Contratos.',
+                    latestData.id,
+                );
+            }
+            return latestData as EventContract;
+        }
+    }
+
+    return null;
+}
+
+async function fetchActiveCommissionRanges(): Promise<CommissionRange[]> {
+    try {
+        return await restGet<CommissionRange[]>(
+            'commission_ranges?active=eq.true&select=*&order=min_tickets.asc',
+            8_000,
+        );
+    } catch (restError) {
+        console.warn('[EventFormSteps] REST commission_ranges:', restError);
+    }
+
+    const { data, error } = await withTimeout(
+        supabase
+            .from('commission_ranges')
+            .select('*')
+            .eq('active', true)
+            .order('min_tickets', { ascending: true }),
+        6_000,
+        { data: [] as CommissionRange[], error: null },
+    );
+
+    if (error) {
+        console.error('Error fetching commission ranges:', error);
+        showError('Erro ao carregar as faixas de comissão.');
+        return [];
+    }
+    return (data ?? []) as CommissionRange[];
 }
 
 // Definição do esquema de validação do formulário
@@ -262,105 +389,34 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const supportsCreditConsumption =
         isHybridPlan(companyBilling?.billing_plan) || isConsumptionOrLicensePlan(companyBilling?.billing_plan);
 
-    const { data: activeContract, isLoading: isLoadingContract } = useQuery<EventContract | null>({ // Adicionado useQuery para buscar contrato
+    const { data: activeContract, isLoading: isLoadingContract } = useQuery<EventContract | null>({
         queryKey: ['activeEventContract', MANAGER_EVENT_CREATION_CONTRACT_TYPE],
-        queryFn: async () => {
-            try {
-                const contractTypes = getContractTypesForBillingPlan(MANAGER_EVENT_CREATION_CONTRACT_TYPE);
-                let data: EventContract | null = null;
-
-                for (const contractType of contractTypes) {
-                    const { data: active, error } = await supabase
-                        .from('event_contracts')
-                        .select('*')
-                        .eq('contract_type', contractType)
-                        .eq('is_active', true)
-                        .maybeSingle();
-
-                    if (error?.code === '42501' || error?.message?.includes('permission') || error?.message?.includes('policy')) {
-                        console.error('Erro de permissão ao buscar contrato (RLS):', error);
-                        showError('Você não tem permissão para ler os contratos. Entre em contato com o administrador.');
-                        return null;
-                    }
-                    if (error && error.code !== 'PGRST116' && error.code !== 'PGRST117') {
-                        console.error('Error fetching active contract:', error);
-                        showError('Erro ao carregar o contrato ativo: ' + error.message);
-                        return null;
-                    }
-                    if (active) {
-                        data = active as EventContract;
-                        break;
-                    }
-                }
-
-                if (!data) {
-                    for (const contractType of contractTypes) {
-                        const { data: latestData, error: latestError } = await supabase
-                            .from('event_contracts')
-                            .select('*')
-                            .eq('contract_type', contractType)
-                            .order('updated_at', { ascending: false })
-                            .order('created_at', { ascending: false })
-                            .limit(1)
-                            .maybeSingle();
-
-                        if (latestError?.code === '42501' || latestError?.message?.includes('permission')) {
-                            showError('Você não tem permissão para ler os contratos. Entre em contato com o administrador.');
-                            return null;
-                        }
-                        if (latestError && latestError.code !== 'PGRST116' && latestError.code !== 'PGRST117') {
-                            console.error('Error fetching latest contract:', latestError);
-                            showError('Erro ao carregar o contrato: ' + latestError.message);
-                            return null;
-                        }
-                        if (latestData) {
-                            data = latestData as EventContract;
-                            if (!data.is_active) {
-                                console.warn(
-                                    '[EventFormSteps] Contrato de ingressos inativo; usando no fluxo. Ative em Admin → Contratos.',
-                                    data.id,
-                                );
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                return data;
-            } catch (err: unknown) {
+        queryFn: () =>
+            withTimeout(fetchActiveEventContract(), 12_000, null).catch((err: unknown) => {
                 console.error('Erro inesperado ao buscar contrato:', err);
                 showError(
                     'Erro inesperado ao carregar contrato: ' + (err instanceof Error ? err.message : 'Erro desconhecido'),
                 );
                 return null;
-            }
-        },
-        enabled: !!userId, // Habilita a query apenas se userId existir
+            }),
+        enabled: !!userId,
         staleTime: 1000 * 60 * 5,
-        retry: 1, // Tenta uma vez em caso de erro
+        retry: 1,
     });
 
-    // Nova query para buscar as faixas de comissão ativas
     const { data: commissionRanges, isLoading: isLoadingCommissionRanges } = useQuery<CommissionRange[]>({
         queryKey: ['activeCommissionRanges'],
-        queryFn: async () => {
-            const { data, error } = await supabase
-                .from('commission_ranges')
-                .select('*')
-                .eq('active', true)
-                .order('min_tickets', { ascending: true });
-            
-            if (error) {
-                console.error("Error fetching commission ranges:", error);
-                showError("Erro ao carregar as faixas de comissão.");
-                return [];
-            }
-            return data as CommissionRange[];
-        },
-        enabled: !!userId, // Habilita a query apenas se userId existir
+        queryFn: () => withTimeout(fetchActiveCommissionRanges(), 12_000, []),
+        enabled: !!userId,
         staleTime: 1000 * 60 * 5,
-        retry: false,
+        retry: 1,
     });
+
+    const [essentialsBootTimedOut, setEssentialsBootTimedOut] = useState(false);
+    useEffect(() => {
+        const timer = window.setTimeout(() => setEssentialsBootTimedOut(true), 14_000);
+        return () => window.clearTimeout(timer);
+    }, []);
 
     const methods = useForm<EventFormData>({
         resolver: zodResolver(eventFormSchema),
@@ -694,7 +750,15 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
     // AGORA PODEMOS FAZER OS RETURNS CONDICIONAIS
     // Garante que o userId esteja disponível para ImageUploadPicker
-    if (isLoadingProfile || isLoadingCompany || isLoadingCompanyBilling || isLoadingContract || isLoadingCommissionRanges) {
+    const essentialsPending =
+        !essentialsBootTimedOut &&
+        (isLoadingProfile ||
+            isLoadingCompany ||
+            (!!company?.id && isLoadingCompanyBilling) ||
+            isLoadingContract ||
+            isLoadingCommissionRanges);
+
+    if (essentialsPending) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
