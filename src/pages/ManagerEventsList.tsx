@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Search, Loader2, FileEdit, QrCode, Building2, Gift } from 'lucide-react';
 import { useManagerEvents } from '@/hooks/use-manager-events';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import DeleteEventDialog from '@/components/DeleteEventDialog';
 import EventActiveToggle from '@/components/EventActiveToggle'; 
 import { useProfile } from '@/hooks/use-profile';
@@ -25,14 +25,8 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 const ManagerEventsList: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, authPending } = usePageAuth();
     const [searchTerm, setSearchTerm] = useState('');
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -64,7 +58,7 @@ const ManagerEventsList: React.FC = () => {
     );
 
     // Estado de carregamento inicial (antes de saber se o usuário está logado ou o perfil carregado)
-    if (userId === undefined || isLoadingProfile) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />

@@ -1,20 +1,9 @@
 import { supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { withTimeout } from '@/utils/promise-timeout';
 
-function readCachedAccessToken(): string | null {
-    try {
-        const ref = new URL(supabaseUrl).hostname.split('.')[0];
-        const raw = localStorage.getItem(`sb-${ref}-auth-token`);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as { access_token?: string };
-        return parsed.access_token ?? null;
-    } catch {
-        return null;
-    }
-}
-
 async function getAccessToken(): Promise<string | null> {
-    const cached = readCachedAccessToken();
+    const cached = getAuthAccessToken();
     if (cached) return cached;
     const { supabase } = await import('@/integrations/supabase/client');
     const { data } = await withTimeout(

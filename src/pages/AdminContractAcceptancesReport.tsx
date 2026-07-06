@@ -27,7 +27,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { ArrowLeft, FileText, Loader2, Search } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import {
     useAdminCompanyContractAcceptances,
@@ -53,14 +53,10 @@ function boolLabel(value: boolean | null | undefined): string {
 
 const AdminContractAcceptancesReport: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCompanyId, setSelectedCompanyId] = useState('');
     const [detailRow, setDetailRow] = useState<AdminContractAcceptanceRow | null>(null);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -89,7 +85,7 @@ const AdminContractAcceptancesReport: React.FC = () => {
         }
     }, [reportQuery.isError]);
 
-    if (isLoadingProfile) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-6xl mx-auto flex justify-center py-24">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />

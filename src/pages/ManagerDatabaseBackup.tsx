@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Database, ArrowLeft, Loader2, Download, AlertCircle } from 'lucide-react';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 
 const ManagerDatabaseBackup: React.FC = () => {
     const navigate = useNavigate();
@@ -26,8 +27,8 @@ const ManagerDatabaseBackup: React.FC = () => {
         const toastId = showLoading('Gerando backup do banco de dados...');
 
         try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session?.access_token) {
+            const token = getAuthAccessToken();
+            if (!token) {
                 dismissToast(toastId);
                 showError('Sessão inválida. Faça login novamente.');
                 return;
@@ -38,7 +39,7 @@ const ManagerDatabaseBackup: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session.access_token}`,
+                    'Authorization': `Bearer ${token}`,
                     'apikey': supabaseAnonKey,
                 },
             });

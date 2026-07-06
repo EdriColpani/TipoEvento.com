@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { withTimeout } from '@/utils/promise-timeout';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import {
     hasPendingPromoterRegistration,
@@ -33,9 +35,12 @@ export function usePromoterRegistrationResume() {
                 return;
             }
 
+            const cached = readCachedAuthSession();
+            if (!cached.userId) return;
+
             const {
                 data: { session },
-            } = await supabase.auth.getSession();
+            } = await withTimeout(supabase.auth.getSession(), 3_000, { data: { session: null } });
             if (cancelled || !session?.user || !isAuthEmailConfirmed(session.user)) {
                 return;
             }

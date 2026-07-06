@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 
 export interface ListingCheckoutResult {
     checkoutUrl: string;
@@ -10,8 +11,7 @@ export async function startListingMonthlyCheckout(
     companyId: string,
     chargeId?: string,
 ): Promise<ListingCheckoutResult> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) {
         throw new Error('Sessão expirada. Entre novamente no gestor.');
     }
@@ -40,16 +40,16 @@ export async function startListingMonthlyCheckout(
         throw new Error(detail);
     }
 
-    if (body?.error) {
-        throw new Error(body.error);
+    if (payload?.error) {
+        throw new Error(payload.error);
     }
-    if (!body?.checkoutUrl || !body?.chargeId) {
+    if (!payload?.checkoutUrl || !payload?.chargeId) {
         throw new Error('Resposta de pagamento inválida.');
     }
 
     return {
-        checkoutUrl: body.checkoutUrl,
-        chargeId: body.chargeId,
-        amount: Number(body.amount ?? 0),
+        checkoutUrl: payload.checkoutUrl,
+        chargeId: payload.chargeId,
+        amount: Number(payload.amount ?? 0),
     };
 }

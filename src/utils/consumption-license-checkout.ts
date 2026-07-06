@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 
 export interface ListingCheckoutResult {
     checkoutUrl: string;
@@ -10,8 +11,7 @@ export async function startConsumptionLicenseCheckout(
     companyId: string,
     chargeId?: string,
 ): Promise<ListingCheckoutResult> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) {
         throw new Error('Sessão expirada. Entre novamente no gestor.');
     }

@@ -21,7 +21,7 @@ import {
     ConsumptionLicenseChargeStatus,
 } from '@/hooks/use-consumption-license-charges';
 import { isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
 
@@ -46,12 +46,8 @@ function formatReferenceMonth(isoDate: string): string {
 const ManagerConsumptionLicenseBilling: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
     const [payingChargeId, setPayingChargeId] = useState<string | null>(null);
-
-    React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: loadingProfile } = useProfile(userId);
     const { company, isLoading: loadingCompany } = useManagerCompany(userId);
@@ -102,7 +98,7 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
         };
     }, [charges]);
 
-    if (loadingProfile || loadingCompany || !userId) {
+    if (authPending || (userId && (loadingProfile || loadingCompany))) {
         return (
             <div className="max-w-5xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

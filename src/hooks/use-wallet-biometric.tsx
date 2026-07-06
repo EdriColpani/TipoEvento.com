@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import {
     isWalletBiometricRegistered,
     isWalletBiometricSupported,
@@ -71,8 +71,7 @@ export function useWalletBiometric(threshold: number, userId?: string, userLabel
 }
 
 export async function getCurrentUserForBiometric(): Promise<{ id: string; label: string } | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const label = user.email ?? user.id;
-    return { id: user.id, label };
+    const { userId, userEmail } = readCachedAuthSession();
+    if (!userId) return null;
+    return { id: userId, label: userEmail ?? userId };
 }

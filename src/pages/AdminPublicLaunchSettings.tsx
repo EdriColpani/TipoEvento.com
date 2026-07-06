@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowLeft, Globe, Loader2, Rocket, Eye, Info, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showLoading, showSuccess, dismissToast } from '@/utils/toast';
 import { useInvalidatePublicLaunchMode } from '@/hooks/use-public-launch-mode';
@@ -16,8 +17,8 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 const AdminPublicLaunchSettings: React.FC = () => {
     const navigate = useNavigate();
     const invalidateLaunchMode = useInvalidatePublicLaunchMode();
-    const [userId, setUserId] = useState<string | null>(null);
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const [mode, setMode] = useState<PublicLaunchMode>('preview');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -26,18 +27,15 @@ const AdminPublicLaunchSettings: React.FC = () => {
     const isPreview = mode === 'preview';
 
     useEffect(() => {
+        if (authPending) return;
+        if (!userId && (sessionReady || bootExpired)) {
+            showError('Sessão expirada. Faça login novamente.');
+            navigate('/login');
+            return;
+        }
+
         const load = async () => {
             try {
-                const {
-                    data: { user },
-                } = await supabase.auth.getUser();
-                if (!user) {
-                    showError('Sessão expirada. Faça login novamente.');
-                    navigate('/login');
-                    return;
-                }
-                setUserId(user.id);
-
                 const { data, error } = await supabase
                     .from('system_billing_settings')
                     .select('public_launch_mode')
@@ -56,22 +54,18 @@ const AdminPublicLaunchSettings: React.FC = () => {
             }
         };
         void load();
-    }, [navigate]);
+    }, [authPending, userId, sessionReady, bootExpired, navigate]);
 
     const handleSave = async () => {
         setIsSaving(true);
         const toastId = showLoading('Salvando configuração do site público...');
         try {
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
-
             const { error } = await supabase.from('system_billing_settings').upsert(
                 {
                     id: 1,
                     public_launch_mode: mode,
                     updated_at: new Date().toISOString(),
-                    updated_by: user?.id ?? null,
+                    updated_by: userId ?? null,
                 },
                 { onConflict: 'id' },
             );
@@ -93,7 +87,7 @@ const AdminPublicLaunchSettings: React.FC = () => {
         }
     };
 
-    if ((isLoading && !userId) || (isLoadingProfile && !profile)) {
+    if (authPending || isLoading || (userId && isLoadingProfile && !profile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

@@ -174,11 +174,7 @@ const Index: React.FC = () => {
     const handlePromoterCtaClick = async () => {
         setIsPromoterCtaLoading(true);
         try {
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
-            const activeUserId = user?.id ?? userId;
-            await navigateFromPromoterCta(navigate, activeUserId, profile);
+            await navigateFromPromoterCta(navigate, userId, profile);
         } finally {
             setIsPromoterCtaLoading(false);
         }

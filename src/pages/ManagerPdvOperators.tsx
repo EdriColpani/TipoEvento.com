@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
 import { COMPANY_ROLE_LABELS } from '@/constants/company-roles';
 import { inviteCompanyMember, listCompanyMembers } from '@/utils/company-members';
@@ -14,7 +14,7 @@ import { showError, showSuccess } from '@/utils/toast';
 
 const ManagerPdvOperators: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId } = usePageAuth();
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -24,12 +24,6 @@ const ManagerPdvOperators: React.FC = () => {
     >([]);
 
     const { context } = useManagerCompanyContext(userId);
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setUserId(session?.user?.id);
-        });
-    }, []);
 
     const reload = async () => {
         if (!context?.companyId) return;

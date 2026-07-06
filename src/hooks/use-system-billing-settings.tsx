@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { DEFAULT_LISTING_MONTHLY_FEE, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
 import { restGet } from '@/utils/supabase-rest';
 import { withTimeout } from '@/utils/promise-timeout';
@@ -124,16 +125,14 @@ export function useSystemBillingSettings(enabled: boolean) {
 }
 
 async function upsertBillingSettings(patch: Record<string, unknown>): Promise<void> {
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { userId } = readCachedAuthSession();
 
     const { error } = await supabase.from('system_billing_settings').upsert(
         {
             id: 1,
             ...patch,
             updated_at: new Date().toISOString(),
-            updated_by: user?.id ?? null,
+            updated_by: userId ?? null,
         },
         { onConflict: 'id' },
     );

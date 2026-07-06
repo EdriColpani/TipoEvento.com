@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 
 /**
  * Hook para verificar se o usuário está logado. Se não estiver, 
@@ -15,17 +15,9 @@ export const useAuthRedirect = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     useEffect(() => {
-        const checkAuth = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            
-            if (session) {
-                setIsAuthenticated(true);
-            } else {
-                setIsAuthenticated(false);
-            }
-            setIsChecking(false);
-        };
-        checkAuth();
+        const cached = readCachedAuthSession();
+        setIsAuthenticated(Boolean(cached.accessToken && cached.userId));
+        setIsChecking(false);
     }, []);
 
     const redirectToLogin = () => {

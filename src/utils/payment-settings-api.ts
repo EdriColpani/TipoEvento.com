@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 
 export interface MaskedPaymentSettings {
@@ -33,8 +34,7 @@ export async function fetchManagerPaymentSettingsMasked(): Promise<MaskedPayment
 }
 
 export async function startMpOAuthConnect(): Promise<string> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
     const { data, error } = await supabase.functions.invoke('mp-oauth-start', {
@@ -49,8 +49,7 @@ export async function startMpOAuthConnect(): Promise<string> {
 }
 
 export async function disconnectMpOAuth(): Promise<void> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
     const { data, error } = await supabase.functions.invoke('mp-oauth-disconnect', {
@@ -68,8 +67,7 @@ export async function saveManagerPaymentSettings(params: {
     apiKey?: string;
     apiToken?: string;
 }): Promise<void> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
     const { data, error } = await supabase.functions.invoke('save-manager-payment-settings', {
@@ -110,8 +108,7 @@ export async function savePlatformMpSettings(params: {
     publicKey?: string;
     accessToken?: string;
 }): Promise<void> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
     const { data, error } = await supabase.functions.invoke('save-platform-mp-settings', {

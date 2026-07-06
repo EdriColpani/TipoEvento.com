@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 
 export interface CreditTopupCheckoutResult {
@@ -12,8 +13,7 @@ export async function startCreditTopupCheckout(
     amount: number,
     options?: { originCompanyId?: string; originEventId?: string },
 ): Promise<CreditTopupCheckoutResult> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) {
         throw new Error('Faça login para recarregar créditos.');
     }

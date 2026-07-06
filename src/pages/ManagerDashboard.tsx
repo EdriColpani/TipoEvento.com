@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState } from 'react';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { Plus, QrCode, BarChart3, Download, Settings, ChevronDown, DollarSign, Users, CalendarCheck, TrendingUp, Ticket, AreaChart } from 'lucide-react';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { useMonthlyRevenueData } from '@/hooks/use-monthly-revenue-data';
@@ -14,8 +15,6 @@ import { useProfile } from '@/hooks/use-profile';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
 import TicketInactivityBanner from '@/components/TicketInactivityBanner';
-import { supabase } from '@/integrations/supabase/client';
-
 const getOccupancyPerformance = (occupancyRate: number) => {
     if (occupancyRate >= 80) return { label: 'Excelente', subtitle: 'performance', color: 'text-purple-500' };
     if (occupancyRate >= 60) return { label: 'Boa', subtitle: 'performance', color: 'text-blue-400' };
@@ -25,10 +24,7 @@ const getOccupancyPerformance = (occupancyRate: number) => {
 
 const ManagerDashboard: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
+    const { userId } = usePageAuth();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const { company } = useManagerCompany(userId);
     const { data: inactivityStatus, isLoading: isLoadingInactivity } = useCompanyTicketInactivity(company?.id);

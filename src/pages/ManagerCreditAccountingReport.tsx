@@ -2,20 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { supabase } from '@/integrations/supabase/client';
 import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 
 const ManagerCreditAccountingReport: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId } = usePageAuth();
     const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
 
     const access = useCreditReportsAccess(userId);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     useEffect(() => {
         if (!access.shouldUseAdminAccountingPanel) return;

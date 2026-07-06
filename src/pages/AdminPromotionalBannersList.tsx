@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Loader2, Image, Edit, Trash2, ArrowLeft, CalendarDays, ListOrdered } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { useProfile } from '@/hooks/use-profile'; // Importando useProfile
+import { useProfile } from '@/hooks/use-profile';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PromotionalBanner {
     id: string;
@@ -120,13 +121,7 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const AdminPromotionalBannersList: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
+    const { userId, authPending } = usePageAuth();
     
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const { banners, isLoading, isError, invalidateBanners } = usePromotionalBanners();
@@ -135,7 +130,7 @@ const AdminPromotionalBannersList: React.FC = () => {
         navigate(`/admin/banners/edit/${bannerId}`);
     };
 
-    if (isLoadingProfile || userId === undefined) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />

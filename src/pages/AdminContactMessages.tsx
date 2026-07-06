@@ -10,6 +10,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showSuccess } from '@/utils/toast';
@@ -30,7 +31,7 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const AdminContactMessages: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId } = usePageAuth();
     const [statusFilter, setStatusFilter] = useState<'all' | 'new' | 'read' | 'resolved'>('all');
     const [items, setItems] = useState<ContactMessage[]>([]);
     const [loading, setLoading] = useState(true);
@@ -63,10 +64,6 @@ const AdminContactMessages: React.FC = () => {
     };
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
-
-    useEffect(() => {
         if (!loadingProfile && userId && profile?.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID) {
             showError('Acesso negado. Apenas Admin Master.');
             navigate('/manager/dashboard');
@@ -97,7 +94,7 @@ const AdminContactMessages: React.FC = () => {
         }
     };
 
-    if (loadingProfile || !userId) {
+    if (loadingProfile && userId) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-cyan-400 mx-auto mb-4" />

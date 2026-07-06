@@ -1,5 +1,7 @@
 import type { NavigateFunction } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { withTimeout } from '@/utils/promise-timeout';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { registerUserViaResend } from '@/utils/auth-email-via-resend';
@@ -161,9 +163,14 @@ function pendingConfirmation(email: string): EnsureAuthForCompanyResult {
 }
 
 async function resolveExistingUser(existingUserId: string, fallbackEmail: string): Promise<EnsureAuthForCompanyResult> {
+    const cached = readCachedAuthSession();
+    if (!cached.userId || cached.userId !== existingUserId) {
+        throw new Error('Sessão inválida. Faça login novamente.');
+    }
+
     const {
         data: { user },
-    } = await supabase.auth.getUser();
+    } = await withTimeout(supabase.auth.getUser(), 4_000, { data: { user: null } });
     if (!user?.id || user.id !== existingUserId) {
         throw new Error('Sessão inválida. Faça login novamente.');
     }

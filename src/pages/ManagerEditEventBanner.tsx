@@ -28,6 +28,7 @@ import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import {
     formatEventCarouselBannerError,
     getYesterdayIsoDate,
@@ -53,7 +54,8 @@ const ManagerEditEventBanner: React.FC = () => {
     const queryClient = useQueryClient();
     const [isSaving, setIsSaving] = useState(false);
     const [isFetching, setIsFetching] = useState(true);
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId, authPending } = usePageAuth();
+    const userId = authUserId ?? null;
     const [eventTitle, setEventTitle] = useState('');
 
     const form = useForm<EventBannerEditFormData>({
@@ -70,10 +72,6 @@ const ManagerEditEventBanner: React.FC = () => {
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id ?? null));
-    }, []);
 
     useEffect(() => {
         const load = async () => {
@@ -193,7 +191,7 @@ const ManagerEditEventBanner: React.FC = () => {
         }
     };
 
-    if (!userId || isFetching || isLoadingProfile) {
+    if (authPending || isFetching || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

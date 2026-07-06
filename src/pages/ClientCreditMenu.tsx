@@ -4,8 +4,8 @@ import { AlertTriangle, Loader2, Minus, Plus, Store, Wallet } from 'lucide-react
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCreditMenu } from '@/hooks/use-credit-menu';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { showError, showSuccess } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
 import { checkoutCreditConsumptionFromMenu } from '@/utils/credit-consumption-intent';
 
 function formatMoney(value: number): string {
@@ -16,6 +16,7 @@ const ClientCreditMenu: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const menuToken = searchParams.get('m');
+    const { userId } = useAuthUserId();
     const { data, isLoading, isError, error } = useCreditMenu(menuToken);
     const [quantities, setQuantities] = React.useState<Record<string, number>>({});
     const [paying, setPaying] = React.useState(false);
@@ -50,9 +51,7 @@ const ClientCreditMenu: React.FC = () => {
             showError('Selecione ao menos um item.');
             return;
         }
-        const { data: auth } = await supabase.auth.getUser();
-        const user = auth.user;
-        if (!user) {
+        if (!userId) {
             const redirect = encodeURIComponent(window.location.pathname + window.location.search);
             navigate(`/login?redirect=${redirect}`);
             return;
@@ -60,7 +59,7 @@ const ClientCreditMenu: React.FC = () => {
         setPaying(true);
         try {
             const result = await checkoutCreditConsumptionFromMenu({
-                userId: user.id,
+                userId,
                 menuToken,
                 items: cartItems.map((row) => ({
                     productId: row.product.id,

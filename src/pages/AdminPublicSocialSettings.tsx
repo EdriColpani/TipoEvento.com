@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowLeft, Loader2, Share2, Info, Instagram, Linkedin, Phone } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showLoading, showSuccess, dismissToast } from '@/utils/toast';
 import { useInvalidatePublicSiteContact } from '@/hooks/use-public-site-contact';
@@ -35,8 +36,8 @@ const DEFAULT_FORM: SocialFormState = {
 const AdminPublicSocialSettings: React.FC = () => {
     const navigate = useNavigate();
     const invalidateContact = useInvalidatePublicSiteContact();
-    const [userId, setUserId] = useState<string | null>(null);
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const [form, setForm] = useState<SocialFormState>(DEFAULT_FORM);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -44,18 +45,15 @@ const AdminPublicSocialSettings: React.FC = () => {
     const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
 
     useEffect(() => {
+        if (authPending) return;
+        if (!userId && (sessionReady || bootExpired)) {
+            showError('Sessão expirada. Faça login novamente.');
+            navigate('/login');
+            return;
+        }
+
         const load = async () => {
             try {
-                const {
-                    data: { user },
-                } = await supabase.auth.getUser();
-                if (!user) {
-                    showError('Sessão expirada. Faça login novamente.');
-                    navigate('/login');
-                    return;
-                }
-                setUserId(user.id);
-
                 const { data, error } = await supabase
                     .from('system_billing_settings')
                     .select(
@@ -83,7 +81,7 @@ const AdminPublicSocialSettings: React.FC = () => {
             }
         };
         void load();
-    }, [navigate]);
+    }, [authPending, userId, sessionReady, bootExpired, navigate]);
 
     const handleSave = async () => {
         const handle = normalizeInstagramHandle(form.instagram_handle);
@@ -95,10 +93,6 @@ const AdminPublicSocialSettings: React.FC = () => {
         setIsSaving(true);
         const toastId = showLoading('Salvando redes e contato público...');
         try {
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
-
             const phoneDigits = form.public_contact_phone.replace(/\D/g, '');
 
             const { error } = await supabase.from('system_billing_settings').upsert(
@@ -109,7 +103,7 @@ const AdminPublicSocialSettings: React.FC = () => {
                     public_contact_phone: phoneDigits.length >= 10 ? phoneDigits : null,
                     public_contact_label: form.public_contact_label.trim() || 'EventFest',
                     updated_at: new Date().toISOString(),
-                    updated_by: user?.id ?? null,
+                    updated_by: userId ?? null,
                 },
                 { onConflict: 'id' },
             );
@@ -127,7 +121,7 @@ const AdminPublicSocialSettings: React.FC = () => {
         }
     };
 
-    if ((isLoading && !userId) || (isLoadingProfile && !profile)) {
+    if (authPending || isLoading || (userId && isLoadingProfile && !profile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

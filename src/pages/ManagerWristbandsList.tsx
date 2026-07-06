@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Search, Loader2, AlertTriangle, Tag, Settings, Info } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerWristbands, WristbandData } from '@/hooks/use-manager-wristbands';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerCompany } from '@/hooks/use-manager-company';
@@ -19,14 +19,8 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const ManagerWristbandsList: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, authPending } = usePageAuth();
     const [searchTerm, setSearchTerm] = useState('');
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
     
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -84,7 +78,7 @@ const ManagerWristbandsList: React.FC = () => {
     };
 
     // Estado de carregamento inicial (antes de saber se o usuário está logado ou o perfil carregado)
-    if (userId === undefined || isLoadingProfile) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />

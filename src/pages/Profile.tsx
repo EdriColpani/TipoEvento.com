@@ -40,6 +40,9 @@ import {
     recordContractAcceptance,
 } from '@/utils/contract-acceptance-audit';
 
+import { usePageAuth } from '@/hooks/use-page-auth';
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
+
 import { useQuery } from '@tanstack/react-query'; // Importando useQuery
 
 import {
@@ -158,9 +161,8 @@ const Profile: React.FC = () => {
 
     const queryClient = useQueryClient();
 
-    const [session, setSession] = useState<any>(null);
-
-    const [loadingSession, setLoadingSession] = useState(true);
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
+    const { userEmail } = usePublicSiteAuth();
 
     const [formLoading, setFormLoading] = useState(false);
 
@@ -206,32 +208,11 @@ const Profile: React.FC = () => {
 
 
     useEffect(() => {
-
-        const checkSession = async () => {
-
-            const { data: { session } } = await supabase.auth.getSession();
-
-            if (!session) {
-
-                navigate('/login', { state: { from: `${location.pathname}${location.search}` } });
-
-                return;
-
-            }
-
-            setSession(session);
-
-            setLoadingSession(false);
-
-        };
-
-        checkSession();
-
-    }, [navigate]);
-
-
-
-    const userId = session?.user?.id;
+        if (authPending) return;
+        if (!userId && (sessionReady || bootExpired)) {
+            navigate('/login', { state: { from: `${location.pathname}${location.search}` } });
+        }
+    }, [authPending, userId, sessionReady, bootExpired, navigate, location]);
 
     const { profile, isLoading: isLoadingProfile, refetch } = useProfile(userId);
 
@@ -273,7 +254,7 @@ const Profile: React.FC = () => {
 
 
 
-    const loading = loadingSession || isLoadingProfile;
+    const loading = authPending || (Boolean(userId) && isLoadingProfile);
 
 
 
@@ -563,7 +544,7 @@ const Profile: React.FC = () => {
 
     const onSubmit = async (values: z.infer<typeof profileSchema>) => {
 
-        if (!session || !profile) return;
+        if (!userId || !profile) return;
 
         if (formLoading) return;
 
@@ -669,7 +650,7 @@ const Profile: React.FC = () => {
             const { error: profileError } = await supabase
                 .from('profiles')
                 .update(profileUpdate)
-                .eq('id', session.user.id);
+                .eq('id', userId);
 
             if (profileError) {
                 showError(`Erro ao atualizar o perfil: ${translateProfileSaveError(profileError)}`);
@@ -1013,13 +994,13 @@ const Profile: React.FC = () => {
 
                                 <CardContent>
 
-                                    {session?.user?.id && (
+                                    {userId && (
 
                                         <div className="mb-8">
 
                                             <AvatarUpload
 
-                                                userId={session.user.id}
+                                                userId={userId}
 
                                                 url={profile?.avatar_url || null}
 
@@ -1116,7 +1097,7 @@ const Profile: React.FC = () => {
 
                                                     <Input 
 
-                                                        value={session?.user?.email || ''} 
+                                                        value={userEmail || ''} 
 
                                                         disabled 
 

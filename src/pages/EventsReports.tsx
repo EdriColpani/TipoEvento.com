@@ -11,7 +11,7 @@ import { DateRange } from 'react-day-picker';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useEventsReport } from '@/hooks/use-events-report';
@@ -23,36 +23,13 @@ const MANAGER_PRO_USER_TYPE_ID = 2;
 
 const EventReports: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    const [sessionReady, setSessionReady] = useState(false);
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: undefined,
         to: undefined,
     });
-
-    useEffect(() => {
-        let cancelled = false;
-
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (cancelled) return;
-            setUserId(session?.user?.id);
-            setSessionReady(true);
-        });
-
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUserId(session?.user?.id);
-            setSessionReady(true);
-        });
-
-        return () => {
-            cancelled = true;
-            subscription.unsubscribe();
-        };
-    }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -94,7 +71,7 @@ const EventReports: React.FC = () => {
         if (isReportError) showError('Erro ao carregar relatório de eventos.');
     }, [isReportError]);
 
-    if (!sessionReady) {
+    if (authPending) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
@@ -103,7 +80,7 @@ const EventReports: React.FC = () => {
         );
     }
 
-    if (!userId) {
+    if (!userId && (sessionReady || bootExpired)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20 px-4">
                 <h1 className="text-2xl font-serif text-yellow-500 mb-4">Sessão expirada</h1>

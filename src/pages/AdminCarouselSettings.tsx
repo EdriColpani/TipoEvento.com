@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Loader2, SlidersHorizontal, Clock, Maximize, MapPin, ListOrdered, CalendarDays } from 'lucide-react';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -44,23 +45,22 @@ function sanitizeCarouselSettings(raw: CarouselSettingsState): CarouselSettingsS
 const AdminCarouselSettings: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [userId, setUserId] = useState<string | null>(null);
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const [settings, setSettings] = useState<CarouselSettingsState | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        const fetchUserAndSettings = async () => {
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                    showError("Sessão expirada. Faça login novamente.");
-                    navigate('/login');
-                    return;
-                }
-                setUserId(user.id);
+        if (authPending) return;
+        if (!userId && (sessionReady || bootExpired)) {
+            showError("Sessão expirada. Faça login novamente.");
+            navigate('/login');
+            return;
+        }
 
+        const fetchSettings = async () => {
+            try {
                 const { data, error } = await supabase
                     .from('carousel_settings')
                     .select('*')
@@ -107,8 +107,8 @@ const AdminCarouselSettings: React.FC = () => {
                 setIsLoading(false);
             }
         };
-        void fetchUserAndSettings();
-    }, [navigate]);
+        void fetchSettings();
+    }, [authPending, userId, sessionReady, bootExpired, navigate]);
 
     const handleInputChange = (key: keyof CarouselSettingsState, value: string | number) => {
         if (typeof value === 'string' && value === '') {
@@ -204,7 +204,7 @@ const AdminCarouselSettings: React.FC = () => {
         }
     };
 
-    if ((isLoading && !settings) || (isLoadingProfile && !profile) || !userId) {
+    if (authPending || isLoading || (userId && isLoadingProfile && !profile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

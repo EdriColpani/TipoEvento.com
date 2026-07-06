@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2, Tags } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { showError } from '@/utils/toast';
 import { billingBtnBack, billingSpinner } from '@/constants/billing-ui';
@@ -23,16 +23,12 @@ const TAB_VALUES: PricingTab[] = ['tickets', 'listing', 'hybrid', 'consumption']
 const AdminPricingAndCommissions: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
 
     const tabParam = searchParams.get('tab') as PricingTab | null;
     const activeTab: PricingTab = TAB_VALUES.includes(tabParam as PricingTab)
         ? (tabParam as PricingTab)
         : 'tickets';
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: loadingProfile } = useProfile(userId);
     const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
@@ -48,7 +44,7 @@ const AdminPricingAndCommissions: React.FC = () => {
         setSearchParams({ tab: value }, { replace: true });
     };
 
-    if ((loadingProfile && !profile) || !userId) {
+    if (authPending || (userId && loadingProfile && !profile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className={`h-10 w-10 animate-spin ${billingSpinner} mx-auto mb-4`} />

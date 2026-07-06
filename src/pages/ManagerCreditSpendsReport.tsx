@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Banknote, Loader2, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCreditSpends } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 
@@ -21,14 +21,10 @@ function money(v: number | null | undefined): string {
 
 const ManagerCreditSpendsReport: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId } = usePageAuth();
 
     const access = useCreditReportsAccess(userId);
     const { data: items, isLoading, isError } = useManagerCreditSpends(access.company?.id);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     useEffect(() => {
         if (!access.isLoading && access.isAdminMaster) {

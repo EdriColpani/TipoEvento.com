@@ -20,6 +20,7 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import ContractHtmlBody from '@/components/ContractHtmlBody';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 
 interface EventContract {
@@ -557,7 +558,7 @@ const ViewContentDialog: React.FC<{ contract: EventContract, onClose: () => void
 
 const AdminEventContracts: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, authPending } = usePageAuth();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
     const { contracts, isLoading, isError, invalidateContracts } = useEventContracts(isAdminMaster);
@@ -565,12 +566,6 @@ const AdminEventContracts: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingContract, setEditingContract] = useState<EventContract | undefined>(undefined);
     const [viewingContract, setViewingContract] = useState<EventContract | undefined>(undefined);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
 
     const handleOpenCreate = () => {
         setEditingContract(undefined);
@@ -595,7 +590,7 @@ const AdminEventContracts: React.FC = () => {
         setViewingContract(undefined);
     };
 
-    if (isLoadingProfile || userId === undefined) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />

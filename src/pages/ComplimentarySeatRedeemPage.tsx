@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, LogIn, Ticket, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { showError, showSuccess } from '@/utils/toast';
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { saveComplimentaryReturnPath } from '@/utils/complimentary-auth-return';
@@ -46,7 +47,8 @@ const ComplimentarySeatRedeemPage: React.FC = () => {
     const [redeeming, setRedeeming] = useState(false);
     const [seat, setSeat] = useState<SeatPublic | null>(null);
     const [redeemed, setRedeemed] = useState<RedeemResult | null>(null);
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId } = useAuthUserId();
+    const userId = authUserId ?? null;
 
     const returnPath = useMemo(
         () => (token ? `/cortesia/resgatar?token=${encodeURIComponent(token)}` : '/'),
@@ -75,16 +77,6 @@ const ComplimentarySeatRedeemPage: React.FC = () => {
             saveComplimentaryReturnPath(`/cortesia/resgatar?token=${encodeURIComponent(token)}`);
         }
     }, [token]);
-
-    useEffect(() => {
-        void supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id ?? null);
-        });
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUserId(session?.user?.id ?? null);
-        });
-        return () => authListener.subscription.unsubscribe();
-    }, []);
 
     useEffect(() => {
         void loadSeat();

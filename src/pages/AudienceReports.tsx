@@ -12,7 +12,7 @@ import { DateRange } from 'react-day-picker';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useAudienceReport } from '@/hooks/use-audience-report';
@@ -23,7 +23,7 @@ const MANAGER_PRO_USER_TYPE_ID = 2;
 
 const AudienceReports: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [selectedGender, setSelectedGender] = useState<string | null>(null);
     const [minAge, setMinAge] = useState<string>('');
@@ -32,10 +32,6 @@ const AudienceReports: React.FC = () => {
         from: undefined,
         to: undefined,
     });
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -88,7 +84,28 @@ const AudienceReports: React.FC = () => {
         if (isAudienceError) showError('Erro ao carregar relatório de público.');
     }, [isAudienceError]);
 
-    if (!userId || isLoadingProfile) {
+    if (authPending) {
+        return (
+            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
+                <p>Carregando sessão...</p>
+            </div>
+        );
+    }
+
+    if (!userId && (sessionReady || bootExpired)) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20 px-4">
+                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Sessão expirada</h1>
+                <p className="text-gray-400 mb-6">Faça login novamente para ver o relatório.</p>
+                <Button onClick={() => navigate('/login')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Ir para login
+                </Button>
+            </div>
+        );
+    }
+
+    if (isLoadingProfile) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
