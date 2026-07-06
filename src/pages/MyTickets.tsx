@@ -19,6 +19,7 @@ import {
     isPurchasePaidForEmission,
     isTicketActiveForDisplay,
     isTicketEmittedForPurchase,
+    isEventDateStillValidForEntryQr,
 } from '@/utils/ticket-display-status';
 
 interface TicketCardProps {
@@ -64,6 +65,8 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
     const awaitingEmission =
         ticket.status === 'pending' &&
         (ticket.event_type === 'checkout_pending' || !ticket.event_data?.transaction_id);
+    const canShowQrButton =
+        isEventDateStillValidForEntryQr(eventDetails?.date) && (isActive || awaitingEmission);
 
     return (
         <Card className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-4 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0 hover:border-yellow-500/60 transition-all duration-300">
@@ -110,18 +113,18 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                     <span className="text-xs sm:text-sm text-gray-400">Valor Unitário</span>
                     <div className="text-xl sm:text-2xl font-bold text-yellow-500">R$ {totalValue.toFixed(2).replace('.', ',')}</div>
                 </div>
-                <Button 
-                    className="bg-yellow-500 text-black hover:bg-yellow-600 transition-all duration-300 cursor-pointer px-4 sm:px-6 text-sm sm:text-base"
-                    onClick={() => setQrOpen(true)}
-                    disabled={!isActive || awaitingEmission}
-                >
-                    <QrCode className="mr-2 h-4 w-4" />
-                    {awaitingEmission
-                        ? 'Aguardando emissão'
-                        : isActive
-                          ? 'Ver QR Code'
-                          : 'Ingresso Inativo'}
-                </Button>
+                {canShowQrButton ? (
+                    <Button
+                        className="bg-yellow-500 text-black hover:bg-yellow-600 transition-all duration-300 cursor-pointer px-4 sm:px-6 text-sm sm:text-base"
+                        onClick={() => setQrOpen(true)}
+                        disabled={awaitingEmission}
+                    >
+                        <QrCode className="mr-2 h-4 w-4" />
+                        {awaitingEmission ? 'Aguardando emissão' : 'Ver QR Code'}
+                    </Button>
+                ) : !isEventDateStillValidForEntryQr(eventDetails?.date) && isActive ? (
+                    <p className="text-xs text-gray-500 mt-2 md:mt-0">Evento encerrado</p>
+                ) : null}
             </div>
             <QrCodeModal
                 isOpen={qrOpen}

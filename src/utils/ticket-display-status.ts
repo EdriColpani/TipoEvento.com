@@ -1,4 +1,13 @@
 import type { TicketData } from '@/hooks/use-my-tickets';
+import { isBefore, startOfDay } from 'date-fns';
+import { parseEventLocalDay } from '@/utils/format-event-date';
+
+/** QR de entrada só no dia do evento ou antes (após a data do evento o código não vale mais). */
+export function isEventDateStillValidForEntryQr(dateStr: string | null | undefined): boolean {
+    const eventDay = parseEventLocalDay(dateStr);
+    if (!eventDay) return true;
+    return !isBefore(startOfDay(eventDay), startOfDay(new Date()));
+}
 
 /** Ingresso exibido em "Ativos" (inclui reserva pós-checkout aguardando emissão). */
 export function isTicketActiveForDisplay(ticket: TicketData): boolean {

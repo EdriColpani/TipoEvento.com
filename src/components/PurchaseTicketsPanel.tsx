@@ -5,6 +5,7 @@ import type { TicketData } from '@/hooks/use-my-tickets';
 import type { PurchaseData } from '@/hooks/use-my-purchases';
 import EventInfoDialog from '@/components/EventInfoDialog';
 import QrCodeModal from '@/components/QrCodeModal';
+import { isEventDateStillValidForEntryQr } from '@/utils/ticket-display-status';
 
 interface PurchaseTicketsPanelProps {
     purchase: PurchaseData;
@@ -60,8 +61,11 @@ const PurchaseTicketsPanel: React.FC<PurchaseTicketsPanelProps> = ({
                 {hasTickets ? (
                     <ul className="space-y-2">
                         {tickets.map((ticket) => {
+                            const eventDate =
+                                event?.date || ticket.wristbands?.events?.date || null;
                             const canShowQr =
-                                ticket.status === 'active' || ticket.status === 'pending';
+                                (ticket.status === 'active' || ticket.status === 'pending') &&
+                                isEventDateStillValidForEntryQr(eventDate);
                             const typeLabel =
                                 ticket.wristbands?.access_type || 'Ingresso';
                             const codeLabel =
@@ -76,16 +80,19 @@ const PurchaseTicketsPanel: React.FC<PurchaseTicketsPanelProps> = ({
                                         <p className="text-white text-sm font-medium">{typeLabel}</p>
                                         <p className="text-xs text-gray-500">Código: {codeLabel}</p>
                                     </div>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        disabled={!canShowQr}
-                                        onClick={() => setQrTicket(ticket)}
-                                        className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
-                                    >
-                                        <QrCode className="h-4 w-4 mr-1" />
-                                        QR de entrada
-                                    </Button>
+                                    {canShowQr ? (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={() => setQrTicket(ticket)}
+                                            className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                        >
+                                            <QrCode className="h-4 w-4 mr-1" />
+                                            QR de entrada
+                                        </Button>
+                                    ) : (
+                                        <p className="text-xs text-gray-500">Evento encerrado</p>
+                                    )}
                                 </li>
                             );
                         })}
