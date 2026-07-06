@@ -10,6 +10,7 @@ import EventBatchInventoryConsultPanel from '@/components/EventBatchInventoryCon
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { highlightsToText } from '@/utils/event-highlights';
 import { useProfile } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -47,27 +48,19 @@ const ManagerEditEvent: React.FC = () => {
     const [initialEventData, setInitialEventData] = useState<EventFormData | null>(null);
     const [inventoryMode, setInventoryMode] = useState<string>('unit_rows');
     const [isFetching, setIsFetching] = useState(true);
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId, authPending, sessionReady } = usePageAuth();
+    const userId = authUserId ?? null;
 
     const { profile, isLoading: isLoadingProfile, isFetched: isProfileFetched } = useProfile(
         userId ?? undefined,
     );
 
     useEffect(() => {
-        const initUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user) {
-                showError('Sessão expirada ou não autenticada.');
-                navigate('/login');
-                setIsFetching(false);
-                return;
-            }
-            setUserId(user.id);
-        };
-
-        initUser();
-    }, [navigate]);
+        if (!sessionReady || userId) return;
+        showError('Sessão expirada ou não autenticada.');
+        navigate('/login');
+        setIsFetching(false);
+    }, [sessionReady, userId, navigate]);
 
     useEffect(() => {
         if (!userId || !id) {
@@ -140,7 +133,7 @@ const ManagerEditEvent: React.FC = () => {
         navigate('/manager/events');
     };
 
-    if (isFetching || !initialEventData || !userId) {
+    if (authPending || isFetching || (userId && !initialEventData)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

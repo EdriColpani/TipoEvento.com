@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, DollarSign, TrendingUp, Users, Loader2, AlertCircle, Download, Eye } from 'lucide-react';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useFinancialReports, FinancialReportData } from '@/hooks/use-financial-reports';
 import { useManagerTransactions } from '@/hooks/use-manager-transactions';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useProfile } from '@/hooks/use-profile';
-import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
 import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
@@ -20,19 +20,13 @@ const MANAGER_PRO_USER_TYPE_ID = 2;
 
 const FinancialReports: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
     const [selectedEventId, setSelectedEventId] = useState<string>('all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
     const [transactionStatusFilter, setTransactionStatusFilter] = useState<'all' | 'pending' | 'paid' | 'failed'>('all');
     const [transactionPage, setTransactionPage] = useState(1);
     const [checkingTransactionId, setCheckingTransactionId] = useState<string | null>(null);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -189,7 +183,28 @@ const FinancialReports: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    if (isLoadingProfile || userId === undefined) {
+    if (authPending) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Carregando...</p>
+            </div>
+        );
+    }
+
+    if (!userId && (sessionReady || bootExpired)) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20 px-4">
+                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Sessão expirada</h1>
+                <p className="text-gray-400 mb-6">Faça login novamente para ver o relatório.</p>
+                <Button onClick={() => navigate('/login')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Ir para login
+                </Button>
+            </div>
+        );
+    }
+
+    if (isLoadingProfile) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />

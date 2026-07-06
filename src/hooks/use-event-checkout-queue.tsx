@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getAuthAccessToken, readCachedAuthSession } from '@/utils/auth-session-cache';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 
 export type CheckoutQueueStatus = 'idle' | 'joining' | 'waiting' | 'admitted' | 'error';
@@ -29,8 +30,7 @@ async function invokeCheckoutQueueFunction(
     action: 'join' | 'poll',
     sessionToken?: string,
 ): Promise<Record<string, unknown>> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Faça login para entrar na fila.');
 
     const response = await supabase.functions.invoke('event-checkout-queue', {
@@ -117,15 +117,15 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
         setState((prev) => ({ ...prev, status: 'joining', error: null }));
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Faça login para entrar na fila.');
+            const { userId } = readCachedAuthSession();
+            if (!userId) throw new Error('Faça login para entrar na fila.');
 
             let payload: Record<string, unknown> | null = null;
             let lastError: Error | null = null;
 
             const { data, error } = await supabase.rpc('join_event_checkout_queue', {
                 p_event_id: eventId,
-                p_client_user_id: user.id,
+                p_client_user_id: userId,
             });
 
             if (error) {

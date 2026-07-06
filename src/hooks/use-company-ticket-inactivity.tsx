@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 
 async function readFunctionErrorMessage(
     error: unknown,
@@ -80,8 +81,7 @@ export async function adminRunTicketInactivityMonthlyJob(referenceMonth?: string
     emails_sent?: number;
     emails_failed?: number;
 }> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
     const check = await adminRunTicketInactivityCheck(referenceMonth);
@@ -134,8 +134,7 @@ export async function adminRunTicketInactivityAutoDeactivateJob(): Promise<{
     emails_sent?: number;
     emails_failed?: number;
 }> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
     const { data, error } = await supabase.functions.invoke('run-ticket-inactivity-auto-deactivate-job', {

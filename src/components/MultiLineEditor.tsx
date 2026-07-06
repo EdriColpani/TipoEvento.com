@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Edit, Save, CheckSquare, XSquare } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { useProfile } from '@/hooks/use-profile';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import ContractHtmlBody from '@/components/ContractHtmlBody';
@@ -63,7 +64,7 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
         }
     });
 
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId } = useAuthUserId();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     
     const [isEditing, setIsEditing] = useState(false);
@@ -75,12 +76,6 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
         ? `ext-${externalTitle ?? 'contract'}`
         : `terms-${termsType}-${termsData?.id ?? 'none'}`;
     const { scrollRef: contentRef, hasScrolledToEnd, onScroll } = useContractScrollEnd(scrollContentKey);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
 
     useEffect(() => {
         if (termsData?.content) {

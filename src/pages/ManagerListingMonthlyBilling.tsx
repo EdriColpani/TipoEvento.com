@@ -18,7 +18,7 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useListingMonthlyCharges, ListingChargeStatus } from '@/hooks/use-listing-monthly-charges';
 import { isListingMonthlyPlan } from '@/utils/company-billing-rules';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { useListingSubscription } from '@/hooks/use-listing-subscription';
@@ -45,12 +45,8 @@ function formatReferenceMonth(isoDate: string): string {
 const ManagerListingMonthlyBilling: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
     const [payingChargeId, setPayingChargeId] = useState<string | null>(null);
-
-    React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: loadingProfile } = useProfile(userId);
     const { company, isLoading: loadingCompany } = useManagerCompany(userId);
@@ -110,7 +106,7 @@ const ManagerListingMonthlyBilling: React.FC = () => {
         };
     }, [charges]);
 
-    if (loadingProfile || loadingCompany || !userId) {
+    if (authPending || (userId && (loadingProfile || loadingCompany))) {
         return (
             <div className="max-w-5xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

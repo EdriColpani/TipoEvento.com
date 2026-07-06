@@ -6,6 +6,11 @@ export type CachedAuthSession = {
     accessToken?: string;
 };
 
+/** Token JWT do usuário logado (localStorage — não chama getSession). */
+export function getAuthAccessToken(): string | null {
+    return readCachedAuthSession().accessToken ?? null;
+}
+
 /** Lê sessão do localStorage (instantâneo — evita tela preta enquanto getSession trava). */
 export function readCachedAuthSession(): CachedAuthSession {
     try {

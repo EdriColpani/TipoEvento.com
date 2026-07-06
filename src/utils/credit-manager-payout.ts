@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 
 export interface RetryCreditDisbursementResult {
@@ -11,8 +12,7 @@ export async function retryFailedCreditDisbursements(
     companyId: string,
     spendOrderId?: string,
 ): Promise<RetryCreditDisbursementResult> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
+    const token = getAuthAccessToken();
     if (!token) throw new Error('Faça login para reprocessar repasses.');
 
     const { data, error } = await supabase.functions.invoke('manager-credit-payout', {

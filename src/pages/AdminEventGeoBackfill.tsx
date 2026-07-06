@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showSuccess } from '@/utils/toast';
 import {
@@ -25,7 +26,7 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const AdminEventGeoBackfill: React.FC = () => {
   const navigate = useNavigate();
-  const [userId, setUserId] = useState<string | undefined>();
+  const { userId } = usePageAuth();
   const { profile, isLoading: loadingProfile } = useProfile(userId);
   const [items, setItems] = useState<MissingGeoEvent[]>([]);
   const [total, setTotal] = useState(0);
@@ -49,10 +50,6 @@ const AdminEventGeoBackfill: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
   }, []);
 
   useEffect(() => {

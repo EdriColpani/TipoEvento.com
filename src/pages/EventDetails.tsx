@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { useEventDetails, EventDetailsData, TicketType } from '@/hooks/use-event-details';
 import { Check, Loader2, ShoppingCart, Wallet } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast'; // Importando showLoading/dismissToast
-import { useAuthRedirect } from '@/hooks/use-auth-redirect';
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
+import { withTimeout } from '@/utils/promise-timeout';
 import { supabase } from '@/integrations/supabase/client'; // Importando supabase
 import { FunctionsHttpError } from '@supabase/supabase-js'; // Importando o tipo de erro específico
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
@@ -48,7 +49,8 @@ const EventDetails: React.FC = () => {
     const location = useLocation();
     
     const { details, isLoading, isError } = useEventDetails(id);
-    const { isAuthenticated, redirectToLogin } = useAuthRedirect();
+    const { userId, sessionReady } = useAuthUserId();
+    const isAuthenticated = sessionReady && Boolean(userId);
     const { isMobile } = useDevice();
     
     const [selectedTickets, setSelectedTickets] = useState<{ [key: string]: number }>({});
@@ -137,7 +139,9 @@ const EventDetails: React.FC = () => {
         }
         if (!isAuthenticated) {
             showError('Você precisa estar logado para comprar ingressos.');
-            redirectToLogin();
+            navigate('/login', {
+                state: { from: `${location.pathname}${location.search}`, eventState: location.state },
+            });
             return false;
         }
         if (!details || !id) return false;
@@ -205,7 +209,11 @@ const EventDetails: React.FC = () => {
 
         try {
             // 2. Obter o token de autenticação do usuário logado
-            const { data: { session } } = await supabase.auth.getSession();
+            const { data: { session } } = await withTimeout(
+                supabase.auth.getSession(),
+                3_000,
+                { data: { session: null } },
+            );
             if (!session) {
                 dismissToast(toastId);
                 showError("Sessão expirada. Faça login novamente.");

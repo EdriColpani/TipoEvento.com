@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import {
     canBypassPublicLaunchPreview,
     normalizePublicLaunchMode,
@@ -18,18 +19,16 @@ export async function isRegistrationBlockedByPreview(): Promise<boolean> {
         return false;
     }
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    const { userId } = readCachedAuthSession();
 
-    if (!user) {
+    if (!userId) {
         return true;
     }
 
     const { data: profile } = await supabase
         .from('profiles')
         .select('tipo_usuario_id')
-        .eq('id', user.id)
+        .eq('id', userId)
         .maybeSingle();
 
     return !canBypassPublicLaunchPreview(profile?.tipo_usuario_id);

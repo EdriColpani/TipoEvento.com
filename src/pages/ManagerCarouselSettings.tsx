@@ -8,6 +8,7 @@ import { ArrowLeft, Loader2, SlidersHorizontal, Clock, Maximize, MapPin, ListOrd
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQueryClient } from '@tanstack/react-query';
 
 const MAX_BANNERS_CAP = 30;
@@ -44,22 +45,25 @@ function sanitizeCarouselSettings(raw: CarouselSettingsState): CarouselSettingsS
 const ManagerCarouselSettings: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId, authPending, sessionReady } = usePageAuth();
+    const userId = authUserId ?? null;
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
     const [settings, setSettings] = useState<CarouselSettingsState | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        const fetchUserAndSettings = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+        if (authPending) return;
+
+        if (!userId) {
+            if (sessionReady) {
                 showError("Sessão expirada. Faça login novamente.");
                 navigate('/login');
-                return;
             }
-            setUserId(user.id);
+            return;
+        }
 
+        const fetchSettings = async () => {
             const { data, error } = await supabase
                 .from('carousel_settings')
                 .select('*')
@@ -94,8 +98,8 @@ const ManagerCarouselSettings: React.FC = () => {
             }
             setIsLoading(false);
         };
-        fetchUserAndSettings();
-    }, [navigate]);
+        fetchSettings();
+    }, [authPending, userId, sessionReady, navigate]);
 
     const handleInputChange = (key: keyof CarouselSettingsState, value: string | number) => {
         if (typeof value === 'string' && value === '') return;
@@ -177,7 +181,7 @@ const ManagerCarouselSettings: React.FC = () => {
         }
     };
 
-    if (isLoading || isLoadingProfile || !userId || !settings) {
+    if (authPending || isLoading || (userId && isLoadingProfile) || (userId && !settings)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

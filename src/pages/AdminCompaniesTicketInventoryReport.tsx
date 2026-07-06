@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Download, Loader2, Ticket } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { useAdminCompaniesTicketInventoryReport } from '@/hooks/use-admin-companies-ticket-inventory-report';
 import { showError, showSuccess } from '@/utils/toast';
@@ -22,13 +22,9 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const AdminCompaniesTicketInventoryReport: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
     const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -132,7 +128,7 @@ const AdminCompaniesTicketInventoryReport: React.FC = () => {
         showSuccess('CSV exportado.');
     };
 
-    if (!userId || isLoadingProfile) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />

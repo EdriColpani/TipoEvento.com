@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Plus, ArrowLeft, Loader2, QrCode } from 'lucide-react';
 import { showSuccess, showError } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
 import EventFormSteps from '@/components/EventFormSteps';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
@@ -21,8 +21,9 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 const ManagerCreateEvent: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | null>(null);
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+    const { userId: authUserId, authPending } = usePageAuth();
+    const userId = authUserId ?? null;
+    const { profile, isLoading: isLoadingProfile } = useProfile(authUserId);
     const { company, isLoading: isLoadingCompany } = useManagerCompany(userId || undefined);
     const { billing, isLoading: isLoadingBilling } = useCompanyBilling(company?.id);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -39,13 +40,9 @@ const ManagerCreateEvent: React.FC = () => {
     const userIdRef = useRef<string | null>(null);
     userIdRef.current = userId;
 
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id || null);
-        });
-    }, []);
+    const waitingSession = authPending;
+    const waitingData = Boolean(authUserId) && (isLoadingProfile || isLoadingCompany);
 
-    // Só limpa session ao sair da rota de criar — nunca quando `userId` muda de null→uuid (apagava chaves e gerava 2º INSERT).
     useEffect(() => {
         return () => {
             const uid = userIdRef.current;
@@ -88,7 +85,7 @@ const ManagerCreateEvent: React.FC = () => {
         showError("Funcionalidade de auto-preenchimento movida para o componente de formulário.");
     };
 
-    if (isLoadingProfile || isLoadingCompany || !userId) {
+    if (waitingSession || waitingData) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import MultiLineEditor from '@/components/MultiLineEditor';
 import { Loader2 } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
-import { useProfile } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import ManagerTypeSelectionDialog from '@/components/ManagerTypeSelectionDialog';
 import ManagerUseCaseSelectionDialog from '@/components/ManagerUseCaseSelectionDialog';
 import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegisterDialog';
@@ -35,12 +34,7 @@ const ManagerRegister: React.FC = () => {
     const [registrationUseCase, setRegistrationUseCase] = useState<ManagerRegistrationUseCase>('organizer');
     const [showIndividualRegisterModal, setShowIndividualRegisterModal] = useState(false);
 
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
+    const { userId } = usePageAuth();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
 
     const isAdminRegisterRoute = location.pathname === '/admin/register-manager';

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { Loader2, User, ArrowLeft } from 'lucide-react';
 import { useProfile, ProfileData } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import {
     isSameDocument,
@@ -117,24 +118,16 @@ type ManagerIndividualProfileData = z.infer<typeof managerIndividualProfileSchem
 const ManagerIndividualProfile: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [userId, setUserId] = useState<string | null>(null);
-    const [isFetching, setIsFetching] = useState(true);
+    const { userId: authUserId, authPending, sessionReady } = usePageAuth();
+    const userId = authUserId ?? null;
     const [isSaving, setIsSaving] = useState(false);
     const [isCepLoading, setIsCepLoading] = useState(false);
 
     useEffect(() => {
-        const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                showError("Sessão expirada. Faça login novamente.");
-                navigate('/login');
-                return;
-            }
-            setUserId(user.id);
-            setIsFetching(false);
-        };
-        fetchUser();
-    }, [navigate]);
+        if (!sessionReady || userId) return;
+        showError("Sessão expirada. Faça login novamente.");
+        navigate('/login');
+    }, [sessionReady, userId, navigate]);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
 
@@ -284,7 +277,7 @@ const ManagerIndividualProfile: React.FC = () => {
         }
     };
 
-    if (isFetching || isLoadingProfile) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

@@ -20,13 +20,16 @@ import {
     loadManagerRegistrationUseCase,
 } from '@/constants/company-kind';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+import { usePageAuth } from '@/hooks/use-page-auth';
+import { withTimeout } from '@/utils/promise-timeout';
 
 const ManagerCompanyRegister: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const queryClient = useQueryClient();
     const locationState = (location.state ?? {}) as { fromPromoterCta?: boolean };
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId, authPending, sessionReady } = usePageAuth();
+    const userId = authUserId ?? null;
     const [isFetching, setIsFetching] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isCepLoading, setIsCepLoading] = useState(false);
@@ -52,12 +55,26 @@ const ManagerCompanyRegister: React.FC = () => {
     });
 
     useEffect(() => {
-        const loadSession = async () => {
-            const {
-                data: { user },
-            } = await supabase.auth.getUser();
+        if (authPending) return;
 
-            if (!user) {
+        if (!userId) {
+            if (sessionReady) {
+                navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
+                    state: { fromPromoterCta: locationState.fromPromoterCta },
+                    replace: true,
+                });
+            }
+            return;
+        }
+
+        const validateSession = async () => {
+            const { data: { user } } = await withTimeout(
+                supabase.auth.getUser(),
+                5_000,
+                { data: { user: null } },
+            );
+
+            if (!user || user.id !== userId) {
                 navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
                     state: { fromPromoterCta: locationState.fromPromoterCta },
                     replace: true,
@@ -72,18 +89,20 @@ const ManagerCompanyRegister: React.FC = () => {
                 return;
             }
 
-            setUserId(user.id);
             if (user.email) {
                 form.setValue('email', user.email);
             }
             setIsFetching(false);
         };
 
-        void loadSession();
+        void validateSession();
+    }, [authPending, userId, sessionReady, navigate, locationState.fromPromoterCta, form]);
+
+    useEffect(() => {
+        if (!userId) return;
 
         const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!session?.user?.id || !isAuthEmailConfirmed(session.user)) return;
-            setUserId(session.user.id);
+            if (!session?.user?.id || session.user.id !== userId || !isAuthEmailConfirmed(session.user)) return;
             if (session.user.email) {
                 form.setValue('email', session.user.email);
             }
@@ -93,7 +112,7 @@ const ManagerCompanyRegister: React.FC = () => {
         return () => {
             authListener.subscription.unsubscribe();
         };
-    }, [navigate, locationState.fromPromoterCta, form]);
+    }, [userId, form]);
 
     const fetchAddressByCep = async (cep: string) => {
         const cleanCep = cep.replace(/\D/g, '');
@@ -157,7 +176,7 @@ const ManagerCompanyRegister: React.FC = () => {
         }
     };
 
-    if (isFetching) {
+    if (authPending || isFetching) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />

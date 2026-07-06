@@ -10,6 +10,7 @@ import {
     resolveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
 import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
+import { withTimeout } from '@/utils/promise-timeout';
 import {
     isPartnerOwnerInviteCallback,
     RESET_PASSWORD_PATH,
@@ -73,7 +74,7 @@ const Login: React.FC = () => {
         const redirectIfPasswordSetupRequired = async () => {
             const {
                 data: { session },
-            } = await supabase.auth.getSession();
+            } = await withTimeout(supabase.auth.getSession(), 4_000, { data: { session: null } });
             const user = session?.user;
             if (cancelled || !user) {
                 return false;
@@ -96,7 +97,11 @@ const Login: React.FC = () => {
         };
 
         const handleAuthReturn = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
+            const { data: { session } } = await withTimeout(
+                supabase.auth.getSession(),
+                4_000,
+                { data: { session: null } },
+            );
             if (cancelled || !session?.user?.id) {
                 return;
             }

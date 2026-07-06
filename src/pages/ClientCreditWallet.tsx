@@ -24,7 +24,8 @@ import {
 import { startCreditTopupCheckout } from '@/utils/credit-topup-checkout';
 import { exportCreditLedgerCsv } from '@/utils/export-credit-ledger-csv';
 import { showError, showSuccess } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import WalletQrModal from '@/components/WalletQrModal';
 import WalletBiometricSection from '@/components/WalletBiometricSection';
@@ -40,14 +41,15 @@ function formatMoney(value: number): string {
 const ClientCreditWallet: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
+    const { userEmail } = usePublicSiteAuth();
+    const userLabel = userEmail ?? userId;
     const { balance, isBalanceLoading, isLedgerLoading, ledger, refresh, status: accountStatus } = useClientCreditWallet();
     const { data: walletStatus, isLoading: statusLoading } = useCreditWalletStatus();
     const { data: network, isLoading: networkLoading } = useCreditAcceptanceNetwork(true);
     const [customAmount, setCustomAmount] = useState('');
     const [isPaying, setIsPaying] = useState(false);
     const [walletQrOpen, setWalletQrOpen] = useState(false);
-    const [userId, setUserId] = useState<string | undefined>();
-    const [userLabel, setUserLabel] = useState<string | undefined>();
     const { isMobile } = useDevice();
 
     const returnStatus = searchParams.get('status');
@@ -73,16 +75,11 @@ const ClientCreditWallet: React.FC = () => {
     });
 
     useEffect(() => {
-        const checkAuth = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) navigate('/login?redirect=/wallet');
-            else {
-                setUserId(user.id);
-                setUserLabel(user.email ?? user.id);
-            }
-        };
-        checkAuth();
-    }, [navigate]);
+        if (authPending) return;
+        if (!userId && (sessionReady || bootExpired)) {
+            navigate('/login?redirect=/wallet');
+        }
+    }, [authPending, userId, sessionReady, bootExpired, navigate]);
 
     useEffect(() => {
         if (returnStatus === 'pending') {

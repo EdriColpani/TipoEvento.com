@@ -7,6 +7,7 @@ import { Bell, ArrowLeft, Loader2, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { fetchManagerCompanyNotificationEmail } from '@/utils/manager-scope';
+import { usePageAuth } from '@/hooks/use-page-auth';
 
 interface SettingsState {
     newSaleEmail: boolean;
@@ -31,24 +32,27 @@ const ManagerNotifications: React.FC = () => {
     const [settings, setSettings] = useState<SettingsState>(DEFAULT_SETTINGS);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId, authPending, sessionReady } = usePageAuth();
+    const userId = authUserId ?? null;
     const [companyEmail, setCompanyEmail] = useState<string | null>(null);
     const isEmailConfigured = !!companyEmail;
 
-    // 1. Fetch User ID, Settings, and Company Email
+    // 1. Fetch Settings and Company Email when user is known
     useEffect(() => {
-        const fetchSettings = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+        if (authPending) return;
+
+        if (!userId) {
+            if (sessionReady) {
                 showError("Sessão expirada. Faça login novamente.");
                 navigate('/login');
-                return;
             }
-            setUserId(user.id);
+            return;
+        }
 
+        const fetchSettings = async () => {
             const fetchedCompanyEmail = await fetchManagerCompanyNotificationEmail(
                 supabase,
-                user.id,
+                userId,
             );
             setCompanyEmail(fetchedCompanyEmail);
 
@@ -56,7 +60,7 @@ const ManagerNotifications: React.FC = () => {
             const { data: settingsData, error: settingsError } = await supabase
                 .from('manager_settings')
                 .select('*')
-                .eq('user_id', user.id)
+                .eq('user_id', userId)
                 .single();
 
             if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 = No rows found
@@ -87,7 +91,7 @@ const ManagerNotifications: React.FC = () => {
             setIsLoading(false);
         };
         fetchSettings();
-    }, [navigate]);
+    }, [authPending, userId, sessionReady, navigate]);
 
     const handleSwitchChange = (key: keyof SettingsState, checked: boolean) => {
         // Se for uma configuração de e-mail e o e-mail da empresa não estiver configurado, impede a mudança
@@ -137,7 +141,7 @@ const ManagerNotifications: React.FC = () => {
         }
     };
 
-    if (isLoading) {
+    if (authPending || isLoading) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

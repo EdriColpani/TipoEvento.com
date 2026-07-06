@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession, getAuthAccessToken } from '@/utils/auth-session-cache';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 import {
     detectCreditSpendChannel,
@@ -36,10 +37,9 @@ export async function startCreditSpendCheckout(
     purchaseItems: CreditSpendPurchaseItem[],
     options?: CreditSpendCheckoutOptions,
 ): Promise<CreditSpendCheckoutResult> {
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
-    const user = sess.session?.user;
-    if (!token || !user) {
+    const token = getAuthAccessToken();
+    const { userId } = readCachedAuthSession();
+    if (!token || !userId) {
         throw new Error('Faça login para pagar com crédito EventFest.');
     }
 
@@ -51,7 +51,7 @@ export async function startCreditSpendCheckout(
 
     const threshold = Number(options?.biometricThreshold ?? 0);
     if (!options?.skipBiometric && threshold > 0) {
-        await ensureWalletBiometricForSpend(user.id, gross, threshold);
+        await ensureWalletBiometricForSpend(userId, gross, threshold);
     }
 
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;

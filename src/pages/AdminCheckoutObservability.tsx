@@ -10,7 +10,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { ArrowLeft, Activity, AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import {
     useCheckoutObservability,
@@ -48,13 +48,9 @@ const MetricCard: React.FC<{ label: string; value: string | number; hint?: strin
 
 const AdminCheckoutObservability: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
     const [selectedEventId, setSelectedEventId] = useState<string>('');
     const [windowMinutes, setWindowMinutes] = useState(15);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -93,7 +89,7 @@ const AdminCheckoutObservability: React.FC = () => {
         [events, selectedEventId],
     );
 
-    if (isLoadingProfile || !userId) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />

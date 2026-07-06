@@ -12,6 +12,7 @@ import {
 } from '@/utils/manager-company-registration';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export type PostLoginRedirect = {
@@ -53,10 +54,13 @@ export async function resolvePostLoginRedirect(
 
     let user = authUser ?? null;
     if (!user) {
-        const {
-            data: { session },
-        } = await supabase.auth.getSession();
-        user = session?.user ?? null;
+        const cached = readCachedAuthSession();
+        if (cached.userId) {
+            const {
+                data: { session },
+            } = await withTimeout(supabase.auth.getSession(), 3_000, { data: { session: null } });
+            user = session?.user ?? null;
+        }
     }
     if (hasPendingPromoterRegistration(user) && !resolveComplimentaryReturnPath(undefined)) {
         return {

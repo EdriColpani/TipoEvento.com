@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Copy, Gift, Loader2, LogIn, MessageCircle, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { showError, showSuccess } from '@/utils/toast';
 import { buildComplimentarySeatUrl } from '@/utils/public-app-url';
 import { buildSeatWhatsAppMessage } from '@/utils/complimentary-share-text';
@@ -68,7 +69,8 @@ const ComplimentaryBundlePage: React.FC = () => {
     const [claiming, setClaiming] = useState(false);
     const [bundle, setBundle] = useState<BundlePublic | null>(null);
     const [holderView, setHolderView] = useState<HolderView | null>(null);
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId } = useAuthUserId();
+    const userId = authUserId ?? null;
 
     const { profile } = useProfile(userId ?? undefined);
     const isManagerAccount = profile?.tipo_usuario_id === 2;
@@ -113,16 +115,6 @@ const ComplimentaryBundlePage: React.FC = () => {
             saveComplimentaryReturnPath(`/cortesia/pacote?token=${encodeURIComponent(token)}`);
         }
     }, [token]);
-
-    useEffect(() => {
-        void supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id ?? null);
-        });
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUserId(session?.user?.id ?? null);
-        });
-        return () => authListener.subscription.unsubscribe();
-    }, []);
 
     useEffect(() => {
         void loadBundle();

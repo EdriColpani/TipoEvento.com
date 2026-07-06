@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { withTimeout } from '@/utils/promise-timeout';
 import {
     RESET_PASSWORD_PATH,
     userMustSetPartnerPassword,
@@ -21,9 +23,12 @@ export function usePasswordSetupGate() {
         let cancelled = false;
 
         const enforce = async () => {
+            const cached = readCachedAuthSession();
+            if (!cached.userId) return;
+
             const {
                 data: { session },
-            } = await supabase.auth.getSession();
+            } = await withTimeout(supabase.auth.getSession(), 3_000, { data: { session: null } });
             const user = session?.user;
             if (cancelled || !user || !(await userMustSetPartnerPassword(user))) return;
             navigate(RESET_PASSWORD_PATH, { replace: true });

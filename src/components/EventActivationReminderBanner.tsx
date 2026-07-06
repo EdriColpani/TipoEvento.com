@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 
@@ -13,13 +13,7 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
  */
 const EventActivationReminderBanner: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
-
-    useEffect(() => {
-        void supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
+    const { userId } = useAuthUserId();
 
     const { profile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;

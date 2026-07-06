@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -28,6 +28,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showSuccess } from '@/utils/toast';
@@ -144,15 +145,11 @@ const formatDateTime = (value: string | null | undefined) => {
 
 const ManagerComplimentaryBundlesReport: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
     const [selectedEventId, setSelectedEventId] = useState<string>('all');
     const [selectedStatus, setSelectedStatus] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedBundleId, setExpandedBundleId] = useState<string | null>(null);
-
-    useEffect(() => {
-        void supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: loadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER;
@@ -221,7 +218,7 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
         showSuccess('CSV exportado.');
     };
 
-    if (loadingProfile) {
+    if (authPending || (userId && loadingProfile)) {
         return (
             <div className="py-20 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />

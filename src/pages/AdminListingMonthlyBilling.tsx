@@ -29,6 +29,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdminCompaniesBilling } from '@/hooks/use-admin-companies-billing';
@@ -87,7 +88,7 @@ const AdminListingMonthlyBilling: React.FC = () => {
     const tabParam = searchParams.get('tab');
     const invoiceTab =
         tabParam === 'license' ? 'license' : tabParam === 'inactivity' ? 'inactivity' : 'listing';
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId, authPending } = usePageAuth();
     const [statusFilter, setStatusFilter] = useState<'all' | ListingChargeStatus>('all');
     const [createOpen, setCreateOpen] = useState(false);
     const [newCompanyId, setNewCompanyId] = useState('');
@@ -95,10 +96,6 @@ const AdminListingMonthlyBilling: React.FC = () => {
     const [newAmount, setNewAmount] = useState('');
     const [newNotes, setNewNotes] = useState('');
     const [isSaving, setIsSaving] = useState(false);
-
-    React.useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     const { profile, isLoading: loadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
@@ -186,7 +183,7 @@ const AdminListingMonthlyBilling: React.FC = () => {
         }
     };
 
-    if (loadingProfile || !userId) {
+    if (authPending || (userId && loadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className={`h-10 w-10 animate-spin ${billingSpinner} mx-auto mb-4`} />

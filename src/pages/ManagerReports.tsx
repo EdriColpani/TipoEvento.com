@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift, ScrollText } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
-import { supabase } from '@/integrations/supabase/client';
-import { useState, useEffect } from 'react';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useSalesChartData } from '@/hooks/use-sales-chart-data';
 import SalesLineChart from '@/components/SalesLineChart';
 import { useManagerCompany } from '@/hooks/use-manager-company';
@@ -97,13 +96,7 @@ const REPORT_CARDS: Array<{
 
 const ManagerReports: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-    
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
+    const { userId } = usePageAuth();
 
     const { profile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === 1;

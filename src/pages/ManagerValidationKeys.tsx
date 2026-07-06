@@ -11,10 +11,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { useProfile } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 
 interface ValidationApiKey {
     id: string;
@@ -101,7 +103,7 @@ const fetchEvents = async (userId: string, isAdminMaster: boolean) => {
 const ManagerValidationKeys: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, authPending } = usePageAuth();
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [showLogsDialog, setShowLogsDialog] = useState(false);
     const [showEditDialog, setShowEditDialog] = useState(false);
@@ -115,12 +117,6 @@ const ManagerValidationKeys: React.FC = () => {
     const [editKeyExpiresAt, setEditKeyExpiresAt] = useState('');
     const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
     const [storedApiKeys, setStoredApiKeys] = useState<Map<string, string>>(new Map()); // Armazena chaves criadas nesta sessão
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
 
     const { profile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
@@ -248,18 +244,10 @@ const ManagerValidationKeys: React.FC = () => {
         const toastId = showLoading('Criando chave de acesso...');
 
         try {
-            const { data: sess } = await supabase.auth.getSession();
-            if (!sess.session) {
-                dismissToast(toastId);
-                showError('Sessão expirada. Entre de novo no gestor.');
-                return;
-            }
-            await supabase.auth.refreshSession();
-            const { data: sess2 } = await supabase.auth.getSession();
-            const token = sess2.session?.access_token;
+            const token = getAuthAccessToken();
             if (!token) {
                 dismissToast(toastId);
-                showError('Não foi possível obter o token de sessão. Entre de novo.');
+                showError('Sessão expirada. Entre de novo no gestor.');
                 return;
             }
             const { data: edgeData, error: edgeError } = await supabase.functions.invoke(
@@ -477,7 +465,7 @@ const ManagerValidationKeys: React.FC = () => {
         }
     };
 
-    if (!userId) {
+    if (authPending) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

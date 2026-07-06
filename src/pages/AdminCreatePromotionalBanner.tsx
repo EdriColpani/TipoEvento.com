@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,7 +16,8 @@ import { Loader2, ImageOff, CalendarDays, ListOrdered, Heading, Subtitles, Arrow
 import { format } from 'date-fns';
 import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
-import { useProfile } from '@/hooks/use-profile'; // Importando useProfile
+import { usePageAuth } from '@/hooks/use-page-auth';
+import { useProfile } from '@/hooks/use-profile';
 
 // Zod schema for promotional banner validation
 const promotionalBannerSchema = z.object({
@@ -36,15 +37,9 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 const AdminCreatePromotionalBanner: React.FC = () => {
     const navigate = useNavigate();
     const [isSaving, setIsSaving] = useState(false);
-    const [userId, setUserId] = useState<string | null>(null);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id || null);
-        });
-    }, []);
+    const { userId, authPending } = usePageAuth();
     
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
 
     const form = useForm<PromotionalBannerFormData>({
         resolver: zodResolver(promotionalBannerSchema),
@@ -110,7 +105,7 @@ const AdminCreatePromotionalBanner: React.FC = () => {
     };
     
     // Aguardar userId (definido de forma assíncrona) e carregamento do perfil antes de checar permissão
-    if (!userId || isLoadingProfile) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

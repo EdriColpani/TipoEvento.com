@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Loader2, QrCode, Tag, Calendar, Hash, DollarSign } from 'lucide-react';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
 import { useProfile } from '@/hooks/use-profile';
@@ -69,7 +70,8 @@ const ManagerCreateWristband: React.FC = () => {
         typeof (location.state as { eventId?: string } | null)?.eventId === 'string'
             ? (location.state as { eventId: string }).eventId
             : '';
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId, authPending } = usePageAuth();
+    const userId = authUserId ?? null;
     const [formData, setFormData] = useState<WristbandFormData>({
         eventId: '',
         baseCode: '',
@@ -82,13 +84,6 @@ const ManagerCreateWristband: React.FC = () => {
     /** Evita segundo INSERT (pulseira + analytics) antes do re-render do botão — mesmo padrão do cadastro de evento. */
     const submitInFlightRef = useRef(false);
 
-    // Fetch current user ID
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id || null);
-        });
-    }, []);
-
     // Fetch manager's company ID and events
     const { profile } = useProfile(userId || undefined);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
@@ -98,7 +93,7 @@ const ManagerCreateWristband: React.FC = () => {
     const requiresPaidTickets = companyAllowsTicketSales(billing?.billing_plan);
     const companyMinEventTickets = billing?.min_event_tickets ?? DEFAULT_MIN_EVENT_TICKETS;
 
-    const isLoading = isLoadingCompany || isLoadingEvents || isLoadingBilling || !userId;
+    const isLoading = authPending || isLoadingCompany || isLoadingEvents || isLoadingBilling;
 
     useEffect(() => {
         if (!preselectedEventId || isLoadingEvents) return;

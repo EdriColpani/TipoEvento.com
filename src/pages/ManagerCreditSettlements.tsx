@@ -11,7 +11,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCreditSettlements } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 import { retryFailedCreditDisbursements } from '@/utils/credit-manager-payout';
@@ -37,17 +37,13 @@ function statusLabel(s: string): string {
 
 const ManagerCreditSettlements: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
+    const { userId } = usePageAuth();
     const [retrying, setRetrying] = useState(false);
 
     const access = useCreditReportsAccess(userId);
     const { data, isLoading, refetch } = useManagerCreditSettlements(access.company?.id);
     const failedTotal = Number(data?.summary?.failed ?? 0);
     const paidTotal = Number(data?.summary?.paid ?? 0);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
 
     useEffect(() => {
         if (!access.isLoading && access.isAdminMaster) {

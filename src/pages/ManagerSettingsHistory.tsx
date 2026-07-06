@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ArrowLeft, Loader2, History, User, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { showError } from '@/utils/toast';
 import {
     Accordion,
@@ -58,23 +59,25 @@ const formatJson = (json: any): string => {
 
 const ManagerSettingsHistory: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId, authPending, sessionReady } = usePageAuth();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isError, setIsError] = useState(false);
 
     useEffect(() => {
-        const loadData = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+        if (authPending) return;
+
+        if (!userId) {
+            if (sessionReady) {
                 navigate('/login');
-                return;
             }
-            setUserId(user.id);
-            
+            return;
+        }
+
+        const loadData = async () => {
             try {
-                const data = await fetchSettingsHistory(user.id);
+                const data = await fetchSettingsHistory(userId);
                 setHistory(data);
             } catch (e) {
                 setIsError(true);
@@ -84,9 +87,9 @@ const ManagerSettingsHistory: React.FC = () => {
             }
         };
         loadData();
-    }, [navigate]);
+    }, [authPending, userId, sessionReady, navigate]);
 
-    if (isLoading || isLoadingProfile) {
+    if (authPending || isLoading || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

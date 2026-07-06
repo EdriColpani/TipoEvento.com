@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { showError, showSuccess } from '@/utils/toast';
 
 interface PurchaseDetails {
@@ -15,8 +16,8 @@ export const usePurchaseTicket = () => {
     const purchaseTicket = async (details: PurchaseDetails) => {
         const { ticketTypeId, quantity, price } = details;
         
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        const { userId } = readCachedAuthSession();
+        if (!userId) {
             showError("Você precisa estar logado para finalizar a compra.");
             return false;
         }
@@ -60,14 +61,14 @@ export const usePurchaseTicket = () => {
             const { error: updateError } = await supabase
                 .from('wristband_analytics')
                 .update({ 
-                    client_user_id: user.id,
+                    client_user_id: userId,
                     status: 'used', // Marcamos como 'used' para indicar que foi vendido/associado
                     event_type: 'purchase',
                     event_data: {
                         purchase_date: new Date().toISOString(),
                         total_paid: price * quantity,
                         unit_price: price,
-                        client_id: user.id,
+                        client_id: userId,
                     }
                 })
                 .in('id', analyticsIdsToUpdate);

@@ -19,6 +19,7 @@ import { parseEventLocalDay } from '@/utils/format-event-date';
 import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
 import { useProfile } from '@/hooks/use-profile';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerEvents, ManagerEvent } from '@/hooks/use-manager-events';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -47,16 +48,11 @@ const ManagerCreateEventBanner: React.FC = () => {
     const location = useLocation();
     const queryClient = useQueryClient();
     const [isSaving, setIsSaving] = useState(false);
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId: authUserId, authPending } = usePageAuth();
+    const userId = authUserId ?? null;
     const [existingBanner, setExistingBanner] = useState<EventCarouselBannerSummary | null>(null);
     const [checkingExistingBanner, setCheckingExistingBanner] = useState(false);
 
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id || null);
-        });
-    }, []);
-    
     const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
     
@@ -212,7 +208,7 @@ const ManagerCreateEventBanner: React.FC = () => {
         }
     };
     
-    if (isLoadingProfile || isLoadingEvents) {
+    if (authPending || (userId && (isLoadingProfile || isLoadingEvents))) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

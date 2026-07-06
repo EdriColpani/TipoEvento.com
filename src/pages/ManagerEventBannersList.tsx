@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import {
     ListOrdered,
     StopCircle,
 } from 'lucide-react';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import {
@@ -180,11 +181,7 @@ const formatBannerDate = (iso: string) => {
 
 const ManagerEventBannersList: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>();
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => setUserId(user?.id));
-    }, []);
+    const { userId, authPending } = usePageAuth();
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
@@ -194,7 +191,7 @@ const ManagerEventBannersList: React.FC = () => {
         invalidateBanners();
     };
 
-    if (isLoadingProfile || userId === undefined) {
+    if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />

@@ -22,6 +22,7 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { useProfile } from '@/hooks/use-profile';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -235,7 +236,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     }, [currentStep, scrollFormToTop]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [userId, setUserId] = useState<string | null>(propUserId || null);
+    const { userId: authUserId } = useAuthUserId();
+    const userId = propUserId ?? authUserId ?? null;
     const [useTurmas, setUseTurmas] = useState(false);
     const [editPricingLoading, setEditPricingLoading] = useState(Boolean(eventId));
     const lockedBatchesRef = useRef<LockedBatchSnapshot[] | null>(null);
@@ -418,17 +420,6 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const batches = watch('batches');
 
     // TODOS OS HOOKS DEVEM SER CHAMADOS ANTES DE QUALQUER RETURN CONDICIONAL
-    // Carrega o userId ao montar apenas se não foi fornecido como prop
-    useEffect(() => {
-        if (!propUserId) {
-            supabase.auth.getUser().then(({ data: { user } }) => {
-                setUserId(user?.id || null);
-            });
-        } else {
-            setUserId(propUserId);
-        }
-    }, [propUserId]);
-
     // Atualiza o número de lotes dinamicamente
     useEffect(() => {
         if (!isPaid || editPricingLoading || ticketsLocked) return;

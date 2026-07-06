@@ -6,7 +6,7 @@ import { categories } from '@/data/events';
 import AuthStatusMenu from '@/components/AuthStatusMenu';
 import { Input } from "@/components/ui/input";
 import MobileMenu from '@/components/MobileMenu';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { trackAdvancedFilterUse } from '@/utils/metrics';
 import { usePublicEvents, PublicEvent } from '@/hooks/use-public-events';
 import { Loader2 } from 'lucide-react';
@@ -22,7 +22,7 @@ const getMinPriceDisplay = (price: number | null): string => {
 
 const Home: React.FC = () => {
     const navigate = useNavigate();
-    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const { userId } = useAuthUserId();
     
     const { events: allEvents, isLoading: isLoadingEvents, isError: isErrorEvents } = usePublicEvents();
     
@@ -37,12 +37,6 @@ const Home: React.FC = () => {
     const [appliedStatuses, setAppliedStatuses] = useState<string[]>([]);
 
     const [currentPage, setCurrentPage] = useState(1);
-
-    useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setUserId(user?.id);
-        });
-    }, []);
 
     useEffect(() => {
         setStagedSearchTerm(appliedSearchTerm);

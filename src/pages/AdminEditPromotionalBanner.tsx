@@ -16,8 +16,9 @@ import { Loader2, Image, CalendarDays, ListOrdered, Heading, Subtitles, ArrowLef
 import { format, parseISO } from 'date-fns';
 import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProfile } from '@/hooks/use-profile'; // Importando useProfile
+import { useProfile } from '@/hooks/use-profile';
 
 // Zod schema for promotional banner validation
 const promotionalBannerSchema = z.object({
@@ -40,7 +41,7 @@ const AdminEditPromotionalBanner: React.FC = () => {
     const queryClient = useQueryClient();
     const [isSaving, setIsSaving] = useState(false);
     const [isFetching, setIsFetching] = useState(true);
-    const [userId, setUserId] = useState<string | null>(null);
+    const { userId, authPending } = usePageAuth();
 
     const form = useForm<PromotionalBannerFormData>({
         resolver: zodResolver(promotionalBannerSchema),
@@ -55,7 +56,7 @@ const AdminEditPromotionalBanner: React.FC = () => {
         },
     });
     
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId || undefined);
+    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
 
     useEffect(() => {
         const fetchBanner = async () => {
@@ -64,9 +65,6 @@ const AdminEditPromotionalBanner: React.FC = () => {
                 navigate('/admin/banners');
                 return;
             }
-            
-            const { data: { user } } = await supabase.auth.getUser();
-            setUserId(user?.id || null);
 
             const { data, error } = await supabase
                 .from('promotional_banners')
@@ -149,7 +147,7 @@ const AdminEditPromotionalBanner: React.FC = () => {
     };
 
     // Aguardar userId e perfil (userId é definido dentro do useEffect de fetchBanner)
-    if (!userId || isFetching || isLoadingProfile) {
+    if (authPending || isFetching || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
