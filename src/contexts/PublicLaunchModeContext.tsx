@@ -11,6 +11,7 @@ import {
     PUBLIC_LAUNCH_MODE_QUERY_KEY,
     fetchPublicLaunchMode,
 } from '@/utils/public-launch-mode-query';
+import { AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 
 export type PublicSiteContextValue = {
     userId: string | undefined;
@@ -45,17 +46,43 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
                 clearTimeout(readyTimeout);
                 readyTimeout = undefined;
             }
-            setUserId(session?.user?.id);
-            setUserEmail(session?.user?.email ?? undefined);
+
+            const cached = readCachedAuthSession();
+            const sessionUserId = session?.user?.id;
+
+            // Evita reautenticar com sessão stale em memória após signOut (token já removido).
+            if (sessionUserId && !cached.accessToken) {
+                setUserId(undefined);
+                setUserEmail(undefined);
+                setSessionReady(true);
+                return;
+            }
+
+            setUserId(sessionUserId);
+            setUserEmail(session?.user?.email ?? cached.userEmail ?? undefined);
+            setSessionReady(true);
+        };
+
+        const clearSession = () => {
+            if (cancelled) return;
+            if (readyTimeout) {
+                clearTimeout(readyTimeout);
+                readyTimeout = undefined;
+            }
+            setUserId(undefined);
+            setUserEmail(undefined);
             setSessionReady(true);
         };
 
         readyTimeout = window.setTimeout(() => {
             if (!cancelled) {
                 const cached = readCachedAuthSession();
-                if (cached.userId) {
+                if (cached.accessToken && cached.userId) {
                     setUserId(cached.userId);
                     setUserEmail(cached.userEmail);
+                } else if (!cached.accessToken) {
+                    setUserId(undefined);
+                    setUserEmail(undefined);
                 }
                 setSessionReady(true);
             }
@@ -67,14 +94,21 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
 
         const {
             data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
+        } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_OUT') {
+                clearSession();
+                return;
+            }
             applySession(session);
         });
+
+        window.addEventListener(AUTH_SIGNED_OUT_EVENT, clearSession);
 
         return () => {
             cancelled = true;
             if (readyTimeout) clearTimeout(readyTimeout);
             subscription.unsubscribe();
+            window.removeEventListener(AUTH_SIGNED_OUT_EVENT, clearSession);
         };
     }, []);
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Menu, Bell, User, LogOut, LayoutDashboard, Shield } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -16,6 +17,7 @@ const MANAGER_USER_TYPE_ID = 2;
 const MobileMenu: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const queryClient = useQueryClient();
     const [isOpen, setIsOpen] = useState(false);
     const {
         userId,
@@ -66,6 +68,7 @@ const MobileMenu: React.FC = () => {
     };
 
     const handleLogout = async () => {
+        queryClient.clear();
         try {
             await signOutSession();
             showSuccess('Sessão encerrada com sucesso.');
