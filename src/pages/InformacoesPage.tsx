@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Sparkles, Ticket, Shield, LayoutDashboard, Rocket, QrCode, Wallet, Store, BarChart3 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { showError, showSuccess } from '@/utils/toast';
+import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
+import { cn } from '@/lib/utils';
 import { useDevice } from '@/hooks/use-device';
 import { useLandingUi } from '@/contexts/LandingUiContext';
 import LandingContactPanel from '@/components/landing/LandingContactPanel';
@@ -18,8 +20,6 @@ import {
 } from '@/constants/landing-content';
 import { usePublicSiteContact } from '@/hooks/use-public-site-contact';
 import { formatPhoneBR } from '@/utils/phone-format';
-import { showError, showSuccess } from '@/utils/toast';
-import { cn } from '@/lib/utils';
 
 const BENEFIT_ICONS = [Ticket, LayoutDashboard, Shield, Sparkles] as const;
 const MANAGER_PILLAR_ICONS = [QrCode, Wallet, Store, BarChart3] as const;
@@ -57,12 +57,11 @@ const InformacoesPage: React.FC = () => {
         }
         setSendingContact(true);
         try {
-            const { error } = await supabase.rpc('create_public_contact_message', {
+            await callRpcPublicRest('create_public_contact_message', {
                 p_name: contactName.trim(),
                 p_phone: contactFormPhone,
                 p_message: contactMessage.trim(),
             });
-            if (error) throw error;
             showSuccess('Mensagem enviada. Nossa equipe entrará em contato.');
             setContactName('');
             setContactFormPhone('');

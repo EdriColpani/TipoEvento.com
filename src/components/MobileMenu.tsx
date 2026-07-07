@@ -98,8 +98,8 @@ const MobileMenu: React.FC = () => {
     return (
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden relative text-yellow-500 hover:bg-yellow-500/10">
-                    <Menu className="h-6 w-6" />
+                <Button variant="ghost" size="icon" className="md:hidden relative h-11 w-11 text-yellow-500 hover:bg-yellow-500/10">
+                    <Menu className="h-7 w-7" />
                     {isLoggedIn && hasPendingNotifications && (
                         <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-black"></span>
                     )}

@@ -187,7 +187,7 @@ const ResetPassword = () => {
                 </div>
                 <div className="relative z-10 w-full max-w-md bg-black/80 backdrop-blur-sm border border-cyan-500/30 rounded-2xl p-8 text-center shadow-2xl shadow-cyan-500/15">
                     <div className="flex justify-center mb-6">
-                        <SiteLogo className="h-14 w-auto max-w-[220px]" />
+                        <SiteLogo feature />
                     </div>
                     <h1 className="text-xl font-semibold mb-2">Link inválido ou expirado</h1>
                     <p className="text-gray-400 text-sm mb-6">
@@ -221,7 +221,7 @@ const ResetPassword = () => {
             <div className="relative z-10 w-full max-w-md">
                 <div className="text-center mb-6">
                     <div className="flex justify-center mb-4">
-                        <SiteLogo className="h-16 w-auto max-w-[240px]" />
+                        <SiteLogo feature />
                     </div>
                     <h1 className="text-2xl font-semibold">
                         {isPartnerSetup ? 'Criar sua senha' : 'Nova senha'}

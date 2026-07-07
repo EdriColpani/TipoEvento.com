@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import type { BillingPlanCode } from '@/constants/billing-plans';
 import { startListingMonthlyCheckout } from '@/utils/listing-monthly-checkout';
 import { startConsumptionLicenseCheckout } from '@/utils/consumption-license-checkout';
@@ -29,10 +29,7 @@ export async function redirectToPlanPaymentCheckout(
     },
 ): Promise<'redirected' | 'already_paid'> {
     if (plan === 'listing_monthly') {
-        const { error: ensureError } = await supabase.rpc('ensure_listing_monthly_charge', {
-            p_company_id: companyId,
-        });
-        if (ensureError) throw new Error(ensureError.message);
+        await callRpcRest('ensure_listing_monthly_charge', { p_company_id: companyId }, 15_000);
 
         const { checkoutUrl } = await startListingMonthlyCheckout(companyId, options?.chargeId);
         window.location.href = checkoutUrl;
@@ -48,11 +45,11 @@ export async function redirectToPlanPaymentCheckout(
             fromRpc?.requires_payment === false;
 
         if (!chargeId && !alreadyPaid) {
-            const { data, error } = await supabase.rpc('ensure_consumption_license_charge', {
-                p_company_id: companyId,
-            });
-            if (error) throw new Error(error.message);
-            const row = parseConsumptionLicensePayload(data);
+            const row = await callRpcRest<ConsumptionLicenseChargePayload>(
+                'ensure_consumption_license_charge',
+                { p_company_id: companyId },
+                15_000,
+            );
             chargeId = row?.charge_id;
             alreadyPaid = row?.already_paid === true || row?.status === 'paid';
         }

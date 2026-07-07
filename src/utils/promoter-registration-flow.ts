@@ -1,7 +1,8 @@
 import type { NavigateFunction } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
-import { withTimeout } from '@/utils/promise-timeout';
+import { fetchAuthUserViaRest, signInWithPasswordResilient } from '@/utils/auth-rest';
+import { signOutSession } from '@/utils/sign-out-session';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { registerUserViaResend } from '@/utils/auth-email-via-resend';
@@ -51,15 +52,15 @@ export async function registerPromoterAccountViaResend(input: {
         return { ok: true, needsConfirmation: true };
     }
 
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password: input.password,
-    });
-    if (signInError || !signInData.user?.id) {
+    const { data: signInData, error: signInError } = await signInWithPasswordResilient(
+        normalizedEmail,
+        input.password,
+    );
+    if (signInError || !signInData?.user?.id) {
         return { ok: false, message: registerResult.message };
     }
     if (!isAuthEmailConfirmed(signInData.user)) {
-        await signOutLocalSession();
+        await signOutSession();
         return { ok: true, needsConfirmation: true };
     }
     return { ok: true, needsConfirmation: false };
@@ -155,7 +156,7 @@ export {
 } from '@/utils/manager-company-registration';
 
 async function signOutLocalSession(): Promise<void> {
-    await supabase.auth.signOut({ scope: 'local' });
+    await signOutSession();
 }
 
 function pendingConfirmation(email: string): EnsureAuthForCompanyResult {
@@ -168,9 +169,7 @@ async function resolveExistingUser(existingUserId: string, fallbackEmail: string
         throw new Error('Sessão inválida. Faça login novamente.');
     }
 
-    const {
-        data: { user },
-    } = await withTimeout(supabase.auth.getUser(), 4_000, { data: { user: null } });
+    const { user } = await fetchAuthUserViaRest(cached.accessToken, 5_000);
     if (!user?.id || user.id !== existingUserId) {
         throw new Error('Sessão inválida. Faça login novamente.');
     }
@@ -214,11 +213,11 @@ export async function ensureAuthUserForCompanyRegistration(
         return pendingConfirmation(normalizedEmail);
     }
 
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
+    const { data: signInData, error: signInError } = await signInWithPasswordResilient(
+        normalizedEmail,
         password,
-    });
-    if (signInError || !signInData.user?.id) {
+    );
+    if (signInError || !signInData?.user?.id) {
         throw new Error(registerResult.message || 'Já existe uma conta com este e-mail. Confirme o e-mail ou faça login.');
     }
     if (!isAuthEmailConfirmed(signInData.user)) {

@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
+import { restGet } from '@/utils/supabase-rest';
+import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
 import { showError, showSuccess } from '@/utils/toast';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
@@ -92,15 +93,14 @@ const EventInscriptionPage: React.FC = () => {
             return;
         }
         const fetchEvent = async () => {
-            const { data, error } = await supabase
-                .from('events')
-                .select('id, title, date, time, location, is_paid, listing_only, is_active, banner_image_url')
-                .eq('id', eventId)
-                .single();
-            if (error || !data) {
+            try {
+                const rows = await restGet<EventInfo[]>(
+                    `events?id=eq.${eventId}&select=id,title,date,time,location,is_paid,listing_only,is_active,banner_image_url&limit=1`,
+                    10_000,
+                );
+                setEvent(rows?.[0] ?? null);
+            } catch {
                 setEvent(null);
-            } else {
-                setEvent(data as EventInfo);
             }
             setLoadingEvent(false);
         };
@@ -117,18 +117,11 @@ const EventInscriptionPage: React.FC = () => {
             setTurmasError(null);
 
             try {
-                const { data, error } = await supabase.rpc('get_event_turmas_availability', {
-                    p_event_id: eventId,
-                });
+                const data = await callRpcPublicRest<
+                    Array<{ id: string; nome: string; capacity: number; remaining: number }>
+                >('get_event_turmas_availability', { p_event_id: eventId }, 12_000);
 
-                if (error) throw error;
-
-                const rows = (Array.isArray(data) ? data : []) as Array<{
-                    id: string;
-                    nome: string;
-                    capacity: number;
-                    remaining: number;
-                }>;
+                const rows = Array.isArray(data) ? data : [];
 
                 setTurmas(rows);
 
@@ -229,7 +222,12 @@ const EventInscriptionPage: React.FC = () => {
         const cpfClean = form.cpf.replace(/\D/g, '');
 
         try {
-            const { data: rpcData, error: rpcError } = await supabase.rpc('register_free_event_with_wristband', {
+            const rpcData = await callRpcPublicRest<{
+                ok?: boolean;
+                error?: string;
+                qr_code?: string;
+                wristband_code?: string;
+            }>('register_free_event_with_wristband', {
                 p_event_id: eventId,
                 p_turma_id: selectedTurmaId,
                 p_full_name: form.full_name.trim(),
@@ -243,16 +241,9 @@ const EventInscriptionPage: React.FC = () => {
                 p_state: form.state.trim(),
                 p_phone: form.phone.replace(/\D/g, ''),
                 p_email: form.email.trim().toLowerCase(),
-            });
+            }, 20_000);
 
-            if (rpcError) {
-                console.warn('register_free_event_with_wristband:', rpcError);
-                showError(rpcError.message || 'Erro ao inscrever.');
-                setSubmitting(false);
-                return;
-            }
-
-            const row = rpcData as { ok?: boolean; error?: string; qr_code?: string; wristband_code?: string } | null;
+            const row = rpcData;
             if (!row?.ok) {
                 const msg: Record<string, string> = {
                     cpf_taken: 'Já existe uma inscrição para este CPF neste evento.',

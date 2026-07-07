@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export type CreditLiabilityReconciliation = {
     module_enabled?: boolean;
@@ -147,11 +147,8 @@ export type CreditAuditRow = {
 export function useAdminCreditReconciliation() {
     return useQuery({
         queryKey: ['adminCreditReconciliation'],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('get_admin_credit_liability_reconciliation');
-            if (error) throw error;
-            return data as CreditLiabilityReconciliation;
-        },
+        queryFn: () =>
+            callRpcRest<CreditLiabilityReconciliation>('get_admin_credit_liability_reconciliation', {}, 20_000),
         staleTime: 30_000,
     });
 }
@@ -159,14 +156,11 @@ export function useAdminCreditReconciliation() {
 export function useAdminCreditFinancialPosition(startDate?: string | null, endDate?: string | null) {
     return useQuery({
         queryKey: ['adminCreditFinancialPosition', startDate, endDate],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('get_admin_credit_financial_position', {
+        queryFn: () =>
+            callRpcRest<AdminCreditFinancialPosition>('get_admin_credit_financial_position', {
                 p_start_date: startDate || null,
                 p_end_date: endDate || null,
-            });
-            if (error) throw error;
-            return data as AdminCreditFinancialPosition;
-        },
+            }, 20_000),
         staleTime: 30_000,
     });
 }
@@ -174,14 +168,11 @@ export function useAdminCreditFinancialPosition(startDate?: string | null, endDa
 export function useAdminPlatformBillingRevenue(startDate?: string | null, endDate?: string | null) {
     return useQuery({
         queryKey: ['adminPlatformBillingRevenue', startDate, endDate],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('get_admin_platform_billing_revenue', {
+        queryFn: () =>
+            callRpcRest<AdminPlatformBillingRevenue>('get_admin_platform_billing_revenue', {
                 p_start_date: startDate || null,
                 p_end_date: endDate || null,
-            });
-            if (error) throw error;
-            return data as AdminPlatformBillingRevenue;
-        },
+            }, 20_000),
         staleTime: 30_000,
     });
 }
@@ -189,16 +180,17 @@ export function useAdminPlatformBillingRevenue(startDate?: string | null, endDat
 export function useAdminCreditMpReconciliationIssues(startDate?: string | null, endDate?: string | null) {
     return useQuery({
         queryKey: ['adminCreditMpReconciliationIssues', startDate, endDate],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_mp_reconciliation_issues', {
-                p_start_date: startDate || null,
-                p_end_date: endDate || null,
-                p_limit: 400,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return data as { items: AdminCreditMpIssue[]; summary: AdminCreditMpIssueSummary };
-        },
+        queryFn: () =>
+            callRpcRest<{ items: AdminCreditMpIssue[]; summary: AdminCreditMpIssueSummary }>(
+                'list_admin_credit_mp_reconciliation_issues',
+                {
+                    p_start_date: startDate || null,
+                    p_end_date: endDate || null,
+                    p_limit: 400,
+                    p_offset: 0,
+                },
+                25_000,
+            ),
         staleTime: 20_000,
     });
 }
@@ -206,14 +198,12 @@ export function useAdminCreditMpReconciliationIssues(startDate?: string | null, 
 export function useAdminCreditCommissionReport() {
     return useQuery({
         queryKey: ['adminCreditCommission'],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_commission_report', {
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return data as { items: CreditCommissionRow[]; summary: Record<string, number> };
-        },
+        queryFn: () =>
+            callRpcRest<{ items: CreditCommissionRow[]; summary: Record<string, number> }>(
+                'list_admin_credit_commission_report',
+                { p_limit: 200, p_offset: 0 },
+                20_000,
+            ),
         staleTime: 30_000,
     });
 }
@@ -222,12 +212,12 @@ export function useAdminCreditCrossCompanyFlows() {
     return useQuery({
         queryKey: ['adminCreditCrossCompany'],
         queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_cross_company_flows', {
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return (data as { items: CreditCrossCompanyRow[] })?.items ?? [];
+            const data = await callRpcRest<{ items: CreditCrossCompanyRow[] }>(
+                'list_admin_credit_cross_company_flows',
+                { p_limit: 200, p_offset: 0 },
+                20_000,
+            );
+            return data?.items ?? [];
         },
         staleTime: 30_000,
     });
@@ -237,12 +227,12 @@ export function useAdminCreditAuditLog() {
     return useQuery({
         queryKey: ['adminCreditAudit'],
         queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_audit_log', {
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return (data as { items: CreditAuditRow[] })?.items ?? [];
+            const data = await callRpcRest<{ items: CreditAuditRow[] }>(
+                'list_admin_credit_audit_log',
+                { p_limit: 200, p_offset: 0 },
+                20_000,
+            );
+            return data?.items ?? [];
         },
         staleTime: 30_000,
     });
@@ -252,13 +242,12 @@ export function useManagerCreditSpends(companyId: string | undefined) {
     return useQuery({
         queryKey: ['managerCreditSpends', companyId],
         queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_manager_credit_spends', {
-                p_company_id: companyId,
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return (data as { items: ManagerCreditSpendRow[] })?.items ?? [];
+            const data = await callRpcRest<{ items: ManagerCreditSpendRow[] }>(
+                'list_manager_credit_spends',
+                { p_company_id: companyId, p_limit: 200, p_offset: 0 },
+                20_000,
+            );
+            return data?.items ?? [];
         },
         enabled: !!companyId,
         staleTime: 30_000,
@@ -307,20 +296,21 @@ export type SettlementSummary = {
 export function useManagerCreditSettlements(companyId: string | undefined, status?: string | null) {
     return useQuery({
         queryKey: ['managerCreditSettlements', companyId, status],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_manager_credit_settlements', {
-                p_company_id: companyId,
-                p_status: status ?? null,
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return data as {
+        queryFn: () =>
+            callRpcRest<{
                 items: ManagerSettlementRow[];
                 summary: SettlementSummary;
                 retention_days: number;
-            };
-        },
+            }>(
+                'list_manager_credit_settlements',
+                {
+                    p_company_id: companyId,
+                    p_status: status ?? null,
+                    p_limit: 200,
+                    p_offset: 0,
+                },
+                20_000,
+            ),
         enabled: !!companyId,
         staleTime: 20_000,
     });
@@ -330,12 +320,12 @@ export function useAdminCreditSettlements() {
     return useQuery({
         queryKey: ['adminCreditSettlements'],
         queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_settlements', {
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return (data as { items: Array<Record<string, unknown>> })?.items ?? [];
+            const data = await callRpcRest<{ items: Array<Record<string, unknown>> }>(
+                'list_admin_credit_settlements',
+                { p_limit: 200, p_offset: 0 },
+                20_000,
+            );
+            return data?.items ?? [];
         },
         staleTime: 30_000,
     });
@@ -412,14 +402,13 @@ async function fetchAllAccountingRows(
     let offset = 0;
 
     while (offset < ACCOUNTING_EXPORT_MAX) {
-        const { data, error } = await supabase.rpc(rpcName, {
+        const data = await callRpcRest<{ items?: CreditAccountingRow[] }>(rpcName, {
             ...params,
             p_limit: ACCOUNTING_PAGE_SIZE,
             p_offset: offset,
-        });
-        if (error) throw error;
+        }, 25_000);
 
-        const items = ((data as { items?: CreditAccountingRow[] })?.items ?? []) as CreditAccountingRow[];
+        const items = data?.items ?? [];
         all.push(...items);
         if (items.length < ACCOUNTING_PAGE_SIZE) break;
         offset += ACCOUNTING_PAGE_SIZE;
@@ -434,17 +423,18 @@ export function useManagerCreditAccountingReport(
 ) {
     return useQuery({
         queryKey: ['managerCreditAccounting', companyId, filters.startDate, filters.endDate],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_manager_credit_accounting_report', {
-                p_company_id: companyId,
-                p_start_date: filters.startDate || null,
-                p_end_date: filters.endDate || null,
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return data as { items: CreditAccountingRow[]; summary: CreditAccountingSummary };
-        },
+        queryFn: () =>
+            callRpcRest<{ items: CreditAccountingRow[]; summary: CreditAccountingSummary }>(
+                'list_manager_credit_accounting_report',
+                {
+                    p_company_id: companyId,
+                    p_start_date: filters.startDate || null,
+                    p_end_date: filters.endDate || null,
+                    p_limit: 200,
+                    p_offset: 0,
+                },
+                20_000,
+            ),
         enabled: !!companyId,
         staleTime: 30_000,
     });
@@ -464,17 +454,18 @@ export async function fetchManagerCreditAccountingExport(
 export function useAdminCreditAccountingReport(filters: CreditAccountingFilters) {
     return useQuery({
         queryKey: ['adminCreditAccounting', filters.companyId, filters.startDate, filters.endDate],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_accounting_report', {
-                p_company_id: filters.companyId || null,
-                p_start_date: filters.startDate || null,
-                p_end_date: filters.endDate || null,
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return data as { items: CreditAccountingRow[]; summary: CreditAccountingSummary };
-        },
+        queryFn: () =>
+            callRpcRest<{ items: CreditAccountingRow[]; summary: CreditAccountingSummary }>(
+                'list_admin_credit_accounting_report',
+                {
+                    p_company_id: filters.companyId || null,
+                    p_start_date: filters.startDate || null,
+                    p_end_date: filters.endDate || null,
+                    p_limit: 200,
+                    p_offset: 0,
+                },
+                20_000,
+            ),
         staleTime: 30_000,
     });
 }
@@ -493,12 +484,12 @@ export function useAdminCreditRefundCases() {
     return useQuery({
         queryKey: ['adminCreditRefunds'],
         queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_refund_cases', {
-                p_limit: 100,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            return (data as { items: CreditRefundCaseRow[] })?.items ?? [];
+            const data = await callRpcRest<{ items: CreditRefundCaseRow[] }>(
+                'list_admin_credit_refund_cases',
+                { p_limit: 100, p_offset: 0 },
+                20_000,
+            );
+            return data?.items ?? [];
         },
         staleTime: 30_000,
     });
@@ -543,14 +534,12 @@ export function useAdminCreditTopupChargebackSummary(
 ) {
     return useQuery({
         queryKey: ['adminCreditTopupChargebackSummary', startDate, endDate],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('get_admin_credit_topup_chargeback_summary', {
-                p_start_date: startDate || null,
-                p_end_date: endDate || null,
-            });
-            if (error) throw error;
-            return data as AdminCreditTopupChargebackSummary;
-        },
+        queryFn: () =>
+            callRpcRest<AdminCreditTopupChargebackSummary>(
+                'get_admin_credit_topup_chargeback_summary',
+                { p_start_date: startDate || null, p_end_date: endDate || null },
+                20_000,
+            ),
         staleTime: 30_000,
         enabled,
     });
@@ -564,15 +553,17 @@ export function useAdminCreditTopupChargebacks(
     return useQuery({
         queryKey: ['adminCreditTopupChargebacks', startDate, endDate, platformAbsorbOnly],
         queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_credit_topup_chargebacks', {
-                p_start_date: startDate || null,
-                p_end_date: endDate || null,
-                p_platform_absorb_only: platformAbsorbOnly,
-                p_limit: 200,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            const payload = data as { items: AdminCreditTopupChargebackRow[]; total: number };
+            const payload = await callRpcRest<{ items: AdminCreditTopupChargebackRow[]; total: number }>(
+                'list_admin_credit_topup_chargebacks',
+                {
+                    p_start_date: startDate || null,
+                    p_end_date: endDate || null,
+                    p_platform_absorb_only: platformAbsorbOnly,
+                    p_limit: 200,
+                    p_offset: 0,
+                },
+                20_000,
+            );
             return {
                 items: payload?.items ?? [],
                 total: payload?.total ?? 0,
@@ -594,16 +585,19 @@ export async function fetchAdminCreditTopupChargebacksExport(
     let offset = 0;
 
     while (offset < CHARGEBACK_EXPORT_MAX) {
-        const { data, error } = await supabase.rpc('list_admin_credit_topup_chargebacks', {
-            p_start_date: startDate || null,
-            p_end_date: endDate || null,
-            p_platform_absorb_only: platformAbsorbOnly,
-            p_limit: CHARGEBACK_EXPORT_PAGE_SIZE,
-            p_offset: offset,
-        });
-        if (error) throw error;
+        const payload = await callRpcRest<{ items?: AdminCreditTopupChargebackRow[] }>(
+            'list_admin_credit_topup_chargebacks',
+            {
+                p_start_date: startDate || null,
+                p_end_date: endDate || null,
+                p_platform_absorb_only: platformAbsorbOnly,
+                p_limit: CHARGEBACK_EXPORT_PAGE_SIZE,
+                p_offset: offset,
+            },
+            25_000,
+        );
 
-        const items = ((data as { items?: AdminCreditTopupChargebackRow[] })?.items ?? []) as AdminCreditTopupChargebackRow[];
+        const items = payload?.items ?? [];
         all.push(...items);
         if (items.length < CHARGEBACK_EXPORT_PAGE_SIZE) break;
         offset += CHARGEBACK_EXPORT_PAGE_SIZE;

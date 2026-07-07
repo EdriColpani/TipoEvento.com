@@ -200,19 +200,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                     : { p_plan: pendingPlan, p_contract_id: pendingContract.id }),
             };
 
-            let data: unknown = null;
-            try {
-                data = await callRpcRest(rpcName, rpcArgs, 20_000);
-            } catch (restError) {
-                console.warn('[CompanyBillingPlanSection] REST RPC falhou:', restError);
-                const { data: fallbackData, error } = await withTimeout(
-                    supabase.rpc(rpcName, rpcArgs),
-                    20_000,
-                    { data: null, error: { message: 'timeout' } as { message: string } },
-                );
-                if (error?.message && error.message !== 'timeout') throw error;
-                data = fallbackData;
-            }
+            const data = await callRpcRest(rpcName, rpcArgs, 20_000);
             if (data && typeof data === 'object' && 'success' in data && !data.success) {
                 throw new Error('Não foi possível salvar o plano.');
             }

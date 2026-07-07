@@ -1,18 +1,13 @@
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
 import { batchQuantityAsNumber } from '@/utils/batch-quantity';
 import type { BillingPlanCode } from '@/constants/billing-plans';
 
 /** Ingressos ativos emitidos para o evento (analytics com preço > 0). */
 export async function fetchEventActiveTicketCount(eventId: string): Promise<number> {
-    const { data, error } = await supabase.rpc('event_active_wristband_count', {
+    const data = await callRpcRest<number>('event_active_wristband_count', {
         p_event_id: eventId,
-    });
-
-    if (error) {
-        throw new Error(error.message);
-    }
-
+    }, 10_000);
     return Number(data ?? 0);
 }
 

@@ -17,7 +17,7 @@ import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, Ch
 import { format } from 'date-fns';
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { DatePicker } from '@/components/DatePicker';
-import ImageUploadPicker from '@/components/ImageUploadPicker';
+import EventImagesUploadSection from '@/components/EventImagesUploadSection';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
@@ -49,6 +49,7 @@ import EventLocationFormFields from '@/components/EventLocationFormFields';
 import { resolveEventGeoOnSave } from '@/utils/google-maps';
 import { cn } from '@/lib/utils';
 import { restGet } from '@/utils/supabase-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
 import {
     getOrCreateClientSubmitId,
@@ -60,6 +61,7 @@ import {
     parseHighlightsText,
     validateHighlightsText,
 } from '@/utils/event-highlights';
+import { fetchEventContractVersion } from '@/utils/fetch-event-contract-version';
 import { useEventEditSalesGuard } from '@/hooks/use-event-edit-sales-guard';
 import {
     batchesDifferFromSnapshot,
@@ -474,6 +476,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const showPaidPricing = isPaid || requiresPaidTickets;
     const numBatches = parseInt(watch('num_batches') || '0');
     const batches = watch('batches');
+    const cardImageUrl = watch('card_image_url');
+    const exposureCardImageUrl = watch('exposure_card_image_url');
+    const bannerImageUrl = watch('banner_image_url');
 
     // TODOS OS HOOKS DEVEM SER CHAMADOS ANTES DE QUALQUER RETURN CONDICIONAL
     // Atualiza o número de lotes dinamicamente
@@ -800,6 +805,13 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 ? companyBilling.billing_contract_id
                 : activeContract?.id ?? null;
 
+        if (companyBilling?.requires_billing_reacceptance) {
+            showError(
+                'Há uma nova versão do contrato do plano. Confirme em Configurações → Perfil da Empresa → Plano e cobrança antes de criar ou atualizar eventos.',
+            );
+            return;
+        }
+
         // Validação: Para eventos pagos, é obrigatório ter contrato (empresa ou evento)
         if (values.is_paid) {
             if (!effectiveContractId && !activeContract) {
@@ -1023,6 +1035,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 address_place_id: values.address_place_id ?? null,
             });
 
+            let resolvedContractVersion =
+                companyBillingReady && companyBilling?.billing_contract_version
+                    ? companyBilling.billing_contract_version
+                    : activeContract?.id === effectiveContractId
+                      ? (activeContract?.version ?? null)
+                      : null;
+
+            if (effectiveContractId && !resolvedContractVersion) {
+                resolvedContractVersion = await fetchEventContractVersion(effectiveContractId);
+            }
+
             const eventData: Record<string, unknown> = {
                 title: values.title,
                 description: values.description,
@@ -1065,10 +1088,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 company_id: companyIdForEvent,
                 status: eventStatus,
                 contract_id: effectiveContractId,
-                contract_version:
-                    companyBilling?.billing_contract_version ??
-                    (activeContract?.id === effectiveContractId ? activeContract?.version : null) ??
-                    null,
+                contract_version: resolvedContractVersion,
             };
             if (clientSubmitId) {
                 eventData.client_submit_id = clientSubmitId;
@@ -1142,9 +1162,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             if (effectiveIsPaid && newEventId && values.batches && !skipBatchRewrite) {
                 try {
                     if (effectiveIsPaid && newEventId) {
-                        await supabase.rpc('cleanup_orphan_counter_wristbands', {
+                        await callRpcRest('cleanup_orphan_counter_wristbands', {
                             p_event_id: newEventId,
-                        });
+                        }, 12_000);
                     }
 
                     // Exclui lotes antigos para recriar (simples para este exemplo, considerar updates mais complexos para produção)
@@ -1178,13 +1198,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     // Só mostra sucesso se a tabela existir e a operação for concluída
                     if (!deleteError && !batchesError) {
                         if (effectiveIsPaid && newEventId) {
-                            const { error: backfillError } = await supabase.rpc(
+                            await callRpcRest(
                                 'backfill_event_counter_inventory',
                                 { p_event_id: newEventId },
+                                15_000,
                             );
-                            if (backfillError) {
-                                console.error('[EventFormSteps] backfill_event_counter_inventory:', backfillError);
-                            }
                         }
                     }
                 } catch (batchError: unknown) {
@@ -1329,7 +1347,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             showError("Por favor, verifique todos os campos obrigatórios antes de salvar.");
         }
 
-        if (errors.date || errors.time || errors.title || errors.description) {
+        if (errors.date || errors.time || errors.title || errors.description || errors.min_age || errors.category || errors.capacity || errors.duration) {
             setCurrentStep(showContractStep ? 2 : 1);
         } else if (errors.card_image_url || errors.exposure_card_image_url || errors.banner_image_url) {
             setCurrentStep(showContractStep ? 3 : 2);
@@ -1552,87 +1570,6 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     )}
                                 />
                             )}
-                        </CardContent>
-                    </Card>
-                )}
-
-                {/* Passo 2: Mídias e Outras Configurações */}
-                {stepToRender === 'media' && (
-                    <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
-                        <CardHeader>
-                            <CardTitle className="text-yellow-500 text-2xl">{showContractStep ? '3.' : '2.'} Mídias e Configurações</CardTitle>
-                            <CardDescription className="text-gray-400">Imagens e detalhes adicionais do evento.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <FormField
-                                control={control}
-                                name="card_image_url"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel className="text-white">Imagem do Card (proporção 16:9)</FormLabel>
-                                        <FormControl>
-                                            <ImageUploadPicker
-                                                userId={userId!}
-                                                currentImageUrl={field.value}
-                                                onImageUpload={field.onChange}
-                                                placeholderText="URL da imagem do card"
-                                                folderPath="event_cards"
-                                                width={1920}
-                                                height={1080}
-                                                isInvalid={!!errors.card_image_url}
-                                            />
-                                        </FormControl>
-                                        <FormDescription className="text-gray-500 text-xs">Esta imagem será usada na listagem de eventos. Recomendado 1920x1080px.</FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                             <FormField
-                                control={control}
-                                name="exposure_card_image_url"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel className="text-white">Imagem de Exposição (proporção 16:9)</FormLabel>
-                                        <FormControl>
-                                            <ImageUploadPicker
-                                                userId={userId!}
-                                                currentImageUrl={field.value}
-                                                onImageUpload={field.onChange}
-                                                placeholderText="URL da imagem de exposição"
-                                                folderPath="event_exposure_cards"
-                                                width={1920}
-                                                height={1080}
-                                                isInvalid={!!errors.exposure_card_image_url}
-                                            />
-                                        </FormControl>
-                                        <FormDescription className="text-gray-500 text-xs">Esta imagem será usada em carrosséis e áreas de destaque. Recomendado 1920x1080px.</FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={control}
-                                name="banner_image_url"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel className="text-white">Imagem do Banner (proporção 3:1)</FormLabel>
-                                        <FormControl>
-                                            <ImageUploadPicker
-                                                userId={userId!}
-                                                currentImageUrl={field.value}
-                                                onImageUpload={field.onChange}
-                                                placeholderText="URL da imagem do banner"
-                                                folderPath="event_banners"
-                                                width={1920}
-                                                height={640}
-                                                isInvalid={!!errors.banner_image_url}
-                                            />
-                                        </FormControl>
-                                        <FormDescription className="text-gray-500 text-xs">Esta imagem será usada como banner principal na página do evento. Recomendado 1920x640px.</FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <FormField
                                     control={control}
@@ -1686,7 +1623,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                             </FormControl>
                                             <FormDescription className="text-gray-300 text-xs">
                                                 {showPaidPricing
-                                                    ? 'Capacidade física do local. A quantidade vendável será definida nos lotes do próximo passo.'
+                                                    ? 'Capacidade física do local. A quantidade vendável será definida nos lotes do passo de ingressos.'
                                                     : 'Número total de ingressos disponíveis para o evento.'}
                                                 {ticketsLocked && salesGuard
                                                     ? ` Mínimo permitido: ${salesGuard.min_capacity} (já vendidos/inscritos).`
@@ -1722,7 +1659,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             {requiresPaidTickets && (
                                 <div className="p-4 rounded-xl border border-cyan-400/50 bg-cyan-950/60 text-sm text-cyan-50 mb-4">
                                     Seu plano exige eventos <strong className="text-white">pagos</strong>. Defina a quantidade nos{' '}
-                                    <strong className="text-white">lotes de ingressos</strong> (próximo passo). Os QR codes são
+                                    <strong className="text-white">lotes de ingressos</strong> (próximo passo após as imagens). Os QR codes são
                                     gerados na venda — não é necessário emitir ingressos manualmente.
                                 </div>
                             )}
@@ -1760,7 +1697,46 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     </Card>
                 )}
 
-                {/* Passo 3: Preço e Lotes de Ingressos (condicional) */}
+                {/* Passo: Imagens (após dados do evento) */}
+                {stepToRender === 'media' && (
+                    <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
+                        <CardHeader>
+                            <CardTitle className="text-yellow-500 text-2xl flex items-center gap-2">
+                                <Image className="h-6 w-6" />
+                                {showContractStep ? '3.' : '2.'} Imagens do Evento
+                            </CardTitle>
+                            <CardDescription className="text-gray-400">
+                                Três imagens para listagem, destaque e página pública. Envie após concluir os dados do passo anterior.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <EventImagesUploadSection
+                                userId={userId!}
+                                cardUrl={cardImageUrl}
+                                exposureUrl={exposureCardImageUrl}
+                                bannerUrl={bannerImageUrl}
+                                onCardChange={(url) => setValue('card_image_url', url, { shouldValidate: true, shouldDirty: true })}
+                                onExposureChange={(url) => setValue('exposure_card_image_url', url, { shouldValidate: true, shouldDirty: true })}
+                                onBannerChange={(url) => setValue('banner_image_url', url, { shouldValidate: true, shouldDirty: true })}
+                                invalid={{
+                                    card: !!errors.card_image_url,
+                                    exposure: !!errors.exposure_card_image_url,
+                                    banner: !!errors.banner_image_url,
+                                }}
+                                disabled={freezeFormAfterCreate}
+                            />
+                            {(errors.card_image_url || errors.exposure_card_image_url || errors.banner_image_url) && (
+                                <p className="text-red-400 text-sm">
+                                    {(errors.card_image_url?.message
+                                        || errors.exposure_card_image_url?.message
+                                        || errors.banner_image_url?.message) as string}
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Passo: Preço e Lotes de Ingressos (condicional) */}
                 {stepToRender === 'pricing' && !isListingPlan && (
                     <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                         <CardHeader>

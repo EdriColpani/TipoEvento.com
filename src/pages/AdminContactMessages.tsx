@@ -11,7 +11,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showSuccess } from '@/utils/toast';
 
@@ -41,13 +41,15 @@ const AdminContactMessages: React.FC = () => {
     const loadItems = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase.rpc('list_admin_contact_messages', {
-                p_status: statusFilter === 'all' ? null : statusFilter,
-                p_limit: 150,
-                p_offset: 0,
-            });
-            if (error) throw error;
-            const payload = (data ?? {}) as { items?: ContactMessage[] };
+            const payload = await callRpcRest<{ items?: ContactMessage[] }>(
+                'list_admin_contact_messages',
+                {
+                    p_status: statusFilter === 'all' ? null : statusFilter,
+                    p_limit: 150,
+                    p_offset: 0,
+                },
+                12_000,
+            );
             setItems(payload.items ?? []);
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : '';
@@ -80,11 +82,10 @@ const AdminContactMessages: React.FC = () => {
     const updateStatus = async (id: string, status: 'new' | 'read' | 'resolved') => {
         setUpdatingId(id);
         try {
-            const { error } = await supabase.rpc('update_admin_contact_message_status', {
+            await callRpcRest('update_admin_contact_message_status', {
                 p_message_id: id,
                 p_status: status,
-            });
-            if (error) throw error;
+            }, 10_000);
             showSuccess('Status atualizado.');
             await loadItems();
         } catch (e: unknown) {

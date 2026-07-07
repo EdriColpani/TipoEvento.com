@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
 import { managerCanViewCreditReports } from '@/utils/company-billing-rules';
 import { useProfile } from '@/hooks/use-profile';
@@ -10,9 +10,8 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 const MANAGER_PRO_USER_TYPE_ID = 2;
 
 async function fetchCreditModuleGloballyEnabled(): Promise<boolean> {
-    const { data, error } = await supabase.rpc('get_credit_wallet_status');
-    if (error) throw error;
-    return (data as { module_enabled?: boolean })?.module_enabled === true;
+    const data = await callRpcRest<{ module_enabled?: boolean }>('get_credit_wallet_status', {}, 10_000);
+    return data?.module_enabled === true;
 }
 
 /**

@@ -11,6 +11,7 @@ export interface ManagerEvent {
     /** Preenchido quando desativado automaticamente por inatividade comercial. */
     auto_deactivated_at?: string | null;
     date: string;
+    time?: string | null;
     company_id: string;
     /** Preenchido só para Admin Master (lista global). */
     company_name?: string | null;
@@ -95,6 +96,7 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
             is_active: e.is_active !== false,
             auto_deactivated_at: e.auto_deactivated_at ?? null,
             date: e.date ?? '',
+            time: e.time ?? null,
             company_id: companyId,
             company_name: companyName,
             inventory_mode:

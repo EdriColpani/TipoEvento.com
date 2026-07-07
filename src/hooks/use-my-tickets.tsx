@@ -95,18 +95,8 @@ async function fetchViaRpc(): Promise<TicketData[] | null> {
         return parseRpcPayload(data);
     } catch (restError) {
         console.warn('[useMyTickets] RPC REST falhou:', restError);
-    }
-
-    const { data, error } = await withTimeout(
-        supabase.rpc('get_my_client_tickets'),
-        15_000,
-        { data: null, error: { message: 'Tempo esgotado ao carregar ingressos.' } as { message: string } },
-    );
-    if (error?.message) {
-        console.warn('get_my_client_tickets:', error.message);
         return null;
     }
-    return parseRpcPayload(data);
 }
 
 function buildTicketFromParts(
@@ -248,38 +238,38 @@ export async function emitReceivableTickets(receivableId: string): Promise<{
     updated?: number;
     error?: string;
 }> {
-    const { data, error } = await supabase.rpc('client_emit_receivable_tickets', {
-        p_receivable_id: receivableId,
-    });
-    if (error) {
-        if (error.code === 'PGRST202') {
+    try {
+        const payload = await callRpcRest<{
+            ok?: boolean;
+            updated?: number;
+            expected?: number;
+            error?: string;
+            materialized?: number;
+        }>('client_emit_receivable_tickets', { p_receivable_id: receivableId }, 20_000);
+
+        if (!payload?.ok) {
+            const err = payload?.error ?? 'unknown';
+            if (err === 'no_analytics_ids') {
+                return { ok: false, error: 'Ingressos ainda não foram gerados. Use Verificar no MP.' };
+            }
+            if (err === 'receivable_not_paid') {
+                return { ok: false, error: 'Pagamento ainda não confirmado.' };
+            }
+            return { ok: false, error: err };
+        }
+        return {
+            ok: true,
+            updated: payload.updated,
+            error: undefined,
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Erro ao emitir ingressos.';
+        if (message.includes('PGRST202') || message.includes('function')) {
             return { ok: false, error: 'rpc_not_deployed' };
         }
-        console.warn('client_emit_receivable_tickets:', error.message);
-        return { ok: false, error: error.message };
+        console.warn('client_emit_receivable_tickets:', message);
+        return { ok: false, error: message };
     }
-    const payload = data as {
-        ok?: boolean;
-        updated?: number;
-        expected?: number;
-        error?: string;
-        materialized?: number;
-    } | null;
-    if (!payload?.ok) {
-        const err = payload?.error ?? 'unknown';
-        if (err === 'no_analytics_ids') {
-            return { ok: false, error: 'Ingressos ainda não foram gerados. Use Verificar no MP.' };
-        }
-        if (err === 'receivable_not_paid') {
-            return { ok: false, error: 'Pagamento ainda não confirmado.' };
-        }
-        return { ok: false, error: err };
-    }
-    return {
-        ok: true,
-        updated: payload.updated,
-        error: undefined,
-    };
 }
 
 export const useMyTickets = (userId: string | undefined) => {

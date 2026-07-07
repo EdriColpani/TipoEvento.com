@@ -10,9 +10,10 @@ import { Check, Loader2, ShoppingCart, Wallet } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { useAuthUserId } from '@/hooks/use-auth-user-id';
-import { withTimeout } from '@/utils/promise-timeout';
-import { supabase } from '@/integrations/supabase/client'; // Importando supabase
-import { FunctionsHttpError } from '@supabase/supabase-js'; // Importando o tipo de erro específico
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { supabase } from '@/integrations/supabase/client';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import {
@@ -61,11 +62,8 @@ const EventDetails: React.FC = () => {
 
     const creditBalanceQuery = useQuery({
         queryKey: ['client-credit-balance-event', id],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('get_client_credit_balance');
-            if (error) throw error;
-            return data as { balance?: number; status?: string };
-        },
+        queryFn: () =>
+            callRpcRest<{ balance?: number; status?: string }>('get_client_credit_balance', {}, 10_000),
         enabled: isAuthenticated && !!id,
         staleTime: 30_000,
     });
@@ -79,11 +77,8 @@ const EventDetails: React.FC = () => {
 
     const creditWalletMetaQuery = useQuery({
         queryKey: ['credit-wallet-status-event'],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('get_credit_wallet_status');
-            if (error) throw error;
-            return data as { biometric_threshold?: number };
-        },
+        queryFn: () =>
+            callRpcRest<{ biometric_threshold?: number }>('get_credit_wallet_status', {}, 10_000),
         enabled: isAuthenticated,
         staleTime: 60_000,
     });
@@ -208,13 +203,8 @@ const EventDetails: React.FC = () => {
         const toastId = showLoading("Preparando pagamento e redirecionando...");
 
         try {
-            // 2. Obter o token de autenticação do usuário logado
-            const { data: { session } } = await withTimeout(
-                supabase.auth.getSession(),
-                3_000,
-                { data: { session: null } },
-            );
-            if (!session) {
+            const accessToken = getAuthAccessToken();
+            if (!accessToken) {
                 dismissToast(toastId);
                 showError("Sessão expirada. Faça login novamente.");
                 navigate('/login', {
@@ -222,8 +212,7 @@ const EventDetails: React.FC = () => {
                 });
                 return;
             }
-            
-            // 3. Chamar o Edge Function para criar a preferência de pagamento
+
             const response = await supabase.functions.invoke('create-payment-preference', {
                 body: {
                     eventId: id,
@@ -238,7 +227,7 @@ const EventDetails: React.FC = () => {
                     })),
                 },
                 headers: {
-                    'Authorization': `Bearer ${session.access_token}`,
+                    Authorization: `Bearer ${accessToken}`,
                     'x-idempotency-key': checkoutIdempotencyKeyRef.current,
                 }
             });

@@ -1,6 +1,6 @@
-import { supabase } from '@/integrations/supabase/client';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export interface MaskedPaymentSettings {
     configured: boolean;
@@ -16,9 +16,7 @@ export interface MaskedPaymentSettings {
 }
 
 export async function fetchManagerPaymentSettingsMasked(): Promise<MaskedPaymentSettings> {
-    const { data, error } = await supabase.rpc('get_payment_settings_masked');
-    if (error) throw new Error(error.message);
-    const row = data as Record<string, unknown> | null;
+    const row = await callRpcRest<Record<string, unknown>>('get_payment_settings_masked', {}, 10_000);
     return {
         configured: Boolean(row?.configured),
         oauth_connected: Boolean(row?.oauth_connected),
@@ -34,30 +32,22 @@ export async function fetchManagerPaymentSettingsMasked(): Promise<MaskedPayment
 }
 
 export async function startMpOAuthConnect(): Promise<string> {
-    const token = getAuthAccessToken();
-    if (!token) throw new Error('Sessão expirada.');
-
-    const { data, error } = await supabase.functions.invoke('mp-oauth-start', {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (error) throw new Error(await parseEdgeFunctionError(error, data));
-    const payload = data as { authorizationUrl?: string; error?: string };
+    const payload = await invokeEdgeFunctionRest<{ authorizationUrl?: string; error?: string }>(
+        'mp-oauth-start',
+        {},
+        { timeoutMs: 20_000 },
+    );
     if (payload?.error) throw new Error(payload.error);
     if (!payload?.authorizationUrl) throw new Error('URL de autorização não retornada.');
     return payload.authorizationUrl;
 }
 
 export async function disconnectMpOAuth(): Promise<void> {
-    const token = getAuthAccessToken();
-    if (!token) throw new Error('Sessão expirada.');
-
-    const { data, error } = await supabase.functions.invoke('mp-oauth-disconnect', {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (error) throw new Error(await parseEdgeFunctionError(error, data));
-    const payload = data as { error?: string };
+    const payload = await invokeEdgeFunctionRest<{ error?: string }>(
+        'mp-oauth-disconnect',
+        {},
+        { timeoutMs: 15_000 },
+    );
     if (payload?.error) throw new Error(payload.error);
 }
 
@@ -70,19 +60,16 @@ export async function saveManagerPaymentSettings(params: {
     const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
-    const { data, error } = await supabase.functions.invoke('save-manager-payment-settings', {
-        body: {
+    await invokeEdgeFunctionRest(
+        'save-manager-payment-settings',
+        {
             companyId: params.companyId,
             gatewayName: params.gatewayName,
             apiKey: params.apiKey ?? '',
             apiToken: params.apiToken ?? '',
         },
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (error) throw new Error(error.message || 'Erro ao salvar credenciais.');
-    const payload = data as { error?: string };
-    if (payload?.error) throw new Error(payload.error);
+        { timeoutMs: 20_000 },
+    );
 }
 
 export interface MaskedPlatformMpSettings {
@@ -93,9 +80,7 @@ export interface MaskedPlatformMpSettings {
 }
 
 export async function fetchPlatformMpSettingsMasked(): Promise<MaskedPlatformMpSettings> {
-    const { data, error } = await supabase.rpc('get_platform_mp_settings_masked');
-    if (error) throw new Error(error.message);
-    const row = data as Record<string, unknown> | null;
+    const row = await callRpcRest<Record<string, unknown>>('get_platform_mp_settings_masked', {}, 10_000);
     return {
         configured: Boolean(row?.configured),
         public_key_last4: (row?.public_key_last4 as string) ?? null,
@@ -111,15 +96,12 @@ export async function savePlatformMpSettings(params: {
     const token = getAuthAccessToken();
     if (!token) throw new Error('Sessão expirada.');
 
-    const { data, error } = await supabase.functions.invoke('save-platform-mp-settings', {
-        body: {
+    await invokeEdgeFunctionRest(
+        'save-platform-mp-settings',
+        {
             publicKey: params.publicKey ?? '',
             accessToken: params.accessToken ?? '',
         },
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (error) throw new Error(error.message || 'Erro ao salvar credenciais da plataforma.');
-    const payload = data as { error?: string };
-    if (payload?.error) throw new Error(payload.error);
+        { timeoutMs: 20_000 },
+    );
 }

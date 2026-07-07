@@ -42,32 +42,33 @@ export async function recordContractAcceptance(params: {
     userId?: string | null;
     audit: ContractAcceptanceAuditMeta;
 }) {
-    const { supabase } = await import('@/integrations/supabase/client');
+    const { callRpcRest } = await import('@/utils/supabase-rest-rpc');
 
-    const { data, error } = await supabase.rpc('register_contract_acceptance', {
-        p_contract_id: params.contractId,
-        p_contract_type: params.contractType,
-        p_company_id: params.companyId ?? null,
-        p_user_id: params.userId ?? null,
-        p_acceptance_source: params.audit.acceptanceSource,
-        p_user_agent:
-            typeof params.audit.metadata?.user_agent === 'string'
-                ? params.audit.metadata.user_agent
-                : typeof navigator !== 'undefined'
-                  ? navigator.userAgent.slice(0, 2000)
-                  : null,
-        p_accepted_ip: params.audit.acceptedIp ?? null,
-        p_scrolled_to_end: params.audit.scrolledToEnd ?? null,
-        p_metadata: params.audit.metadata ?? {},
-    });
-
-    if (error) throw error;
-    return data as {
+    return callRpcRest<{
         ok?: boolean;
         acceptance_id?: string;
         contract_id?: string;
         contract_version?: string;
         content_hash?: string;
         accepted_at?: string;
-    };
+    }>(
+        'register_contract_acceptance',
+        {
+            p_contract_id: params.contractId,
+            p_contract_type: params.contractType,
+            p_company_id: params.companyId ?? null,
+            p_user_id: params.userId ?? null,
+            p_acceptance_source: params.audit.acceptanceSource,
+            p_user_agent:
+                typeof params.audit.metadata?.user_agent === 'string'
+                    ? params.audit.metadata.user_agent
+                    : typeof navigator !== 'undefined'
+                      ? navigator.userAgent.slice(0, 2000)
+                      : null,
+            p_accepted_ip: params.audit.acceptedIp ?? null,
+            p_scrolled_to_end: params.audit.scrolledToEnd ?? null,
+            p_metadata: params.audit.metadata ?? {},
+        },
+        15_000,
+    );
 }

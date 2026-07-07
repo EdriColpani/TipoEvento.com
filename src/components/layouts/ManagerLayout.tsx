@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Globe, Share2, Store } from 'lucide-react';
 import SiteLogo from '@/components/SiteLogo';
+import { SITE_HEADER_BAR_CLASS } from '@/constants/branding';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import {
     filterNavItemsByPlanFeatures,
@@ -471,14 +472,14 @@ const ManagerLayout: React.FC = () => {
     return (
         <div className="min-h-screen bg-black text-white">
             <header ref={headerRef} className="fixed top-0 left-0 right-0 z-[110] bg-black/90 backdrop-blur-md border-b border-yellow-500/20">
-                <div className={`flex items-center justify-between max-w-7xl mx-auto ${isMobile ? 'px-3 py-3' : isTablet ? 'px-4 py-4' : 'px-6 py-4'}`}>
+                <div className={`flex items-center justify-between max-w-7xl mx-auto ${SITE_HEADER_BAR_CLASS}`}>
                     <div className="flex items-center space-x-4 sm:space-x-6">
                         <div
                             className="flex items-center gap-2 sm:gap-3 cursor-pointer"
                             onClick={() => navigate('/')}
                         >
-                            <SiteLogo className="h-14 sm:h-[4.5rem] min-w-[9rem] sm:min-w-[12rem]" onClick={() => navigate('/')} />
-                            <span className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black px-2 sm:px-3 py-0.5 rounded-lg text-xs sm:text-sm font-bold shrink-0">
+                            <SiteLogo header onClick={() => navigate('/')} />
+                            <span className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black px-2.5 sm:px-3 py-1 rounded-lg text-sm sm:text-base font-bold shrink-0">
                                 {dashboardTitle}
                             </span>
                         </div>

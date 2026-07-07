@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { restGet } from '@/utils/supabase-rest';
 
 export interface ManagerEventScopeRow {
     id: string;
@@ -100,6 +101,66 @@ async function fetchEventsWithSchemaFallback(
         lastMessage ||
             'Não foi possível ler a tabela events. Verifique colunas e políticas RLS no Supabase.',
     );
+}
+
+async function fetchEventsWithSchemaFallbackRest(
+    options?: FetchManagerEventsScopeOptions,
+): Promise<ManagerEventScopeRow[]> {
+    const createdBySelect = options?.createdByUserId ? ',created_by' : '';
+    const inventorySelect = ',inventory_mode';
+    const attempts = [
+        `id,title,date,time,duration,company_id,created_at,is_draft,is_active,auto_deactivated_at${inventorySelect}${createdBySelect}`,
+        `id,title,date,time,duration,company_id,created_at,is_draft,is_active${inventorySelect}${createdBySelect}`,
+        `id,title,date,time,duration,company_id,created_at,is_active${inventorySelect}${createdBySelect}`,
+        `id,title,date,time,duration,company_id,is_active${inventorySelect}${createdBySelect}`,
+        `id,title,event_date,event_time,duration,company_id,created_at,is_active${createdBySelect}`,
+        `id,title,event_date,event_time,duration,company_id,is_active${createdBySelect}`,
+        `id,title,date,time,duration,is_active${createdBySelect}`,
+        `id,title,event_date,event_time,duration,is_active${createdBySelect}`,
+        `id,title,date,time,is_active${createdBySelect}`,
+        `id,title,event_date,event_time,is_active${createdBySelect}`,
+        `id,title,is_active${createdBySelect}`,
+        options?.createdByUserId ? `id,title,created_by,is_active${inventorySelect}` : '*',
+    ];
+
+    let lastMessage = '';
+
+    for (const selectList of attempts) {
+        try {
+            let path = `events?select=${selectList}&order=id.asc`;
+            if (options?.createdByUserId) {
+                path += `&created_by=eq.${encodeURIComponent(options.createdByUserId)}`;
+            }
+            const data = await restGet<Record<string, unknown>[]>(path, 8_000);
+            let rawRows = data ?? [];
+            if (options?.createdByUserId) {
+                rawRows = rawRows.filter(
+                    (row) => String(row.created_by ?? '') === options.createdByUserId,
+                );
+            }
+            return rawRows.map(normalizeRow);
+        } catch (error) {
+            lastMessage = error instanceof Error ? error.message : String(error);
+        }
+    }
+
+    throw new Error(
+        lastMessage ||
+            'Não foi possível ler a tabela events. Verifique colunas e políticas RLS no Supabase.',
+    );
+}
+
+/**
+ * Lista eventos visíveis ao gestor via REST (evita deadlock do supabase-js).
+ */
+export async function fetchEventsVisibleToGestorRest(
+    userId: string,
+    isAdminMaster: boolean,
+): Promise<ManagerEventScopeRow[]> {
+    if (!isAdminMaster) {
+        return fetchEventsWithSchemaFallbackRest({ createdByUserId: userId });
+    }
+    return fetchEventsWithSchemaFallbackRest();
 }
 
 /**

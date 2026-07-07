@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export type AdminDashboardMetrics = {
@@ -128,11 +129,12 @@ async function fetchRecentActivity(): Promise<AdminActivityItem[]> {
 }
 
 async function fetchMetrics(): Promise<AdminDashboardMetrics> {
-  const { data: rpcData, error: rpcError } = await supabase.rpc('get_admin_dashboard_metrics');
-
-  if (!rpcError && rpcData != null) {
+  try {
+    const rpcData = await callRpcRest<unknown>('get_admin_dashboard_metrics', {}, 12_000);
     const parsed = coerceMetrics(rpcData);
     if (parsed) return parsed;
+  } catch (rpcError) {
+    console.warn('[useAdminDashboardStats] RPC REST falhou, usando fallback from():', rpcError);
   }
 
   const [profilesRes, managersRes, clientsRes, companiesRes, eventsRes, activeRes] = await Promise.all([

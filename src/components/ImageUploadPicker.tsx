@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { ImageOff, UploadCloud, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { uploadEventImage } from '@/utils/supabase-storage-rest';
 
 interface ImageUploadPickerProps {
     userId: string;
@@ -15,10 +15,11 @@ interface ImageUploadPickerProps {
     width: number;
     height: number;
     placeholderText: string;
-    bucketName?: string; // Default to 'event-banners'
-    folderPath?: string; // Default to 'banners'
-    maxFileSizeMB?: number; // Default to 5MB
-    isInvalid?: boolean; // Adicionando a prop isInvalid
+    bucketName?: string;
+    folderPath?: string;
+    maxFileSizeMB?: number;
+    isInvalid?: boolean;
+    uploadButtonLabel?: string;
 }
 
 const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
@@ -32,7 +33,8 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
     bucketName = 'event-banners',
     folderPath = 'banners',
     maxFileSizeMB = 5,
-    isInvalid = false, // Valor padrão
+    isInvalid = false,
+    uploadButtonLabel = 'Escolher imagem',
 }) => {
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,30 +52,7 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
         setUploading(true);
 
         try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${userId}-${Date.now()}.${fileExt}`;
-            const filePath = `${folderPath}/${fileName}`;
-
-            // 1. Upload the file to Supabase Storage
-            const { error: uploadError } = await supabase.storage
-                .from(bucketName)
-                .upload(filePath, file, {
-                    cacheControl: '3600',
-                    upsert: false,
-                });
-
-            if (uploadError) {
-                throw uploadError;
-            }
-
-            // 2. Get the public URL
-            const { data: publicUrlData } = supabase.storage
-                .from(bucketName)
-                .getPublicUrl(filePath);
-            
-            const publicUrl = publicUrlData.publicUrl;
-
-            // 3. Success: Notify parent component and show toast
+            const publicUrl = await uploadEventImage(bucketName, folderPath, userId, file);
             onImageUpload(publicUrl);
             showSuccess("Imagem enviada com sucesso!");
 
@@ -161,7 +140,7 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
                 ) : (
                     <>
                         <UploadCloud className="mr-2 h-4 w-4" />
-                        Escolher Banner
+                        {uploadButtonLabel}
                     </>
                 )}
             </Button>

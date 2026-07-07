@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
+import { resolveManagerEventStatusLabel } from '@/utils/manager-event-status';
 
 export interface EventReportRow {
     event_id: string;
@@ -35,35 +36,29 @@ export function resolveEventStatusLabel(row: {
     status?: string | null;
     is_draft?: boolean | null;
     is_active?: boolean | null;
+    date?: string | null;
+    time?: string | null;
 }): string {
-    if (row.is_draft === true) return 'Rascunho';
-    const st = String(row.status ?? '').toLowerCase().trim();
-    if (st === 'pending') return 'Pendente';
-    if (st === 'cancelled' || st === 'canceled') return 'Cancelado';
-    if (row.is_active === false) return 'Desativado';
-    return 'Publicado';
+    return resolveManagerEventStatusLabel(row);
 }
 
 function matchesStatusFilter(
-    row: { status?: string | null; is_draft?: boolean | null; is_active?: boolean | null; date?: string | null },
+    row: {
+        status?: string | null;
+        is_draft?: boolean | null;
+        is_active?: boolean | null;
+        date?: string | null;
+        time?: string | null;
+    },
     filter: string | null,
 ): boolean {
     if (!filter) return true;
     const label = resolveEventStatusLabel(row);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const eventDay =
-        row.date && String(row.date).trim()
-            ? new Date(`${String(row.date).slice(0, 10)}T12:00:00`)
-            : null;
-    if (eventDay && !Number.isNaN(eventDay.getTime())) eventDay.setHours(0, 0, 0, 0);
 
     if (filter === 'pending') return label === 'Pendente';
     if (filter === 'active') return label === 'Publicado';
     if (filter === 'inactive') return label === 'Desativado';
-    if (filter === 'finished') {
-        return Boolean(eventDay && eventDay < today && label === 'Publicado');
-    }
+    if (filter === 'finished') return label === 'Encerrado';
     if (filter === 'cancelled') return label === 'Cancelado';
     return true;
 }

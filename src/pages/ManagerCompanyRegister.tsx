@@ -21,7 +21,9 @@ import {
 } from '@/constants/company-kind';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { withTimeout } from '@/utils/promise-timeout';
+import { fetchAuthUserViaRest } from '@/utils/auth-rest';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { signOutSession } from '@/utils/sign-out-session';
 
 const ManagerCompanyRegister: React.FC = () => {
     const navigate = useNavigate();
@@ -68,11 +70,8 @@ const ManagerCompanyRegister: React.FC = () => {
         }
 
         const validateSession = async () => {
-            const { data: { user } } = await withTimeout(
-                supabase.auth.getUser(),
-                5_000,
-                { data: { user: null } },
-            );
+            const cached = readCachedAuthSession();
+            const { user } = await fetchAuthUserViaRest(cached.accessToken, 5_000);
 
             if (!user || user.id !== userId) {
                 navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
@@ -83,7 +82,7 @@ const ManagerCompanyRegister: React.FC = () => {
             }
 
             if (!isAuthEmailConfirmed(user)) {
-                await supabase.auth.signOut({ scope: 'local' });
+                await signOutSession();
                 showError('Confirme seu e-mail antes de cadastrar a empresa.');
                 navigate(MANAGER_ACCOUNT_REGISTER_PATH, { replace: true });
                 return;
@@ -97,22 +96,6 @@ const ManagerCompanyRegister: React.FC = () => {
 
         void validateSession();
     }, [authPending, userId, sessionReady, navigate, locationState.fromPromoterCta, form]);
-
-    useEffect(() => {
-        if (!userId) return;
-
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!session?.user?.id || session.user.id !== userId || !isAuthEmailConfirmed(session.user)) return;
-            if (session.user.email) {
-                form.setValue('email', session.user.email);
-            }
-            setIsFetching(false);
-        });
-
-        return () => {
-            authListener.subscription.unsubscribe();
-        };
-    }, [userId, form]);
 
     const fetchAddressByCep = async (cep: string) => {
         const cleanCep = cep.replace(/\D/g, '');

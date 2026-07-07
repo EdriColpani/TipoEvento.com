@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import {
     BILLING_PLAN_COLUMNS,
@@ -14,8 +15,6 @@ import {
 import type { BillingPlanCode } from '@/constants/billing-plans';
 import { billingBtnBack, billingBtnSolid, billingSpinner } from '@/constants/billing-ui';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
-import { withTimeout } from '@/utils/promise-timeout';
-import { supabase } from '@/integrations/supabase/client';
 
 const ADMIN_MASTER = 1;
 
@@ -35,6 +34,7 @@ function buildEmptyMatrix(): MatrixCell {
 const AdminPlanFeatures: React.FC = () => {
     const navigate = useNavigate();
     const { userId, sessionReady, tipoUsuarioId } = usePublicSiteAuth();
+    const { authPending } = usePageAuth();
     const [matrix, setMatrix] = useState<MatrixCell>(buildEmptyMatrix);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -67,16 +67,7 @@ const AdminPlanFeatures: React.FC = () => {
                     );
                     rows = Array.isArray(data) ? (data as typeof rows) : [];
                 } catch (restError) {
-                    console.warn('[AdminPlanFeatures] REST falhou:', restError);
-                    const { data, error } = await withTimeout(
-                        supabase.rpc('admin_get_billing_plan_features_matrix'),
-                        12_000,
-                        { data: null, error: { message: 'timeout' } as { message: string } },
-                    );
-                    if (error?.message && error.message !== 'timeout') {
-                        throw new Error(error.message);
-                    }
-                    rows = Array.isArray(data) ? (data as typeof rows) : [];
+                    throw restError;
                 }
 
                 if (cancelled) return;
@@ -141,17 +132,7 @@ const AdminPlanFeatures: React.FC = () => {
         }
 
         try {
-            try {
-                await callRpcRest('admin_save_billing_plan_features', { p_rows: rows }, 15_000);
-            } catch (restError) {
-                console.warn('[AdminPlanFeatures] save REST falhou:', restError);
-                const { error } = await withTimeout(
-                    supabase.rpc('admin_save_billing_plan_features', { p_rows: rows }),
-                    15_000,
-                    { error: { message: 'timeout' } as { message: string } },
-                );
-                if (error?.message) throw new Error(error.message);
-            }
+            await callRpcRest('admin_save_billing_plan_features', { p_rows: rows }, 15_000);
             showSuccess('Permissões por plano atualizadas.');
         } catch (err) {
             showError('Falha ao salvar: ' + (err instanceof Error ? err.message : 'tente novamente'));
@@ -161,7 +142,7 @@ const AdminPlanFeatures: React.FC = () => {
         }
     };
 
-    if (!sessionReady || !userId || loading) {
+    if (authPending || !sessionReady || !userId || loading) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className={`h-10 w-10 animate-spin ${billingSpinner} mx-auto mb-4`} />

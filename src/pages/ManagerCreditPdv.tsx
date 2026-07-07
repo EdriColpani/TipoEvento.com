@@ -21,8 +21,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuthUserId } from '@/hooks/use-auth-user-id';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCreditEstablishments } from '@/hooks/use-credit-establishments';
 import { useCreditEstablishmentProducts } from '@/hooks/use-credit-establishment-products';
@@ -31,7 +30,7 @@ import { generateRandomUuid } from '@/utils/random-id';
 import { isWalletQrToken } from '@/constants/wallet-qr';
 import { useHtml5QrScanner } from '@/hooks/use-html5-qr-scanner';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { showError, showSuccess } from '@/utils/toast';
 import { issueCreditMenuToken } from '@/hooks/use-credit-menu';
 import QRCode from 'react-qr-code';
@@ -63,7 +62,7 @@ function formatMoney(value: number): string {
 
 const ManagerCreditPdv: React.FC = () => {
     const navigate = useNavigate();
-    const { userId, sessionReady } = useAuthUserId();
+    const { userId, authPending, sessionReady } = usePageAuth();
     const [establishmentId, setEstablishmentId] = useState('');
     const [walletToken, setWalletToken] = useState('');
     const [resolved, setResolved] = useState<ResolvedClient | null>(null);
@@ -99,6 +98,7 @@ const ManagerCreditPdv: React.FC = () => {
         isHybridPlan(billing?.billing_plan) || isConsumptionOrLicensePlan(billing?.billing_plan);
 
     const planStillLoading =
+        authPending ||
         !sessionReady ||
         loadingCompany ||
         (Boolean(company?.id) && loadingBilling && billing === undefined);
@@ -144,10 +144,12 @@ const ManagerCreditPdv: React.FC = () => {
         setWalletToken(token);
         setResolving(true);
         try {
-            const { data: payload, error } = await supabase.functions.invoke('resolve-wallet-qr', {
-                body: { walletToken: token, establishmentId },
-            });
-            if (error) throw new Error(await parseEdgeFunctionError(error, payload));
+            const payload = await invokeEdgeFunctionRest<{
+                error?: string;
+                clientUserId: string;
+                balance?: number;
+                clientLabel?: string;
+            }>('resolve-wallet-qr', { walletToken: token, establishmentId }, { timeoutMs: 15_000 });
             if (payload?.error) throw new Error(payload.error);
             setResolved({
                 clientUserId: payload.clientUserId,
@@ -226,8 +228,13 @@ const ManagerCreditPdv: React.FC = () => {
         setCharging(true);
         try {
             const idempotencyKey = generateRandomUuid();
-            const { data: payload, error } = await supabase.functions.invoke('credit-spend-pdv', {
-                body: {
+            const payload = await invokeEdgeFunctionRest<{
+                error?: string;
+                duplicate?: boolean;
+                grossAmount?: number;
+            }>(
+                'credit-spend-pdv',
+                {
                     walletToken: walletToken.trim(),
                     establishmentId,
                     items: cart.map((l) => ({
@@ -237,9 +244,8 @@ const ManagerCreditPdv: React.FC = () => {
                     })),
                     idempotencyKey,
                 },
-                headers: { 'x-idempotency-key': idempotencyKey },
-            });
-            if (error) throw new Error(await parseEdgeFunctionError(error, payload));
+                { idempotencyKey, timeoutMs: 25_000 },
+            );
             if (payload?.error) throw new Error(payload.error);
             showSuccess(
                 payload.duplicate

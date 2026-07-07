@@ -15,8 +15,8 @@ import {
     StopCircle,
 } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { restDelete, restPatch } from '@/utils/supabase-rest';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -57,11 +57,9 @@ const EndBannerDialog: React.FC<{
         setIsEnding(true);
         const toastId = showLoading(`Encerrando exibição de "${banner.headline}"...`);
         try {
-            const { error } = await supabase
-                .from('event_carousel_banners')
-                .update({ end_date: getYesterdayIsoDate() })
-                .eq('id', banner.id);
-            if (error) throw error;
+            await restPatch(`event_carousel_banners?id=eq.${banner.id}`, {
+                end_date: getYesterdayIsoDate(),
+            });
             dismissToast(toastId);
             showSuccess('Exibição do banner encerrada.');
             onSuccess();
@@ -122,8 +120,7 @@ const DeleteBannerDialog: React.FC<{
         setIsDeleting(true);
         const toastId = showLoading(`Excluindo banner "${banner.headline}"...`);
         try {
-            const { error } = await supabase.from('event_carousel_banners').delete().eq('id', banner.id);
-            if (error) throw error;
+            await restDelete(`event_carousel_banners?id=eq.${banner.id}`);
             dismissToast(toastId);
             showSuccess('Banner excluído. Você pode criar um novo banner para este evento.');
             onSuccess();

@@ -189,9 +189,8 @@ async function adminCreatePartnerCompanyDirect(input: {
 }
 
 export async function acceptCompanyMemberInvites(): Promise<number> {
-    const { data, error } = await supabase.rpc('accept_company_member_invites');
-    if (error) throw error;
-    return Number((data as { accepted?: number })?.accepted ?? 0);
+    const data = await callRpcRest<{ accepted?: number }>('accept_company_member_invites', {}, 12_000);
+    return Number(data?.accepted ?? 0);
 }
 
 export async function inviteCompanyMember(
@@ -199,29 +198,27 @@ export async function inviteCompanyMember(
     email: string,
     role: CompanyMemberRole = 'pdv_operator',
 ) {
-    const { data, error } = await supabase.rpc('invite_company_member', {
-        p_company_id: companyId,
-        p_email: email.trim().toLowerCase(),
-        p_role: role,
-    });
-    if (error) throw error;
-    return data as {
+    return callRpcRest<{
         ok: boolean;
         linked_immediately?: boolean;
         invite_id?: string;
         message?: string;
-    };
+    }>(
+        'invite_company_member',
+        {
+            p_company_id: companyId,
+            p_email: email.trim().toLowerCase(),
+            p_role: role,
+        },
+        12_000,
+    );
 }
 
 export async function listCompanyMembers(companyId: string) {
-    const { data, error } = await supabase.rpc('list_company_members', {
-        p_company_id: companyId,
-    });
-    if (error) throw error;
-    const payload = data as {
+    const payload = await callRpcRest<{
         members?: CompanyMemberRow[];
         pending_invites?: PendingCompanyInvite[];
-    };
+    }>('list_company_members', { p_company_id: companyId }, 12_000);
     return {
         members: payload.members ?? [],
         pendingInvites: payload.pending_invites ?? [],
@@ -288,7 +285,7 @@ export async function adminCreatePartnerCompany(input: {
     return { ...direct, warnings: [] as string[] };
 }
 
-export async function fetchPartnerOwnerInviteEmail(companyId: string): Promise<string | null> {
+export async function fetchCompanyManagerEmail(companyId: string): Promise<string | null> {
     const { data: pendingInvite, error: inviteError } = await withTimeout(
         supabase
             .from('company_member_invites')
@@ -310,25 +307,38 @@ export async function fetchPartnerOwnerInviteEmail(companyId: string): Promise<s
         return pendingInvite.email.trim().toLowerCase();
     }
 
-    const { data: membersData, error: membersError } = await supabase.rpc('list_company_members', {
-        p_company_id: companyId,
-    });
-    if (membersError) {
-        console.warn('[fetchPartnerOwnerInviteEmail] list_company_members:', membersError.message);
+    const membersData = await callRpcRest<{ members?: CompanyMemberRow[] }>(
+        'list_company_members',
+        { p_company_id: companyId },
+        10_000,
+    ).catch((membersError) => {
+        console.warn('[fetchPartnerOwnerInviteEmail] list_company_members:', membersError);
         return null;
-    }
+    });
 
-    const members = (membersData as { members?: CompanyMemberRow[] })?.members ?? [];
+    const members = membersData?.members ?? [];
+    const primary = members.find((m) => m.is_primary && m.email);
     const owner = members.find((m) => m.role === 'owner' && m.email);
-    return owner?.email?.trim().toLowerCase() ?? null;
+    const anyMember = members.find((m) => m.email);
+    return (
+        primary?.email?.trim().toLowerCase() ??
+        owner?.email?.trim().toLowerCase() ??
+        anyMember?.email?.trim().toLowerCase() ??
+        null
+    );
+}
+
+/** @deprecated Use fetchCompanyManagerEmail */
+export async function fetchPartnerOwnerInviteEmail(companyId: string): Promise<string | null> {
+    return fetchCompanyManagerEmail(companyId);
 }
 
 export async function adminDeletePartnerCompany(companyId: string): Promise<void> {
-    const { data, error } = await supabase.rpc('admin_delete_partner_company', {
-        p_company_id: companyId,
-    });
-    if (error) throw error;
-    const payload = data as { ok?: boolean } | null;
+    const payload = await callRpcRest<{ ok?: boolean }>(
+        'admin_delete_partner_company',
+        { p_company_id: companyId },
+        12_000,
+    );
     if (!payload?.ok) {
         throw new Error('Não foi possível excluir a empresa parceira.');
     }

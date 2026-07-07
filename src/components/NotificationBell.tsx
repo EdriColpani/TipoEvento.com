@@ -78,12 +78,12 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
             <PopoverTrigger asChild>
                 <button
                     type="button"
-                    className={`relative p-2 rounded-lg transition-colors cursor-pointer ${
+                    className={`relative p-2.5 rounded-lg transition-colors cursor-pointer ${
                         isLandingPage ? 'text-cyan-300 hover:bg-cyan-400/10' : 'text-yellow-500 hover:bg-yellow-500/10'
                     } ${isLoadingBell ? 'opacity-70' : ''}`}
                     title={badgeCount > 0 ? 'Notificações pendentes' : 'Nenhuma notificação'}
                 >
-                    <i className="fas fa-bell text-lg" />
+                    <i className="fas fa-bell text-xl" />
                     {badgeCount > 0 && (
                         <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-semibold text-white">
                             {badgeCount > 9 ? '9+' : badgeCount}

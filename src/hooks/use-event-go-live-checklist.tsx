@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export type GoLiveItemStatus = 'pass' | 'fail' | 'warning' | 'pending';
 
@@ -34,11 +34,11 @@ export type GoLiveChecklist = {
 };
 
 async function fetchGoLiveChecklist(eventId: string): Promise<GoLiveChecklist> {
-    const { data, error } = await supabase.rpc('get_event_go_live_checklist', {
-        p_event_id: eventId,
-    });
-    if (error) throw error;
-    return data as GoLiveChecklist;
+    return callRpcRest<GoLiveChecklist>(
+        'get_event_go_live_checklist',
+        { p_event_id: eventId },
+        15_000,
+    );
 }
 
 async function setAcknowledgement(params: {
@@ -47,14 +47,16 @@ async function setAcknowledgement(params: {
     acknowledged: boolean;
     notes?: string;
 }): Promise<GoLiveChecklist> {
-    const { data, error } = await supabase.rpc('set_event_go_live_acknowledgement', {
-        p_event_id: params.eventId,
-        p_item_key: params.itemKey,
-        p_acknowledged: params.acknowledged,
-        p_notes: params.notes ?? null,
-    });
-    if (error) throw error;
-    return data as GoLiveChecklist;
+    return callRpcRest<GoLiveChecklist>(
+        'set_event_go_live_acknowledgement',
+        {
+            p_event_id: params.eventId,
+            p_item_key: params.itemKey,
+            p_acknowledged: params.acknowledged,
+            p_notes: params.notes ?? null,
+        },
+        15_000,
+    );
 }
 
 export function useEventGoLiveChecklist(eventId: string | undefined, enabled = true) {

@@ -22,40 +22,19 @@ import {
     MessageCircle,
     Trash2,
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useEventBatchInventorySummary } from '@/hooks/use-event-batch-inventory-summary';
 import { showError, showLoading, showSuccess, dismissToast } from '@/utils/toast';
 import { buildComplimentaryBundleUrl } from '@/utils/public-app-url';
 import { buildBundleWhatsAppMessage } from '@/utils/complimentary-share-text';
 import { copyTextToClipboard } from '@/utils/copy-to-clipboard';
-
-type ComplimentaryBundleRow = {
-    id: string;
-    recipient_name: string;
-    recipient_email: string | null;
-    quantity: number;
-    public_token: string;
-    status: string;
-    expires_at: string;
-    created_at: string;
-    batch_name: string;
-    redeemed_count: number;
-    available_count: number;
-    holder_claimed: boolean;
-    email_sent_at: string | null;
-};
-
-async function fetchBundles(eventId: string): Promise<ComplimentaryBundleRow[]> {
-    const { data, error } = await supabase.rpc('list_complimentary_bundles', {
-        p_event_id: eventId,
-    });
-    if (error) throw error;
-    const payload = data as { ok?: boolean; bundles?: ComplimentaryBundleRow[]; error?: string };
-    if (!payload?.ok) {
-        throw new Error(payload?.error ?? 'Erro ao listar pacotes.');
-    }
-    return payload.bundles ?? [];
-}
+import {
+    cancelComplimentaryBundle,
+    createComplimentaryBundle,
+    listComplimentaryBundles,
+    resetComplimentaryBundleHolder,
+    type ComplimentaryBundleRow,
+} from '@/utils/complimentary-bundles-rpc';
 
 /** Mesmo padrão de campos escuros do gestor (EventFormSteps). */
 const MANAGER_FIELD_CLASS =
@@ -72,6 +51,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
     const { eventId } = useParams<{ eventId: string }>();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { authPending } = usePageAuth();
     const { data: inventory, isLoading: loadingInventory } = useEventBatchInventorySummary(eventId);
 
     const [recipientName, setRecipientName] = useState('');
@@ -96,7 +76,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
     const bundlesQuery = useQuery({
         queryKey: ['complimentaryBundles', eventId],
         enabled: Boolean(eventId),
-        queryFn: () => fetchBundles(eventId!),
+        queryFn: () => listComplimentaryBundles(eventId!),
     });
 
     const copyText = async (text: string, label: string) => {
@@ -177,23 +157,15 @@ const ManagerComplimentaryBundles: React.FC = () => {
 
         setIsCreating(true);
         try {
-            const { data, error } = await supabase.rpc('create_complimentary_bundle', {
-                p_event_id: eventId,
-                p_batch_id: batchId,
-                p_recipient_name: recipientName.trim(),
-                p_recipient_email: recipientEmail.trim() || null,
-                p_quantity: qty,
-                p_expires_days: Number.isFinite(days) ? days : 30,
-                p_notes: notes.trim() || null,
+            const result = await createComplimentaryBundle({
+                eventId,
+                batchId,
+                recipientName: recipientName.trim(),
+                recipientEmail: recipientEmail.trim() || null,
+                quantity: qty,
+                expiresDays: Number.isFinite(days) ? days : 30,
+                notes: notes.trim() || null,
             });
-            if (error) throw error;
-
-            const result = data as {
-                ok?: boolean;
-                error?: string;
-                public_token?: string;
-                available?: number;
-            };
             if (!result?.ok) {
                 if (result?.error === 'insufficient_stock') {
                     showError(`Estoque insuficiente. Disponível: ${result.available ?? 0}.`);
@@ -230,11 +202,14 @@ const ManagerComplimentaryBundles: React.FC = () => {
         ) {
             return;
         }
-        const { data, error } = await supabase.rpc('reset_complimentary_bundle_holder', {
-            p_bundle_id: bundle.id,
-        });
-        const payload = data as { ok?: boolean; error?: string; redeemed_count?: number };
-        if (error || !payload?.ok) {
+        let payload: { ok?: boolean; error?: string; redeemed_count?: number };
+        try {
+            payload = await resetComplimentaryBundleHolder(bundle.id);
+        } catch {
+            showError('Não foi possível liberar o vínculo.');
+            return;
+        }
+        if (!payload?.ok) {
             if (payload?.error === 'seats_already_redeemed') {
                 showError('Não é possível liberar: já há ingressos resgatados deste pacote.');
             } else {
@@ -248,10 +223,14 @@ const ManagerComplimentaryBundles: React.FC = () => {
 
     const handleCancel = async (bundleId: string) => {
         if (!window.confirm('Cancelar este pacote e liberar o estoque não resgatado?')) return;
-        const { data, error } = await supabase.rpc('cancel_complimentary_bundle', {
-            p_bundle_id: bundleId,
-        });
-        if (error || !(data as { ok?: boolean })?.ok) {
+        let payload: { ok?: boolean };
+        try {
+            payload = await cancelComplimentaryBundle(bundleId);
+        } catch {
+            showError('Não foi possível cancelar o pacote.');
+            return;
+        }
+        if (!payload?.ok) {
             showError('Não foi possível cancelar o pacote.');
             return;
         }
@@ -259,6 +238,15 @@ const ManagerComplimentaryBundles: React.FC = () => {
         void queryClient.invalidateQueries({ queryKey: ['complimentaryBundles', eventId] });
         void queryClient.invalidateQueries({ queryKey: ['eventBatchInventorySummary', eventId] });
     };
+
+    if (authPending) {
+        return (
+            <div className="max-w-4xl mx-auto py-20 text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Verificando autenticação…</p>
+            </div>
+        );
+    }
 
     if (loadingInventory || !eventId) {
         return (

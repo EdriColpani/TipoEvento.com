@@ -1,6 +1,6 @@
-import { supabase } from '@/integrations/supabase/client';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export interface RetryCreditDisbursementResult {
     retried: number;
@@ -12,28 +12,17 @@ export async function retryFailedCreditDisbursements(
     companyId: string,
     spendOrderId?: string,
 ): Promise<RetryCreditDisbursementResult> {
-    const token = getAuthAccessToken();
-    if (!token) throw new Error('Faça login para reprocessar repasses.');
-
-    const { data, error } = await supabase.functions.invoke('manager-credit-payout', {
-        body: {
-            companyId,
-            spendOrderId,
-        },
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (error) {
-        throw new Error(await parseEdgeFunctionError(error, data));
-    }
-
-    const payload = data as {
+    const payload = await invokeEdgeFunctionRest<{
         ok?: boolean;
         retried?: number;
         succeeded?: number;
         results?: RetryCreditDisbursementResult['results'];
         error?: string;
-    };
+    }>(
+        'manager-credit-payout',
+        { companyId, spendOrderId },
+        { timeoutMs: 30_000 },
+    );
 
     if (payload?.error) throw new Error(payload.error);
 
@@ -49,19 +38,21 @@ export async function adminCreditRefund(
     amount: number | null,
     reason: string,
 ): Promise<{ refundCaseId: string; balance: number }> {
-    const { data, error } = await supabase.rpc('credit_refund_to_wallet', {
-        p_client_user_id: clientUserId,
-        p_amount: amount,
-        p_reason: reason,
-        p_idempotency_key: crypto.randomUUID(),
-    });
-    if (error) throw error;
-    const payload = data as {
+    const payload = await callRpcRest<{
         ok?: boolean;
         refund_case_id?: string;
         balance?: number;
         error?: string;
-    };
+    }>(
+        'credit_refund_to_wallet',
+        {
+            p_client_user_id: clientUserId,
+            p_amount: amount,
+            p_reason: reason,
+            p_idempotency_key: crypto.randomUUID(),
+        },
+        20_000,
+    );
     if (!payload?.ok) throw new Error('Estorno não concluído.');
     return {
         refundCaseId: payload.refund_case_id!,

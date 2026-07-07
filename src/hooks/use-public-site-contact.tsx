@@ -1,25 +1,22 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import {
     DEFAULT_PUBLIC_SITE_CONTACT,
     parsePublicSiteContact,
     type PublicSiteContact,
 } from '@/utils/public-site-contact';
+import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
 
 export const PUBLIC_SITE_CONTACT_QUERY_KEY = ['publicSiteContact'] as const;
 
 async function fetchPublicSiteContact(): Promise<PublicSiteContact> {
     try {
-        const { data, error } = await supabase.rpc('get_public_contact_info');
-        if (error) {
-            if (error.message?.includes('function') || error.code === '42883') {
-                return DEFAULT_PUBLIC_SITE_CONTACT;
-            }
-            console.warn('get_public_contact_info:', error.message);
-            return DEFAULT_PUBLIC_SITE_CONTACT;
-        }
+        const data = await callRpcPublicRest<unknown>('get_public_contact_info', {}, 8_000);
         return parsePublicSiteContact(data);
     } catch (e) {
+        const message = e instanceof Error ? e.message : '';
+        if (message.includes('function')) {
+            return DEFAULT_PUBLIC_SITE_CONTACT;
+        }
         console.warn('get_public_contact_info failed', e);
         return DEFAULT_PUBLIC_SITE_CONTACT;
     }

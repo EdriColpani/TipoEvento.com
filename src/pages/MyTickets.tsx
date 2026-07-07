@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'; // Importando useSearchParams
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
-import AuthStatusMenu from '@/components/AuthStatusMenu';
-import { Input } from '@/components/ui/input';
 import { useMyTickets, TicketData } from '@/hooks/use-my-tickets';
 import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { useMyPurchases } from '@/hooks/use-my-purchases';
@@ -21,6 +19,8 @@ import {
     isTicketEmittedForPurchase,
     isEventDateStillValidForEntryQr,
 } from '@/utils/ticket-display-status';
+import ClientAccountPageShell from '@/components/client/ClientAccountPageShell';
+import { CLIENT_ACCOUNT_PAGE_CLASS, CLIENT_ACCOUNT_SECTION_TITLE_CLASS } from '@/constants/client-account-ui';
 
 interface TicketCardProps {
     ticket: TicketData;
@@ -280,9 +280,9 @@ const MyTickets: React.FC = () => {
 
     if (waitingSession || (userId && isLoading)) {
         return (
-            <div className="min-h-screen bg-black text-white flex items-center justify-center pt-20">
+            <div className={`${CLIENT_ACCOUNT_PAGE_CLASS} flex min-h-[50vh] items-center justify-center`}>
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
-                <p className="text-gray-400 ml-4">Carregando seus ingressos...</p>
+                <p className="ml-4 text-gray-400">Carregando seus ingressos...</p>
             </div>
         );
     }
@@ -295,9 +295,9 @@ const MyTickets: React.FC = () => {
 
     if (isError) {
         return (
-            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center pt-20 px-4">
-                <i className="fas fa-exclamation-triangle text-4xl text-red-500 mb-4"></i>
-                <p className="text-xl text-gray-400 mb-6">Erro ao carregar seus ingressos.</p>
+            <div className={`${CLIENT_ACCOUNT_PAGE_CLASS} flex min-h-[50vh] flex-col items-center justify-center`}>
+                <i className="fas fa-exclamation-triangle mb-4 text-4xl text-red-500" aria-hidden />
+                <p className="mb-6 text-xl text-gray-400">Erro ao carregar seus ingressos.</p>
                 <Button onClick={() => window.location.reload()} className="bg-yellow-500 text-black hover:bg-yellow-600">
                     Tentar Novamente
                 </Button>
@@ -372,49 +372,11 @@ const MyTickets: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white overflow-x-hidden">
-             <header className="fixed top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md border-b border-yellow-500/20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center space-x-4 sm:space-x-8">
-                        <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer" onClick={() => navigate('/')}>
-                            EventFest
-                        </div>
-                        <nav className="hidden md:flex items-center space-x-8">
-                            <button onClick={() => navigate('/')} className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Home</button>
-                            <a href="/#eventos" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Eventos</a>
-                            <a href="/#categorias" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Categorias</a>
-                        </nav>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <div className="relative hidden lg:block">
-                            <Input 
-                                type="search" 
-                                placeholder="Buscar eventos..." 
-                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 w-64 pl-4 pr-10 py-2 rounded-xl"
-                            />
-                            <i className="fas fa-search absolute right-4 top-1/2 transform -translate-y-1/2 text-yellow-500/60"></i>
-                        </div>
-                        <AuthStatusMenu />
-                    </div>
-                </div>
-            </header>
-            <main className="pt-24 pb-12 px-4 sm:px-6 max-w-7xl mx-auto"> {/* Ajustado o padding-top */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
-                    <h1 className="text-3xl sm:text-4xl font-serif text-yellow-500 mb-4 sm:mb-0">Meus Ingressos</h1>
-                    <Button 
-                        onClick={() => navigate('/profile')}
-                        variant="outline"
-                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm sm:text-base"
-                    >
-                        <i className="fas fa-user-circle mr-2"></i>
-                        Voltar ao Perfil
-                    </Button>
-                </div>
-
+        <ClientAccountPageShell title="Meus Ingressos" showBackToProfile>
                 <div className="space-y-8 sm:space-y-10">
                     {/* Ingressos Ativos — primeiro, com scroll próprio */}
                     <section>
-                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-4 border-b border-yellow-500/30 pb-3 flex items-center">
+                        <h2 className={CLIENT_ACCOUNT_SECTION_TITLE_CLASS}>
                             <i className="fas fa-ticket-alt mr-3 text-yellow-500"></i>
                             Ingressos Ativos ({activeTickets.length})
                         </h2>
@@ -439,7 +401,7 @@ const MyTickets: React.FC = () => {
                     </section>
 
                     <div>
-                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-4 border-b border-yellow-500/30 pb-3 flex items-center">
+                        <h2 className={CLIENT_ACCOUNT_SECTION_TITLE_CLASS}>
                             <i className="fas fa-receipt mr-3 text-yellow-500"></i>
                             Minhas Compras ({filteredPurchases.length})
                         </h2>
@@ -533,7 +495,7 @@ const MyTickets: React.FC = () => {
 
                     {/* Histórico de Ingressos */}
                     <section>
-                        <h2 className="text-2xl sm:text-3xl font-serif text-white mb-4 border-b border-yellow-500/30 pb-3 flex items-center">
+                        <h2 className={CLIENT_ACCOUNT_SECTION_TITLE_CLASS}>
                             <History className="mr-3 h-6 w-6 text-yellow-500" />
                             Histórico de Ingressos ({pastTickets.length})
                         </h2>
@@ -548,8 +510,7 @@ const MyTickets: React.FC = () => {
                         )}
                     </section>
                 </div>
-            </main>
-        </div>
+        </ClientAccountPageShell>
     );
 };
 

@@ -31,8 +31,7 @@ import {
 } from '@/components/ui/table';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
-import { supabase } from '@/integrations/supabase/client';
-import { useAdminCompaniesBilling } from '@/hooks/use-admin-companies-billing';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import {
     ListingChargeStatus,
     useListingMonthlyCharges,
@@ -145,13 +144,12 @@ const AdminListingMonthlyBilling: React.FC = () => {
         setIsSaving(true);
         const toastId = showLoading('Gerando cobrança...');
         try {
-            const { data, error } = await supabase.rpc('admin_create_listing_monthly_charge', {
+            await callRpcRest('admin_create_listing_monthly_charge', {
                 p_company_id: newCompanyId,
                 p_reference_month: referenceMonth,
                 p_amount: amount,
                 p_notes: newNotes.trim() || null,
-            });
-            if (error) throw error;
+            }, 15_000);
             dismissToast(toastId);
             showSuccess('Cobrança registrada.');
             setCreateOpen(false);
@@ -168,12 +166,11 @@ const AdminListingMonthlyBilling: React.FC = () => {
     const handleSetStatus = async (chargeId: string, status: ListingChargeStatus) => {
         const toastId = showLoading('Atualizando status...');
         try {
-            const { error } = await supabase.rpc('admin_set_listing_charge_status', {
+            await callRpcRest('admin_set_listing_charge_status', {
                 p_charge_id: chargeId,
                 p_status: status,
                 p_notes: null,
-            });
-            if (error) throw error;
+            }, 12_000);
             dismissToast(toastId);
             showSuccess(`Status alterado para ${STATUS_LABELS[status]}.`);
             invalidate();

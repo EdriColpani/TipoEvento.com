@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
 import { generateRandomUuid } from '@/utils/random-id';
@@ -56,36 +55,17 @@ async function fetchManagerIntents(
     const statusParam = status && status !== 'all' ? status : null;
     const fallback: IntentsPayload = { company_id: companyId, items: [] };
 
-    try {
-        const data = await callRpcRest<IntentsPayload>(
-            'list_manager_credit_consumption_intents',
-            {
-                p_company_id: companyId,
-                p_status: statusParam,
-                p_limit: 80,
-                p_offset: 0,
-            },
-            10_000,
-        );
-        return { ...fallback, ...data, items: data?.items ?? [] };
-    } catch (restError) {
-        console.warn('[useManagerCreditConsumptionIntents] REST falhou:', restError);
-    }
-
-    const { data, error } = await withTimeout(
-        supabase.rpc('list_manager_credit_consumption_intents', {
+    const data = await callRpcRest<IntentsPayload>(
+        'list_manager_credit_consumption_intents',
+        {
             p_company_id: companyId,
             p_status: statusParam,
             p_limit: 80,
             p_offset: 0,
-        }),
+        },
         10_000,
-        { data: null, error: { message: 'timeout' } as { message: string } },
     );
-
-    if (error?.message && error.message !== 'timeout') throw error;
-    const payload = (data ?? {}) as IntentsPayload;
-    return { ...fallback, ...payload, items: payload?.items ?? [] };
+    return { ...fallback, ...data, items: data?.items ?? [] };
 }
 
 export function useManagerCreditConsumptionIntents(
@@ -114,13 +94,15 @@ export async function updateManagerCreditConsumptionIntentStatus(input: {
     intentId: string;
     status: Exclude<CreditConsumptionIntentStatus, 'completed' | 'expired'>;
 }) {
-    const { data, error } = await supabase.rpc('update_manager_credit_consumption_intent_status', {
-        p_company_id: input.companyId,
-        p_intent_id: input.intentId,
-        p_status: input.status,
-    });
-    if (error) throw error;
-    return data as { ok: boolean; status: string };
+    return callRpcRest<{ ok: boolean; status: string }>(
+        'update_manager_credit_consumption_intent_status',
+        {
+            p_company_id: input.companyId,
+            p_intent_id: input.intentId,
+            p_status: input.status,
+        },
+        12_000,
+    );
 }
 
 export async function confirmManagerCreditConsumptionIntent(input: {
@@ -128,17 +110,14 @@ export async function confirmManagerCreditConsumptionIntent(input: {
     idempotencyKey?: string;
 }) {
     const key = input.idempotencyKey ?? generateRandomUuid();
-    const { data, error } = await supabase.functions.invoke('confirm-credit-consumption-intent-manager', {
-        body: { intentId: input.intentId, idempotencyKey: key },
-        headers: { 'x-idempotency-key': key },
-    });
-    if (error) {
-        throw new Error(await parseEdgeFunctionError(error, data));
-    }
-    return data as {
+    return invokeEdgeFunctionRest<{
         ok: boolean;
         spendOrderId: string;
         duplicate: boolean;
         grossAmount: number;
-    };
+    }>(
+        'confirm-credit-consumption-intent-manager',
+        { intentId: input.intentId, idempotencyKey: key },
+        { idempotencyKey: key, timeoutMs: 25_000 },
+    );
 }

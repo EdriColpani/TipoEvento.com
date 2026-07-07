@@ -29,7 +29,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showSuccess } from '@/utils/toast';
 import { parseEventLocalDay } from '@/utils/format-event-date';
@@ -92,9 +92,11 @@ const SEAT_STATUS_LABELS: Record<string, string> = {
 };
 
 async function fetchReportEvents(): Promise<EventFilter[]> {
-    const { data, error } = await supabase.rpc('list_manager_complimentary_report_events');
-    if (error) throw error;
-    const payload = data as { ok?: boolean; events?: EventFilter[]; error?: string };
+    const payload = await callRpcRest<{ ok?: boolean; events?: EventFilter[]; error?: string }>(
+        'list_manager_complimentary_report_events',
+        {},
+        12_000,
+    );
     if (!payload?.ok) throw new Error(payload?.error ?? 'Erro ao carregar eventos.');
     return payload.events ?? [];
 }
@@ -104,18 +106,20 @@ async function fetchReport(input: {
     status: string | null;
     search: string;
 }): Promise<{ summary: ReportSummary; rows: ReportRow[] }> {
-    const { data, error } = await supabase.rpc('get_manager_complimentary_bundles_report', {
-        p_event_id: input.eventId,
-        p_status: input.status,
-        p_search: input.search.trim() || null,
-    });
-    if (error) throw error;
-    const payload = data as {
+    const payload = await callRpcRest<{
         ok?: boolean;
         error?: string;
         summary?: ReportSummary;
         rows?: ReportRow[];
-    };
+    }>(
+        'get_manager_complimentary_bundles_report',
+        {
+            p_event_id: input.eventId,
+            p_status: input.status,
+            p_search: input.search.trim() || null,
+        },
+        15_000,
+    );
     if (!payload?.ok) {
         throw new Error(payload?.error ?? 'Erro ao carregar relatório.');
     }

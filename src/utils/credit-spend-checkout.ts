@@ -1,5 +1,6 @@
+import { getAuthAccessToken, readCachedAuthSession } from '@/utils/auth-session-cache';
+import { callRpcRest, callRpcPublicRest } from '@/utils/supabase-rest-rpc';
 import { supabase } from '@/integrations/supabase/client';
-import { readCachedAuthSession, getAuthAccessToken } from '@/utils/auth-session-cache';
 import { parseEdgeFunctionError } from '@/utils/edge-function-error';
 import {
     detectCreditSpendChannel,
@@ -114,11 +115,12 @@ export type EventCreditEligibility = {
 };
 
 export async function fetchEventCreditEligibility(eventId: string): Promise<EventCreditEligibility> {
-    const { data, error } = await supabase.rpc('get_event_credit_payment_eligibility', {
-        p_event_id: eventId,
-    });
-    if (error) throw error;
-    return (data ?? { eligible: false }) as EventCreditEligibility;
+    const data = await callRpcPublicRest<EventCreditEligibility>(
+        'get_event_credit_payment_eligibility',
+        { p_event_id: eventId },
+        10_000,
+    );
+    return data ?? { eligible: false };
 }
 
 export { isStandalonePwa, detectCreditSpendChannel };

@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Trash2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
 import { showError, showSuccess } from '@/utils/toast';
 import {
     appendStoredLandingFeedback,
@@ -27,14 +27,14 @@ const LandingFeedbackPanel: React.FC = () => {
         }
         setSending(true);
         try {
-            const { data, error } = await supabase.rpc('create_public_landing_feedback', {
-                p_message: trimmed,
-            });
-            if (error) throw error;
+            const data = await callRpcPublicRest<{ id?: string } | null>(
+                'create_public_landing_feedback',
+                { p_message: trimmed },
+            );
 
             const id =
                 data && typeof data === 'object' && 'id' in data
-                    ? String((data as { id: string }).id)
+                    ? String(data.id)
                     : crypto.randomUUID();
 
             appendStoredLandingFeedback({

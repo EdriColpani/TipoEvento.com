@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { BillingPlanCode, CompanyBillingFields } from '@/constants/billing-plans';
 import { restGet } from '@/utils/supabase-rest';
 import { withTimeout } from '@/utils/promise-timeout';
+import { fetchEventContractVersion } from '@/utils/fetch-event-contract-version';
 
 export interface CompanyBillingRow extends CompanyBillingFields {
     id: string;
@@ -30,12 +31,17 @@ async function fetchCompanyBilling(companyId: string): Promise<CompanyBillingRow
         );
         const row = rows?.[0];
         if (row) {
+            const billingContractId = row.billing_contract_id as string | null;
+            const billingContractVersion = billingContractId
+                ? await fetchEventContractVersion(billingContractId)
+                : null;
+
             return {
                 id: row.id as string,
                 corporate_name: row.corporate_name as string | null,
                 billing_plan: (row.billing_plan as BillingPlanCode | null) ?? null,
                 billing_plan_accepted_at: row.billing_plan_accepted_at as string | null,
-                billing_contract_id: row.billing_contract_id as string | null,
+                billing_contract_id: billingContractId,
                 billing_plan_locked_until: row.billing_plan_locked_until as string | null,
                 requires_billing_reacceptance: Boolean(row.requires_billing_reacceptance),
                 listing_active_until: (row.listing_active_until as string | null) ?? null,
@@ -46,7 +52,7 @@ async function fetchCompanyBilling(companyId: string): Promise<CompanyBillingRow
                 min_event_tickets_customized: Boolean(row.min_event_tickets_customized),
                 ticket_inactivity_blocked: Boolean(row.ticket_inactivity_blocked),
                 ticket_inactivity_reference_month: (row.ticket_inactivity_reference_month as string | null) ?? null,
-                billing_contract_version: null,
+                billing_contract_version: billingContractVersion,
             };
         }
     } catch (restError) {

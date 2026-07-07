@@ -1,18 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export const ADMIN_CONTACT_INBOX_QUERY_KEY = ['adminContactInboxSummary'] as const;
 
 async function fetchAdminContactInboxSummary(): Promise<number> {
-    const { data, error } = await supabase.rpc('get_admin_contact_inbox_summary');
-    if (error) {
-        if (error.message?.includes('function') || error.code === '42883') {
-            return 0;
-        }
-        throw new Error(error.message);
+    try {
+        const row = await callRpcRest<{ new_count?: number }>('get_admin_contact_inbox_summary', {}, 10_000);
+        return Number(row.new_count ?? 0);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message.includes('function')) return 0;
+        throw error;
     }
-    const row = (data ?? {}) as { new_count?: number };
-    return Number(row.new_count ?? 0);
 }
 
 export function useAdminContactInboxSummary(enabled: boolean) {

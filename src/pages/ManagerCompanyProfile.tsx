@@ -12,7 +12,7 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { Loader2, Building, ArrowLeft } from 'lucide-react';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useProfile } from '@/hooks/use-profile';
-import { useAuthUserId } from '@/hooks/use-auth-user-id';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { restGet } from '@/utils/supabase-rest';
 import { withTimeout } from '@/utils/promise-timeout';
 import CompanyForm, { createCompanySchema, CompanyFormData } from '@/components/CompanyForm';
@@ -96,7 +96,7 @@ type CompanyProfileData = z.infer<typeof companyProfileSchema> & { id?: string }
 
 const ManagerCompanyProfile: React.FC = () => {
     const navigate = useNavigate();
-    const { userId, sessionReady } = useAuthUserId();
+    const { userId, authPending, sessionReady } = usePageAuth();
     const [isFetching, setIsFetching] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isCepLoading, setIsCepLoading] = useState(false);
@@ -292,7 +292,7 @@ const ManagerCompanyProfile: React.FC = () => {
         }
     };
 
-    if (!sessionReady || isFetching || isLoadingCompany || isLoadingProfile) {
+    if (authPending || !sessionReady || isFetching || isLoadingCompany || isLoadingProfile) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
