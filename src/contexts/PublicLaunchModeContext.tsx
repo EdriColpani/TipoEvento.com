@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
-import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT } from '@/utils/auth-session-cache';
+import { fetchAuthUserViaRest } from '@/utils/auth-rest';
+import { clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import {
     canBypassPublicLaunchPreview,
     type PublicLaunchMode,
@@ -11,7 +12,6 @@ import {
     PUBLIC_LAUNCH_MODE_QUERY_KEY,
     fetchPublicLaunchMode,
 } from '@/utils/public-launch-mode-query';
-import { AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 
 export type PublicSiteContextValue = {
     userId: string | undefined;
@@ -34,81 +34,74 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
     const cached = readCachedAuthSession();
     const [userId, setUserId] = useState<string | undefined>(cached.userId);
     const [userEmail, setUserEmail] = useState<string | undefined>(cached.userEmail);
-    const [sessionReady, setSessionReady] = useState(Boolean(cached.userId));
+    const [sessionReady, setSessionReady] = useState(!cached.accessToken);
 
     useEffect(() => {
         let cancelled = false;
-        let readyTimeout: ReturnType<typeof setTimeout> | undefined;
-
-        const applySession = (session: { user?: { id?: string; email?: string | null } } | null) => {
-            if (cancelled) return;
-            if (readyTimeout) {
-                clearTimeout(readyTimeout);
-                readyTimeout = undefined;
-            }
-
-            const cached = readCachedAuthSession();
-            const sessionUserId = session?.user?.id;
-
-            // Evita reautenticar com sessão stale em memória após signOut (token já removido).
-            if (sessionUserId && !cached.accessToken) {
-                setUserId(undefined);
-                setUserEmail(undefined);
-                setSessionReady(true);
-                return;
-            }
-
-            setUserId(sessionUserId);
-            setUserEmail(session?.user?.email ?? cached.userEmail ?? undefined);
-            setSessionReady(true);
-        };
 
         const clearSession = () => {
             if (cancelled) return;
-            if (readyTimeout) {
-                clearTimeout(readyTimeout);
-                readyTimeout = undefined;
-            }
             setUserId(undefined);
             setUserEmail(undefined);
             setSessionReady(true);
         };
 
-        readyTimeout = window.setTimeout(() => {
-            if (!cancelled) {
-                const cached = readCachedAuthSession();
-                if (cached.accessToken && cached.userId) {
-                    setUserId(cached.userId);
-                    setUserEmail(cached.userEmail);
-                } else if (!cached.accessToken) {
-                    setUserId(undefined);
-                    setUserEmail(undefined);
-                }
-                setSessionReady(true);
-            }
-        }, 3000);
+        const applyUser = (id: string, email?: string) => {
+            if (cancelled) return;
+            setUserId(id);
+            setUserEmail(email);
+            setSessionReady(true);
+        };
 
-        void supabase.auth.getSession().then(({ data: { session } }) => {
-            applySession(session);
-        });
+        const boot = async () => {
+            const stored = readCachedAuthSession();
 
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_OUT') {
+            if (!stored.accessToken) {
                 clearSession();
                 return;
             }
-            applySession(session);
-        });
+
+            if (stored.userId) {
+                applyUser(stored.userId, stored.userEmail);
+            }
+
+            const result = await fetchAuthUserViaRest(stored.accessToken, 5_000);
+            if (cancelled) return;
+
+            if (result.user) {
+                applyUser(result.user.id, result.user.email ?? undefined);
+                return;
+            }
+
+            if (result.error?.status === 401 || result.error?.status === 403) {
+                clearAuthSessionStorage();
+                clearSession();
+                return;
+            }
+
+            if (stored.userId) {
+                setSessionReady(true);
+                return;
+            }
+
+            clearSession();
+        };
+
+        void boot();
+
+        const onSignedIn = (event: Event) => {
+            const detail = (event as CustomEvent<{ userId?: string; userEmail?: string }>).detail;
+            if (cancelled || !detail?.userId) return;
+            applyUser(detail.userId, detail.userEmail);
+        };
 
         window.addEventListener(AUTH_SIGNED_OUT_EVENT, clearSession);
+        window.addEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
 
         return () => {
             cancelled = true;
-            if (readyTimeout) clearTimeout(readyTimeout);
-            subscription.unsubscribe();
             window.removeEventListener(AUTH_SIGNED_OUT_EVENT, clearSession);
+            window.removeEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
         };
     }, []);
 

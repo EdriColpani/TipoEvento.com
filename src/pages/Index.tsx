@@ -8,7 +8,6 @@ import {
     categoriesMatch,
 } from '@/utils/landing-categories';
 import { Input } from "@/components/ui/input";
-import { supabase } from '@/integrations/supabase/client';
 import { trackAdvancedFilterUse } from '@/utils/metrics';
 import { usePublicEvents, PublicEvent } from '@/hooks/use-public-events';
 import { useDevice } from '@/hooks/use-device';
@@ -16,6 +15,7 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 import Carousel3D from '@/components/Carousel3D';
 import { useCarouselBanners } from '@/hooks/use-carousel-banners';
 import { showSuccess, showError } from '@/utils/toast'; // Importando toast
+import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
 import { useLandingUi } from '@/contexts/LandingUiContext';
 import LandingContactPanel from '@/components/landing/LandingContactPanel';
 import LandingFooter from '@/components/landing/LandingFooter';
@@ -232,12 +232,11 @@ const Index: React.FC = () => {
         }
         setSendingContact(true);
         try {
-            const { error } = await supabase.rpc('create_public_contact_message', {
+            await callRpcPublicRest('create_public_contact_message', {
                 p_name: contactName.trim(),
                 p_phone: contactFormPhone,
                 p_message: contactMessage.trim(),
             });
-            if (error) throw error;
             showSuccess('Mensagem enviada. Nossa equipe entrará em contato.');
             setContactName('');
             setContactFormPhone('');

@@ -3,6 +3,8 @@ import type { BillingPlanCode } from '@/constants/billing-plans';
 import type { CompanyKind } from '@/constants/company-kind';
 import { supabase } from '@/integrations/supabase/client';
 import { restGet } from '@/utils/supabase-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { fetchCompanyManagerEmail } from '@/utils/company-members';
 
 export interface AdminCompanyBillingRow {
     id: string;
@@ -22,6 +24,7 @@ export interface AdminCompanyBillingRow {
     min_event_tickets_customized: boolean;
     ticket_inactivity_blocked: boolean;
     created_at: string;
+    manager_email?: string | null;
 }
 
 export interface CompanyBillingHistoryRow {
@@ -34,7 +37,35 @@ export interface CompanyBillingHistoryRow {
     created_at: string;
 }
 
+async function enrichManagerEmails(rows: AdminCompanyBillingRow[]): Promise<AdminCompanyBillingRow[]> {
+    if (rows.length === 0) return rows;
+    return Promise.all(
+        rows.map(async (row) => {
+            if (row.manager_email) return row;
+            const managerEmail = await fetchCompanyManagerEmail(row.id);
+            return {
+                ...row,
+                manager_email: managerEmail ?? row.email,
+            };
+        }),
+    );
+}
+
 async function fetchAdminCompaniesBilling(): Promise<AdminCompanyBillingRow[]> {
+    try {
+        const payload = await callRpcRest<{ items?: AdminCompanyBillingRow[] }>(
+            'list_admin_companies_billing',
+            {},
+            15_000,
+        );
+        const items = payload?.items ?? [];
+        if (items.length > 0) {
+            return items;
+        }
+    } catch (rpcError) {
+        console.warn('[useAdminCompaniesBilling] RPC list_admin_companies_billing:', rpcError);
+    }
+
     const select =
         'id,corporate_name,trade_name,cnpj,email,company_kind,billing_plan,billing_plan_accepted_at,billing_contract_id,billing_plan_locked_until,requires_billing_reacceptance,listing_monthly_fee,consumption_license_fee,min_event_tickets,min_event_tickets_customized,ticket_inactivity_blocked,created_at';
 
@@ -43,7 +74,7 @@ async function fetchAdminCompaniesBilling(): Promise<AdminCompanyBillingRow[]> {
             `companies?select=${select}&order=corporate_name.asc`,
             12_000,
         );
-        return data ?? [];
+        return enrichManagerEmails(data ?? []);
     } catch (restError) {
         console.warn('[useAdminCompaniesBilling] REST falhou:', restError);
     }
@@ -54,7 +85,7 @@ async function fetchAdminCompaniesBilling(): Promise<AdminCompanyBillingRow[]> {
         .order('corporate_name', { ascending: true });
 
     if (error) throw new Error(error.message);
-    return (data ?? []) as AdminCompanyBillingRow[];
+    return enrichManagerEmails((data ?? []) as AdminCompanyBillingRow[]);
 }
 
 async function fetchCompanyBillingHistory(companyId: string): Promise<CompanyBillingHistoryRow[]> {

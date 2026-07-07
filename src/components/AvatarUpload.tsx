@@ -1,8 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
+import { restPatch } from '@/utils/supabase-rest';
+import {
+    getStoragePublicUrl,
+    removeStorageObjectRest,
+    uploadStorageObjectRest,
+} from '@/utils/supabase-storage-rest';
 
 interface AvatarUploadProps {
     userId: string;
@@ -19,12 +24,12 @@ const AvatarUpload: React.FC<AvatarUploadProps> = ({ userId, url, onUpload, init
         const file = event.target.files?.[0];
         if (!file) return;
 
-        if (file.size > 5 * 1024 * 1024) { // 5MB limit
-            showError("O arquivo é muito grande. Máximo de 5MB.");
+        if (file.size > 5 * 1024 * 1024) {
+            showError('O arquivo é muito grande. Máximo de 5MB.');
             return;
         }
 
-        const toastId = showLoading("Enviando foto...");
+        const toastId = showLoading('Enviando foto...');
         setUploading(true);
 
         try {
@@ -32,51 +37,27 @@ const AvatarUpload: React.FC<AvatarUploadProps> = ({ userId, url, onUpload, init
             const fileName = `${userId}-${Date.now()}.${fileExt}`;
             const filePath = `avatars/${fileName}`;
 
-            // 1. Upload the file to Supabase Storage
-            const { error: uploadError, data: uploadData } = await supabase.storage
-                .from('avatars') // Assuming you have a bucket named 'avatars'
-                .upload(filePath, file, {
-                    cacheControl: '3600',
-                    upsert: false,
-                });
+            await uploadStorageObjectRest('avatars', filePath, file);
+            const publicUrl = getStoragePublicUrl('avatars', filePath);
 
-            if (uploadError) {
-                throw uploadError;
-            }
-
-            // 2. Get the public URL
-            const { data: publicUrlData } = supabase.storage
-                .from('avatars')
-                .getPublicUrl(filePath);
-            
-            const publicUrl = publicUrlData.publicUrl;
-
-            // 3. Update the user's profile in the 'profiles' table
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .update({ avatar_url: publicUrl })
-                .eq('id', userId);
-
-            if (updateError) {
-                // If profile update fails, try to delete the uploaded file
-                await supabase.storage.from('avatars').remove([filePath]);
+            try {
+                await restPatch(
+                    `profiles?id=eq.${encodeURIComponent(userId)}`,
+                    { avatar_url: publicUrl },
+                );
+            } catch (updateError) {
+                await removeStorageObjectRest('avatars', filePath);
                 throw updateError;
             }
 
-            // 4. Success: Notify parent component and show toast
             onUpload(publicUrl);
-            showSuccess("Foto de perfil atualizada com sucesso!");
-
-            // Optional: Clean up old avatar if necessary (more complex logic needed for production)
-            // For simplicity, we skip old file deletion here.
-
-        } catch (error: any) {
+            showSuccess('Foto de perfil atualizada com sucesso!');
+        } catch (error: unknown) {
             console.error('Upload failed:', error);
-            showError(`Falha no upload: ${error.message || 'Erro desconhecido'}`);
+            showError(`Falha no upload: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
         } finally {
             dismissToast(toastId);
             setUploading(false);
-            // Reset file input to allow re-uploading the same file if needed
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
@@ -84,9 +65,7 @@ const AvatarUpload: React.FC<AvatarUploadProps> = ({ userId, url, onUpload, init
     };
 
     const handleButtonClick = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        }
+        fileInputRef.current?.click();
     };
 
     return (
@@ -104,9 +83,9 @@ const AvatarUpload: React.FC<AvatarUploadProps> = ({ userId, url, onUpload, init
                     style={{ display: 'none' }}
                     disabled={uploading}
                 />
-                <Button 
+                <Button
                     onClick={handleButtonClick}
-                    variant="outline" 
+                    variant="outline"
                     className="mt-2 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm h-8"
                     disabled={uploading}
                 >

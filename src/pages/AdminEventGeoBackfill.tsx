@@ -3,7 +3,7 @@ import { ArrowLeft, Loader2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showSuccess } from '@/utils/toast';
@@ -37,12 +37,11 @@ const AdminEventGeoBackfill: React.FC = () => {
   const loadItems = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('list_admin_events_missing_geo', {
-        p_limit: 200,
-        p_offset: 0,
-      });
-      if (error) throw error;
-      const payload = (data ?? {}) as { items?: MissingGeoEvent[]; total?: number };
+      const payload = await callRpcRest<{ items?: MissingGeoEvent[]; total?: number }>(
+        'list_admin_events_missing_geo',
+        { p_limit: 200, p_offset: 0 },
+        15_000,
+      );
       setItems(payload.items ?? []);
       setTotal(Number(payload.total ?? 0));
     } catch (e: unknown) {
@@ -99,14 +98,13 @@ const AdminEventGeoBackfill: React.FC = () => {
           continue;
         }
 
-        const { error } = await supabase.rpc('update_admin_event_geo', {
+        await callRpcRest('update_admin_event_geo', {
           p_event_id: event.id,
           p_address: geocoded.address,
           p_address_lat: geocoded.lat,
           p_address_lng: geocoded.lng,
           p_address_place_id: geocoded.placeId,
-        });
-        if (error) throw error;
+        }, 12_000);
         stats.ok += 1;
       } catch {
         stats.fail += 1;

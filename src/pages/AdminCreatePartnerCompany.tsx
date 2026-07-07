@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { adminCreatePartnerCompany } from '@/utils/company-members';
 import { sendPartnerOwnerInviteEmail } from '@/utils/partner-owner-invite';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
@@ -18,7 +18,7 @@ const UF_OPTIONS = [
 
 const AdminCreatePartnerCompany: React.FC = () => {
     const navigate = useNavigate();
-    const { sessionReady } = usePublicSiteAuth();
+    const { authPending, sessionReady } = usePageAuth();
     const [saving, setSaving] = useState(false);
     const [cepLoading, setCepLoading] = useState(false);
     const [cnpj, setCnpj] = useState('');
@@ -138,11 +138,11 @@ const AdminCreatePartnerCompany: React.FC = () => {
         }
     };
 
-    if (!sessionReady) {
+    if (authPending || !sessionReady) {
         return (
             <div className="max-w-3xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
-                <p className="text-gray-400">Carregando...</p>
+                <p className="text-gray-400">Verificando autenticação…</p>
             </div>
         );
     }

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,6 +32,7 @@ import {
     fetchAdminCreditTopupChargebacksExport,
     useAdminPlatformBillingRevenue,
 } from '@/hooks/use-credit-reports';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { adminCreditRefund } from '@/utils/credit-manager-payout';
 import { exportCreditTopupChargebacksCsv } from '@/utils/export-credit-topup-chargebacks-csv';
 import { showError, showSuccess } from '@/utils/toast';
@@ -77,6 +78,7 @@ const AdminCreditReports: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const queryClient = useQueryClient();
+    const { authPending } = usePageAuth();
     const requestedTab = (location.state as { creditTab?: string } | null)?.creditTab;
     const initialTab =
         requestedTab && ADMIN_CREDIT_REPORT_TABS.has(requestedTab) ? requestedTab : 'liability';
@@ -191,17 +193,17 @@ const AdminCreditReports: React.FC = () => {
     const handleChargebackNotify = async (digestMode = false) => {
         setChargebackNotifying(true);
         try {
-            const { data, error } = await supabase.functions.invoke('run-credit-chargeback-notify-job', {
-                body: { digestMode, limit: 50 },
-            });
-            if (error) throw error;
-            const payload = data as {
+            const payload = await invokeEdgeFunctionRest<{
                 success?: boolean;
                 emailsSent?: number;
                 emailsFailed?: number;
                 casesProcessed?: number;
                 error?: string;
-            };
+            }>(
+                'run-credit-chargeback-notify-job',
+                { digestMode, limit: 50 },
+                { timeoutMs: 30_000 },
+            );
             if (payload?.error) throw new Error(payload.error);
             if ((payload?.casesProcessed ?? 0) === 0) {
                 showSuccess('Nenhum alerta pendente para envio.');
@@ -218,6 +220,15 @@ const AdminCreditReports: React.FC = () => {
             setChargebackNotifying(false);
         }
     };
+
+    if (authPending) {
+        return (
+            <div className="max-w-6xl mx-auto text-center py-20">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Verificando autenticação…</p>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-6xl mx-auto">

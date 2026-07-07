@@ -27,6 +27,7 @@ import {
     billingTableHead,
 } from '@/constants/billing-ui';
 import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 interface AutoDeactivateLogRow {
     id: string;
@@ -38,10 +39,12 @@ interface AutoDeactivateLogRow {
 }
 
 async function fetchAutoDeactivateLog(): Promise<AutoDeactivateLogRow[]> {
-    const { data, error } = await supabase.rpc('admin_list_event_auto_deactivate_log', { p_limit: 20 });
-    if (error) throw new Error(error.message);
-    const rows = (data as { rows?: AutoDeactivateLogRow[] })?.rows;
-    return Array.isArray(rows) ? rows : [];
+    const data = await callRpcRest<{ rows?: AutoDeactivateLogRow[] }>(
+        'admin_list_event_auto_deactivate_log',
+        { p_limit: 20 },
+        12_000,
+    );
+    return Array.isArray(data?.rows) ? data.rows : [];
 }
 
 interface TicketInactivityAdminSectionProps {

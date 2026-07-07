@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
 import type { BillingPlanCode } from '@/constants/billing-plans';
 
@@ -15,12 +15,12 @@ export interface TicketInactivityChargeStatus {
 async function fetchTicketInactivityChargeStatus(
     companyId: string,
 ): Promise<TicketInactivityChargeStatus> {
-    const { data, error } = await supabase.rpc('get_company_ticket_inactivity_charge_status', {
-        p_company_id: companyId,
-    });
-    if (error) throw new Error(error.message);
+    const row = await callRpcRest<Record<string, unknown>>(
+        'get_company_ticket_inactivity_charge_status',
+        { p_company_id: companyId },
+        10_000,
+    );
 
-    const row = (data ?? {}) as Record<string, unknown>;
     return {
         has_pending_charge: row.has_pending_charge === true,
         is_paid: row.is_paid === true,

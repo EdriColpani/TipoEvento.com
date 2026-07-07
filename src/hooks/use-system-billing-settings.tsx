@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { DEFAULT_LISTING_MONTHLY_FEE, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
 import { restGet } from '@/utils/supabase-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export interface SystemBillingSettings {
@@ -148,14 +149,15 @@ export async function saveMinEventTicketsDefault(
     minTickets: number,
     applyToNonCustomized: boolean,
 ): Promise<{ companies_updated: number }> {
-    const { data, error } = await supabase.rpc('admin_set_min_event_tickets_default', {
-        p_min_tickets: minTickets,
-        p_apply_to_non_customized: applyToNonCustomized,
-    });
+    const row = await callRpcRest<{ companies_updated?: number }>(
+        'admin_set_min_event_tickets_default',
+        {
+            p_min_tickets: minTickets,
+            p_apply_to_non_customized: applyToNonCustomized,
+        },
+        15_000,
+    );
 
-    if (error) throw new Error(error.message);
-
-    const row = (data ?? {}) as { companies_updated?: number };
     return { companies_updated: Number(row.companies_updated ?? 0) };
 }
 
@@ -163,13 +165,11 @@ export async function saveCompanyMinEventTickets(
     companyId: string,
     options: { minTickets: number } | { restoreGlobalDefault: true },
 ): Promise<void> {
-    const { error } = await supabase.rpc('admin_set_company_min_event_tickets', {
+    await callRpcRest('admin_set_company_min_event_tickets', {
         p_company_id: companyId,
         p_min_tickets: 'restoreGlobalDefault' in options ? null : options.minTickets,
         p_restore_global_default: 'restoreGlobalDefault' in options,
-    });
-
-    if (error) throw new Error(error.message);
+    }, 12_000);
 }
 
 export async function saveHybridPlanSettings(values: {

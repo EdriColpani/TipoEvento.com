@@ -25,8 +25,8 @@ import {
     TicketInactivityChargeStatus,
     useTicketInactivityCharges,
 } from '@/hooks/use-ticket-inactivity-charges';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
 import {
     billingAccentText,
     billingBtnMutedSm,
@@ -87,12 +87,11 @@ const AdminTicketInactivityBillingPanel: React.FC = () => {
     const handleSetStatus = async (chargeId: string, status: TicketInactivityChargeStatus) => {
         const toastId = showLoading('Atualizando status...');
         try {
-            const { error } = await supabase.rpc('admin_set_ticket_inactivity_charge_status', {
+            await callRpcRest('admin_set_ticket_inactivity_charge_status', {
                 p_charge_id: chargeId,
                 p_status: status,
                 p_notes: null,
-            });
-            if (error) throw error;
+            }, 12_000);
             dismissToast(toastId);
             showSuccess(`Status alterado para ${STATUS_LABELS[status]}.`);
             invalidate();

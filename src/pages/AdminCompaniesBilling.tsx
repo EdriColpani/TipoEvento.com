@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Building2, Edit, Loader2, Search, Store } from 'lucide-react';
-import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useAdminCompaniesBilling, AdminCompanyBillingRow } from '@/hooks/use-admin-companies-billing';
 import { getBillingPlanLabel, isCompanyBillingReady } from '@/constants/billing-plans';
 import { COMPANY_KIND_LABELS } from '@/constants/company-kind';
@@ -15,6 +15,7 @@ import AdminPartnerCompanyActions from '@/components/AdminPartnerCompanyActions'
 import { adminBtnOutline, billingBtnSolid } from '@/constants/billing-ui';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 function formatCnpj(value: string | null): string {
     if (!value) return '—';
@@ -23,9 +24,42 @@ function formatCnpj(value: string | null): string {
     return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 }
 
+function CompanyStatusBadges({
+    ready,
+    requiresReacceptance,
+    inactivityBlocked,
+}: {
+    ready: boolean;
+    requiresReacceptance: boolean;
+    inactivityBlocked: boolean;
+}) {
+    return (
+        <div className="flex flex-col items-start gap-1.5">
+            {ready ? (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 whitespace-nowrap">
+                    Confirmado
+                </span>
+            ) : requiresReacceptance ? (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 whitespace-nowrap">
+                    Reaceite pendente
+                </span>
+            ) : (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400 whitespace-nowrap">
+                    Pendente
+                </span>
+            )}
+            {inactivityBlocked && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 whitespace-nowrap">
+                    Inatividade
+                </span>
+            )}
+        </div>
+    );
+}
+
 const AdminCompaniesBilling: React.FC = () => {
     const navigate = useNavigate();
-    const { userId, sessionReady } = usePublicSiteAuth();
+    const { userId, authPending } = usePageAuth();
     const [search, setSearch] = useState('');
     const [editingCompany, setEditingCompany] = useState<AdminCompanyBillingRow | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -43,6 +77,7 @@ const AdminCompaniesBilling: React.FC = () => {
                 c.trade_name,
                 c.cnpj,
                 c.email,
+                c.manager_email,
                 getBillingPlanLabel(c.billing_plan),
             ]
                 .filter(Boolean)
@@ -57,7 +92,16 @@ const AdminCompaniesBilling: React.FC = () => {
         setDialogOpen(true);
     };
 
-    if (!sessionReady && !userId) {
+    if (authPending) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Verificando autenticação…</p>
+            </div>
+        );
+    }
+
+    if (!userId) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -67,7 +111,7 @@ const AdminCompaniesBilling: React.FC = () => {
     }
 
     return (
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-[1400px] mx-auto px-2 sm:px-0">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
                 <div>
                     <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center gap-3">
@@ -123,19 +167,28 @@ const AdminCompaniesBilling: React.FC = () => {
                     ) : filtered.length === 0 ? (
                         <p className="text-gray-400 text-center py-8">Nenhuma empresa encontrada.</p>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <Table className="min-w-[1100px]">
+                        <div className="overflow-x-auto -mx-1 px-1">
+                            <Table className="min-w-[1180px] table-fixed w-full">
+                                <colgroup>
+                                    <col className="w-[26%]" />
+                                    <col className="w-[13%]" />
+                                    <col className="w-[14%]" />
+                                    <col className="w-[18%]" />
+                                    <col className="w-[7%]" />
+                                    <col className="w-[11%]" />
+                                    <col className="w-[9%]" />
+                                    <col className="w-[12%]" />
+                                </colgroup>
                                 <TableHeader>
                                     <TableRow className="border-yellow-500/20 hover:bg-transparent">
-                                        <TableHead className="text-gray-400">Empresa</TableHead>
+                                        <TableHead className="text-gray-400 pl-4">Empresa / gestor</TableHead>
                                         <TableHead className="text-gray-400">CNPJ</TableHead>
                                         <TableHead className="text-gray-400">Tipo</TableHead>
                                         <TableHead className="text-gray-400">Plano</TableHead>
-                                        <TableHead className="text-gray-400">Mín. ingressos</TableHead>
-                                        <TableHead className="text-gray-400">Inatividade</TableHead>
+                                        <TableHead className="text-gray-400 text-center">Mín.</TableHead>
                                         <TableHead className="text-gray-400">Status</TableHead>
-                                        <TableHead className="text-gray-400">Aceito em</TableHead>
-                                        <TableHead className="text-right text-gray-400">Ações</TableHead>
+                                        <TableHead className="text-gray-400 whitespace-nowrap">Aceito em</TableHead>
+                                        <TableHead className="text-right text-gray-400 pr-4">Ações</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -144,39 +197,65 @@ const AdminCompaniesBilling: React.FC = () => {
                                         return (
                                             <TableRow
                                                 key={company.id}
-                                                className="border-yellow-500/10 hover:bg-yellow-500/5"
+                                                className="border-yellow-500/10 hover:bg-yellow-500/5 align-top"
                                             >
-                                                <TableCell className="text-white">
-                                                    <div className="font-medium">
-                                                        {company.trade_name ||
-                                                            company.corporate_name ||
-                                                            '—'}
-                                                    </div>
-                                                    {company.corporate_name &&
-                                                        company.trade_name &&
-                                                        company.trade_name !== company.corporate_name && (
-                                                            <div className="text-xs text-gray-500">
-                                                                {company.corporate_name}
-                                                            </div>
+                                                <TableCell className="text-white pl-4 py-4">
+                                                    <div className="min-w-0 space-y-1">
+                                                        <div
+                                                            className="font-medium truncate"
+                                                            title={
+                                                                company.trade_name ||
+                                                                company.corporate_name ||
+                                                                undefined
+                                                            }
+                                                        >
+                                                            {company.trade_name ||
+                                                                company.corporate_name ||
+                                                                '—'}
+                                                        </div>
+                                                        {company.corporate_name &&
+                                                            company.trade_name &&
+                                                            company.trade_name !== company.corporate_name && (
+                                                                <div
+                                                                    className="text-xs text-gray-500 truncate"
+                                                                    title={company.corporate_name}
+                                                                >
+                                                                    {company.corporate_name}
+                                                                </div>
+                                                            )}
+                                                        {company.manager_email ? (
+                                                            <a
+                                                                href={`mailto:${company.manager_email}`}
+                                                                className="block text-xs text-cyan-400/90 hover:text-cyan-300 truncate"
+                                                                title={company.manager_email}
+                                                            >
+                                                                {company.manager_email}
+                                                            </a>
+                                                        ) : (
+                                                            <span className="text-xs text-gray-600">Sem e-mail do gestor</span>
                                                         )}
+                                                    </div>
                                                 </TableCell>
-                                                <TableCell className="text-gray-300 text-sm">
+                                                <TableCell className="text-gray-300 text-sm py-4 whitespace-nowrap">
                                                     {formatCnpj(company.cnpj)}
                                                 </TableCell>
-                                                <TableCell className="text-gray-300 text-sm">
+                                                <TableCell className="text-gray-300 text-sm py-4 leading-snug">
                                                     {COMPANY_KIND_LABELS[company.company_kind ?? 'organizer'] ??
                                                         'Organizador'}
                                                 </TableCell>
-                                                <TableCell className="text-yellow-500/90 text-sm">
+                                                <TableCell className="text-yellow-500/90 text-sm py-4 leading-snug">
                                                     {getBillingPlanLabel(company.billing_plan)}
                                                 </TableCell>
-                                                <TableCell className="text-gray-300 text-sm">
+                                                <TableCell className="text-gray-300 text-sm py-4 text-center whitespace-nowrap">
                                                     {companyAllowsTicketSales(company.billing_plan) ? (
                                                         <span>
                                                             {company.min_event_tickets}
                                                             {company.min_event_tickets_customized && (
-                                                                <span className="ml-1 text-xs text-cyan-400/90">
-                                                                    (personalizado)
+                                                                <span
+                                                                    className="block text-[10px] text-cyan-400/90 mt-0.5"
+                                                                    title="Mínimo personalizado"
+                                                                >
+                                                                    pers.
                                                                 </span>
                                                             )}
                                                         </span>
@@ -184,31 +263,14 @@ const AdminCompaniesBilling: React.FC = () => {
                                                         <span className="text-gray-600">—</span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell>
-                                                    {company.ticket_inactivity_blocked ? (
-                                                        <span className="text-xs px-2 py-1 rounded-full bg-orange-500/20 text-orange-300">
-                                                            Bloqueada
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-xs text-gray-600">—</span>
-                                                    )}
+                                                <TableCell className="py-4">
+                                                    <CompanyStatusBadges
+                                                        ready={ready}
+                                                        requiresReacceptance={company.requires_billing_reacceptance}
+                                                        inactivityBlocked={company.ticket_inactivity_blocked}
+                                                    />
                                                 </TableCell>
-                                                <TableCell>
-                                                    {ready ? (
-                                                        <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">
-                                                            Confirmado
-                                                        </span>
-                                                    ) : company.requires_billing_reacceptance ? (
-                                                        <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-300">
-                                                            Reaceite pendente
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-xs px-2 py-1 rounded-full bg-gray-500/20 text-gray-400">
-                                                            Pendente
-                                                        </span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-gray-400 text-sm">
+                                                <TableCell className="text-gray-400 text-sm py-4 whitespace-nowrap">
                                                     {company.billing_plan_accepted_at
                                                         ? format(
                                                               new Date(company.billing_plan_accepted_at),
@@ -217,15 +279,15 @@ const AdminCompaniesBilling: React.FC = () => {
                                                           )
                                                         : '—'}
                                                 </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex flex-col items-end gap-2">
+                                                <TableCell className="text-right py-4 pr-4">
+                                                    <div className="flex flex-col items-end gap-2 min-w-[9.5rem]">
                                                         <Button
                                                             type="button"
                                                             size="sm"
-                                                            className={adminBtnOutline}
+                                                            className={cn(adminBtnOutline, 'whitespace-nowrap w-full')}
                                                             onClick={() => openEdit(company)}
                                                         >
-                                                            <Edit className="h-4 w-4 mr-1" />
+                                                            <Edit className="h-4 w-4 mr-1 shrink-0" />
                                                             Alterar plano
                                                         </Button>
                                                         {company.company_kind === 'partner' && (

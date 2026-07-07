@@ -5,8 +5,7 @@ import { ptBR } from 'date-fns/locale';
 import { Loader2, Shield } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { supabase } from '@/integrations/supabase/client';
-import { billingAccentText, billingPanelBorder, billingSpinner } from '@/constants/billing-ui';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 const BYPASS_ACTION_LABELS: Record<string, string> = {
     min_event_tickets_activate: 'Ativar evento (abaixo do mínimo)',
@@ -32,10 +31,12 @@ interface BypassLogRow {
 }
 
 async function fetchBypassLog(): Promise<BypassLogRow[]> {
-    const { data, error } = await supabase.rpc('admin_list_master_bypass_log', { p_limit: 80 });
-    if (error) throw new Error(error.message);
-    const rows = (data as { rows?: BypassLogRow[] })?.rows;
-    return Array.isArray(rows) ? rows : [];
+    const data = await callRpcRest<{ rows?: BypassLogRow[] }>(
+        'admin_list_master_bypass_log',
+        { p_limit: 80 },
+        12_000,
+    );
+    return Array.isArray(data?.rows) ? data.rows : [];
 }
 
 interface AdminMasterBypassLogSectionProps {

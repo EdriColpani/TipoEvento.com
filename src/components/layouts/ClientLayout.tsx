@@ -7,6 +7,11 @@ import { useDevice } from '@/hooks/use-device';
 import { LandingUiProvider, useLandingUi, useLandingUiOptional } from '@/contexts/LandingUiContext';
 import LandingModals from '@/components/landing/LandingModals';
 import SiteLogo from '@/components/SiteLogo';
+import {
+    SITE_HEADER_BAR_CLASS,
+    SITE_HEADER_MAIN_OFFSET_CLASS,
+    SITE_HEADER_NAV_LINK_CLASS,
+} from '@/constants/branding';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 
 const ClientLandingModalsHost: React.FC = () => {
@@ -16,7 +21,7 @@ const ClientLandingModalsHost: React.FC = () => {
 
 const ClientLayoutNav: React.FC<{ isInformacoesPage: boolean }> = ({ isInformacoesPage }) => {
     const landingUi = useLandingUiOptional();
-    const linkClass = `text-white transition-colors duration-300 cursor-pointer ${
+    const linkClass = `${SITE_HEADER_NAV_LINK_CLASS} text-white transition-colors duration-300 cursor-pointer ${
         isInformacoesPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
     }`;
 
@@ -86,12 +91,9 @@ const ClientLayout: React.FC = () => {
                     isInformacoesPage ? 'border-cyan-400/30' : 'border-yellow-500/20'
                 }`}
             >
-                <div className={`max-w-7xl mx-auto flex items-center justify-between ${isMobile ? 'px-3 py-3' : 'px-4 sm:px-6 py-4'}`}>
+                <div className={`max-w-7xl mx-auto flex items-center justify-between ${SITE_HEADER_BAR_CLASS}`}>
                     <div className="flex items-center space-x-4 sm:space-x-8">
-                        <SiteLogo
-                            className={isMobile ? 'h-[4.25rem] min-w-[10rem]' : 'h-24 min-w-[14rem]'}
-                            onClick={handleLogoClick}
-                        />
+                        <SiteLogo header onClick={handleLogoClick} />
                         <nav className="hidden md:flex items-center space-x-8">
                             <ClientLayoutNav isInformacoesPage={isInformacoesPage} />
                         </nav>
@@ -104,7 +106,7 @@ const ClientLayout: React.FC = () => {
                     </div>
                 </div>
             </header>
-            <main className={isMobile ? 'pt-[5.5rem]' : 'pt-28'}>
+            <main className={SITE_HEADER_MAIN_OFFSET_CLASS}>
                 <ScrollToTop />
                 <LandingUiProvider>
                     <Outlet />

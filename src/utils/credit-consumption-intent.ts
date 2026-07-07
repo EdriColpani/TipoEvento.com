@@ -1,5 +1,5 @@
-import { supabase } from '@/integrations/supabase/client';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { ensureWalletBiometricForSpend } from '@/utils/wallet-biometric';
 
 export type ConsumptionIntentCreateResult = {
@@ -23,24 +23,20 @@ export type ConsumptionIntentConfirmResult = {
 };
 
 export async function markCreditConsumptionIntentBiometric(intentId: string): Promise<void> {
-    const { error } = await supabase.rpc('mark_client_credit_consumption_intent_biometric', {
+    await callRpcRest('mark_client_credit_consumption_intent_biometric', {
         p_intent_id: intentId,
-    });
-    if (error) throw error;
+    }, 12_000);
 }
 
 export async function createCreditConsumptionIntent(input: {
     menuToken: string;
     items: Array<{ productId: string; quantity: number }>;
 }): Promise<ConsumptionIntentCreateResult> {
-    const { data, error } = await supabase.functions.invoke('create-credit-consumption-intent', {
-        body: {
-            menuToken: input.menuToken,
-            items: input.items,
-        },
-    });
-    if (error) throw new Error(await parseEdgeFunctionError(error, data));
-    return data as ConsumptionIntentCreateResult;
+    return invokeEdgeFunctionRest<ConsumptionIntentCreateResult>(
+        'create-credit-consumption-intent',
+        { menuToken: input.menuToken, items: input.items },
+        { timeoutMs: 25_000 },
+    );
 }
 
 export async function confirmCreditConsumptionIntent(input: {
@@ -49,18 +45,15 @@ export async function confirmCreditConsumptionIntent(input: {
     biometricConfirmed?: boolean;
 }): Promise<ConsumptionIntentConfirmResult> {
     const key = input.idempotencyKey ?? crypto.randomUUID();
-    const { data, error } = await supabase.functions.invoke('confirm-credit-consumption-intent', {
-        body: {
+    return invokeEdgeFunctionRest<ConsumptionIntentConfirmResult>(
+        'confirm-credit-consumption-intent',
+        {
             intentId: input.intentId,
             idempotencyKey: key,
             biometricConfirmed: input.biometricConfirmed === true,
         },
-        headers: {
-            'x-idempotency-key': key,
-        },
-    });
-    if (error) throw new Error(await parseEdgeFunctionError(error, data));
-    return data as ConsumptionIntentConfirmResult;
+        { idempotencyKey: key, timeoutMs: 25_000 },
+    );
 }
 
 export async function checkoutCreditConsumptionFromMenu(input: {

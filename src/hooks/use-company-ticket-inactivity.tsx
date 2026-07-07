@@ -1,24 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { FunctionsHttpError } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
-
-async function readFunctionErrorMessage(
-    error: unknown,
-    payload: { error?: string } | null,
-): Promise<string> {
-    if (payload?.error) return payload.error;
-    if (error instanceof FunctionsHttpError) {
-        try {
-            const json = (await error.context.json()) as { error?: string };
-            if (json?.error) return json.error;
-        } catch {
-            /* ignore */
-        }
-    }
-    if (error instanceof Error) return error.message;
-    return 'Erro no job mensal.';
-}
 
 export interface TicketInactivityPendingEvent {
     event_id: string;
@@ -37,13 +20,12 @@ export interface CompanyTicketInactivityStatus {
 async function fetchTicketInactivityStatus(
     companyId: string,
 ): Promise<CompanyTicketInactivityStatus> {
-    const { data, error } = await supabase.rpc('get_company_ticket_inactivity_status', {
-        p_company_id: companyId,
-    });
+    const row = await callRpcRest<Record<string, unknown>>(
+        'get_company_ticket_inactivity_status',
+        { p_company_id: companyId },
+        12_000,
+    );
 
-    if (error) throw new Error(error.message);
-
-    const row = (data ?? {}) as Record<string, unknown>;
     const pending = Array.isArray(row.pending_events) ? row.pending_events : [];
 
     return {
@@ -69,11 +51,11 @@ export async function adminRunTicketInactivityCheck(referenceMonth?: string): Pr
     charges_created?: number;
     notifications_queued?: number;
 }> {
-    const { data, error } = await supabase.rpc('admin_run_ticket_inactivity_check', {
-        p_reference_month: referenceMonth ?? null,
-    });
-    if (error) throw new Error(error.message);
-    return (data ?? {}) as Record<string, unknown>;
+    return callRpcRest<Record<string, unknown>>(
+        'admin_run_ticket_inactivity_check',
+        { p_reference_month: referenceMonth ?? null },
+        20_000,
+    );
 }
 
 export async function adminRunTicketInactivityMonthlyJob(referenceMonth?: string): Promise<{
@@ -81,26 +63,21 @@ export async function adminRunTicketInactivityMonthlyJob(referenceMonth?: string
     emails_sent?: number;
     emails_failed?: number;
 }> {
-    const token = getAuthAccessToken();
-    if (!token) throw new Error('Sessão expirada.');
+    if (!getAuthAccessToken()) throw new Error('Sessão expirada.');
 
     const check = await adminRunTicketInactivityCheck(referenceMonth);
 
-    const { data, error } = await supabase.functions.invoke('run-ticket-inactivity-monthly-job', {
-        body: { skipCheck: true },
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    const payload = (data ?? {}) as {
+    const payload = await invokeEdgeFunctionRest<{
         error?: string;
         check?: Record<string, unknown>;
         emails_sent?: number;
         emails_failed?: number;
-    };
+    }>(
+        'run-ticket-inactivity-monthly-job',
+        { skipCheck: true },
+        { timeoutMs: 60_000 },
+    );
 
-    if (error) {
-        throw new Error(await readFunctionErrorMessage(error, payload));
-    }
     if (payload.error) throw new Error(payload.error);
 
     return {
@@ -111,10 +88,7 @@ export async function adminRunTicketInactivityMonthlyJob(referenceMonth?: string
 }
 
 export async function adminClearCompanyTicketInactivity(companyId: string): Promise<void> {
-    const { error } = await supabase.rpc('admin_clear_company_ticket_inactivity', {
-        p_company_id: companyId,
-    });
-    if (error) throw new Error(error.message);
+    await callRpcRest('admin_clear_company_ticket_inactivity', { p_company_id: companyId }, 12_000);
 }
 
 export async function adminRunTicketInactivityAutoDeactivate(): Promise<{
@@ -124,9 +98,7 @@ export async function adminRunTicketInactivityAutoDeactivate(): Promise<{
     notifications_queued?: number;
     days_after?: number;
 }> {
-    const { data, error } = await supabase.rpc('admin_run_ticket_inactivity_auto_deactivate');
-    if (error) throw new Error(error.message);
-    return (data ?? {}) as Record<string, unknown>;
+    return callRpcRest<Record<string, unknown>>('admin_run_ticket_inactivity_auto_deactivate', {}, 20_000);
 }
 
 export async function adminRunTicketInactivityAutoDeactivateJob(): Promise<{
@@ -134,31 +106,20 @@ export async function adminRunTicketInactivityAutoDeactivateJob(): Promise<{
     emails_sent?: number;
     emails_failed?: number;
 }> {
-    const token = getAuthAccessToken();
-    if (!token) throw new Error('Sessão expirada.');
+    if (!getAuthAccessToken()) throw new Error('Sessão expirada.');
 
-    const { data, error } = await supabase.functions.invoke('run-ticket-inactivity-auto-deactivate-job', {
-        body: {},
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    const payload = (data ?? {}) as {
+    const payload = await invokeEdgeFunctionRest<{
         error?: string;
         deactivate?: Record<string, unknown>;
         emails_sent?: number;
         emails_failed?: number;
-    };
+    }>('run-ticket-inactivity-auto-deactivate-job', {}, { timeoutMs: 60_000 });
 
-    if (error) {
-        throw new Error(await readFunctionErrorMessage(error, payload));
-    }
     if (payload.error) throw new Error(payload.error);
 
     return payload;
 }
 
 export async function verifyAntiFraudDeploy(): Promise<Record<string, unknown>> {
-    const { data, error } = await supabase.rpc('verify_anti_fraud_deploy');
-    if (error) throw new Error(error.message);
-    return (data ?? {}) as Record<string, unknown>;
+    return callRpcRest<Record<string, unknown>>('verify_anti_fraud_deploy', {}, 15_000);
 }

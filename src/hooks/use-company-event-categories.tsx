@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export type CompanyEventCategory = {
     id: string;
@@ -8,11 +8,12 @@ export type CompanyEventCategory = {
 };
 
 async function fetchCompanyEventCategories(companyId: string): Promise<CompanyEventCategory[]> {
-    const { data, error } = await supabase.rpc('list_company_event_categories', {
-        p_company_id: companyId,
-    });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((row: { id: string; name: string; sort_order: number }) => ({
+    const data = await callRpcRest<Array<{ id: string; name: string; sort_order: number }>>(
+        'list_company_event_categories',
+        { p_company_id: companyId },
+        10_000,
+    );
+    return (data ?? []).map((row) => ({
         id: row.id,
         name: row.name,
         sort_order: row.sort_order ?? 0,
@@ -31,12 +32,11 @@ export function useCompanyEventCategories(companyId: string | undefined) {
 
     const createMutation = useMutation({
         mutationFn: async (name: string) => {
-            const { data, error } = await supabase.rpc('create_company_event_category', {
-                p_company_id: companyId!,
-                p_name: name.trim(),
-            });
-            if (error) throw new Error(error.message);
-            const row = data as { success?: boolean; name?: string; id?: string };
+            const row = await callRpcRest<{ success?: boolean; name?: string; id?: string }>(
+                'create_company_event_category',
+                { p_company_id: companyId!, p_name: name.trim() },
+                12_000,
+            );
             if (!row?.name) throw new Error('Não foi possível criar a categoria.');
             return { id: row.id as string, name: row.name as string };
         },

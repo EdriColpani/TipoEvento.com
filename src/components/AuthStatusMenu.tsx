@@ -55,10 +55,10 @@ const AuthStatusMenu: React.FC = () => {
     if (!sessionReady) {
         return (
             <div
-                className={`w-10 h-10 rounded-full animate-pulse ${
+                className={`h-11 w-11 rounded-full animate-pulse ${
                     isLandingPage ? 'bg-cyan-400/20' : 'bg-yellow-500/20'
                 }`}
-            ></div>
+            />
         );
     }
 
@@ -98,7 +98,7 @@ const AuthStatusMenu: React.FC = () => {
                                     : 'border-yellow-500/50 hover:border-yellow-500'
                             } ${profileLoading && !profile ? 'opacity-70' : ''}`}
                         >
-                            <Avatar className="h-8 w-8">
+                            <Avatar className="h-10 w-10 sm:h-11 sm:w-11">
                                 <AvatarImage src={profile?.avatar_url || undefined} alt={displayName} />
                                 <AvatarFallback
                                     className={`text-black font-bold text-sm ${

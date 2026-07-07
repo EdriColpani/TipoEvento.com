@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export interface EventTicketReadiness {
     event_id: string;
@@ -9,10 +9,11 @@ export interface EventTicketReadiness {
 }
 
 async function fetchEventTicketReadiness(companyId: string): Promise<EventTicketReadiness[]> {
-    const { data, error } = await supabase.rpc('get_manager_events_ticket_readiness', {
-        p_company_id: companyId,
-    });
-    if (error) throw new Error(error.message);
+    const data = await callRpcRest<unknown>(
+        'get_manager_events_ticket_readiness',
+        { p_company_id: companyId },
+        12_000,
+    );
     return Array.isArray(data) ? (data as EventTicketReadiness[]) : [];
 }
 

@@ -24,9 +24,9 @@ import { showSuccess, showError } from '@/utils/toast';
 
 import { Skeleton } from '@/components/ui/skeleton';
 
-import AuthStatusMenu from '@/components/AuthStatusMenu';
-
 import AvatarUpload from '@/components/AvatarUpload';
+import ClientAccountPageShell from '@/components/client/ClientAccountPageShell';
+import { CLIENT_ACCOUNT_PAGE_CLASS } from '@/constants/client-account-ui';
 
 import { useProfileStatus } from '@/hooks/use-profile-status';
 
@@ -786,7 +786,7 @@ const Profile: React.FC = () => {
 
         return (
 
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
+            <div className={`${CLIENT_ACCOUNT_PAGE_CLASS} flex min-h-[50vh] items-center justify-center`}>
 
                 <div className="w-full max-w-4xl p-6 space-y-8">
 
@@ -858,67 +858,7 @@ const Profile: React.FC = () => {
 
     return (
 
-        <div className="min-h-screen bg-black text-white">
-
-             <header className="fixed top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md border-b border-yellow-500/20">
-
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-
-                    <div className="flex items-center space-x-8">
-
-                        <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer" onClick={() => navigate('/')}>
-
-                            EventFest
-
-                        </div>
-
-                        <nav className="hidden md:flex items-center space-x-8">
-
-                            <a href="/#home" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Home</a>
-
-                            <a href="/#eventos" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Eventos</a>
-
-                            <a href="/#categorias" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Categorias</a>
-
-                            <a href="/#contato" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Contato</a>
-
-                        </nav>
-
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-
-                        <div className="relative hidden lg:block">
-
-                            <Input 
-
-                                type="search" 
-
-                                placeholder="Buscar eventos..." 
-
-                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 w-64 pl-4 pr-10 py-2 rounded-xl"
-
-                            />
-
-                            <i className="fas fa-search absolute right-4 top-1/2 transform -translate-y-1/2 text-yellow-500/60"></i>
-
-                        </div>
-
-                        <AuthStatusMenu />
-
-                    </div>
-
-                </div>
-
-            </header>
-
-            <main className="pt-24 pb-12 px-4 sm:px-6"> {/* Ajustado o padding-top */}
-
-                <div className="max-w-4xl mx-auto">
-
-                    <h1 className="text-3xl sm:text-4xl font-serif text-yellow-500 mb-8">Meu Perfil</h1>
-
-                    
+        <ClientAccountPageShell title="Meu Perfil">
 
                     {/* Informações de Identificação */}
 
@@ -1705,11 +1645,7 @@ const Profile: React.FC = () => {
 
                         </div>
 
-                    </div>
-
-                </main>
-
-            </div>
+        </ClientAccountPageShell>
 
         );
 

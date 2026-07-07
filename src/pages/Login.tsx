@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
+import { signInWithPasswordResilient, fetchAuthUserViaRest } from '@/utils/auth-rest';
+import { signOutSession, clearAuthSessionStorage } from '@/utils/sign-out-session';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { showSuccess, showError } from '@/utils/toast';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { resolvePostLoginRedirect } from '@/utils/post-login-redirect';
@@ -54,7 +57,7 @@ const Login: React.FC = () => {
             } else {
                 showError('Ocorreu um erro inesperado. Tente novamente.');
             }
-            await supabase.auth.signOut({ scope: 'local' });
+            await signOutSession();
         }
     };
 
@@ -72,10 +75,18 @@ const Login: React.FC = () => {
         }
 
         const redirectIfPasswordSetupRequired = async () => {
-            const {
-                data: { session },
-            } = await withTimeout(supabase.auth.getSession(), 4_000, { data: { session: null } });
-            const user = session?.user;
+            const cached = readCachedAuthSession();
+            let user = cached.accessToken
+                ? (await fetchAuthUserViaRest(cached.accessToken, 4_000)).user
+                : null;
+
+            if (!user) {
+                const {
+                    data: { session },
+                } = await withTimeout(supabase.auth.getSession(), 4_000, { data: { session: null } });
+                user = session?.user ?? null;
+            }
+
             if (cancelled || !user) {
                 return false;
             }
@@ -154,33 +165,33 @@ const Login: React.FC = () => {
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        clearAuthSessionStorage();
 
         try {
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                email: loginData.email,
-                password: loginData.password,
-            });
+            const { data: authData, error: authError } = await signInWithPasswordResilient(
+                loginData.email,
+                loginData.password,
+            );
 
-            if (authError) {
-                showError("Credenciais inválidas ou usuário não encontrado.");
-                setIsLoading(false);
+            if (authError || !authData?.user) {
+                showError(authError?.message ?? 'Credenciais inválidas ou usuário não encontrado.');
                 return;
             }
 
             const user = authData.user;
 
-            if (user) {
-                if (!isAuthEmailConfirmed(user)) {
-                    await supabase.auth.signOut({ scope: 'local' });
-                    showError('Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.');
-                    setIsLoading(false);
-                    return;
-                }
-
-                await completeAuthenticatedRedirect(user.id, user);
-            } else {
-                showError("Login falhou. Verifique seu e-mail e senha.");
+            if (!isAuthEmailConfirmed(user)) {
+                await signOutSession();
+                showError('Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.');
+                return;
             }
+
+            if (await userMustSetPartnerPassword(user)) {
+                navigate(RESET_PASSWORD_PATH, { replace: true });
+                return;
+            }
+
+            await completeAuthenticatedRedirect(user.id, user);
 
         } catch (error) {
             console.error('Erro inesperado no login:', error);

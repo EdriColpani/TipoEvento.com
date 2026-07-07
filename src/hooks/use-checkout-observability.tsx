@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export type CheckoutObservabilityAlert = {
     level: 'critical' | 'warning' | 'info';
@@ -87,13 +88,11 @@ async function fetchCheckoutObservability(
     eventId: string | null,
     windowMinutes: number,
 ): Promise<CheckoutObservabilityData> {
-    const { data, error } = await supabase.rpc('get_checkout_observability', {
-        p_event_id: eventId,
-        p_window_minutes: windowMinutes,
-    });
-
-    if (error) throw error;
-    return data as CheckoutObservabilityData;
+    return callRpcRest<CheckoutObservabilityData>(
+        'get_checkout_observability',
+        { p_event_id: eventId, p_window_minutes: windowMinutes },
+        15_000,
+    );
 }
 
 export function useHighTrafficEvents(enabled: boolean) {

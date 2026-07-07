@@ -30,7 +30,8 @@ import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import WalletQrModal from '@/components/WalletQrModal';
 import WalletBiometricSection from '@/components/WalletBiometricSection';
 import WalletPwaInstallHint from '@/components/WalletPwaInstallHint';
-import { useDevice } from '@/hooks/use-device';
+import ClientAccountPageShell from '@/components/client/ClientAccountPageShell';
+import { CLIENT_ACCOUNT_CARD_CLASS } from '@/constants/client-account-ui';
 
 const PRESET_AMOUNTS = [50, 100, 250, 500];
 
@@ -50,7 +51,6 @@ const ClientCreditWallet: React.FC = () => {
     const [customAmount, setCustomAmount] = useState('');
     const [isPaying, setIsPaying] = useState(false);
     const [walletQrOpen, setWalletQrOpen] = useState(false);
-    const { isMobile } = useDevice();
 
     const returnStatus = searchParams.get('status');
     const topupId = searchParams.get('topup_id');
@@ -155,19 +155,12 @@ const ClientCreditWallet: React.FC = () => {
     }, [networkLoading, networkEmpty]);
 
     return (
-        <div
-            className={`min-h-[calc(100vh-4.75rem)] md:min-h-[calc(100vh-6rem)] bg-black text-white px-4 pt-4 pb-8 max-w-2xl mx-auto ${isMobile ? 'pb-28' : ''}`}
+        <ClientAccountPageShell
+            title="Carteira EventFest"
+            subtitle="Crédito válido na rede de eventos e estabelecimentos parceiros."
+            icon={<Wallet className="h-8 w-8 text-yellow-500" aria-hidden />}
+            showBackToProfile
         >
-            <div className="flex items-center gap-3 mb-6">
-                <Wallet className="h-8 w-8 text-yellow-500" />
-                <div>
-                    <h1 className="text-2xl font-bold text-yellow-500">Carteira EventFest</h1>
-                    <p className="text-gray-400 text-sm">
-                        Crédito válido na rede de eventos e estabelecimentos parceiros.
-                    </p>
-                </div>
-            </div>
-
             <WalletPwaInstallHint />
 
             {(isPolling || shouldPoll) && (
@@ -190,7 +183,7 @@ const ClientCreditWallet: React.FC = () => {
                 </Alert>
             )}
 
-            <Card className="bg-black border-yellow-500/30 mb-6">
+            <Card className={`${CLIENT_ACCOUNT_CARD_CLASS} mb-6`}>
                 <CardHeader>
                     <CardDescription className="text-gray-400">Saldo disponível</CardDescription>
                     <CardTitle className="text-3xl text-yellow-400">
@@ -240,9 +233,9 @@ const ClientCreditWallet: React.FC = () => {
                 balanceLabel={formatMoney(balance)}
             />
 
-            <Card className="bg-black border-yellow-500/30 mb-6">
+            <Card className={`${CLIENT_ACCOUNT_CARD_CLASS} mb-6`}>
                 <CardHeader>
-                    <CardTitle className="text-lg text-white flex items-center gap-2">
+                    <CardTitle className="text-xl sm:text-2xl text-white flex items-center gap-2">
                         <MapPin className="h-5 w-5 text-yellow-500" />
                         Onde usar seu crédito
                     </CardTitle>
@@ -318,9 +311,9 @@ const ClientCreditWallet: React.FC = () => {
                 </CardContent>
             </Card>
 
-            <Card className="bg-black border-yellow-500/30 mb-6">
+            <Card className={`${CLIENT_ACCOUNT_CARD_CLASS} mb-6`}>
                 <CardHeader>
-                    <CardTitle className="text-lg text-white">Recarregar crédito</CardTitle>
+                    <CardTitle className="text-xl sm:text-2xl text-white">Recarregar crédito</CardTitle>
                     <CardDescription className="text-gray-400 text-sm">
                         Você paga e recebe o mesmo valor em crédito na carteira. A taxa do Mercado
                         Pago não reduz seu saldo, conforme os Termos de Uso.
@@ -381,10 +374,10 @@ const ClientCreditWallet: React.FC = () => {
                 </CardContent>
             </Card>
 
-            <Card className="bg-black border-yellow-500/30">
+            <Card className={CLIENT_ACCOUNT_CARD_CLASS}>
                 <CardHeader className="flex flex-row items-start justify-between gap-2">
                     <div>
-                        <CardTitle className="text-lg text-white">Extrato</CardTitle>
+                        <CardTitle className="text-xl sm:text-2xl text-white">Extrato</CardTitle>
                         <CardDescription className="text-gray-400 text-sm">
                             Histórico detalhado de recargas e usos de crédito.
                         </CardDescription>
@@ -444,7 +437,7 @@ const ClientCreditWallet: React.FC = () => {
                     )}
                 </CardContent>
             </Card>
-        </div>
+        </ClientAccountPageShell>
     );
 };
 

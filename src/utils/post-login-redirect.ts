@@ -4,7 +4,6 @@ import {
     consumeComplimentaryReturnPath,
     resolveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import {
     hasPendingPromoterRegistration,
     MANAGER_COMPANY_REGISTER_DRAFT_KEY,
@@ -13,6 +12,8 @@ import {
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { fetchAuthUserViaRest } from '@/utils/auth-rest';
+import { restGet } from '@/utils/supabase-rest';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export type PostLoginRedirect = {
@@ -55,11 +56,9 @@ export async function resolvePostLoginRedirect(
     let user = authUser ?? null;
     if (!user) {
         const cached = readCachedAuthSession();
-        if (cached.userId) {
-            const {
-                data: { session },
-            } = await withTimeout(supabase.auth.getSession(), 3_000, { data: { session: null } });
-            user = session?.user ?? null;
+        if (cached.accessToken) {
+            const { user: restUser } = await fetchAuthUserViaRest(cached.accessToken, 5_000);
+            user = restUser;
         }
     }
     if (hasPendingPromoterRegistration(user) && !resolveComplimentaryReturnPath(undefined)) {
@@ -69,13 +68,27 @@ export async function resolvePostLoginRedirect(
         };
     }
 
-    const { data: profileData, error: profileError } = await withTimeout(
-        supabase.from('profiles').select('tipo_usuario_id').eq('id', userId).single(),
-        8000,
-        { data: null, error: { message: 'timeout' } as { message: string } },
-    );
+    let profileData: { tipo_usuario_id: number } | null = null;
+    try {
+        const rows = await restGet<{ tipo_usuario_id: number }[]>(
+            `profiles?id=eq.${userId}&select=tipo_usuario_id&limit=1`,
+            8_000,
+        );
+        profileData = rows[0] ?? null;
+    } catch (restError) {
+        console.warn('[resolvePostLoginRedirect] REST profile falhou:', restError);
+        const { data, error: profileError } = await withTimeout(
+            supabase.from('profiles').select('tipo_usuario_id').eq('id', userId).single(),
+            8_000,
+            { data: null, error: { message: 'timeout' } as { message: string } },
+        );
+        if (profileError || !data) {
+            throw new Error('PROFILE_NOT_FOUND');
+        }
+        profileData = data;
+    }
 
-    if (profileError || !profileData) {
+    if (!profileData) {
         throw new Error('PROFILE_NOT_FOUND');
     }
 

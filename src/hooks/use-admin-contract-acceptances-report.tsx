@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export type AdminContractAcceptanceCompany = {
     company_id: string;
@@ -51,11 +51,12 @@ export function useAdminContractAcceptanceCompanies(search?: string, enabled = t
     return useQuery({
         queryKey: ['adminContractAcceptanceCompanies', search ?? ''],
         queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_contract_acceptance_companies', {
-                p_search: search?.trim() || null,
-            });
-            if (error) throw error;
-            return ((data as { items?: AdminContractAcceptanceCompany[] })?.items ?? []) as AdminContractAcceptanceCompany[];
+            const data = await callRpcRest<{ items?: AdminContractAcceptanceCompany[] }>(
+                'list_admin_contract_acceptance_companies',
+                { p_search: search?.trim() || null },
+                12_000,
+            );
+            return data?.items ?? [];
         },
         enabled,
         staleTime: 30_000,
@@ -65,13 +66,12 @@ export function useAdminContractAcceptanceCompanies(search?: string, enabled = t
 export function useAdminCompanyContractAcceptances(companyId?: string | null) {
     return useQuery({
         queryKey: ['adminCompanyContractAcceptances', companyId],
-        queryFn: async () => {
-            const { data, error } = await supabase.rpc('list_admin_company_contract_acceptances', {
-                p_company_id: companyId,
-            });
-            if (error) throw error;
-            return data as AdminCompanyContractAcceptancesReport;
-        },
+        queryFn: () =>
+            callRpcRest<AdminCompanyContractAcceptancesReport>(
+                'list_admin_company_contract_acceptances',
+                { p_company_id: companyId },
+                15_000,
+            ),
         enabled: Boolean(companyId),
         staleTime: 15_000,
     });

@@ -17,6 +17,7 @@ import {
 import PrintableTicketSheet from '@/components/PrintableTicketSheet';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase } from '@/integrations/supabase/client';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import QrCodeModal from '@/components/QrCodeModal';
 
@@ -137,6 +138,7 @@ const formatPriceInput = (value: string): string => {
 const ManagerManageWristband: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
+    const { authPending } = usePageAuth();
     const { data, isLoading, isError, invalidate, refetch } = useWristbandManagement(id);
     const [newStatus, setNewStatus] = useState<WristbandDetails['status'] | string>('');
     const [newPrice, setNewPrice] = useState<string>(''); 
@@ -319,6 +321,15 @@ const ManagerManageWristband: React.FC = () => {
             default: return 'bg-yellow-500/20 text-yellow-400';
         }
     };
+
+    if (authPending) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Verificando autenticação…</p>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (

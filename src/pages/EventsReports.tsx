@@ -226,7 +226,7 @@ const EventReports: React.FC = () => {
                                 <SelectItem value="pending" className="hover:bg-yellow-500/10 cursor-pointer">Pendente</SelectItem>
                                 <SelectItem value="active" className="hover:bg-yellow-500/10 cursor-pointer">Publicado</SelectItem>
                                 <SelectItem value="inactive" className="hover:bg-yellow-500/10 cursor-pointer">Desativado</SelectItem>
-                                <SelectItem value="finished" className="hover:bg-yellow-500/10 cursor-pointer">Finalizado (data passada)</SelectItem>
+                                <SelectItem value="finished" className="hover:bg-yellow-500/10 cursor-pointer">Encerrado</SelectItem>
                                 <SelectItem value="cancelled" className="hover:bg-yellow-500/10 cursor-pointer">Cancelado</SelectItem>
                             </SelectContent>
                         </Select>

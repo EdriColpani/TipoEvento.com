@@ -14,7 +14,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuthUserId } from '@/hooks/use-auth-user-id';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
 import {
@@ -37,7 +37,7 @@ type EventOption = { id: string; title: string };
 
 const ManagerCreditEstablishments: React.FC = () => {
     const navigate = useNavigate();
-    const { userId, sessionReady } = useAuthUserId();
+    const { userId, authPending, sessionReady } = usePageAuth();
     const [events, setEvents] = useState<EventOption[]>([]);
     const [editing, setEditing] = useState<CreditEstablishment | null>(null);
     const [name, setName] = useState('');
@@ -69,7 +69,9 @@ const ManagerCreditEstablishments: React.FC = () => {
     const canManageEstablishments = !companyContext?.isPdvOperator && (companyContext?.isCompanyOwner ?? true);
 
     const planStillLoading =
-        !sessionReady || (Boolean(company?.id) && loadingBilling && billing === undefined);
+        authPending ||
+        !sessionReady ||
+        (Boolean(company?.id) && loadingBilling && billing === undefined);
 
     useEffect(() => {
         if (!company?.id) return;

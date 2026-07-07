@@ -1,17 +1,6 @@
 import { supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
+import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { RpcTimeoutError } from '@/utils/supabase-rpc';
-
-function readCachedAccessToken(): string | null {
-    try {
-        const ref = new URL(supabaseUrl).hostname.split('.')[0];
-        const raw = localStorage.getItem(`sb-${ref}-auth-token`);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as { access_token?: string };
-        return parsed.access_token ?? null;
-    } catch {
-        return null;
-    }
-}
 
 function formatRestRpcError(payload: unknown): string {
     if (!payload || typeof payload !== 'object') return 'Erro na operação.';
@@ -22,19 +11,12 @@ function formatRestRpcError(payload: unknown): string {
     return parts.join(' — ') || 'Erro na operação.';
 }
 
-/**
- * RPC via REST + token do localStorage — evita deadlock do supabase-js (rpc/getSession).
- */
-export async function callRpcRest<T>(
+async function postRpc<T>(
     fn: string,
     args: Record<string, unknown>,
-    timeoutMs = 20_000,
+    authorization: string,
+    timeoutMs: number,
 ): Promise<T> {
-    const token = readCachedAccessToken();
-    if (!token) {
-        throw new Error('Sessão expirada. Faça login novamente.');
-    }
-
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -45,12 +27,12 @@ export async function callRpcRest<T>(
             headers: {
                 'Content-Type': 'application/json',
                 apikey: supabaseAnonKey,
-                Authorization: `Bearer ${token}`,
+                Authorization: `Bearer ${authorization}`,
             },
             body: JSON.stringify(args),
         });
 
-        const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
             throw new Error(formatRestRpcError(data));
@@ -65,4 +47,29 @@ export async function callRpcRest<T>(
     } finally {
         window.clearTimeout(timer);
     }
+}
+
+/** RPC público (anon) — formulários de contato/feedback sem login. */
+export async function callRpcPublicRest<T>(
+    fn: string,
+    args: Record<string, unknown>,
+    timeoutMs = 12_000,
+): Promise<T> {
+    return postRpc<T>(fn, args, supabaseAnonKey, timeoutMs);
+}
+
+/**
+ * RPC via REST + token do localStorage — evita deadlock do supabase-js (rpc/getSession).
+ */
+export async function callRpcRest<T>(
+    fn: string,
+    args: Record<string, unknown>,
+    timeoutMs = 20_000,
+): Promise<T> {
+    const token = getAuthAccessToken();
+    if (!token) {
+        throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    return postRpc<T>(fn, args, token, timeoutMs);
 }

@@ -6,6 +6,7 @@ import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2, Walle
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { EMPTY_ADMIN_METRICS, useAdminDashboardStats } from '@/hooks/use-admin-dashboard-stats';
 import { useAdminCreditTopupChargebackSummary } from '@/hooks/use-credit-reports';
+import { usePageAuth } from '@/hooks/use-page-auth';
 import { showError } from '@/utils/toast';
 
 function money(v: number | undefined | null): string {
@@ -24,6 +25,7 @@ const getActivityStatusClasses = (status: string) => {
 
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
+    const { authPending } = usePageAuth();
     const { data, isLoading, isError, error } = useAdminDashboardStats(true);
     const chargebackSummary = useAdminCreditTopupChargebackSummary(null, null);
 
@@ -51,6 +53,15 @@ const AdminDashboard: React.FC = () => {
     }, [metrics, apiLatencyMs]);
 
     const latencyAlerts = apiLatencyMs >= 200 ? 1 : 0;
+
+    if (authPending) {
+        return (
+            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
+                <p>Verificando autenticação…</p>
+            </div>
+        );
+    }
 
     if (isLoading && !data) {
         return (

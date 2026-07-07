@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, History } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { adminBtnOutline, billingBtnSolid } from '@/constants/billing-ui';
 import {
@@ -156,12 +157,11 @@ const AdminCompanyBillingEditDialog: React.FC<AdminCompanyBillingEditDialogProps
                 contractId !== KEEP_CONTRACT_VALUE && contractId.trim() !== '';
 
             if (planChanged || contractProvided) {
-                const { error: rpcError } = await supabase.rpc('admin_set_company_billing_plan', {
+                await callRpcRest('admin_set_company_billing_plan', {
                     p_company_id: company.id,
                     p_plan: selectedPlan,
                     p_contract_id: contractProvided ? contractId : null,
-                });
-                if (rpcError) throw rpcError;
+                }, 15_000);
             }
 
             const shouldRequireReaccept =

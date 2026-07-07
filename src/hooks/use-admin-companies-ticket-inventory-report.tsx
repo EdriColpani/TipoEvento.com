@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export interface EventTicketInventoryRow {
     event_id: string;
@@ -29,12 +29,12 @@ export interface CompanyTicketInventoryReport {
 async function fetchCompaniesTicketInventory(
     companyId?: string | null,
 ): Promise<CompanyTicketInventoryReport[]> {
-    const { data, error } = await supabase.rpc('admin_get_companies_event_ticket_inventory', {
-        p_company_id: companyId ?? null,
-    });
-    if (error) throw new Error(error.message);
+    const row = await callRpcRest<{ companies?: CompanyTicketInventoryReport[] }>(
+        'admin_get_companies_event_ticket_inventory',
+        { p_company_id: companyId ?? null },
+        20_000,
+    );
 
-    const row = (data ?? {}) as { companies?: CompanyTicketInventoryReport[] };
     const companies = Array.isArray(row.companies) ? row.companies : [];
     return companies.map((c) => ({
         ...c,
@@ -43,14 +43,10 @@ async function fetchCompaniesTicketInventory(
     }));
 }
 
-export function useAdminCompaniesTicketInventoryReport(
-    companyId: string | null | undefined,
-    enabled: boolean,
-) {
+export function useAdminCompaniesTicketInventoryReport(companyId?: string | null) {
     return useQuery({
         queryKey: ['adminCompaniesTicketInventory', companyId ?? 'all'],
         queryFn: () => fetchCompaniesTicketInventory(companyId),
-        enabled,
-        staleTime: 60_000,
+        staleTime: 30_000,
     });
 }

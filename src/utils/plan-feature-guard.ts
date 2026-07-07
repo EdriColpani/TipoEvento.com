@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import {
     PLAN_FEATURE_DEFINITIONS,
     type PlanFeatureKey,
@@ -9,11 +9,10 @@ export async function companyHasPlanFeature(
     companyId: string,
     featureKey: PlanFeatureKey,
 ): Promise<boolean> {
-    const { data, error } = await supabase.rpc('company_has_plan_feature', {
+    const data = await callRpcRest<boolean>('company_has_plan_feature', {
         p_company_id: companyId,
         p_feature_key: featureKey,
-    });
-    if (error) throw error;
+    }, 10_000);
     return data === true;
 }
 

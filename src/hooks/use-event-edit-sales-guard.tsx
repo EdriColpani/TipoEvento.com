@@ -1,18 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import type { EventEditSalesGuard } from '@/utils/event-edit-sales-guard';
 
 async function fetchEventEditSalesGuard(eventId: string): Promise<EventEditSalesGuard> {
-    const { data, error } = await supabase.rpc('get_event_edit_sales_guard', {
-        p_event_id: eventId,
-    });
+    const raw = await callRpcRest<Record<string, unknown>>(
+        'get_event_edit_sales_guard',
+        { p_event_id: eventId },
+        12_000,
+    );
 
-    if (error) {
-        console.error('get_event_edit_sales_guard:', error);
-        throw error;
-    }
-
-    const raw = (data ?? {}) as Record<string, unknown>;
     return {
         sold_count: Number(raw.sold_count ?? 0),
         paid_receivables_count: Number(raw.paid_receivables_count ?? 0),
