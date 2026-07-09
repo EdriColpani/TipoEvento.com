@@ -162,7 +162,7 @@ BEGIN
       o.receiver_establishment_id,
       e.title AS event_title,
       ce.name AS establishment_name,
-      ce.establishment_kind
+      NULL::text AS establishment_kind
     FROM public.manager_credit_settlement_ledger m
     INNER JOIN public.credit_spend_orders o ON o.id = m.spend_order_id
     INNER JOIN public.credit_financial_splits s ON s.id = m.split_id
@@ -249,7 +249,7 @@ BEGIN
       o.receiver_establishment_id,
       e.title AS event_title,
       ce.name AS establishment_name,
-      ce.establishment_kind,
+      NULL::text AS establishment_kind,
       CASE
         WHEN o.receiver_event_id IS NOT NULL THEN 'event'
         WHEN o.receiver_establishment_id IS NOT NULL THEN 'establishment'

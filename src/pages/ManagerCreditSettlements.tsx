@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Banknote, Loader2 } from 'lucide-react';
+import { ArrowLeft, Banknote, Loader2, RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -40,7 +41,7 @@ const ManagerCreditSettlements: React.FC = () => {
     const { userId } = usePageAuth();
 
     const access = useCreditReportsAccess(userId);
-    const { data, isLoading } = useManagerCreditSettlements(access.company?.id);
+    const { data, isLoading, isError, error, refetch } = useManagerCreditSettlements(access.company?.id);
 
     const summary = data?.summary;
     const retentionDays = data?.retention_days ?? 1;
@@ -107,7 +108,23 @@ const ManagerCreditSettlements: React.FC = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
-                    {isLoading ? (
+                    {isError ? (
+                        <Alert className="border-red-500/40 bg-red-950/40">
+                            <AlertTitle className="text-red-400">Não foi possível carregar os repasses</AlertTitle>
+                            <AlertDescription className="text-gray-300 text-sm space-y-3">
+                                <p>{error instanceof Error ? error.message : 'Erro ao consultar o servidor.'}</p>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                    onClick={() => void refetch()}
+                                >
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Tentar novamente
+                                </Button>
+                            </AlertDescription>
+                        </Alert>
+                    ) : isLoading ? (
                         <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto py-8" />
                     ) : (data?.items ?? []).length === 0 ? (
                         <p className="text-gray-500 text-sm text-center py-8">Nenhum repasse registrado ainda.</p>
