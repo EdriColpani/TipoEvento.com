@@ -25,9 +25,10 @@ const getActivityStatusClasses = (status: string) => {
 
 const AdminDashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { authPending } = usePageAuth();
-    const { data, isLoading, isError, error } = useAdminDashboardStats(true);
-    const chargebackSummary = useAdminCreditTopupChargebackSummary(null, null);
+    const { userId, authPending } = usePageAuth();
+    const statsEnabled = Boolean(userId && !authPending);
+    const { data, isLoading, isFetching, isError, error } = useAdminDashboardStats(statsEnabled);
+    const chargebackSummary = useAdminCreditTopupChargebackSummary(null, null, statsEnabled);
 
     useEffect(() => {
         if (isError && error) {
@@ -63,17 +64,27 @@ const AdminDashboard: React.FC = () => {
         );
     }
 
-    if (isLoading && !data) {
+    if (!userId) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
-                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
-                <p>Carregando métricas do dashboard...</p>
+                <p className="mb-4">Sessão expirada. Faça login novamente.</p>
+                <Button onClick={() => navigate('/login')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Ir para login
+                </Button>
             </div>
         );
     }
 
+    const metricsLoading = (isLoading || isFetching) && !data;
+
     return (
         <div className="max-w-7xl mx-auto">
+            {metricsLoading && (
+                <div className="mb-4 flex items-center gap-2 text-sm text-gray-400">
+                    <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />
+                    Atualizando métricas…
+                </div>
+            )}
             <div className="mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-2 flex items-center">
                     <i className="fas fa-user-shield mr-3"></i>

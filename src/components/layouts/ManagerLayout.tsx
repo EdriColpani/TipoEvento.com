@@ -275,9 +275,27 @@ const ManagerLayout: React.FC = () => {
             setLayoutWaitExpired(false);
             return;
         }
-        const timer = window.setTimeout(() => setLayoutWaitExpired(true), 10_000);
+        const timer = window.setTimeout(() => setLayoutWaitExpired(true), 5_000);
         return () => window.clearTimeout(timer);
     }, [isLayoutLoading]);
+
+    useEffect(() => {
+        if (!sessionReady || userId) return;
+        if (!location.pathname.startsWith('/manager') && !location.pathname.startsWith('/admin')) return;
+        navigate(LOGIN_PATH, {
+            replace: true,
+            state: { from: `${location.pathname}${location.search}` },
+        });
+    }, [sessionReady, userId, location.pathname, location.search, navigate]);
+
+    useEffect(() => {
+        if (!userId || !profile || isLoadingProfile) return;
+        const userType = profile.tipo_usuario_id;
+        const isManager = userType === ADMIN_USER_TYPE_ID || userType === MANAGER_USER_TYPE_ID;
+        if (!isManager && (location.pathname.startsWith('/manager') || location.pathname.startsWith('/admin'))) {
+            navigate('/', { replace: true });
+        }
+    }, [userId, profile, isLoadingProfile, location.pathname, navigate]);
 
     useEffect(() => {
         if (isLayoutLoading) return;
@@ -328,11 +346,7 @@ const ManagerLayout: React.FC = () => {
     // Redirect unauthenticated users to login after loading is complete
     if (!userId && sessionReady) {
         if (location.pathname.startsWith('/manager') || location.pathname.startsWith('/admin')) {
-            navigate(LOGIN_PATH, {
-                replace: true,
-                state: { from: `${location.pathname}${location.search}` },
-            });
-            return null; // Prevent rendering anything else
+            return null;
         }
     }
     
@@ -340,10 +354,8 @@ const ManagerLayout: React.FC = () => {
     const userType = profile?.tipo_usuario_id;
     const isManager = userType === ADMIN_USER_TYPE_ID || userType === MANAGER_USER_TYPE_ID;
 
-    if (!isManager) {
-        // If the user is logged in but not a manager/admin (e.g., client type 3), redirect them
+    if (userId && profile && !isManager) {
         if (location.pathname.startsWith('/manager') || location.pathname.startsWith('/admin')) {
-            navigate('/');
             return null;
         }
     }

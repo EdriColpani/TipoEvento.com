@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
 import { consolidateSplitsByTransaction, resolveReceivableFinancials } from '@/utils/resolve-receivable-financials';
+import { fetchFinancialSplitsRest, fetchReceivablesRest } from '@/utils/fetch-receivables-rest';
 
 export interface ManagerTransactionData {
   id: string;
@@ -40,58 +39,16 @@ const fetchManagerTransactions = async (
   isAdminMaster: boolean,
   filters: ManagerTransactionFilters = {},
 ): Promise<ManagerTransactionData[]> => {
-  let query = supabase
-    .from('receivables')
-    .select(`
-      id,
-      status,
-      payment_status,
-      mp_status_detail,
-      mp_payment_id,
-      total_value,
-      gross_amount,
-      mp_fee_amount,
-      platform_fee_amount,
-      net_amount_after_mp,
-      created_at,
-      paid_at,
-      events:event_id (
-        id,
-        title,
-        date,
-        applied_percentage
-      )
-    `)
-    .order('created_at', { ascending: false })
-    .limit(100);
+  const data = await fetchReceivablesRest(filters, userId, isAdminMaster, {
+    limit: 100,
+    orderDesc: true,
+  });
 
-  if (!isAdminMaster) {
-    query = query.eq('manager_user_id', userId);
-  }
-  if (filters.eventId) query = query.eq('event_id', filters.eventId);
-  if (filters.status) query = query.eq('status', filters.status);
-  if (filters.startDate) query = query.gte('created_at', filters.startDate);
-  if (filters.endDate) {
-    const endDateWithTime = new Date(filters.endDate);
-    endDateWithTime.setHours(23, 59, 59, 999);
-    query = query.lte('created_at', endDateWithTime.toISOString());
-  }
+  const transactionIds = data.map((row) => row.id);
+  const splits = await fetchFinancialSplitsRest(transactionIds);
+  const splitByTransaction = consolidateSplitsByTransaction(splits);
 
-  const { data, error } = await query;
-  if (error) throw error;
-
-  const transactionIds = (data || []).map((row: any) => row.id);
-  const { data: splits = [], error: splitsError } = transactionIds.length > 0
-    ? await supabase
-        .from('financial_splits')
-        .select('transaction_id, platform_amount, manager_amount, applied_percentage')
-        .in('transaction_id', transactionIds)
-    : { data: [], error: null };
-  if (splitsError) throw splitsError;
-
-  const splitByTransaction = consolidateSplitsByTransaction(splits || []);
-
-  const mapped = (data || []).map((row: any) => {
+  return data.map((row) => {
     const gross = typeof row.gross_amount === 'number' ? row.gross_amount : Number(row.gross_amount ?? row.total_value ?? 0);
     const fee = typeof row.mp_fee_amount === 'number' ? row.mp_fee_amount : Number(row.mp_fee_amount ?? 0);
     const netMp = typeof row.net_amount_after_mp === 'number'
@@ -111,6 +68,7 @@ const fetchManagerTransactions = async (
 
     return {
       ...row,
+      status: row.status as ManagerTransactionData['status'],
       net_amount_after_mp: netMp,
       mp_fee_percentage,
       system_commission_percentage: resolved.appliedPercentage,
@@ -119,7 +77,6 @@ const fetchManagerTransactions = async (
       split_recorded: splitRecorded,
     };
   });
-  return mapped as ManagerTransactionData[];
 };
 
 export const useManagerTransactions = (
@@ -135,11 +92,8 @@ export const useManagerTransactions = (
     queryKey: ['managerTransactions', userId, isAdminMaster, filters],
     queryFn: () => fetchManagerTransactions(userId!, isAdminMaster, filters),
     enabled,
-    staleTime: 1000 * 60,
-    onError: (error) => {
-      console.error('Query Error: Failed to load manager transactions.', error);
-      showError('Erro ao carregar transações. Tente novamente.');
-    },
+    staleTime: 30_000,
+    retry: 1,
   });
 
   return {
@@ -147,4 +101,3 @@ export const useManagerTransactions = (
     transactions: query.data || [],
   };
 };
-

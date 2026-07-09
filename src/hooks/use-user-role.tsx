@@ -9,7 +9,7 @@ export function useUserRole(userId: string | undefined) {
         queryFn: () => fetchProfileTipoUsuarioId(userId!),
         enabled: !!userId,
         staleTime: 1000 * 60 * 5,
-        retry: 3,
+        retry: 0,
         refetchOnWindowFocus: false,
     });
 

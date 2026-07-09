@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,14 +14,13 @@ import { bumpContractVersion, contractContentChanged } from '@/utils/contractVer
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Loader2, ArrowLeft, FileText, Edit, Power, Eye, AlertTriangle, XCircle, Trash2, Save } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import ContractHtmlBody from '@/components/ContractHtmlBody';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useProfile } from '@/hooks/use-profile';
+import { restDelete, restGet, restPatch, restPost } from '@/utils/supabase-rest';
 
 interface EventContract {
     id: string;
@@ -35,33 +34,23 @@ interface EventContract {
     contract_type: string; // Adiciona o tipo de contrato
 }
 
-const ADMIN_MASTER_USER_TYPE_ID = 1;
+const EVENT_CONTRACT_COLUMNS =
+    'id,version,title,content,is_active,created_at,created_by,updated_at,contract_type';
 
 const fetchEventContracts = async (): Promise<EventContract[]> => {
-    const { data, error } = await supabase
-        .from('event_contracts')
-        .select('*, profiles(first_name, last_name)')
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        console.error("Error fetching event contracts:", error);
-        throw new Error(error.message);
-    }
-    
-    return data as EventContract[];
+    return restGet<EventContract[]>(
+        `event_contracts?select=${EVENT_CONTRACT_COLUMNS}&order=created_at.desc`,
+        15_000,
+    );
 };
 
-const useEventContracts = (isAdminMaster: boolean) => {
+const useEventContracts = (enabled: boolean) => {
     const queryClient = useQueryClient();
     const query = useQuery({
         queryKey: ['eventContracts'],
         queryFn: fetchEventContracts,
-        enabled: isAdminMaster,
+        enabled,
         staleTime: 1000 * 60 * 5, // 5 minutes
-        onError: (error) => {
-            console.error("Query Error: Failed to load event contracts.", error);
-            showError("Erro ao carregar os contratos de evento.");
-        }
     });
 
     return {
@@ -119,20 +108,11 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
 
         // Verifica se a versão já existe para novos contratos
         if (!initialData) {
-            const { data: existing, error: existingError } = await supabase
-                .from('event_contracts')
-                .select('id')
-                .eq('version', version) // Busca pela versão
-                .eq('contract_type', contractType) // E pelo tipo de contrato
-                .maybeSingle(); // Usar maybeSingle para quando não há resultado
-            
-            if (existingError && existingError.code !== 'PGRST116') { // PGRST116 = No rows found
-                dismissToast(toastId);
-                showError("Erro ao verificar versão existente: " + existingError.message);
-                setIsSaving(false);
-                return;
-            }
-            if (existing) {
+            const existing = await restGet<Array<{ id: string }>>(
+                `event_contracts?select=id&version=eq.${encodeURIComponent(version)}&contract_type=eq.${encodeURIComponent(contractType)}&limit=1`,
+                8_000,
+            );
+            if (existing.length > 0) {
                 dismissToast(toastId);
                 showError("Já existe um contrato com esta versão e tipo.");
                 setIsSaving(false);
@@ -146,20 +126,11 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
             if (hasMaterialChanges) {
                 let candidate = versionToSave;
                 for (let attempt = 0; attempt < 25; attempt++) {
-                    const { data: taken, error: takenErr } = await supabase
-                        .from('event_contracts')
-                        .select('id')
-                        .eq('version', candidate)
-                        .eq('contract_type', contractType)
-                        .neq('id', initialData.id)
-                        .maybeSingle();
-                    if (takenErr && takenErr.code !== 'PGRST116') {
-                        dismissToast(toastId);
-                        showError('Erro ao verificar versão: ' + takenErr.message);
-                        setIsSaving(false);
-                        return;
-                    }
-                    if (!taken) {
+                    const taken = await restGet<Array<{ id: string }>>(
+                        `event_contracts?select=id&version=eq.${encodeURIComponent(candidate)}&contract_type=eq.${encodeURIComponent(contractType)}&id=neq.${initialData.id}&limit=1`,
+                        8_000,
+                    );
+                    if (taken.length === 0) {
                         versionToSave = candidate;
                         break;
                     }
@@ -179,23 +150,14 @@ const ContractForm: React.FC<ContractFormProps> = ({ initialData, onSaveSuccess,
         };
 
         try {
-            let error;
             if (initialData) {
-                const result = await supabase
-                    .from('event_contracts')
-                    .update(dataToSave)
-                    .eq('id', initialData.id);
-                error = result.error;
+                await restPatch(
+                    `event_contracts?id=eq.${initialData.id}`,
+                    dataToSave,
+                    15_000,
+                );
             } else {
-                // Insert
-                const result = await supabase
-                    .from('event_contracts')
-                    .insert([dataToSave]);
-                error = result.error;
-            }
-
-            if (error) {
-                throw error;
+                await restPost('event_contracts', dataToSave, 15_000);
             }
 
             dismissToast(toastId);
@@ -340,39 +302,23 @@ const ToggleActiveDialog: React.FC<{ contract: EventContract, onToggleSuccess: (
         const toastId = showLoading(`${contract.is_active ? 'Desativando' : 'Ativando'} contrato...`);
 
         try {
-            let error;
             if (contract.is_active) {
-                // Se estiver desativando, apenas atualiza o status
-                const result = await supabase
-                    .from('event_contracts')
-                    .update({ is_active: false, updated_at: new Date().toISOString(), created_by: userId })
-                    .eq('id', contract.id);
-                error = result.error;
+                await restPatch(
+                    `event_contracts?id=eq.${contract.id}`,
+                    { is_active: false, updated_at: new Date().toISOString(), created_by: userId },
+                    12_000,
+                );
             } else {
-                // Se estiver ativando, desativa outros contratos DO MESMO TIPO, depois ativa este
-                const { error: deactivateError } = await supabase
-                    .from('event_contracts')
-                    .update({ is_active: false, updated_at: new Date().toISOString(), created_by: userId })
-                    .eq('is_active', true)
-                    .eq('contract_type', contract.contract_type); // Desativa apenas do mesmo tipo
- 
-                if (deactivateError) {
-                    console.error(`Erro ao desativar contratos ativos do tipo ${contract.contract_type}:`, deactivateError);
-                    throw new Error(
-                        `Falha ao desativar contratos antigos do tipo ${getContractTypeLabel(contract.contract_type)}: ${deactivateError.message}`
-                    );
-                }
- 
-                 // Ativa o contrato atual
-                 const result = await supabase
-                     .from('event_contracts')
-                     .update({ is_active: true, updated_at: new Date().toISOString(), created_by: userId })
-                     .eq('id', contract.id);
-                 error = result.error;
-            }
-            
-            if (error) {
-                throw error;
+                await restPatch(
+                    `event_contracts?is_active=eq.true&contract_type=eq.${encodeURIComponent(contract.contract_type)}`,
+                    { is_active: false, updated_at: new Date().toISOString(), created_by: userId },
+                    12_000,
+                );
+                await restPatch(
+                    `event_contracts?id=eq.${contract.id}`,
+                    { is_active: true, updated_at: new Date().toISOString(), created_by: userId },
+                    12_000,
+                );
             }
 
             dismissToast(toastId);
@@ -457,14 +403,7 @@ const DeleteContractDialog: React.FC<{ contract: EventContract, onDeleteSuccess:
                 return;
             }
 
-            const { error } = await supabase
-                .from('event_contracts')
-                .delete()
-                .eq('id', contract.id);
-
-            if (error) {
-                throw error;
-            }
+            await restDelete(`event_contracts?id=eq.${contract.id}`, 12_000);
 
             dismissToast(toastId);
             showSuccess(`Contrato "${contract.title}" excluído com sucesso.`);
@@ -559,9 +498,7 @@ const ViewContentDialog: React.FC<{ contract: EventContract, onClose: () => void
 const AdminEventContracts: React.FC = () => {
     const navigate = useNavigate();
     const { userId, authPending } = usePageAuth();
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
-    const { contracts, isLoading, isError, invalidateContracts } = useEventContracts(isAdminMaster);
+    const { contracts, isLoading, isError, invalidateContracts } = useEventContracts(Boolean(userId));
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingContract, setEditingContract] = useState<EventContract | undefined>(undefined);
@@ -590,22 +527,7 @@ const AdminEventContracts: React.FC = () => {
         setViewingContract(undefined);
     };
 
-    if (authPending || (userId && isLoadingProfile)) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
-                <p className="text-gray-400">Verificando permissões...</p>
-            </div>
-        );
-    }
-    
-    if (!isAdminMaster) {
-        showError("Acesso negado. Você não tem permissão de Administrador Master.");
-        navigate('/manager/dashboard');
-        return null;
-    }
-
-    if (isLoading) {
+    if (authPending || (userId && isLoading)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />

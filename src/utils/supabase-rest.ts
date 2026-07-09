@@ -59,6 +59,41 @@ export async function restGet<T>(
     }
 }
 
+export async function restPost<T>(
+    path: string,
+    body: Record<string, unknown> | Record<string, unknown>[],
+    timeoutMs = 10_000,
+): Promise<T> {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+                ...authHeaders(),
+                Accept: 'application/json',
+                Prefer: 'return=minimal',
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => null);
+            throw normalizeRestError(response, data, 'Erro ao criar dados.');
+        }
+
+        if (response.status === 204) {
+            return {} as T;
+        }
+
+        return (await response.json().catch(() => ({}))) as T;
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
 export async function restPatch<T>(
     path: string,
     body: Record<string, unknown>,
