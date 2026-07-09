@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { formatEventDateForDisplay, parseEventLocalDay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import { pickMinimumPaidPrice } from '@/utils/public-event-pricing';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { restGet } from '@/utils/supabase-rest';
 
 export interface PublicEvent {
     id: string;
@@ -37,10 +38,10 @@ async function fillMinPriceFromAvailabilityRpc(
     eventId: string,
     aggregate: EventAggregate,
 ): Promise<void> {
-    const { data, error } = await supabase.rpc('get_event_ticket_availability', {
-        p_event_id: eventId,
-    });
-    if (error) {
+    let data: unknown = null;
+    try {
+        data = await callRpcRest<unknown>('get_event_ticket_availability', { p_event_id: eventId }, 8_000);
+    } catch (error) {
         console.error('[usePublicEvents] get_event_ticket_availability:', eventId, error);
         return;
     }
@@ -62,22 +63,23 @@ async function fillMinPriceFromAvailabilityRpc(
 }
 
 const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
+    const startedAt = performance.now();
     try {
-        const { data: eventsData, error: eventsError } = await supabase.rpc('get_public_vitrine_events');
-
-        if (eventsError) {
-            console.error('[usePublicEvents] get_public_vitrine_events:', eventsError.message);
-            throw eventsError;
-        }
+        const eventsData = await callRpcRest<Record<string, unknown>[]>(
+            'get_public_vitrine_events',
+            {},
+            10_000,
+        );
 
         if (!eventsData?.length) {
+            console.info('[usePublicEvents] Nenhum evento retornado pela vitrine pública.');
             return [];
         }
 
         const openForSales = eventsData.filter((e) =>
             isEventOpenForNewSales(e.date, e.event_time ?? e.time),
         );
-    const eventIds = openForSales.map((e) => e.id);
+    const eventIds = openForSales.map((e) => e.id as string);
 
     const eventAggregates: Record<string, EventAggregate> = {};
     eventIds.forEach((id) => {
@@ -97,14 +99,14 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
 
     if (ticketSalesEventIds.length > 0) {
         // Preços dos lotes (ignora Staff/gratuitos com price = 0)
-        const { data: batchesData, error: batchesError } = await supabase
-            .from('event_batches')
-            .select('event_id, price')
-            .in('event_id', ticketSalesEventIds)
-            .gt('price', 0);
-
-        if (batchesError) {
-            console.error('Error fetching event batches for public catalog:', batchesError);
+        let batchesData: Array<{ event_id: string; price: unknown }> = [];
+        try {
+            batchesData = await restGet<Array<{ event_id: string; price: unknown }>>(
+                `event_batches?select=event_id,price&event_id=in.(${ticketSalesEventIds.join(',')})&price=gt.0`,
+                8_000,
+            );
+        } catch (error) {
+            console.error('[usePublicEvents] Error fetching event batches for public catalog:', error);
         }
 
         batchesData?.forEach((row) => {
@@ -118,13 +120,16 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
 
         // Estoque counter (batch_inventory)
         if (counterEventIds.size > 0) {
-            const { data: inventoryData, error: inventoryError } = await supabase
-                .from('batch_inventory')
-                .select('event_id, total, sold, reserved')
-                .in('event_id', [...counterEventIds]);
-
-            if (inventoryError) {
-                console.error('Error fetching batch_inventory for public catalog:', inventoryError);
+            let inventoryData: Array<{ event_id: string; total: unknown; sold: unknown; reserved: unknown }> = [];
+            try {
+                inventoryData = await restGet<
+                    Array<{ event_id: string; total: unknown; sold: unknown; reserved: unknown }>
+                >(
+                    `batch_inventory?select=event_id,total,sold,reserved&event_id=in.(${[...counterEventIds].join(',')})`,
+                    8_000,
+                );
+            } catch (error) {
+                console.error('[usePublicEvents] Error fetching batch_inventory for public catalog:', error);
             }
 
             inventoryData?.forEach((row) => {
@@ -141,13 +146,16 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
         const unitRowsEventIds = ticketSalesEventIds.filter((id) => !counterEventIds.has(id));
 
         if (unitRowsEventIds.length > 0) {
-            const { data: wristbandsData, error: wristbandsError } = await supabase
-                .from('wristbands')
-                .select('event_id, id, price, status')
-                .in('event_id', unitRowsEventIds);
-
-            if (wristbandsError) {
-                console.error('Error fetching wristband data:', wristbandsError);
+            let wristbandsData: Array<{ event_id: string; id: string; price: unknown; status: string | null }> = [];
+            try {
+                wristbandsData = await restGet<
+                    Array<{ event_id: string; id: string; price: unknown; status: string | null }>
+                >(
+                    `wristbands?select=event_id,id,price,status&event_id=in.(${unitRowsEventIds.join(',')})`,
+                    8_000,
+                );
+            } catch (error) {
+                console.error('[usePublicEvents] Error fetching wristband data:', error);
             }
 
             wristbandsData?.forEach((item) => {
@@ -182,7 +190,7 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
         );
     }
 
-    return openForSales.map((event) => {
+    const finalEvents = openForSales.map((event) => {
         const aggregates = eventAggregates[event.id] || {
             min_price: Infinity,
             min_price_wristband_id: null,
@@ -214,6 +222,10 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
             capacity: event.capacity,
         };
     });
+    console.info(
+        `[usePublicEvents] OK em ${(performance.now() - startedAt).toFixed(0)}ms — total=${finalEvents.length}, abertos=${openForSales.length}`,
+    );
+    return finalEvents;
     } catch (e) {
         console.error('[usePublicEvents] fetch failed', e);
         throw e;

@@ -117,11 +117,9 @@ serve(async (req) => {
       );
       if (mpErr) throw mpErr;
       if (!mpReady?.ok) {
-        return new Response(
-          JSON.stringify({
-            error: mpReady?.reason || 'Empresa receptora sem Mercado Pago configurado.',
-          }),
-          { status: 503, headers: corsHeaders },
+        console.warn(
+          '[credit-spend] Empresa sem MP OAuth — crédito segue; liquidação manual D+1.',
+          receiverCompanyId,
         );
       }
     }
@@ -171,7 +169,6 @@ serve(async (req) => {
         receiver_company_id: payload.receiver_company_id ?? receiverCompanyId,
       },
       idempotencyKey,
-      'Repasse crédito EventFest — ingresso',
     );
 
     return new Response(
@@ -182,7 +179,7 @@ serve(async (req) => {
         grossAmount: finalized.gross_amount,
         platformAmount: finalized.platform_amount,
         managerAmount: finalized.manager_amount,
-        mpTransferId: finalized.mpTransferId,
+        settlementQueued: finalized.settlementQueued === true,
         duplicate: payload.duplicate === true,
         publicDescription: payload.public_description,
       }),

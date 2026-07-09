@@ -30,12 +30,14 @@ const MobileMenu: React.FC = () => {
         tipoUsuarioId,
     } = usePublicSiteContext();
 
-    const resolvedTipo = Number(tipoUsuarioId ?? profile?.tipo_usuario_id);
+    const resolvedTipoRaw = Number(tipoUsuarioId ?? profile?.tipo_usuario_id);
+    const resolvedTipo =
+        Number.isFinite(resolvedTipoRaw) && resolvedTipoRaw > 0 ? resolvedTipoRaw : undefined;
 
     const { hasPendingNotifications } = useProfileStatus(profile, profileLoading, userId);
 
     const { userTypeName: baseUserTypeName } = useUserType(
-        isAuthenticated && Number.isFinite(resolvedTipo) ? resolvedTipo : undefined,
+        isAuthenticated ? resolvedTipo : undefined,
     );
 
     const isManagerPro = resolvedTipo === MANAGER_USER_TYPE_ID;

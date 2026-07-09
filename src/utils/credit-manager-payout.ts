@@ -1,36 +1,56 @@
-import { getAuthAccessToken } from '@/utils/auth-session-cache';
-import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
-export interface RetryCreditDisbursementResult {
-    retried: number;
-    succeeded: number;
-    results: Array<{ spendOrderId: string; ok: boolean; mpTransferId?: string; error?: string }>;
+export interface RegisterManualSettlementResult {
+    batchId: string;
+    totalAmount: number;
+    settlementCount: number;
+    paymentReference: string;
+    paymentMethod: string;
 }
 
-export async function retryFailedCreditDisbursements(
+export async function registerAdminCreditSettlementPayment(
     companyId: string,
-    spendOrderId?: string,
-): Promise<RetryCreditDisbursementResult> {
-    const payload = await invokeEdgeFunctionRest<{
+    options?: {
+        settlementIds?: string[];
+        paymentMethod?: 'pix' | 'ted' | 'mp_transfer' | 'other';
+        paymentReference?: string;
+        notes?: string;
+    },
+): Promise<RegisterManualSettlementResult> {
+    const payload = await callRpcRest<{
         ok?: boolean;
-        retried?: number;
-        succeeded?: number;
-        results?: RetryCreditDisbursementResult['results'];
+        batch_id?: string;
+        total_amount?: number;
+        settlement_count?: number;
+        payment_reference?: string;
+        payment_method?: string;
         error?: string;
     }>(
-        'manager-credit-payout',
-        { companyId, spendOrderId },
-        { timeoutMs: 30_000 },
+        'register_admin_credit_settlement_payment',
+        {
+            p_company_id: companyId,
+            p_settlement_ids: options?.settlementIds?.length ? options.settlementIds : null,
+            p_payment_method: options?.paymentMethod ?? 'pix',
+            p_payment_reference: options?.paymentReference ?? null,
+            p_notes: options?.notes ?? null,
+        },
+        25_000,
     );
 
-    if (payload?.error) throw new Error(payload.error);
+    if (!payload?.ok) throw new Error('Não foi possível registrar o pagamento.');
 
     return {
-        retried: Number(payload.retried ?? 0),
-        succeeded: Number(payload.succeeded ?? 0),
-        results: payload.results ?? [],
+        batchId: payload.batch_id!,
+        totalAmount: Number(payload.total_amount ?? 0),
+        settlementCount: Number(payload.settlement_count ?? 0),
+        paymentReference: payload.payment_reference ?? '',
+        paymentMethod: payload.payment_method ?? 'pix',
     };
+}
+
+/** @deprecated Repasse MP automático descontinuado. */
+export async function retryFailedCreditDisbursements(): Promise<never> {
+    throw new Error('Repasse automático Mercado Pago foi descontinuado. Use liquidação manual (TED/PIX).');
 }
 
 export async function adminCreditRefund(

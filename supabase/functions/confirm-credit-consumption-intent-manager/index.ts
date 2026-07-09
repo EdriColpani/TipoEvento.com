@@ -146,7 +146,6 @@ serve(async (req) => {
         receiver_company_id: intent.company_id,
       },
       idempotencyKey,
-      'Repasse crédito EventFest — consumo cliente',
     );
 
     const previousStatus = String(intent.status);
@@ -180,7 +179,7 @@ serve(async (req) => {
         grossAmount: finalized.gross_amount,
         platformAmount: finalized.platform_amount,
         managerAmount: finalized.manager_amount,
-        mpTransferId: finalized.mpTransferId,
+        settlementQueued: finalized.settlementQueued === true,
         duplicate: spend.duplicate === true,
       }),
       { status: 200, headers: corsHeaders },

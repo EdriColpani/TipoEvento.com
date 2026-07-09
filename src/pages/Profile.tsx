@@ -49,6 +49,8 @@ import {
     isSameDocument,
     translateProfileSaveError,
 } from '@/utils/profile-documents';
+import { restGet } from '@/utils/supabase-rest';
+import { withTimeout } from '@/utils/promise-timeout';
 
 
 
@@ -162,7 +164,7 @@ const Profile: React.FC = () => {
     const queryClient = useQueryClient();
 
     const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
-    const { userEmail } = usePublicSiteAuth();
+    const { userEmail, profile: siteProfile, profileLoading: siteProfileLoading } = usePublicSiteAuth();
 
     const [formLoading, setFormLoading] = useState(false);
 
@@ -175,34 +177,36 @@ const Profile: React.FC = () => {
 
 
 
-    // Função para buscar o contrato de termos do cliente
+    // Função para buscar o contrato de termos do cliente (REST — evita deadlock do supabase-js)
 
     const fetchClientTerms = async (): Promise<EventContract | null> => {
-
-        const { data, error } = await supabase
-
-            .from('event_contracts')
-
-            .select('*')
-
-            .eq('contract_type', 'client_terms')
-
-            .eq('is_active', true)
-
-            .maybeSingle();
-
-
-
-        if (error && error.code !== 'PGRST116') { // PGRST116 = No rows found
-
-            console.error("Erro ao buscar termos do cliente:", error);
-
-            throw error;
-
+        try {
+            const rows = await restGet<EventContract[]>(
+                'event_contracts?contract_type=eq.client_terms&is_active=eq.true&select=*&limit=1',
+                8_000,
+            );
+            return rows[0] ?? null;
+        } catch (restError) {
+            console.warn('[Profile] REST client_terms falhou, tentando client:', restError);
         }
 
-        return data as EventContract || null;
+        const { data, error } = await withTimeout(
+            supabase
+                .from('event_contracts')
+                .select('*')
+                .eq('contract_type', 'client_terms')
+                .eq('is_active', true)
+                .maybeSingle(),
+            6_000,
+            { data: null, error: { message: 'timeout', code: 'TIMEOUT' } as { message: string; code: string } },
+        );
 
+        if (error && error.code !== 'PGRST116' && error.code !== 'TIMEOUT') {
+            console.error('Erro ao buscar termos do cliente:', error);
+            throw error;
+        }
+
+        return (data as EventContract) || null;
     };
 
 
@@ -214,7 +218,12 @@ const Profile: React.FC = () => {
         }
     }, [authPending, userId, sessionReady, bootExpired, navigate, location]);
 
-    const { profile, isLoading: isLoadingProfile, refetch } = useProfile(userId);
+    const { profile: fetchedProfile, isLoading: isLoadingProfile, isError: isErrorProfile, refetch } =
+        useProfile(userId);
+    // Contexto + página: se uma das fontes já tiver dados, não segurar skeleton eterno.
+    const profile = fetchedProfile ?? siteProfile ?? undefined;
+    const isLoadingProfileCombined =
+        Boolean(userId) && !profile && (isLoadingProfile || siteProfileLoading);
 
 
 
@@ -227,6 +236,9 @@ const Profile: React.FC = () => {
         enabled: !!userId,
 
         staleTime: 1000 * 60 * 60, // Cache por 1 hora
+        retry: 1,
+        // Sem contrato / falha de rede: não trava a tela de perfil indefinidamente.
+        throwOnError: false,
 
     });
 
@@ -250,11 +262,15 @@ const Profile: React.FC = () => {
 
     }, [profile, clientTermsContract, isLoadingClientTerms]);
 
-    const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(profile, isLoadingProfile, userId);
+    const { hasPendingNotifications, loading: statusLoading } = useProfileStatus(
+        profile,
+        isLoadingProfileCombined,
+        userId,
+    );
 
 
 
-    const loading = authPending || (Boolean(userId) && isLoadingProfile);
+    const loading = authPending || isLoadingProfileCombined;
 
 
 
@@ -782,68 +798,53 @@ const Profile: React.FC = () => {
 
 
 
-    if (loading || isLoadingClientTerms) { // Adicionado isLoadingClientTerms ao loading
-
+    // Termos carregam em paralelo; não bloquear o formulário (deadlock antigo no client_terms).
+    if (loading) {
         return (
-
             <div className={`${CLIENT_ACCOUNT_PAGE_CLASS} flex min-h-[50vh] items-center justify-center`}>
-
                 <div className="w-full max-w-4xl p-6 space-y-8">
-
                     <Skeleton className="h-10 w-1/3" />
-
                     <Card className="bg-black/80 border-yellow-500/30">
-
                         <CardHeader>
-
                             <Skeleton className="h-8 w-1/2" />
-
                             <Skeleton className="h-4 w-2/3" />
-
                         </CardHeader>
-
                         <CardContent className="space-y-6">
-
                             <div className="flex items-center space-x-4">
-
                                 <Skeleton className="h-24 w-24 rounded-full" />
-
                                 <div className="space-y-2">
-
                                     <Skeleton className="h-6 w-48" />
-
                                     <Skeleton className="h-4 w-64" />
-
                                 </div>
-
                             </div>
-
                             <Skeleton className="h-10 w-full" />
-
                             <Skeleton className="h-10 w-full" />
-
                             <div className="grid grid-cols-2 gap-4">
-
                                 <Skeleton className="h-10 w-full" />
-
                                 <Skeleton className="h-10 w-full" />
-
                             </div>
-
                             <Skeleton className="h-10 w-full" />
-
                             <Skeleton className="h-12 w-32" />
-
                         </CardContent>
-
                     </Card>
-
                 </div>
-
             </div>
-
         );
+    }
 
+    if (userId && !profile && (isErrorProfile || !isLoadingProfileCombined)) {
+        return (
+            <div className={`${CLIENT_ACCOUNT_PAGE_CLASS} flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4`}>
+                <p className="text-center text-gray-300">Não foi possível carregar o perfil.</p>
+                <Button
+                    type="button"
+                    className="bg-yellow-500 text-black hover:bg-yellow-600"
+                    onClick={() => void refetch()}
+                >
+                    Tentar novamente
+                </Button>
+            </div>
+        );
     }
 
 

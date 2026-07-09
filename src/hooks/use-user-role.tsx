@@ -1,34 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchProfileTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 
-async function fetchUserRole(userId: string): Promise<number | null> {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('tipo_usuario_id')
-        .eq('id', userId)
-        .maybeSingle();
-
-    if (error) {
-        console.error('[useUserRole]', error.message);
-        return null;
-    }
-
-    const tipo = Number(data?.tipo_usuario_id);
-    return Number.isFinite(tipo) ? tipo : null;
-}
+export const PROFILE_TIPO_QUERY_KEY = 'profileTipo' as const;
 
 export function useUserRole(userId: string | undefined) {
     const query = useQuery({
-        queryKey: ['userRole', userId],
-        queryFn: () => fetchUserRole(userId!),
+        queryKey: [PROFILE_TIPO_QUERY_KEY, userId],
+        queryFn: () => fetchProfileTipoUsuarioId(userId!),
         enabled: !!userId,
         staleTime: 1000 * 60 * 5,
-        retry: 2,
+        retry: 3,
+        refetchOnWindowFocus: false,
     });
 
     return {
         tipoUsuarioId: query.data ?? undefined,
         isLoading: query.isLoading,
         isError: query.isError,
+        isFetched: query.isFetched,
     };
 }

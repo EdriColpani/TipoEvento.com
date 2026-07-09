@@ -45,7 +45,20 @@ const ROW_KIND_LABELS: Record<string, string> = {
     spend_received: 'Consumo',
     spend: 'Consumo',
     refund: 'Estorno',
+    settlement_paid: 'Repasse liquidado (manual)',
 };
+
+const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+    pending_d1: 'Retenção D+1',
+    awaiting_manual_payment: 'Aguardando TED/PIX',
+    paid_manual: 'Pago (manual)',
+    clawback: 'Clawback',
+};
+
+function settlementStatusLabel(status: string | null | undefined): string {
+    if (!status) return '—';
+    return SETTLEMENT_STATUS_LABELS[status] ?? status;
+}
 
 function kindLabel(kind: string): string {
     return ROW_KIND_LABELS[kind] ?? kind;
@@ -270,7 +283,7 @@ function AccountingTable({ rows, mode }: { rows: CreditAccountingRow[]; mode: 'm
                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                     <TableHead className="text-yellow-500 text-right">Comissão</TableHead>
                     <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
-                    <TableHead className="text-yellow-500">Repasse MP</TableHead>
+                    <TableHead className="text-yellow-500">Repasse</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -295,7 +308,12 @@ function AccountingTable({ rows, mode }: { rows: CreditAccountingRow[]; mode: 'm
                         <TableCell className="text-right text-gray-400 text-xs">{money(row.platform_amount)}</TableCell>
                         <TableCell className="text-right text-yellow-400 text-xs">{money(row.manager_amount)}</TableCell>
                         <TableCell className="text-gray-500 text-xs">
-                            {row.disbursement_status ?? '—'}
+                            {settlementStatusLabel(row.disbursement_status)}
+                            {row.mp_transfer_id && (
+                                <span className="block text-gray-600 font-mono truncate max-w-[8rem]" title={row.mp_transfer_id}>
+                                    {row.mp_transfer_id}
+                                </span>
+                            )}
                         </TableCell>
                     </TableRow>
                 ))}

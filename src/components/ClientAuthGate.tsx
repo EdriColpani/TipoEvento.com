@@ -5,6 +5,7 @@ import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { isGuestAllowedPath, ADMIN_MASTER_USER_TYPE_ID } from '@/utils/public-launch-access';
 import { isStaffUserType, resolveRoleHomePath } from '@/utils/role-home-path';
 import { withTimeout } from '@/utils/promise-timeout';
+import { fetchProfileTipoUsuarioId, normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 
 const PUBLIC_HOME_PATHS = new Set(['/', '/informacoes']);
 
@@ -12,6 +13,8 @@ const ClientAuthGate: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const [redirecting, setRedirecting] = useState(false);
+    const [tipoFallback, setTipoFallback] = useState<number | undefined>();
+    const [fallbackDone, setFallbackDone] = useState(false);
     const {
         sessionReady,
         isAuthenticated,
@@ -20,29 +23,67 @@ const ClientAuthGate: React.FC = () => {
         roleLoading,
     } = usePublicSiteAuth();
 
+    const resolvedTipo =
+        normalizeTipoUsuarioId(tipoUsuarioId) ?? normalizeTipoUsuarioId(tipoFallback);
+
     useEffect(() => {
-        if (!sessionReady || roleLoading || !isAuthenticated || !userId || tipoUsuarioId == null) {
+        setTipoFallback(undefined);
+        setFallbackDone(false);
+    }, [userId]);
+
+    useEffect(() => {
+        if (!userId || !isAuthenticated) {
+            setFallbackDone(true);
+            return;
+        }
+        if (resolvedTipo != null) {
+            setFallbackDone(true);
+            return;
+        }
+        if (!PUBLIC_HOME_PATHS.has(location.pathname)) {
+            setFallbackDone(true);
+            return;
+        }
+        // Context ainda carregando — evita request duplicada.
+        if (roleLoading) return;
+
+        let cancelled = false;
+        void fetchProfileTipoUsuarioId(userId)
+            .then((tipo) => {
+                if (!cancelled && tipo != null) setTipoFallback(tipo);
+            })
+            .finally(() => {
+                if (!cancelled) setFallbackDone(true);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userId, resolvedTipo, isAuthenticated, location.pathname, roleLoading]);
+
+    useEffect(() => {
+        if (!sessionReady || roleLoading || !isAuthenticated || !userId || resolvedTipo == null) {
             setRedirecting(false);
             return;
         }
 
         const path = location.pathname;
 
-        if (path === '/informacoes' && tipoUsuarioId === 3) {
+        if (path === '/informacoes' && resolvedTipo === 3) {
             navigate('/', { replace: true });
             return;
         }
 
-        if (PUBLIC_HOME_PATHS.has(path) && isStaffUserType(Number(tipoUsuarioId))) {
+        if (PUBLIC_HOME_PATHS.has(path) && isStaffUserType(resolvedTipo)) {
             let cancelled = false;
             setRedirecting(true);
 
             const fallback =
-                tipoUsuarioId === ADMIN_MASTER_USER_TYPE_ID
+                resolvedTipo === ADMIN_MASTER_USER_TYPE_ID
                     ? '/admin/dashboard'
                     : '/manager/dashboard';
 
-            void withTimeout(resolveRoleHomePath(userId, tipoUsuarioId), 6000, fallback).then(
+            void withTimeout(resolveRoleHomePath(userId, resolvedTipo), 6000, fallback).then(
                 (target) => {
                     if (cancelled) return;
                     if (target !== path) {
@@ -64,16 +105,16 @@ const ClientAuthGate: React.FC = () => {
         location.pathname,
         navigate,
         roleLoading,
+        resolvedTipo,
         sessionReady,
-        tipoUsuarioId,
         userId,
     ]);
 
     const waitingForRole =
         isAuthenticated &&
-        tipoUsuarioId == null &&
-        roleLoading &&
-        PUBLIC_HOME_PATHS.has(location.pathname);
+        resolvedTipo == null &&
+        PUBLIC_HOME_PATHS.has(location.pathname) &&
+        (roleLoading || !fallbackDone);
 
     if (!sessionReady || waitingForRole) {
         return (

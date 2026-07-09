@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { verifyWalletQrToken } from '../_shared/wallet-qr-token.ts';
+import { signWalletQrToken, verifyWalletQrToken } from '../_shared/wallet-qr-token.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +12,7 @@ const supabaseService = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
 );
+const WALLET_QR_PREFIX = 'EFW.';
 
 function maskClientLabel(email: string | null | undefined, fullName: string | null | undefined): string {
   if (fullName?.trim()) {
@@ -55,22 +56,50 @@ serve(async (req) => {
 
   try {
     const body = (await req.json()) as Record<string, unknown>;
-    const walletToken = typeof body.walletToken === 'string' ? body.walletToken.trim() : '';
+    const rawInput = typeof body.walletToken === 'string' ? body.walletToken.trim() : '';
     const establishmentId = typeof body.establishmentId === 'string' ? body.establishmentId.trim() : '';
 
-    if (!walletToken || !establishmentId) {
-      return new Response(JSON.stringify({ error: 'Informe o QR da carteira e o estabelecimento.' }), {
+    if (!rawInput || !establishmentId) {
+      return new Response(JSON.stringify({ error: 'Informe o QR/código da carteira e o estabelecimento.' }), {
         status: 400,
         headers: corsHeaders,
       });
     }
 
-    const verified = await verifyWalletQrToken(walletToken);
-    if (!verified.ok) {
-      return new Response(JSON.stringify({ error: verified.message, errorCode: verified.error_code }), {
-        status: verified.error_code === 'qr_expired' ? 409 : 400,
-        headers: corsHeaders,
-      });
+    let resolvedUserId: string | null = null;
+    let normalizedWalletToken = '';
+
+    const looksLikeWalletQr = rawInput.toUpperCase().startsWith(WALLET_QR_PREFIX);
+    if (looksLikeWalletQr) {
+      const verified = await verifyWalletQrToken(rawInput);
+      if (!verified.ok) {
+        return new Response(JSON.stringify({ error: verified.message, errorCode: verified.error_code }), {
+          status: verified.error_code === 'qr_expired' ? 409 : 400,
+          headers: corsHeaders,
+        });
+      }
+      resolvedUserId = verified.userId;
+      normalizedWalletToken = rawInput;
+    } else {
+      const code = rawInput.toUpperCase();
+      const { data: profileByCode, error: profileByCodeErr } = await supabaseService
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('tipo_usuario_id', 3)
+        .ilike('public_id', code)
+        .maybeSingle();
+      if (profileByCodeErr) throw profileByCodeErr;
+
+      if (!profileByCode?.id) {
+        return new Response(JSON.stringify({ error: 'Código do cliente não encontrado.' }), {
+          status: 404,
+          headers: corsHeaders,
+        });
+      }
+
+      resolvedUserId = profileByCode.id as string;
+      const signed = await signWalletQrToken(resolvedUserId);
+      normalizedWalletToken = signed.token;
     }
 
     const { data: pdvCtx, error: ctxErr } = await supabaseAnon.rpc('get_establishment_pdv_context', {
@@ -87,15 +116,22 @@ serve(async (req) => {
     const { data: account, error: accErr } = await supabaseService
       .from('client_credit_accounts')
       .select('balance_cached, status, currency')
-      .eq('user_id', verified.userId)
+      .eq('user_id', resolvedUserId)
       .maybeSingle();
     if (accErr) throw accErr;
 
-    const { data: profile } = await supabaseService
-      .from('profiles')
-      .select('full_name, email')
-      .eq('id', verified.userId)
-      .maybeSingle();
+    let profile: { full_name?: string | null; email?: string | null } | null = null;
+    try {
+      const { data: profileRow } = await supabaseService
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', resolvedUserId)
+        .maybeSingle();
+      profile = (profileRow as { full_name?: string | null; email?: string | null } | null) ?? null;
+    } catch {
+      // Não bloqueia a identificação do cliente por falha de campo opcional.
+      profile = null;
+    }
 
     if (account?.status && account.status !== 'active') {
       return new Response(JSON.stringify({ error: 'Carteira do cliente não está ativa.' }), {
@@ -107,7 +143,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        clientUserId: verified.userId,
+        clientUserId: resolvedUserId,
+        walletToken: normalizedWalletToken,
         balance: Number(account?.balance_cached ?? 0),
         currency: account?.currency ?? 'BRL',
         clientLabel: maskClientLabel(
