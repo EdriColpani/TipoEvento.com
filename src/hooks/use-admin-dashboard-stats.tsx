@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { restGet } from '@/utils/supabase-rest';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export type AdminDashboardMetrics = {
@@ -36,6 +36,10 @@ export type AdminActivityItem = {
   status: 'success' | 'warning' | 'error' | 'info';
 };
 
+const METRICS_TIMEOUT_MS = 6_000;
+const ACTIVITY_TIMEOUT_MS = 5_000;
+const LATENCY_TIMEOUT_MS = 3_000;
+
 function coerceMetrics(raw: unknown): AdminDashboardMetrics | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -55,63 +59,55 @@ function coerceMetrics(raw: unknown): AdminDashboardMetrics | null {
 
 async function measureApiLatencyMs(): Promise<number> {
   const t0 = performance.now();
-  const { error } = await withTimeout(
-    supabase.from('events').select('id').limit(1),
-    5000,
-    { data: null, error: { message: 'timeout' } },
-  );
-  const ms = Math.round(performance.now() - t0);
-  if (error) return Math.max(ms, 200);
-  return ms;
+  try {
+    await restGet<unknown[]>('events?select=id&limit=1', LATENCY_TIMEOUT_MS);
+  } catch {
+    /* latência alta ou sessão — ainda medimos o tempo */
+  }
+  return Math.round(performance.now() - t0);
 }
 
 async function fetchRecentActivity(): Promise<AdminActivityItem[]> {
   const items: AdminActivityItem[] = [];
 
-  let events: Record<string, unknown>[] | null = null;
-  const evRes = await supabase
-    .from('events')
-    .select('id, title, created_at, status')
-    .order('created_at', { ascending: false })
-    .limit(8);
+  try {
+    const events = await restGet<Array<Record<string, unknown>>>(
+      'events?select=id,title,created_at,status&order=created_at.desc&limit=8',
+      ACTIVITY_TIMEOUT_MS,
+    );
 
-  if (evRes.error) {
-    const fallback = await supabase.from('events').select('id, title, status').limit(8);
-    events = (fallback.data || []) as Record<string, unknown>[];
-  } else {
-    events = (evRes.data || []) as Record<string, unknown>[];
+    for (const row of events) {
+      const id = String(row.id ?? '');
+      const title = String(row.title ?? '').trim() || 'Evento';
+      const created = row.created_at as string | null;
+      if (!created) continue;
+      const st = String(row.status ?? '').toLowerCase();
+      const status: AdminActivityItem['status'] =
+        st === 'cancelled' ? 'error' : st === 'pending' ? 'warning' : 'success';
+      items.push({
+        id: `event-${id}`,
+        type: 'Evento',
+        detail: title,
+        date: created.slice(0, 10),
+        status,
+      });
+    }
+  } catch (error) {
+    console.warn('[useAdminDashboardStats] atividade (eventos) indisponível:', error);
   }
 
-  for (const row of events || []) {
-    const id = row.id as string;
-    const title = (row.title as string)?.trim() || 'Evento';
-    const created = row.created_at as string | null;
-    if (!created) continue;
-    const st = (row.status as string)?.toLowerCase();
-    const status: AdminActivityItem['status'] =
-      st === 'cancelled' ? 'error' : st === 'pending' ? 'warning' : 'success';
-    items.push({
-      id: `event-${id}`,
-      type: 'Evento',
-      detail: title,
-      date: created.slice(0, 10),
-      status,
-    });
-  }
+  try {
+    const companies = await restGet<Array<Record<string, unknown>>>(
+      'companies?select=id,trade_name,corporate_name,created_at&order=created_at.desc&limit=8',
+      ACTIVITY_TIMEOUT_MS,
+    );
 
-  const { data: companies, error: coErr } = await supabase
-    .from('companies')
-    .select('id, trade_name, corporate_name, created_at')
-    .order('created_at', { ascending: false })
-    .limit(8);
-
-  if (!coErr && companies?.length) {
     for (const row of companies) {
-      const id = row.id as string;
+      const id = String(row.id ?? '');
       const name =
-        ((row.trade_name as string)?.trim() ||
-          (row.corporate_name as string)?.trim() ||
-          'Empresa') as string;
+        String(row.trade_name ?? '').trim() ||
+        String(row.corporate_name ?? '').trim() ||
+        'Empresa';
       const created = row.created_at as string | null;
       if (!created) continue;
       items.push({
@@ -122,6 +118,8 @@ async function fetchRecentActivity(): Promise<AdminActivityItem[]> {
         status: 'info',
       });
     }
+  } catch (error) {
+    console.warn('[useAdminDashboardStats] atividade (empresas) indisponível:', error);
   }
 
   items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -130,33 +128,14 @@ async function fetchRecentActivity(): Promise<AdminActivityItem[]> {
 
 async function fetchMetrics(): Promise<AdminDashboardMetrics> {
   try {
-    const rpcData = await callRpcRest<unknown>('get_admin_dashboard_metrics', {}, 12_000);
+    const rpcData = await callRpcRest<unknown>('get_admin_dashboard_metrics', {}, METRICS_TIMEOUT_MS);
     const parsed = coerceMetrics(rpcData);
     if (parsed) return parsed;
   } catch (rpcError) {
-    console.warn('[useAdminDashboardStats] RPC REST falhou, usando fallback from():', rpcError);
+    console.warn('[useAdminDashboardStats] RPC indisponível, usando métricas vazias:', rpcError);
   }
 
-  const [profilesRes, managersRes, clientsRes, companiesRes, eventsRes, activeRes] = await Promise.all([
-    supabase.from('profiles').select('*', { count: 'exact', head: true }),
-    supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('tipo_usuario_id', 2),
-    supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('tipo_usuario_id', 3),
-    supabase.from('companies').select('*', { count: 'exact', head: true }),
-    supabase.from('events').select('*', { count: 'exact', head: true }),
-    supabase.from('events').select('*', { count: 'exact', head: true }).eq('is_active', true),
-  ]);
-
-  return {
-    total_profiles: profilesRes.count ?? 0,
-    manager_profiles: managersRes.count ?? 0,
-    client_profiles: clientsRes.count ?? 0,
-    total_companies: companiesRes.count ?? 0,
-    profiles_this_month: 0,
-    companies_this_month: 0,
-    total_events: eventsRes.count ?? 0,
-    active_events: activeRes.count ?? 0,
-    events_this_month: 0,
-  };
+  return EMPTY_ADMIN_METRICS;
 }
 
 export function useAdminDashboardStats(enabled: boolean) {
@@ -164,11 +143,12 @@ export function useAdminDashboardStats(enabled: boolean) {
     queryKey: ['admin_dashboard_stats'],
     enabled,
     staleTime: 60_000,
-    retry: 1,
+    retry: 0,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const [metrics, recentActivity, apiLatencyMs] = await Promise.all([
-        withTimeout(fetchMetrics(), 12_000, EMPTY_ADMIN_METRICS),
-        withTimeout(fetchRecentActivity(), 12_000, [] as AdminActivityItem[]),
+        withTimeout(fetchMetrics(), METRICS_TIMEOUT_MS, EMPTY_ADMIN_METRICS),
+        withTimeout(fetchRecentActivity(), ACTIVITY_TIMEOUT_MS, [] as AdminActivityItem[]),
         measureApiLatencyMs(),
       ]);
       return { metrics, recentActivity, apiLatencyMs };

@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, DollarSign, TrendingUp, Users, Loader2, AlertCircle, Download, Eye } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useFinancialReports, FinancialReportData } from '@/hooks/use-financial-reports';
+import { useFinancialReports } from '@/hooks/use-financial-reports';
 import { useManagerTransactions } from '@/hooks/use-manager-transactions';
 import { useManagerEvents } from '@/hooks/use-manager-events';
-import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
+import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import { showError, showSuccess } from '@/utils/toast';
 import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
@@ -28,12 +29,13 @@ const FinancialReports: React.FC = () => {
     const [transactionPage, setTransactionPage] = useState(1);
     const [checkingTransactionId, setCheckingTransactionId] = useState<string | null>(null);
 
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
-    const isManagerPro = profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
+    const { tipoUsuarioId, isLoading: isLoadingRole, isFetched: roleFetched } = useUserRole(userId);
+    const tipo = normalizeTipoUsuarioId(tipoUsuarioId);
+    const isAdminMaster = tipo === ADMIN_MASTER_USER_TYPE_ID;
+    const isManagerPro = tipo === MANAGER_PRO_USER_TYPE_ID;
     const canAccess = isAdminMaster || isManagerPro;
 
-    const { events, isLoading: isLoadingEvents } = useManagerEvents(userId, isAdminMaster || false);
+    const { events, isLoading: isLoadingEvents } = useManagerEvents(userId, isAdminMaster);
 
     const filters = {
         eventId: selectedEventId !== 'all' ? selectedEventId : undefined,
@@ -42,9 +44,7 @@ const FinancialReports: React.FC = () => {
         status: transactionStatusFilter !== 'all' ? transactionStatusFilter : undefined,
     };
 
-    const reportsQueryEnabled = Boolean(
-        userId && !isLoadingProfile && profile && canAccess,
-    );
+    const reportsQueryEnabled = Boolean(userId && roleFetched && canAccess);
 
     const { data: reportData, isLoading: isLoadingReports, isError } = useFinancialReports(
         filters,
@@ -183,6 +183,13 @@ const FinancialReports: React.FC = () => {
         document.body.removeChild(link);
     };
 
+    useEffect(() => {
+        if (roleFetched && userId && tipo != null && !canAccess) {
+            showError('Acesso negado. Apenas Administradores Master e Proprietários podem acessar este relatório.');
+            navigate('/manager/dashboard', { replace: true });
+        }
+    }, [roleFetched, userId, tipo, canAccess, navigate]);
+
     if (authPending) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
@@ -204,7 +211,7 @@ const FinancialReports: React.FC = () => {
         );
     }
 
-    if (isLoadingProfile) {
+    if (isLoadingRole && !roleFetched) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -213,10 +220,7 @@ const FinancialReports: React.FC = () => {
         );
     }
 
-    // Verificar permissões após carregar o perfil
-    if (!isLoadingProfile && profile && !canAccess) {
-        showError("Acesso negado. Apenas Administradores Master e Proprietários podem acessar este relatório.");
-        navigate('/manager/dashboard');
+    if (roleFetched && tipo != null && !canAccess) {
         return null;
     }
 

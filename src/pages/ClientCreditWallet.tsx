@@ -25,6 +25,7 @@ import { startCreditTopupCheckout } from '@/utils/credit-topup-checkout';
 import { exportCreditLedgerCsv } from '@/utils/export-credit-ledger-csv';
 import { showError, showSuccess } from '@/utils/toast';
 import { usePageAuth } from '@/hooks/use-page-auth';
+import { useProfile } from '@/hooks/use-profile';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import WalletQrModal from '@/components/WalletQrModal';
@@ -43,6 +44,7 @@ const ClientCreditWallet: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
+    const { profile } = useProfile(userId);
     const { userEmail } = usePublicSiteAuth();
     const userLabel = userEmail ?? userId;
     const { balance, isBalanceLoading, isLedgerLoading, ledger, refresh, status: accountStatus } = useClientCreditWallet();
@@ -157,26 +159,11 @@ const ClientCreditWallet: React.FC = () => {
     return (
         <ClientAccountPageShell
             title="Carteira EventFest"
-            subtitle="Crédito válido na rede de eventos e estabelecimentos parceiros — saldo garantido no app."
+            subtitle="Crédito válido na rede de eventos e estabelecimentos parceiros."
             icon={<Wallet className="h-8 w-8 text-yellow-500" aria-hidden />}
             showBackToProfile
         >
             <WalletPwaInstallHint />
-
-            <Alert className="mb-6 border-cyan-500/30 bg-cyan-950/60">
-                <Wallet className="h-4 w-4 text-cyan-200" />
-                <AlertTitle className="text-cyan-50">Seu saldo EventFest é garantido no app</AlertTitle>
-                <AlertDescription className="text-cyan-100/90 text-sm space-y-1">
-                    <p>
-                        Ao pagar com crédito, o valor é debitado na hora e aparece no seu extrato. A compra não é
-                        cancelada por questões de repasse ao estabelecimento.
-                    </p>
-                    <p>
-                        O repasse ao evento ou parceiro segue o calendário financeiro EventFest (retenção de 1 dia útil,
-                        depois liquidação via TED/PIX). Isso não afeta o uso do seu saldo na rede.
-                    </p>
-                </AlertDescription>
-            </Alert>
 
             {(isPolling || shouldPoll) && (
                 <Alert className="mb-6 border-yellow-500/40 bg-yellow-500/10">
@@ -199,15 +186,23 @@ const ClientCreditWallet: React.FC = () => {
             )}
 
             <Card className={`${CLIENT_ACCOUNT_CARD_CLASS} mb-6`}>
-                <CardHeader>
-                    <CardDescription className="text-gray-400">Saldo disponível</CardDescription>
-                    <CardTitle className="text-3xl text-yellow-400">
-                        {isBalanceLoading ? (
-                            <Loader2 className="h-8 w-8 animate-spin" />
-                        ) : (
-                            formatMoney(balance)
-                        )}
-                    </CardTitle>
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                    <div>
+                        <CardDescription className="text-gray-400">Saldo disponível</CardDescription>
+                        <CardTitle className="text-3xl text-yellow-400">
+                            {isBalanceLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin" />
+                            ) : (
+                                formatMoney(balance)
+                            )}
+                        </CardTitle>
+                    </div>
+                    <div className="text-right shrink-0">
+                        <p className="text-gray-400 text-xs">Seu código de usuário</p>
+                        <span className="text-xl sm:text-2xl font-mono text-yellow-500 font-bold tracking-widest">
+                            {profile?.public_id || '—'}
+                        </span>
+                    </div>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
                     <Button

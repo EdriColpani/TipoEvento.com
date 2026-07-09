@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { parseEventLocalDay } from '@/utils/format-event-date';
+import { withTimeout } from '@/utils/promise-timeout';
 import { subDays, format } from 'date-fns';
 
 interface SalesMetrics {
@@ -31,6 +32,19 @@ export interface DashboardData {
 
 const applyPaidLikeFilter = <T,>(query: T & { or: (filters: string) => T }): T =>
     query.or('status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized');
+
+const EMPTY_DASHBOARD: DashboardData = {
+    sales: {
+        currentMonthTotalSales: 0,
+        previousMonthTotalSales: 0,
+        salesPercentageChange: 0,
+        currentMonthTicketsSold: 0,
+        previousMonthTicketsSold: 0,
+        ticketsPercentageChange: 0,
+    },
+    events: { activeEvents: 0, totalEvents: 0 },
+    occupancy: { occupancyRate: 0, totalWristbandsGenerated: 0, totalTicketsSold: 0 },
+};
 
 const fetchDashboardData = async (
     userId?: string,
@@ -173,9 +187,11 @@ const fetchDashboardData = async (
 export const useDashboardData = (userId?: string, isAdminMaster: boolean = false) => {
     return useQuery<DashboardData>({
         queryKey: ['dashboardData', userId, isAdminMaster],
-        queryFn: () => fetchDashboardData(userId, isAdminMaster),
+        queryFn: () =>
+            withTimeout(fetchDashboardData(userId, isAdminMaster), 15_000, EMPTY_DASHBOARD),
         enabled: !!userId || isAdminMaster,
-        staleTime: 1000 * 60 * 5, // 5 minutos
+        staleTime: 1000 * 60 * 5,
+        retry: 1,
     });
 };
 

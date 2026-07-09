@@ -1,9 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import {
     consolidateSplitsByTransaction,
     resolveReceivableFinancials,
 } from '@/utils/resolve-receivable-financials';
+import {
+    fetchFinancialSplitsRest,
+    fetchPaidReceivablesForReport,
+} from '@/utils/fetch-receivables-rest';
 
 export interface FinancialReportData {
     event_id: string;
@@ -29,58 +32,17 @@ const fetchFinancialReports = async (
     userId?: string,
     isAdminMaster: boolean = false,
 ): Promise<FinancialReportData[]> => {
-    let query = supabase
-        .from('receivables')
-        .select(`
-            id,
-            total_value,
-            gross_amount,
-            mp_fee_amount,
-            net_amount_after_mp,
-            platform_fee_amount,
-            created_at,
-            event_id,
-            wristband_analytics_ids,
-            events!inner (
-                id,
-                title,
-                date,
-                applied_percentage
-            )
-        `);
-
-    if (!isAdminMaster && userId) {
-        query = query.eq('manager_user_id', userId);
-    }
-
-    if (filters.eventId) {
-        query = query.eq('event_id', filters.eventId);
-    }
-
-    if (filters.startDate) {
-        query = query.gte('created_at', filters.startDate);
-    }
-    if (filters.endDate) {
-        const endDateWithTime = new Date(filters.endDate);
-        endDateWithTime.setHours(23, 59, 59, 999);
-        query = query.lte('created_at', endDateWithTime.toISOString());
-    }
-
-    const { data: receivables, error: receivablesError } = await query.or(
-        'status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized',
-    );
-
-    if (receivablesError) throw receivablesError;
-    if (!receivables) return [];
+    const receivables = await fetchPaidReceivablesForReport(filters, userId, isAdminMaster);
+    if (receivables.length === 0) return [];
 
     const eventMap = new Map<string, {
         event_id: string;
         event_title: string;
         event_date: string;
-        receivables: any[];
+        receivables: typeof receivables;
     }>();
 
-    receivables.forEach((r: any) => {
+    receivables.forEach((r) => {
         const eventId = r.event_id;
         if (!eventMap.has(eventId)) {
             eventMap.set(eventId, {
@@ -93,16 +55,9 @@ const fetchFinancialReports = async (
         eventMap.get(eventId)!.receivables.push(r);
     });
 
-    const transactionIds = receivables.map((r: any) => r.id);
-
-    const { data: financialSplits, error: splitsError } = await supabase
-        .from('financial_splits')
-        .select('transaction_id, platform_amount, manager_amount, applied_percentage')
-        .in('transaction_id', transactionIds);
-
-    if (splitsError) throw splitsError;
-
-    const splitByTransaction = consolidateSplitsByTransaction(financialSplits || []);
+    const transactionIds = receivables.map((r) => r.id);
+    const financialSplits = await fetchFinancialSplitsRest(transactionIds);
+    const splitByTransaction = consolidateSplitsByTransaction(financialSplits);
 
     const reportData: FinancialReportData[] = [];
 
@@ -134,7 +89,7 @@ const fetchFinancialReports = async (
                 ? (comissaoTotalSistema / valorTotalVendido) * 100
                 : 0;
 
-        const quantidadeIngressosVendidos = eventTransactions.reduce((sum: number, t: any) => {
+        const quantidadeIngressosVendidos = eventTransactions.reduce((sum, t) => {
             const analyticsIds = t.wristband_analytics_ids || [];
             return sum + analyticsIds.length;
         }, 0);
@@ -170,5 +125,7 @@ export const useFinancialReports = (
         queryKey: ['financial-reports', filters, userId, isAdminMaster],
         queryFn: () => fetchFinancialReports(filters, userId, isAdminMaster),
         enabled,
+        staleTime: 30_000,
+        retry: 1,
     });
 };

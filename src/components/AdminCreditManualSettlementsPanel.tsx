@@ -52,6 +52,7 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
     const queryClient = useQueryClient();
     const [viewFilter, setViewFilter] = useState<SettlementViewFilter>('released');
     const grouped = useAdminCreditSettlementsGrouped(viewFilter);
+    const releasedGrouped = useAdminCreditSettlementsGrouped('released');
     const [payingCompanyId, setPayingCompanyId] = useState<string | null>(null);
     const [paymentMethod, setPaymentMethod] = useState<'pix' | 'ted' | 'other'>('pix');
     const [paymentReference, setPaymentReference] = useState('');
@@ -60,8 +61,10 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
     const [exporting, setExporting] = useState(false);
 
     const companies = grouped.data?.companies ?? [];
-    const totalAwaiting = companies.reduce((s, c) => s + Number(c.awaiting_payment_total ?? 0), 0);
+    const releasedCompanies = releasedGrouped.data?.companies ?? [];
+    const totalAwaiting = releasedCompanies.reduce((s, c) => s + Number(c.awaiting_payment_total ?? 0), 0);
     const totalRetention = companies.reduce((s, c) => s + Number(c.pending_retention_total ?? 0), 0);
+    const canRegisterPayment = viewFilter === 'released' && releasedCompanies.some((c) => Number(c.awaiting_payment_total ?? 0) > 0);
 
     const handlePayCompany = async (company: AdminSettlementGroupedCompany) => {
         if (!paymentReference.trim()) {
@@ -243,6 +246,65 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                             />
                         </div>
                     </div>
+
+                    {viewFilter === 'pending' && (
+                        <Alert className="border-amber-500/30 bg-amber-950/40">
+                            <AlertTitle className="text-amber-200">Retenção D+1 — pagamento ainda não disponível</AlertTitle>
+                            <AlertDescription className="text-amber-100/90 text-sm space-y-2">
+                                <p>
+                                    Itens nesta lista só liberam para TED/PIX após 1 dia (veja a coluna{' '}
+                                    <strong>Liberação</strong>). O botão de baixa aparece no filtro{' '}
+                                    <strong>Aguardando TED/PIX</strong>.
+                                </p>
+                                {totalAwaiting > 0 && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                        onClick={() => setViewFilter('released')}
+                                    >
+                                        Ir para pagamento ({money(totalAwaiting)} liberados)
+                                    </Button>
+                                )}
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    {viewFilter === 'released' && (
+                        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-3">
+                            <p className="text-gray-300 text-sm">
+                                1. Faça o PIX/TED no banco · 2. Preencha comprovante acima · 3. Clique em{' '}
+                                <strong className="text-yellow-500">Confirmar pagamento e baixar</strong>
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {releasedCompanies
+                                    .filter((c) => Number(c.awaiting_payment_total ?? 0) > 0)
+                                    .map((company) => (
+                                        <Button
+                                            key={company.company_id}
+                                            type="button"
+                                            disabled={submitting || !paymentReference.trim()}
+                                            className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                                            onClick={() => void handlePayCompany(company)}
+                                        >
+                                            {submitting && payingCompanyId === company.company_id ? (
+                                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                            ) : (
+                                                <CheckCircle2 className="h-4 w-4 mr-2" />
+                                            )}
+                                            Confirmar pagamento — {company.company_name} (
+                                            {money(Number(company.awaiting_payment_total ?? 0))})
+                                        </Button>
+                                    ))}
+                                {releasedCompanies.filter((c) => Number(c.awaiting_payment_total ?? 0) > 0).length === 0 && (
+                                    <p className="text-gray-500 text-sm">Nenhum repasse liberado aguardando baixa no momento.</p>
+                                )}
+                            </div>
+                            {!paymentReference.trim() && releasedCompanies.some((c) => Number(c.awaiting_payment_total ?? 0) > 0) && (
+                                <p className="text-amber-300/90 text-xs">Informe a referência / comprovante para habilitar a baixa.</p>
+                            )}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
@@ -303,10 +365,10 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                                         )}
                                 </CardDescription>
                             </div>
-                            {viewFilter === 'released' && (
+                            {canRegisterPayment && (
                                 <Button
                                     type="button"
-                                    disabled={submitting || Number(company.awaiting_payment_total ?? 0) <= 0}
+                                    disabled={submitting || Number(company.awaiting_payment_total ?? 0) <= 0 || !paymentReference.trim()}
                                     className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 shrink-0"
                                     onClick={() => void handlePayCompany(company)}
                                 >
@@ -315,7 +377,7 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                                     ) : (
                                         <CheckCircle2 className="h-4 w-4 mr-2" />
                                     )}
-                                    Registrar pagamento
+                                    Confirmar pagamento
                                 </Button>
                             )}
                         </CardHeader>

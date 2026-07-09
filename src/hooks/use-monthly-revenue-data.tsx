@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { withTimeout } from '@/utils/promise-timeout';
 import { format, subMonths, getMonth, getYear } from 'date-fns';
 
 interface MonthlyRevenueDataPoint {
@@ -71,9 +72,11 @@ const getMonthNumber = (monthAbbr: string) => {
 export const useMonthlyRevenueData = (monthsBack: number = 6, userId?: string, isAdminMaster: boolean = false) => {
     return useQuery<MonthlyRevenueDataPoint[]>({ 
         queryKey: ['monthlyRevenueData', monthsBack, userId, isAdminMaster],
-        queryFn: () => fetchMonthlyRevenueData(monthsBack, userId, isAdminMaster),
+        queryFn: () =>
+            withTimeout(fetchMonthlyRevenueData(monthsBack, userId, isAdminMaster), 15_000, []),
         enabled: !!userId || isAdminMaster,
-        staleTime: 1000 * 60 * 5, // 5 minutos
+        staleTime: 1000 * 60 * 5,
+        retry: 1,
     });
 };
 

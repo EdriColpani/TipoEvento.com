@@ -4,10 +4,9 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useState } from 'react';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { Plus, QrCode, BarChart3, Download, Settings, ChevronDown, DollarSign, Users, CalendarCheck, TrendingUp, Ticket, AreaChart } from 'lucide-react';
 import { useDashboardData } from '@/hooks/use-dashboard-data';
 import { useMonthlyRevenueData } from '@/hooks/use-monthly-revenue-data';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, QrCode, BarChart3, Download, Settings, ChevronDown, DollarSign, Users, CalendarCheck, TrendingUp, Ticket, AreaChart } from 'lucide-react';
 import SalesLineChart from '@/components/SalesLineChart';
 import { useTopSellingEvents } from '@/hooks/use-top-selling-events';
 import { useRecentSales } from '@/hooks/use-recent-sales';
@@ -24,12 +23,14 @@ const getOccupancyPerformance = (occupancyRate: number) => {
 
 const ManagerDashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { userId } = usePageAuth();
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const { userId, authPending } = usePageAuth();
+    const { profile } = useProfile(userId);
     const { company } = useManagerCompany(userId);
     const { data: inactivityStatus, isLoading: isLoadingInactivity } = useCompanyTicketInactivity(company?.id);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
     const { data: dashboardData, isLoading, isError } = useDashboardData(userId, isAdminMaster || false);
+    const dashboardBootPending = authPending && !userId;
+    const statsBootPending = dashboardBootPending || (isLoading && !dashboardData);
     const [monthlyRevenuePeriod, setMonthlyRevenuePeriod] = useState(6);
     const { data: monthlyRevenueData, isLoading: isLoadingMonthlyRevenue, isError: isErrorMonthlyRevenue } = useMonthlyRevenueData(monthlyRevenuePeriod, userId, isAdminMaster || false);
     const { data: topSellingEvents, isLoading: isLoadingTopSellingEvents, isError: isErrorTopSellingEvents } = useTopSellingEvents(5, userId, isAdminMaster || false); // Limite de 5 eventos
@@ -46,20 +47,20 @@ const ManagerDashboard: React.FC = () => {
             <TicketInactivityBanner status={inactivityStatus} isLoading={isLoadingInactivity} />
 
             {/* Cartões de Estatísticas */}
-            {(isLoadingProfile || isLoading) && (
+            {statsBootPending && (
                 <div className="text-center py-20">
                     <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
                     <p className="text-gray-400">Carregando dados do dashboard...</p>
                 </div>
             )}
 
-            {isError && (
+            {isError && !dashboardData && (
                 <div className="text-center py-20">
                     <p className="text-red-500">Erro ao carregar os dados do dashboard. Tente novamente mais tarde.</p>
                 </div>
             )}
 
-            {!isLoadingProfile && !isLoading && !isError && dashboardData && (
+            {!statsBootPending && dashboardData && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     {/* Cartão de Vendas Totais */}
                     <div className="bg-black border border-yellow-500/30 rounded-2xl p-6 hover:border-yellow-500/60 transition-all duration-300">
