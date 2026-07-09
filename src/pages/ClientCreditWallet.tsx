@@ -157,11 +157,26 @@ const ClientCreditWallet: React.FC = () => {
     return (
         <ClientAccountPageShell
             title="Carteira EventFest"
-            subtitle="Crédito válido na rede de eventos e estabelecimentos parceiros."
+            subtitle="Crédito válido na rede de eventos e estabelecimentos parceiros — saldo garantido no app."
             icon={<Wallet className="h-8 w-8 text-yellow-500" aria-hidden />}
             showBackToProfile
         >
             <WalletPwaInstallHint />
+
+            <Alert className="mb-6 border-cyan-500/30 bg-cyan-950/60">
+                <Wallet className="h-4 w-4 text-cyan-200" />
+                <AlertTitle className="text-cyan-50">Seu saldo EventFest é garantido no app</AlertTitle>
+                <AlertDescription className="text-cyan-100/90 text-sm space-y-1">
+                    <p>
+                        Ao pagar com crédito, o valor é debitado na hora e aparece no seu extrato. A compra não é
+                        cancelada por questões de repasse ao estabelecimento.
+                    </p>
+                    <p>
+                        O repasse ao evento ou parceiro segue o calendário financeiro EventFest (retenção de 1 dia útil,
+                        depois liquidação via TED/PIX). Isso não afeta o uso do seu saldo na rede.
+                    </p>
+                </AlertDescription>
+            </Alert>
 
             {(isPolling || shouldPoll) && (
                 <Alert className="mb-6 border-yellow-500/40 bg-yellow-500/10">

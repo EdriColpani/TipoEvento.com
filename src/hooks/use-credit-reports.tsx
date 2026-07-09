@@ -266,10 +266,18 @@ export type ManagerCreditSpendRow = {
     applied_percentage: number;
 };
 
+export type AdminSettlementRow = ManagerSettlementRow & {
+    company_name?: string | null;
+    applied_percentage?: number | null;
+    payout_notes?: string | null;
+    client_user_id?: string | null;
+};
+
 export type ManagerSettlementRow = {
     id: string;
     company_id: string;
     spend_order_id: string;
+    split_id?: string;
     manager_amount: number;
     platform_amount?: number;
     gross_amount?: number;
@@ -278,19 +286,43 @@ export type ManagerSettlementRow = {
     released_at: string | null;
     paid_at: string | null;
     payout_batch_id: string | null;
-    mp_payout_reference: string | null;
-    mp_transfer_id?: string | null;
-    mp_error?: string | null;
+    payment_reference?: string | null;
+    mp_payout_reference?: string | null;
+    payment_method?: string | null;
     spend_description: string | null;
     spend_at: string;
+    channel?: string | null;
+    event_title?: string | null;
+    establishment_name?: string | null;
+    establishment_kind?: string | null;
+    group_type?: string | null;
+    group_label?: string | null;
 };
 
 export type SettlementSummary = {
-    pending: number;
-    released: number;
+    pending_retention?: number;
+    awaiting_payment?: number;
+    pending?: number;
+    released?: number;
     paid: number;
     clawback: number;
     failed?: number;
+};
+
+export type AdminSettlementGroupedCompany = {
+    company_id: string;
+    company_name: string;
+    pending_retention_total: number;
+    awaiting_payment_total: number;
+    paid_total: number;
+    groups: Array<{
+        group_type: string;
+        group_key: string;
+        group_label: string;
+        awaiting_payment_total: number;
+        item_count: number;
+        items: ManagerSettlementRow[];
+    }>;
 };
 
 export function useManagerCreditSettlements(companyId: string | undefined, status?: string | null) {
@@ -316,18 +348,69 @@ export function useManagerCreditSettlements(companyId: string | undefined, statu
     });
 }
 
-export function useAdminCreditSettlements() {
+export async function fetchAdminCreditSettlementsExport(
+    status?: string | null,
+): Promise<AdminSettlementRow[]> {
+    const all: AdminSettlementRow[] = [];
+    const pageSize = 500;
+    let offset = 0;
+
+    for (;;) {
+        const data = await callRpcRest<{
+            items: AdminSettlementRow[];
+        }>(
+            'list_admin_credit_settlements',
+            {
+                p_status: status ?? null,
+                p_company_id: null,
+                p_limit: pageSize,
+                p_offset: offset,
+            },
+            25_000,
+        );
+        const batch = data?.items ?? [];
+        all.push(...batch);
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+        if (offset > 10_000) break;
+    }
+
+    return all;
+}
+
+export function useAdminCreditSettlements(status?: string | null, companyId?: string | null) {
     return useQuery({
-        queryKey: ['adminCreditSettlements'],
+        queryKey: ['adminCreditSettlements', status, companyId],
         queryFn: async () => {
-            const data = await callRpcRest<{ items: Array<Record<string, unknown>> }>(
+            const data = await callRpcRest<{
+                items: AdminSettlementRow[];
+                summary: SettlementSummary;
+            }>(
                 'list_admin_credit_settlements',
-                { p_limit: 200, p_offset: 0 },
+                {
+                    p_status: status ?? null,
+                    p_company_id: companyId ?? null,
+                    p_limit: 500,
+                    p_offset: 0,
+                },
                 20_000,
             );
-            return data?.items ?? [];
+            return data;
         },
-        staleTime: 30_000,
+        staleTime: 20_000,
+    });
+}
+
+export function useAdminCreditSettlementsGrouped(status: string = 'released') {
+    return useQuery({
+        queryKey: ['adminCreditSettlementsGrouped', status],
+        queryFn: () =>
+            callRpcRest<{ companies: AdminSettlementGroupedCompany[] }>(
+                'list_admin_credit_settlements_grouped',
+                { p_status: status },
+                25_000,
+            ),
+        staleTime: 20_000,
     });
 }
 

@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
 import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest } from '@/utils/auth-rest';
 import { clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
+import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import {
     canBypassPublicLaunchPreview,
     type PublicLaunchMode,
@@ -106,6 +108,11 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
     }, []);
 
     const { profile, isLoading: profileLoading } = useProfile(userId);
+    const {
+        tipoUsuarioId: roleTipo,
+        isLoading: roleTipoLoading,
+        isFetched: roleTipoFetched,
+    } = useUserRole(userId);
 
     const query = useQuery({
         queryKey: [...PUBLIC_LAUNCH_MODE_QUERY_KEY],
@@ -121,8 +128,17 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         const mode = query.data ?? 'preview';
         const loggedIn = sessionReady && Boolean(userId);
         const isPreview = mode === 'preview';
-        const tipo = profile?.tipo_usuario_id;
+        // Perfil completo pode falhar/timeout; papel vem de query leve dedicada.
+        const tipo =
+            normalizeTipoUsuarioId(roleTipo) ??
+            normalizeTipoUsuarioId(profile?.tipo_usuario_id);
         const canBypassPreview = canBypassPublicLaunchPreview(tipo);
+        // Só bloqueia enquanto a query leve ainda não concluiu (ou perfil ainda carrega sem tipo).
+        const roleLoading = Boolean(
+            userId &&
+                tipo == null &&
+                (!roleTipoFetched || roleTipoLoading || profileLoading),
+        );
 
         return {
             userId,
@@ -132,13 +148,24 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
             profileLoading,
             isAuthenticated: loggedIn,
             tipoUsuarioId: tipo,
-            roleLoading: Boolean(userId && profileLoading),
+            roleLoading,
             mode,
             isPreview,
             canBypassPreview,
             isError: query.isError,
         };
-    }, [query.data, query.isError, profile, profileLoading, sessionReady, userEmail, userId]);
+    }, [
+        query.data,
+        query.isError,
+        profile,
+        profileLoading,
+        roleTipo,
+        roleTipoFetched,
+        roleTipoLoading,
+        sessionReady,
+        userEmail,
+        userId,
+    ]);
 
     return <PublicSiteContext.Provider value={value}>{children}</PublicSiteContext.Provider>;
 }

@@ -10,10 +10,9 @@ import {
     MANAGER_COMPANY_REGISTER_PATH,
 } from '@/utils/manager-company-registration';
 import type { User } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest } from '@/utils/auth-rest';
-import { restGet } from '@/utils/supabase-rest';
+import { fetchProfileTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export type PostLoginRedirect = {
@@ -68,31 +67,10 @@ export async function resolvePostLoginRedirect(
         };
     }
 
-    let profileData: { tipo_usuario_id: number } | null = null;
-    try {
-        const rows = await restGet<{ tipo_usuario_id: number }[]>(
-            `profiles?id=eq.${userId}&select=tipo_usuario_id&limit=1`,
-            8_000,
-        );
-        profileData = rows[0] ?? null;
-    } catch (restError) {
-        console.warn('[resolvePostLoginRedirect] REST profile falhou:', restError);
-        const { data, error: profileError } = await withTimeout(
-            supabase.from('profiles').select('tipo_usuario_id').eq('id', userId).single(),
-            8_000,
-            { data: null, error: { message: 'timeout' } as { message: string } },
-        );
-        if (profileError || !data) {
-            throw new Error('PROFILE_NOT_FOUND');
-        }
-        profileData = data;
-    }
-
-    if (!profileData) {
+    const userType = await fetchProfileTipoUsuarioId(userId);
+    if (userType == null) {
         throw new Error('PROFILE_NOT_FOUND');
     }
-
-    const userType = profileData.tipo_usuario_id;
 
     if (userType === 1) {
         return { path: '/admin/dashboard', message: 'Login de Administrador Master realizado com sucesso!' };

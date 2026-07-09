@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Banknote, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Banknote, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -14,8 +14,6 @@ import {
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCreditSettlements } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
-import { retryFailedCreditDisbursements } from '@/utils/credit-manager-payout';
-import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number): string {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -23,27 +21,29 @@ function money(v: number): string {
 
 function statusLabel(s: string): string {
     const map: Record<string, string> = {
-        pending_mp: 'Aguardando MP',
-        disbursed: 'Transferido (MP)',
-        disbursement_failed: 'Falha MP',
+        pending: 'Retenção D+1',
+        released: 'Aguardando TED/PIX EventFest',
         paid: 'Pago',
         clawback: 'Clawback',
         cancelled: 'Cancelado',
-        pending: 'Pendente',
-        released: 'Liberado',
     };
     return map[s] ?? s;
+}
+
+function dt(iso: string | null | undefined): string {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('pt-BR');
 }
 
 const ManagerCreditSettlements: React.FC = () => {
     const navigate = useNavigate();
     const { userId } = usePageAuth();
-    const [retrying, setRetrying] = useState(false);
 
     const access = useCreditReportsAccess(userId);
-    const { data, isLoading, refetch } = useManagerCreditSettlements(access.company?.id);
-    const failedTotal = Number(data?.summary?.failed ?? 0);
-    const paidTotal = Number(data?.summary?.paid ?? 0);
+    const { data, isLoading } = useManagerCreditSettlements(access.company?.id);
+
+    const summary = data?.summary;
+    const retentionDays = data?.retention_days ?? 1;
 
     useEffect(() => {
         if (!access.isLoading && access.isAdminMaster) {
@@ -53,26 +53,6 @@ const ManagerCreditSettlements: React.FC = () => {
             });
         }
     }, [access.isLoading, access.isAdminMaster, navigate]);
-
-    const handleRetryFailed = async () => {
-        if (!access.company?.id) return;
-        setRetrying(true);
-        try {
-            const result = await retryFailedCreditDisbursements(access.company.id);
-            if (result.succeeded > 0) {
-                showSuccess(`${result.succeeded} repasse(s) reprocessado(s) com sucesso.`);
-            } else if (result.retried === 0) {
-                showSuccess('Nenhum repasse com falha pendente.');
-            } else {
-                showError('Não foi possível concluir os repasses. Verifique Mercado Pago OAuth.');
-            }
-            refetch();
-        } catch (e: unknown) {
-            showError(e instanceof Error ? e.message : 'Erro ao reprocessar repasses.');
-        } finally {
-            setRetrying(false);
-        }
-    };
 
     if (access.isLoading || access.isAdminMaster) {
         return (
@@ -95,72 +75,76 @@ const ManagerCreditSettlements: React.FC = () => {
     }
 
     return (
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
             <div className="flex items-center gap-4 mb-6">
                 <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports/credit-spends')}>
                     <ArrowLeft className="h-4 w-4 mr-1" /> Consumos
                 </Button>
                 <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
                     <Banknote className="h-6 w-6" />
-                    Repasses automáticos — Crédito EventFest
+                    Repasses pendentes — Crédito EventFest
                 </h1>
             </div>
 
             <p className="text-gray-400 text-sm mb-4">
-                Cada consumo via crédito dispara transferência imediata do pool EventFest para sua conta Mercado Pago
-                (líquido após comissão da plataforma).
+                Cada venda com crédito gera um repasse com retenção de {retentionDays} dia(s) (D+1). Após a liberação,
+                a EventFest liquida manualmente via TED ou PIX e registra o pagamento no sistema. Seu extrato de vendas
+                permanece correto independentemente do calendário de repasse — não há “erro MP” neste fluxo.
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-                <SummaryCard label="Transferidos (MP)" value={money(paidTotal)} highlight />
-                <SummaryCard label="Falhas MP" value={money(failedTotal)} warn={failedTotal > 0} />
-                <SummaryCard label="Clawback" value={money(Number(data?.summary?.clawback ?? 0))} />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <SummaryCard label="Em retenção D+1" value={money(Number(summary?.pending_retention ?? summary?.pending ?? 0))} />
+                <SummaryCard label="Aguardando pagamento" value={money(Number(summary?.awaiting_payment ?? summary?.released ?? 0))} highlight />
+                <SummaryCard label="Já recebidos" value={money(Number(summary?.paid ?? 0))} />
+                <SummaryCard label="Clawback" value={money(Number(summary?.clawback ?? 0))} />
             </div>
-
-            {failedTotal > 0 && (
-                <Button
-                    variant="outline"
-                    className="mb-6 border-yellow-500/40 text-yellow-500"
-                    disabled={retrying}
-                    onClick={handleRetryFailed}
-                >
-                    {retrying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                    Reprocessar repasses com falha
-                </Button>
-            )}
 
             <Card className="bg-black border-yellow-500/30">
                 <CardHeader>
-                    <CardTitle className="text-white">Histórico de transferências</CardTitle>
+                    <CardTitle className="text-white">Extrato de repasses</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Ref. MP, comissão EventFest e valor líquido transferido
+                        Ingressos, PDV e consumo em parceiros — valores líquidos após comissão EventFest
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
                     {isLoading ? (
                         <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto py-8" />
                     ) : (data?.items ?? []).length === 0 ? (
-                        <p className="text-gray-500 text-sm text-center py-8">Nenhuma transferência registrada ainda.</p>
+                        <p className="text-gray-500 text-sm text-center py-8">Nenhum repasse registrado ainda.</p>
                     ) : (
                         <Table>
                             <TableHeader>
                                 <TableRow className="border-yellow-500/20">
                                     <TableHead className="text-yellow-500">Status</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
+                                    <TableHead className="text-yellow-500">Data consumo</TableHead>
+                                    <TableHead className="text-yellow-500">Origem</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Comissão EF</TableHead>
-                                    <TableHead className="text-yellow-500">Ref. MP</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
+                                    <TableHead className="text-yellow-500">Liberação</TableHead>
+                                    <TableHead className="text-yellow-500">Ref. pagamento</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {data!.items.map((row) => (
                                     <TableRow key={row.id} className="border-yellow-500/10">
-                                        <TableCell className="text-gray-300">{statusLabel(row.status)}</TableCell>
-                                        <TableCell className="text-right text-yellow-400">{money(row.manager_amount)}</TableCell>
-                                        <TableCell className="text-right text-gray-400">
-                                            {money(Number((row as { platform_amount?: number }).platform_amount ?? 0))}
+                                        <TableCell className="text-gray-300 text-sm">{statusLabel(row.status)}</TableCell>
+                                        <TableCell className="text-gray-400 text-xs whitespace-nowrap">{dt(row.spend_at)}</TableCell>
+                                        <TableCell className="text-gray-300 text-xs max-w-[14rem]">
+                                            <div className="truncate" title={row.spend_description ?? undefined}>
+                                                {row.event_title
+                                                    ? `Evento: ${row.event_title}`
+                                                    : row.establishment_name
+                                                      ? `PDV: ${row.establishment_name}`
+                                                      : row.spend_description ?? '—'}
+                                            </div>
                                         </TableCell>
-                                        <TableCell className="text-gray-500 text-xs font-mono truncate max-w-[10rem]" title={row.mp_payout_reference ?? undefined}>
-                                            {row.mp_payout_reference ?? '—'}
+                                        <TableCell className="text-right text-gray-400">{money(Number(row.gross_amount ?? 0))}</TableCell>
+                                        <TableCell className="text-right text-gray-500">{money(Number(row.platform_amount ?? 0))}</TableCell>
+                                        <TableCell className="text-right text-yellow-400 font-medium">{money(row.manager_amount)}</TableCell>
+                                        <TableCell className="text-gray-400 text-xs whitespace-nowrap">{dt(row.release_at)}</TableCell>
+                                        <TableCell className="text-gray-500 text-xs font-mono truncate max-w-[8rem]" title={row.payment_reference ?? undefined}>
+                                            {row.payment_reference ?? '—'}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -177,24 +161,16 @@ function SummaryCard({
     label,
     value,
     highlight,
-    warn,
 }: {
     label: string;
     value: string;
     highlight?: boolean;
-    warn?: boolean;
 }) {
     return (
         <Card className={`bg-black border-yellow-500/30 ${highlight ? 'border-yellow-500/60' : ''}`}>
             <CardContent className="pt-4 pb-4">
                 <p className="text-gray-500 text-xs">{label}</p>
-                <p
-                    className={`text-lg font-semibold mt-1 ${
-                        warn ? 'text-red-400' : highlight ? 'text-yellow-500' : 'text-white'
-                    }`}
-                >
-                    {value}
-                </p>
+                <p className={`text-lg font-semibold mt-1 ${highlight ? 'text-yellow-500' : 'text-white'}`}>{value}</p>
             </CardContent>
         </Card>
     );

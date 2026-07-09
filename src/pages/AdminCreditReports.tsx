@@ -4,7 +4,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
+import { supabase } from '@/integrations/supabase/client';
 import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
+import AdminCreditManualSettlementsPanel from '@/components/AdminCreditManualSettlementsPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -26,7 +28,6 @@ import {
     useAdminCreditCrossCompanyFlows,
     useAdminCreditReconciliation,
     useAdminCreditRefundCases,
-    useAdminCreditSettlements,
     useAdminCreditTopupChargebacks,
     useAdminCreditTopupChargebackSummary,
     fetchAdminCreditTopupChargebacksExport,
@@ -48,12 +49,9 @@ function dt(iso: string | null | undefined): string {
 
 function settlementStatusLabel(s: string): string {
     const map: Record<string, string> = {
-        pending: 'Retenção',
-        pending_mp: 'Aguardando MP',
-        released: 'Liberado',
+        pending: 'Retenção D+1',
+        released: 'Aguardando TED/PIX',
         paid: 'Pago',
-        disbursed: 'Transferido (MP)',
-        disbursement_failed: 'Falha MP',
         clawback: 'Clawback',
         cancelled: 'Cancelado',
     };
@@ -134,7 +132,6 @@ const AdminCreditReports: React.FC = () => {
     const commission = useAdminCreditCommissionReport();
     const cross = useAdminCreditCrossCompanyFlows();
     const audit = useAdminCreditAuditLog();
-    const settlements = useAdminCreditSettlements();
     const refundCases = useAdminCreditRefundCases();
     const chargebackSummary = useAdminCreditTopupChargebackSummary(
         chargebackStartDate || null,
@@ -436,46 +433,7 @@ const AdminCreditReports: React.FC = () => {
                 </TabsContent>
 
                 <TabsContent value="settlements">
-                    <Card className="bg-black border-yellow-500/30">
-                        <CardHeader>
-                            <CardTitle className="text-white">Transferências MP automáticas (rede)</CardTitle>
-                            <CardDescription className="text-gray-400">
-                                Repasse imediato ao gestor/parceiro receptor a cada consumo via crédito (pool EventFest → MP OAuth).
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="overflow-x-auto max-h-[32rem]">
-                            {settlements.isLoading ? (
-                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
-                            ) : settlements.data?.length === 0 ? (
-                                <p className="text-gray-500 text-sm text-center py-8">Nenhuma liquidação.</p>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="border-yellow-500/20">
-                                            <TableHead className="text-yellow-500">Empresa</TableHead>
-                                            <TableHead className="text-yellow-500">Status</TableHead>
-                                            <TableHead className="text-yellow-500 text-right">Valor</TableHead>
-                                            <TableHead className="text-yellow-500">Liberação</TableHead>
-                                            <TableHead className="text-yellow-500">Ref. payout</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {settlements.data?.map((row) => (
-                                            <TableRow key={String(row.id)} className="border-yellow-500/10">
-                                                <TableCell className="text-gray-200 text-sm">{String(row.company_name ?? '—')}</TableCell>
-                                                <TableCell className="text-gray-300 text-xs">{settlementStatusLabel(String(row.status ?? ''))}</TableCell>
-                                                <TableCell className="text-right text-yellow-400">{money(Number(row.manager_amount))}</TableCell>
-                                                <TableCell className="text-gray-400 text-xs">{dt(String(row.release_at ?? ''))}</TableCell>
-                                                <TableCell className="text-gray-500 text-xs font-mono truncate max-w-[8rem]">
-                                                    {String(row.mp_payout_reference ?? '—')}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </CardContent>
-                    </Card>
+                    <AdminCreditManualSettlementsPanel />
                 </TabsContent>
 
                 <TabsContent value="refunds">

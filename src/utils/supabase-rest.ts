@@ -1,5 +1,6 @@
 import { supabaseAnonKey, supabaseUrl } from '@/integrations/supabase/client';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { AUTH_SIGNED_OUT_EVENT, clearAuthSessionStorage } from '@/utils/sign-out-session';
 
 function authHeaders(): Record<string, string> {
     const token = readCachedAuthSession().accessToken;
@@ -11,6 +12,24 @@ function authHeaders(): Record<string, string> {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
     };
+}
+
+type RestErrorPayload = { message?: string } | null;
+
+function normalizeRestError(response: Response, data: unknown, fallback: string): Error {
+    const row = data as RestErrorPayload;
+    const message = row?.message ?? fallback;
+    const lower = message.toLowerCase();
+    const isSessionExpired =
+        response.status === 401 || response.status === 403 || lower.includes('jwt expired');
+
+    if (isSessionExpired) {
+        clearAuthSessionStorage();
+        window.dispatchEvent(new CustomEvent(AUTH_SIGNED_OUT_EVENT));
+        return new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    return new Error(message);
 }
 
 export async function restGet<T>(
@@ -32,8 +51,7 @@ export async function restGet<T>(
 
         const data = (await response.json().catch(() => null)) as T;
         if (!response.ok) {
-            const row = data as { message?: string } | null;
-            throw new Error(row?.message ?? 'Erro ao consultar dados.');
+            throw normalizeRestError(response, data, 'Erro ao consultar dados.');
         }
         return data;
     } finally {
@@ -62,8 +80,8 @@ export async function restPatch<T>(
         });
 
         if (!response.ok) {
-            const data = (await response.json().catch(() => null)) as { message?: string } | null;
-            throw new Error(data?.message ?? 'Erro ao atualizar dados.');
+            const data = await response.json().catch(() => null);
+            throw normalizeRestError(response, data, 'Erro ao atualizar dados.');
         }
 
         if (response.status === 204) {
@@ -92,8 +110,8 @@ export async function restDelete(path: string, timeoutMs = 10_000): Promise<void
         });
 
         if (!response.ok) {
-            const data = (await response.json().catch(() => null)) as { message?: string } | null;
-            throw new Error(data?.message ?? 'Erro ao excluir dados.');
+            const data = await response.json().catch(() => null);
+            throw normalizeRestError(response, data, 'Erro ao excluir dados.');
         }
     } finally {
         window.clearTimeout(timer);

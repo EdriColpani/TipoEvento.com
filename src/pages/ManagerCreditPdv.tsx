@@ -27,7 +27,6 @@ import { useCreditEstablishments } from '@/hooks/use-credit-establishments';
 import { useCreditEstablishmentProducts } from '@/hooks/use-credit-establishment-products';
 import { isHybridPlan, isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 import { generateRandomUuid } from '@/utils/random-id';
-import { isWalletQrToken } from '@/constants/wallet-qr';
 import { useHtml5QrScanner } from '@/hooks/use-html5-qr-scanner';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
@@ -137,20 +136,19 @@ const ManagerCreditPdv: React.FC = () => {
             showError('Leia o QR da carteira do cliente.');
             return;
         }
-        if (!isWalletQrToken(token)) {
-            showError('QR inválido. Use o código da Carteira EventFest (EFW...).');
-            return;
-        }
         setWalletToken(token);
         setResolving(true);
         try {
             const payload = await invokeEdgeFunctionRest<{
                 error?: string;
                 clientUserId: string;
+                walletToken?: string;
                 balance?: number;
                 clientLabel?: string;
             }>('resolve-wallet-qr', { walletToken: token, establishmentId }, { timeoutMs: 15_000 });
             if (payload?.error) throw new Error(payload.error);
+            const normalizedWalletToken = (payload.walletToken ?? token).trim();
+            setWalletToken(normalizedWalletToken);
             setResolved({
                 clientUserId: payload.clientUserId,
                 balance: Number(payload.balance ?? 0),
@@ -232,6 +230,7 @@ const ManagerCreditPdv: React.FC = () => {
                 error?: string;
                 duplicate?: boolean;
                 grossAmount?: number;
+                mpDisbursementPending?: boolean;
             }>(
                 'credit-spend-pdv',
                 {
@@ -247,11 +246,17 @@ const ManagerCreditPdv: React.FC = () => {
                 { idempotencyKey, timeoutMs: 25_000 },
             );
             if (payload?.error) throw new Error(payload.error);
-            showSuccess(
-                payload.duplicate
-                    ? 'Venda já havia sido registrada.'
-                    : `Venda concluída — ${formatMoney(Number(payload.grossAmount ?? cartTotal))}`,
-            );
+            if (payload.settlementQueued) {
+                showSuccess(
+                    `Venda concluída — ${formatMoney(Number(payload.grossAmount ?? cartTotal))}. Repasse ao gestor em liquidação manual D+1.`,
+                );
+            } else {
+                showSuccess(
+                    payload.duplicate
+                        ? 'Venda já havia sido registrada.'
+                        : `Venda concluída — ${formatMoney(Number(payload.grossAmount ?? cartTotal))}`,
+                );
+            }
             setCart([]);
             setResolved(null);
             setWalletToken('');
@@ -458,7 +463,8 @@ const ManagerCreditPdv: React.FC = () => {
                         Cliente
                     </CardTitle>
                     <CardDescription className="text-gray-400">
-                        Cliente: Carteira EventFest → Mostrar QR no PDV. Use a câmera, leitor USB ou digite o código.
+                        Cliente: Carteira EventFest → Mostrar QR no PDV. Use a câmera, leitor USB ou digite o código
+                        do cliente.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -503,7 +509,7 @@ const ManagerCreditPdv: React.FC = () => {
                     </div>
 
                     <div className="border-t border-yellow-500/20 pt-3 space-y-2">
-                        <p className="text-gray-500 text-xs">Leitor USB ou código manual (Enter confirma)</p>
+                        <p className="text-gray-500 text-xs">Leitor USB, QR da carteira ou código do cliente (Enter confirma)</p>
                         <Input
                             value={walletToken}
                             onChange={(e) => setWalletToken(e.target.value)}
@@ -513,7 +519,7 @@ const ManagerCreditPdv: React.FC = () => {
                                     void resolveClient();
                                 }
                             }}
-                            placeholder="EFW...."
+                            placeholder="EFW.... ou código do cliente"
                             className="bg-black/60 border-yellow-500/30 text-white font-mono text-xs"
                             disabled={resolving || isScanning}
                             autoComplete="off"
