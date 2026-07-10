@@ -20,6 +20,7 @@ import {
     BILLING_PLANS,
     BillingPlanCode,
     getBillingPlanDefinition,
+    getBillingPlanLabel,
     BILLING_DOWNGRADE_GESTOR_MESSAGE,
     isBillingPlanDowngrade,
     isBillingPlanUpgrade,
@@ -45,6 +46,7 @@ import { restGet } from '@/utils/supabase-rest';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { billingBtnGhost, billingBtnSolid } from '@/constants/billing-ui';
+import { isBillingContractReacceptance } from '@/constants/manager-billing-gate';
 
 interface CompanyBillingPlanSectionProps {
     companyId: string;
@@ -151,6 +153,8 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
 
     const currentPlan = billing?.billing_plan ?? null;
     const billingReady = isCompanyBillingReady(billing);
+    const isContractReacceptance = isBillingContractReacceptance(billing);
+    const currentPlanLabel = getBillingPlanLabel(currentPlan);
 
     const openPlanAction = (plan: BillingPlanCode) => {
         const def = getBillingPlanDefinition(plan);
@@ -167,6 +171,14 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
         setDialogOpen(true);
     };
 
+    const openCurrentPlanReacceptance = () => {
+        if (!currentPlan) {
+            showError('Plano atual não encontrado. Contate o administrador.');
+            return;
+        }
+        openPlanAction(currentPlan);
+    };
+
     const handleConfirm = async () => {
         if (!pendingPlan || !pendingContract) {
             showError('Contrato do plano não encontrado. Contate o administrador.');
@@ -177,8 +189,13 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
             return;
         }
 
+        const isSamePlanReacceptance =
+            isContractReacceptance && Boolean(currentPlan) && pendingPlan === currentPlan;
+
         setIsSubmitting(true);
-        const toastId = showLoading('Salvando plano...');
+        const toastId = showLoading(
+            isSamePlanReacceptance ? 'Registrando aceite do contrato...' : 'Salvando plano...',
+        );
 
         try {
             const isUpgrade =
@@ -211,7 +228,13 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
 
             dismissToast(toastId);
             const confirmedPlan = pendingPlan;
-            showSuccess(isUpgrade ? 'Plano atualizado com sucesso!' : 'Plano confirmado com sucesso!');
+            showSuccess(
+                isSamePlanReacceptance
+                    ? 'Novo contrato aceito com sucesso!'
+                    : isUpgrade
+                      ? 'Plano atualizado com sucesso!'
+                      : 'Plano confirmado com sucesso!',
+            );
             setDialogOpen(false);
             setPendingPlan(null);
             await invalidate();
@@ -224,7 +247,9 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                 queryClient.removeQueries({ queryKey: ['consumptionLicenseStatus', companyId] });
             }
 
+            // Reaceite do mesmo plano = só contrato; não abre checkout MP.
             const needsPaymentCheckout =
+                !isSamePlanReacceptance &&
                 !isAdminMaster &&
                 (confirmedPlan === 'listing_monthly' || confirmedPlan === 'consumption_or_license');
 
@@ -320,11 +345,48 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                         <div className="flex gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm">
                             <AlertTriangle className="h-5 w-5 shrink-0" />
                             <div>
-                                <p className="font-medium">Confirmação necessária</p>
-                                <p className="mt-1 text-amber-200/90">
-                                    Confirme o plano e aceite o contrato para criar eventos. Empresas já cadastradas
-                                    foram migradas para comissão sobre ingressos — basta confirmar abaixo.
-                                </p>
+                                {isContractReacceptance ? (
+                                    <>
+                                        <p className="font-medium">Contrato atualizado — novo aceite necessário</p>
+                                        <p className="mt-1 text-amber-200/90">
+                                            Houve uma alteração no contrato comercial do seu plano atual{' '}
+                                            <strong className="text-amber-100">{currentPlanLabel}</strong>
+                                            {billing?.billing_contract_version
+                                                ? ` (versão anterior aceita: v${billing.billing_contract_version})`
+                                                : ''}
+                                            . O plano permanece o mesmo e <strong className="text-amber-100">não há cobrança</strong> neste
+                                            passo — apenas revise e aceite a nova versão do contrato.
+                                        </p>
+                                        {billing?.billing_plan_accepted_at && (
+                                            <p className="mt-2 text-xs text-amber-200/70">
+                                                Último aceite em{' '}
+                                                {format(
+                                                    new Date(billing.billing_plan_accepted_at),
+                                                    "dd/MM/yyyy 'às' HH:mm",
+                                                    { locale: ptBR },
+                                                )}
+                                                .
+                                            </p>
+                                        )}
+                                        <Button
+                                            type="button"
+                                            className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                                            disabled={!currentPlan || isSubmitting}
+                                            onClick={openCurrentPlanReacceptance}
+                                        >
+                                            Revisar e aceitar contrato
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="font-medium">Confirmação necessária</p>
+                                        <p className="mt-1 text-amber-200/90">
+                                            Confirme o plano e aceite o contrato para criar eventos. Empresas já
+                                            cadastradas foram migradas para comissão sobre ingressos — basta
+                                            confirmar abaixo.
+                                        </p>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}
@@ -421,6 +483,12 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                         </div>
                     )}
 
+                    {isContractReacceptance ? (
+                        <p className="text-sm text-gray-400 border border-yellow-500/20 rounded-lg p-3 bg-black/40">
+                            Enquanto o novo contrato não for aceito, a troca de plano fica pausada. Use o botão{' '}
+                            <strong className="text-yellow-500">Revisar e aceitar contrato</strong> acima.
+                        </p>
+                    ) : (
                     <div className="grid gap-4 md:grid-cols-2">
                         {BILLING_PLANS.map((plan) => {
                             const isCurrent = currentPlan === plan.code;
@@ -453,6 +521,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                             );
                         })}
                     </div>
+                    )}
                 </CardContent>
             </Card>
 
@@ -472,7 +541,9 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                             {pendingDefinition?.label ?? 'Contrato do plano'}
                         </DialogTitle>
                         <DialogDescription className="text-gray-400">
-                            Leia e aceite o contrato vinculado a este plano.
+                            {isContractReacceptance && pendingPlan === currentPlan
+                                ? 'O contrato deste plano foi atualizado. Leia a nova versão até o final e aceite para continuar.'
+                                : 'Leia e aceite o contrato vinculado a este plano.'}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -510,7 +581,9 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                     className="mt-1 border-cyan-500/50 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-black"
                                 />
                                 <span className="text-sm text-gray-300">
-                                    Li e aceito os termos deste contrato e do plano selecionado.
+                                    {isContractReacceptance && pendingPlan === currentPlan
+                                        ? 'Li e aceito a nova versão deste contrato. Meu plano comercial permanece o mesmo.'
+                                        : 'Li e aceito os termos deste contrato e do plano selecionado.'}
                                 </span>
                             </label>
                         </>
@@ -539,6 +612,8 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                         >
                             {isSubmitting ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : isContractReacceptance && pendingPlan === currentPlan ? (
+                                'Aceitar novo contrato'
                             ) : (
                                 'Confirmar e salvar'
                             )}

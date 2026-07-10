@@ -121,7 +121,7 @@ const ManagerListingMonthlyBilling: React.FC = () => {
                 <Button
                     variant="outline"
                     onClick={() => navigate('/manager/reports')}
-                    className="mb-6 border-yellow-500/30 text-yellow-500"
+                    className="mb-6 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar
@@ -154,7 +154,7 @@ const ManagerListingMonthlyBilling: React.FC = () => {
                 <Button
                     variant="outline"
                     onClick={() => navigate('/manager/reports')}
-                    className="border-yellow-500/30 text-yellow-500"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar

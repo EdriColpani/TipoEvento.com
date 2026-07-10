@@ -55,8 +55,10 @@ export function buildMapSearchQuery(params: EventMapQuery): string {
   if (params.lat != null && params.lng != null && Number.isFinite(params.lat) && Number.isFinite(params.lng)) {
     return `${params.lat},${params.lng}`;
   }
-  const parts = [params.address, params.location].map((s) => (s ?? '').trim()).filter(Boolean);
-  return parts.join(', ');
+  // Endereço cadastrado tem prioridade; não misturar com nome fantasia.
+  const address = (params.address ?? '').trim();
+  if (address) return address;
+  return (params.location ?? '').trim();
 }
 
 export function buildGoogleMapsEmbedUrl(params: EventMapQuery): string | null {
@@ -78,10 +80,66 @@ export function buildGoogleMapsOpenUrl(params: EventMapQuery): string | null {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
-export function buildGoogleMapsDirectionsUrl(params: EventMapQuery): string | null {
+export function buildGoogleMapsDirectionsUrl(
+  params: EventMapQuery & { originLat?: number | null; originLng?: number | null },
+): string | null {
   const destination = buildMapSearchQuery(params);
   if (!destination) return null;
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+
+  const url = new URL('https://www.google.com/maps/dir/');
+  url.searchParams.set('api', '1');
+  url.searchParams.set('destination', destination);
+  url.searchParams.set('travelmode', 'driving');
+
+  if (
+    params.originLat != null &&
+    params.originLng != null &&
+    Number.isFinite(params.originLat) &&
+    Number.isFinite(params.originLng)
+  ) {
+    url.searchParams.set('origin', `${params.originLat},${params.originLng}`);
+  }
+
+  return url.toString();
+}
+
+/** Obtém a posição atual do cliente (com timeout) ou null se negar/falhar. */
+export function getCurrentPositionCoords(timeoutMs = 8_000): Promise<{ lat: number; lng: number } | null> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(null), timeoutMs);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        window.clearTimeout(timer);
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => {
+        window.clearTimeout(timer);
+        resolve(null);
+      },
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 60_000 },
+    );
+  });
+}
+
+/** Abre Google Maps com rota da localização do cliente até o destino. */
+export async function openGoogleMapsRouteFromUser(params: EventMapQuery): Promise<boolean> {
+  const destination = buildMapSearchQuery(params);
+  if (!destination) return false;
+
+  const origin = await getCurrentPositionCoords();
+  const url = buildGoogleMapsDirectionsUrl({
+    ...params,
+    originLat: origin?.lat,
+    originLng: origin?.lng,
+  });
+  if (!url) return false;
+
+  window.open(url, '_blank', 'noopener,noreferrer');
+  return true;
 }
 
 let loadPromise: Promise<void> | null = null;

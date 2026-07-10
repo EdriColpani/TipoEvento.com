@@ -1,5 +1,5 @@
-import type { CompanyBillingFields } from '@/constants/billing-plans';
-import { isCompanyBillingReady } from '@/constants/billing-plans';
+import type { BillingPlanCode, CompanyBillingFields } from '@/constants/billing-plans';
+import { getBillingPlanLabel, isCompanyBillingReady } from '@/constants/billing-plans';
 
 /** Perfil da empresa — aba Plano e cobrança (aceite de contrato). */
 export const MANAGER_BILLING_SETUP_PATH = '/manager/settings/company-profile?tab=billing';
@@ -29,4 +29,44 @@ export function requiresManagerCompanyBillingAcceptance(
 ): boolean {
     if (isAdminMaster || !isManagerPro || !companyId || !billingLoaded) return false;
     return !isCompanyBillingReady(billing);
+}
+
+/**
+ * Reaceite: empresa já tinha plano e a plataforma pediu novo aceite (ex.: contrato atualizado).
+ * Diferente da confirmação inicial / migração de plano.
+ */
+export function isBillingContractReacceptance(
+    billing: CompanyBillingFields | null | undefined,
+): boolean {
+    if (!billing?.requires_billing_reacceptance) return false;
+    return Boolean(billing.billing_plan);
+}
+
+export function getBillingGateBannerMessage(
+    billing: CompanyBillingFields | null | undefined,
+): string {
+    if (isBillingContractReacceptance(billing)) {
+        const planLabel = getBillingPlanLabel(billing?.billing_plan as BillingPlanCode | null);
+        return (
+            `O contrato do seu plano atual (${planLabel}) foi atualizado e precisa ser aceito novamente. ` +
+            'Abra a aba Plano e cobrança, revise o texto e confirme o aceite para liberar o Dashboard e o restante do menu.'
+        );
+    }
+    return (
+        'Para liberar o Dashboard e o restante do menu, confirme o plano e aceite o contrato na aba Plano e cobrança abaixo.'
+    );
+}
+
+export function getBillingGateToastMessage(
+    billing: CompanyBillingFields | null | undefined,
+): string {
+    if (isBillingContractReacceptance(billing)) {
+        const planLabel = getBillingPlanLabel(billing?.billing_plan as BillingPlanCode | null);
+        return (
+            `Contrato do plano ${planLabel} atualizado. Aceite a nova versão em Plano e cobrança para continuar.`
+        );
+    }
+    return (
+        'Confirme o plano e aceite o contrato da empresa na aba Plano e cobrança para acessar o painel do gestor.'
+    );
 }

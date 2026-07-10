@@ -27,6 +27,15 @@ function maskClientLabel(email: string | null | undefined, fullName: string | nu
   return 'Cliente EventFest';
 }
 
+function profileDisplayName(row: {
+  first_name?: string | null;
+  last_name?: string | null;
+} | null): string | null {
+  if (!row) return null;
+  const name = `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim();
+  return name || null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -68,6 +77,7 @@ serve(async (req) => {
 
     let resolvedUserId: string | null = null;
     let normalizedWalletToken = '';
+    let profileName: string | null = null;
 
     const looksLikeWalletQr = rawInput.toUpperCase().startsWith(WALLET_QR_PREFIX);
     if (looksLikeWalletQr) {
@@ -81,12 +91,13 @@ serve(async (req) => {
       resolvedUserId = verified.userId;
       normalizedWalletToken = rawInput;
     } else {
+      // Código público do cliente — eq + UPPER evita ILIKE (lento / sem índice).
       const code = rawInput.toUpperCase();
       const { data: profileByCode, error: profileByCodeErr } = await supabaseService
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, first_name, last_name')
         .eq('tipo_usuario_id', 3)
-        .ilike('public_id', code)
+        .eq('public_id', code)
         .maybeSingle();
       if (profileByCodeErr) throw profileByCodeErr;
 
@@ -98,39 +109,45 @@ serve(async (req) => {
       }
 
       resolvedUserId = profileByCode.id as string;
+      profileName = profileDisplayName(profileByCode);
       const signed = await signWalletQrToken(resolvedUserId);
       normalizedWalletToken = signed.token;
     }
 
-    const { data: pdvCtx, error: ctxErr } = await supabaseAnon.rpc('get_establishment_pdv_context', {
-      p_establishment_id: establishmentId,
-    });
-    if (ctxErr) throw ctxErr;
-    if (!pdvCtx?.ready) {
+    // PDV + saldo em paralelo (antes eram sequenciais).
+    const [pdvRes, accountRes, profileRes] = await Promise.all([
+      supabaseAnon.rpc('get_establishment_pdv_context', {
+        p_establishment_id: establishmentId,
+      }),
+      supabaseService
+        .from('client_credit_accounts')
+        .select('balance_cached, status, currency')
+        .eq('user_id', resolvedUserId)
+        .maybeSingle(),
+      profileName
+        ? Promise.resolve({ data: null, error: null })
+        : supabaseService
+            .from('profiles')
+            .select('first_name, last_name')
+            .eq('id', resolvedUserId)
+            .maybeSingle(),
+    ]);
+
+    if (pdvRes.error) throw pdvRes.error;
+    if (!pdvRes.data?.ready) {
       return new Response(
         JSON.stringify({ error: 'Este ponto de venda não está habilitado para crédito EventFest.' }),
         { status: 403, headers: corsHeaders },
       );
     }
 
-    const { data: account, error: accErr } = await supabaseService
-      .from('client_credit_accounts')
-      .select('balance_cached, status, currency')
-      .eq('user_id', resolvedUserId)
-      .maybeSingle();
-    if (accErr) throw accErr;
+    if (accountRes.error) throw accountRes.error;
+    const account = accountRes.data;
 
-    let profile: { full_name?: string | null; email?: string | null } | null = null;
-    try {
-      const { data: profileRow } = await supabaseService
-        .from('profiles')
-        .select('full_name, email')
-        .eq('id', resolvedUserId)
-        .maybeSingle();
-      profile = (profileRow as { full_name?: string | null; email?: string | null } | null) ?? null;
-    } catch {
-      // Não bloqueia a identificação do cliente por falha de campo opcional.
-      profile = null;
+    if (!profileName && profileRes.data) {
+      profileName = profileDisplayName(
+        profileRes.data as { first_name?: string | null; last_name?: string | null },
+      );
     }
 
     if (account?.status && account.status !== 'active') {
@@ -147,10 +164,7 @@ serve(async (req) => {
         walletToken: normalizedWalletToken,
         balance: Number(account?.balance_cached ?? 0),
         currency: account?.currency ?? 'BRL',
-        clientLabel: maskClientLabel(
-          profile?.email as string | undefined,
-          profile?.full_name as string | undefined,
-        ),
+        clientLabel: maskClientLabel(undefined, profileName),
       }),
       { status: 200, headers: corsHeaders },
     );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,7 +14,7 @@ import { Loader2, Building, ArrowLeft } from 'lucide-react';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { restGet } from '@/utils/supabase-rest';
+import { restGet, restPatch } from '@/utils/supabase-rest';
 import { withTimeout } from '@/utils/promise-timeout';
 import CompanyForm, { createCompanySchema, CompanyFormData } from '@/components/CompanyForm';
 import ManagerCompanyTabs from '@/components/ManagerCompanyTabs'; // Importando o novo componente
@@ -96,6 +97,7 @@ type CompanyProfileData = z.infer<typeof companyProfileSchema> & { id?: string }
 
 const ManagerCompanyProfile: React.FC = () => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const { userId, authPending, sessionReady } = usePageAuth();
     const [isFetching, setIsFetching] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -265,19 +267,13 @@ const ManagerCompanyProfile: React.FC = () => {
         };
 
         try {
-            // Update existing profile
-            const { error } = await supabase
-                .from('companies')
-                .update(dataToSave)
-                .eq('id', companyId);
+            await restPatch(
+                `companies?id=eq.${encodeURIComponent(companyId)}`,
+                dataToSave,
+                15_000,
+            );
 
-            if (error) {
-                // Check for unique constraint violation (CNPJ already exists)
-                if (error.code === '23505' && error.message.includes('cnpj')) {
-                    throw new Error("Este CNPJ já está cadastrado em outra conta.");
-                }
-                throw error;
-            }
+            await queryClient.invalidateQueries({ queryKey: ['credit-acceptance-network'] });
 
             dismissToast(toastId);
             showSuccess("Perfil da Empresa salvo com sucesso!");
@@ -286,7 +282,14 @@ const ManagerCompanyProfile: React.FC = () => {
         } catch (e: any) {
             dismissToast(toastId);
             console.error("Supabase Save Error:", e);
-            showError(`Falha ao salvar perfil: ${e.message || 'Erro desconhecido'}`);
+            const message = String(e?.message || 'Erro desconhecido');
+            if (message.toLowerCase().includes('cnpj') && message.includes('23505')) {
+                showError('Este CNPJ já está cadastrado em outra conta.');
+            } else if (message.toLowerCase().includes('aborted') || message.toLowerCase().includes('timeout')) {
+                showError('Tempo esgotado ao salvar. Verifique a conexão e tente novamente.');
+            } else {
+                showError(`Falha ao salvar perfil: ${message}`);
+            }
         } finally {
             setIsSaving(false);
         }

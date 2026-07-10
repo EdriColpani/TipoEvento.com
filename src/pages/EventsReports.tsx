@@ -12,9 +12,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useEventsReport } from '@/hooks/use-events-report';
+import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import { showSuccess, showError } from '@/utils/toast';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 
@@ -31,16 +32,16 @@ const EventReports: React.FC = () => {
         to: undefined,
     });
 
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
-    const canAccess =
-        profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID ||
-        profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
+    const { tipoUsuarioId, isLoading: isLoadingRole, isFetched: roleFetched } = useUserRole(userId);
+    const tipo = normalizeTipoUsuarioId(tipoUsuarioId);
+    const isAdminMaster = tipo === ADMIN_MASTER_USER_TYPE_ID;
+    const canAccess = isAdminMaster || tipo === MANAGER_PRO_USER_TYPE_ID;
+    const queriesEnabled = Boolean(userId && roleFetched && canAccess);
 
     const { events: eventsForFilter, isLoading: isLoadingEventsForFilter } = useManagerEvents(
         userId,
         isAdminMaster,
-        { enabled: !!userId && !isLoadingProfile && !!profile && Boolean(canAccess) },
+        { enabled: queriesEnabled },
     );
 
     const formattedStartDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : null;
@@ -60,18 +61,20 @@ const EventReports: React.FC = () => {
         data: eventReports = [],
         isLoading: isLoadingEventReports,
         isError: isReportError,
-    } = useEventsReport(
-        userId,
-        isAdminMaster,
-        reportFilters,
-        Boolean(sessionReady && userId && !isLoadingProfile && canAccess),
-    );
+    } = useEventsReport(userId, isAdminMaster, reportFilters, queriesEnabled);
 
     useEffect(() => {
         if (isReportError) showError('Erro ao carregar relatório de eventos.');
     }, [isReportError]);
 
-    if (authPending) {
+    useEffect(() => {
+        if (roleFetched && userId && tipo != null && !canAccess) {
+            showError('Acesso negado. Você não tem permissão para acessar esta página.');
+            navigate('/manager/dashboard', { replace: true });
+        }
+    }, [roleFetched, userId, tipo, canAccess, navigate]);
+
+    if (authPending || (isLoadingRole && !roleFetched)) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
@@ -92,37 +95,8 @@ const EventReports: React.FC = () => {
         );
     }
 
-    if (isLoadingProfile) {
-        return (
-            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
-                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
-                <p>Carregando perfil...</p>
-            </div>
-        );
-    }
-
-    if (!profile) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20 px-4">
-                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Perfil não encontrado</h1>
-                <p className="text-gray-400 mb-6">Não foi possível carregar seu perfil.</p>
-                <Button onClick={() => navigate('/manager/dashboard')} className="bg-yellow-500 text-black hover:bg-yellow-600">
-                    Voltar ao Dashboard
-                </Button>
-            </div>
-        );
-    }
-
-    if (profile.tipo_usuario_id !== ADMIN_MASTER_USER_TYPE_ID && profile.tipo_usuario_id !== MANAGER_PRO_USER_TYPE_ID) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20">
-                <h1 className="text-3xl font-serif text-red-500 mb-4">Acesso Negado</h1>
-                <p className="text-gray-400">Você não tem permissão para acessar esta página.</p>
-                <Button onClick={() => navigate('/manager/dashboard')} className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600">
-                    Voltar para o Dashboard
-                </Button>
-            </div>
-        );
+    if (roleFetched && tipo != null && !canAccess) {
+        return null;
     }
 
     const handleExportCsv = () => {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { restGet } from '@/utils/supabase-rest';
 
 /** Pagamentos que contam como venda para relatório de público */
 const RECEIVABLE_PAID_OR =
@@ -77,28 +77,30 @@ export const fetchAudienceReport = async (
   isAdminMaster: boolean,
   filters: AudienceReportFilters,
 ): Promise<AudienceReportRow[]> => {
-  let q = supabase
-    .from('receivables')
-    .select('id, client_user_id, event_id, created_at, wristband_analytics_ids, events:event_id ( title )')
-    .not('client_user_id', 'is', null)
-    .or(RECEIVABLE_PAID_OR);
+  const params: string[] = [
+    'select=id,client_user_id,event_id,created_at,wristband_analytics_ids,events:event_id(title)',
+    'client_user_id=not.is.null',
+    `or=(${RECEIVABLE_PAID_OR})`,
+  ];
 
   if (!isAdminMaster) {
-    q = q.eq('manager_user_id', managerUserId);
+    params.push(`manager_user_id=eq.${encodeURIComponent(managerUserId)}`);
   }
   if (filters.eventId) {
-    q = q.eq('event_id', filters.eventId);
+    params.push(`event_id=eq.${encodeURIComponent(filters.eventId)}`);
   }
   if (filters.startDate) {
-    q = q.gte('created_at', `${filters.startDate}T00:00:00.000Z`);
+    params.push(`created_at=gte.${encodeURIComponent(`${filters.startDate}T00:00:00.000Z`)}`);
   }
   if (filters.endDate) {
-    q = q.lte('created_at', endOfDayIso(filters.endDate));
+    params.push(`created_at=lte.${encodeURIComponent(endOfDayIso(filters.endDate))}`);
   }
 
-  const { data: receivables, error: recErr } = await q;
-  if (recErr) throw recErr;
-  const rows = (receivables || []) as ReceivableRow[];
+  const receivables = await restGet<ReceivableRow[]>(
+    `receivables?${params.join('&')}`,
+    12_000,
+  );
+  const rows = receivables || [];
   if (rows.length === 0) return [];
 
   const byClient = new Map<
@@ -120,14 +122,12 @@ export const fetchAudienceReport = async (
   }
 
   const clientIds = [...byClient.keys()];
-  const { data: profiles, error: profErr } = await supabase
-    .from('profiles')
-    .select('id, first_name, last_name, cpf, gender, birth_date')
-    .in('id', clientIds);
+  const profiles = await restGet<ProfileRow[]>(
+    `profiles?select=id,first_name,last_name,cpf,gender,birth_date&id=in.(${clientIds.map(encodeURIComponent).join(',')})`,
+    12_000,
+  );
 
-  if (profErr) throw profErr;
-
-  const profileMap = new Map((profiles || []).map((p: ProfileRow) => [p.id, p]));
+  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
 
   const result: AudienceReportRow[] = [];
 
@@ -178,6 +178,8 @@ export const useAudienceReport = (
     queryKey: ['audience_report', managerUserId, isAdminMaster, filters],
     queryFn: () => fetchAudienceReport(managerUserId!, isAdminMaster, filters),
     enabled: enabled && !!managerUserId,
-    staleTime: 60_000,
+    staleTime: 30_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
 };

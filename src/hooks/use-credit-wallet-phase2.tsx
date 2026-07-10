@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 export type CreditWalletStatus = {
     module_enabled: boolean;
@@ -36,6 +36,9 @@ export type CreditAcceptanceEvent = {
     event_date: string;
     event_time: string | null;
     location: string | null;
+    address?: string | null;
+    address_lat?: number | null;
+    address_lng?: number | null;
     company_id: string;
     company_name: string;
 };
@@ -47,6 +50,10 @@ export type CreditAcceptanceEstablishment = {
     company_id: string;
     company_name: string;
     event_title: string | null;
+    location?: string | null;
+    address?: string | null;
+    address_lat?: number | null;
+    address_lng?: number | null;
 };
 
 export type CreditAcceptanceNetwork = {
@@ -57,19 +64,30 @@ export type CreditAcceptanceNetwork = {
 };
 
 async function fetchWalletStatus(): Promise<CreditWalletStatus> {
-    const { data, error } = await supabase.rpc('get_credit_wallet_status');
-    if (error) throw error;
+    const data = await callRpcRest<unknown>('get_credit_wallet_status', {}, 12_000);
     return normalizeWalletStatus(data);
 }
 
 async function fetchAcceptanceNetwork(): Promise<CreditAcceptanceNetwork> {
-    const { data, error } = await supabase.rpc('list_credit_acceptance_network');
-    if (error) throw error;
-    const raw = data as CreditAcceptanceNetwork;
+    const raw = await callRpcRest<CreditAcceptanceNetwork>('list_credit_acceptance_network', {}, 15_000);
+    const events = Array.isArray(raw?.events) ? raw.events : [];
+    const establishments = (Array.isArray(raw?.establishments) ? raw.establishments : []).map((est) => ({
+        ...est,
+        address: typeof est.address === 'string' && est.address.trim() ? est.address.trim() : null,
+        location: typeof est.location === 'string' && est.location.trim() ? est.location.trim() : null,
+        address_lat: est.address_lat != null ? Number(est.address_lat) : null,
+        address_lng: est.address_lng != null ? Number(est.address_lng) : null,
+    }));
     return {
         module_enabled: Boolean(raw?.module_enabled),
-        events: Array.isArray(raw?.events) ? raw.events : [],
-        establishments: Array.isArray(raw?.establishments) ? raw.establishments : [],
+        events: events.map((ev) => ({
+            ...ev,
+            address: typeof ev.address === 'string' && ev.address.trim() ? ev.address.trim() : null,
+            location: typeof ev.location === 'string' && ev.location.trim() ? ev.location.trim() : null,
+            address_lat: ev.address_lat != null ? Number(ev.address_lat) : null,
+            address_lng: ev.address_lng != null ? Number(ev.address_lng) : null,
+        })),
+        establishments,
         message: raw?.message ?? null,
     };
 }
@@ -87,7 +105,8 @@ export function useCreditAcceptanceNetwork(enabled = true) {
         queryKey: ['credit-acceptance-network'],
         queryFn: fetchAcceptanceNetwork,
         enabled,
-        staleTime: 120_000,
+        staleTime: 30_000,
+        refetchOnMount: 'always',
     });
 }
 
@@ -117,13 +136,19 @@ export function useCreditTopupPolling({ orderId, active, onSettled }: TopupPollO
 
         const tick = async () => {
             attemptsRef.current += 1;
-            const { data, error } = await supabase.rpc('get_credit_topup_order_status', {
-                p_order_id: orderId,
-            });
-            if (!error && data && (data as { status?: string }).status === 'paid') {
-                setIsPolling(false);
-                onSettledRef.current();
-                return true;
+            try {
+                const data = await callRpcRest<{ status?: string }>(
+                    'get_credit_topup_order_status',
+                    { p_order_id: orderId },
+                    8_000,
+                );
+                if (data?.status === 'paid') {
+                    setIsPolling(false);
+                    onSettledRef.current();
+                    return true;
+                }
+            } catch {
+                /* timeout/rede: tenta de novo no próximo tick */
             }
             if (attemptsRef.current >= maxAttempts) {
                 setIsPolling(false);

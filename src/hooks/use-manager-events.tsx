@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
+import { fetchEventsVisibleToGestorRest } from '@/utils/manager-events-scope';
+import { restGet } from '@/utils/supabase-rest';
 
 export interface ManagerEvent {
     id: string;
@@ -44,11 +44,11 @@ function dedupeGestorRows<T extends { title: string; date: string | null; time: 
 
 const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promise<ManagerEvent[]> => {
     if (!userId) {
-        console.warn("Attempted to fetch manager events without a userId.");
+        console.warn('Attempted to fetch manager events without a userId.');
         return [];
     }
 
-    let rows = await fetchEventsVisibleToGestor(supabase, userId, isAdminMaster);
+    let rows = await fetchEventsVisibleToGestorRest(userId, isAdminMaster);
     if (!isAdminMaster) {
         rows = dedupeGestorRows(rows);
     }
@@ -61,17 +61,20 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
             ),
         ];
         if (ids.length > 0) {
-            const { data: companies, error: coErr } = await supabase
-                .from('companies')
-                .select('id, corporate_name, trade_name')
-                .in('id', ids);
-            if (!coErr && companies) {
+            try {
+                const inList = ids.map((id) => encodeURIComponent(id)).join(',');
+                const companies = await restGet<Array<{ id: string; corporate_name?: string; trade_name?: string }>>(
+                    `companies?select=id,corporate_name,trade_name&id=in.(${inList})`,
+                    8_000,
+                );
                 companyNameById = Object.fromEntries(
                     companies.map((c) => [
-                        c.id as string,
+                        c.id,
                         String(c.trade_name || c.corporate_name || '').trim(),
                     ]),
                 );
+            } catch (error) {
+                console.warn('[useManagerEvents] nomes de empresa indisponíveis:', error);
             }
         }
     }
@@ -118,10 +121,12 @@ export const useManagerEvents = (
         options?.enabled !== undefined ? Boolean(options.enabled) && !!userId : !!userId;
 
     const query = useQuery({
-        queryKey: ['managerEvents', userId, isAdminMaster], // Adiciona isAdminMaster à chave de cache
+        queryKey: ['managerEvents', userId, isAdminMaster],
         queryFn: () => fetchManagerEvents(userId!, isAdminMaster),
         enabled: enabledBase,
-        staleTime: 1000 * 60 * 1, // 1 minute
+        staleTime: 1000 * 60,
+        retry: 1,
+        refetchOnWindowFocus: false,
     });
 
     return {

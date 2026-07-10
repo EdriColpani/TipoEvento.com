@@ -59,6 +59,37 @@ export async function restGet<T>(
     }
 }
 
+/** GET REST com token se houver sessão; senão anon (vitrine / detalhe de evento). */
+export async function restGetAuthOrPublic<T>(
+    path: string,
+    timeoutMs = 10_000,
+): Promise<T> {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    const token = readCachedAuthSession().accessToken;
+
+    try {
+        const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+            method: 'GET',
+            signal: controller.signal,
+            headers: {
+                apikey: supabaseAnonKey,
+                Authorization: `Bearer ${token || supabaseAnonKey}`,
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = (await response.json().catch(() => null)) as T;
+        if (!response.ok) {
+            throw normalizeRestError(response, data, 'Erro ao consultar dados.');
+        }
+        return data;
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
 export async function restPost<T>(
     path: string,
     body: Record<string, unknown> | Record<string, unknown>[],
@@ -124,6 +155,11 @@ export async function restPatch<T>(
         }
 
         return (await response.json().catch(() => ({}))) as T;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Tempo esgotado ao atualizar dados.');
+        }
+        throw error;
     } finally {
         window.clearTimeout(timer);
     }

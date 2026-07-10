@@ -73,3 +73,13 @@ export async function callRpcRest<T>(
 
     return postRpc<T>(fn, args, token, timeoutMs);
 }
+
+/** RPC com sessão se houver; senão anon (páginas públicas). */
+export async function callRpcAuthOrPublicRest<T>(
+    fn: string,
+    args: Record<string, unknown>,
+    timeoutMs = 15_000,
+): Promise<T> {
+    const token = getAuthAccessToken();
+    return postRpc<T>(fn, args, token || supabaseAnonKey, timeoutMs);
+}

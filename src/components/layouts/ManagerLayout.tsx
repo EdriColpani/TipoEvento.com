@@ -35,6 +35,8 @@ import {
     isManagerNavItemLocked,
     isManagerPathAllowedWithoutBilling,
     MANAGER_BILLING_SETUP_PATH,
+    getBillingGateBannerMessage,
+    getBillingGateToastMessage,
     requiresManagerCompanyBillingAcceptance,
 } from '@/constants/manager-billing-gate';
 import {
@@ -150,12 +152,10 @@ const ManagerLayout: React.FC = () => {
         }
         if (!billingGateToastShown.current) {
             billingGateToastShown.current = true;
-            showError(
-                'Confirme o plano e aceite o contrato da empresa na aba Plano e cobrança para acessar o painel do gestor.',
-            );
+            showError(getBillingGateToastMessage(billing));
         }
         navigate(MANAGER_BILLING_SETUP_PATH, { replace: true });
-    }, [billingLoaded, requiresContractAcceptance, location.pathname, navigate]);
+    }, [billingLoaded, requiresContractAcceptance, location.pathname, navigate, billing]);
 
     useEffect(() => {
         if (!needsPlanFeatureCheck || isLoadingPlanFeatures) {
@@ -930,10 +930,7 @@ const ManagerLayout: React.FC = () => {
                             <span className="shrink-0 text-amber-400" aria-hidden>
                                 ⚠
                             </span>
-                            <p>
-                                Para liberar o <strong>Dashboard</strong> e o restante do menu, confirme o
-                                plano e aceite o contrato na aba <strong>Plano e cobrança</strong> abaixo.
-                            </p>
+                            <p>{getBillingGateBannerMessage(billing)}</p>
                         </div>
                     )}
                 <PlanFeatureRouteGuard>

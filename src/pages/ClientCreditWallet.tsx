@@ -10,6 +10,7 @@ import {
     AlertTriangle,
     Store,
     CalendarDays,
+    Navigation,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +29,7 @@ import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { openGoogleMapsRouteFromUser } from '@/utils/google-maps';
 import WalletQrModal from '@/components/WalletQrModal';
 import WalletBiometricSection from '@/components/WalletBiometricSection';
 import WalletPwaInstallHint from '@/components/WalletPwaInstallHint';
@@ -49,10 +51,16 @@ const ClientCreditWallet: React.FC = () => {
     const userLabel = userEmail ?? userId;
     const { balance, isBalanceLoading, isLedgerLoading, ledger, refresh, status: accountStatus } = useClientCreditWallet();
     const { data: walletStatus, isLoading: statusLoading } = useCreditWalletStatus();
-    const { data: network, isLoading: networkLoading } = useCreditAcceptanceNetwork(true);
+    const {
+        data: network,
+        isLoading: networkLoading,
+        isError: networkError,
+        refetch: refetchNetwork,
+    } = useCreditAcceptanceNetwork(true);
     const [customAmount, setCustomAmount] = useState('');
     const [isPaying, setIsPaying] = useState(false);
     const [walletQrOpen, setWalletQrOpen] = useState(false);
+    const [routingId, setRoutingId] = useState<string | null>(null);
 
     const returnStatus = searchParams.get('status');
     const topupId = searchParams.get('topup_id');
@@ -156,6 +164,50 @@ const ClientCreditWallet: React.FC = () => {
         return null;
     }, [networkLoading, networkEmpty]);
 
+    const handleOpenRoute = async (
+        id: string,
+        destination: {
+            location?: string | null;
+            address?: string | null;
+            lat?: number | null;
+            lng?: number | null;
+        },
+    ) => {
+        setRoutingId(id);
+        try {
+            // Garante dados frescos (endereço da empresa/estabelecimento recém-salvo).
+            const fresh = await refetchNetwork();
+            const freshNetwork = fresh.data ?? network;
+            const freshEst = freshNetwork?.establishments?.find((e) => e.establishment_id === id);
+            const freshEv = freshNetwork?.events?.find((e) => e.event_id === id);
+
+            const address =
+                (freshEst?.address ?? freshEv?.address ?? destination.address ?? '').trim() || null;
+            const location =
+                (freshEst?.location ?? freshEv?.location ?? destination.location ?? '').trim() || null;
+            const lat = freshEst?.address_lat ?? freshEv?.address_lat ?? destination.lat ?? null;
+            const lng = freshEst?.address_lng ?? freshEv?.address_lng ?? destination.lng ?? null;
+
+            if (!address && !location && (lat == null || lng == null)) {
+                showError('Este local ainda não tem endereço cadastrado. Peça ao estabelecimento para completar o perfil.');
+                return;
+            }
+
+            const opened = await openGoogleMapsRouteFromUser({
+                address,
+                // Só usa location se não houver endereço completo (evita mandar nome fantasia).
+                location: address ? null : location,
+                lat,
+                lng,
+            });
+            if (!opened) {
+                showError('Não foi possível montar a rota. Verifique o endereço do local.');
+            }
+        } finally {
+            setRoutingId(null);
+        }
+    };
+
     return (
         <ClientAccountPageShell
             title="Carteira EventFest"
@@ -258,6 +310,21 @@ const ClientCreditWallet: React.FC = () => {
                         <div className="flex justify-center py-6">
                             <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
                         </div>
+                    ) : networkError ? (
+                        <div className="flex flex-col items-center gap-3 py-4">
+                            <p className="text-gray-400 text-sm text-center">
+                                Não foi possível carregar a rede de aceite.
+                            </p>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                onClick={() => void refetchNetwork()}
+                            >
+                                Tentar novamente
+                            </Button>
+                        </div>
                     ) : acceptanceHint ? (
                         <p className="text-gray-500 text-sm text-center py-4">{acceptanceHint}</p>
                     ) : (
@@ -276,20 +343,44 @@ const ClientCreditWallet: React.FC = () => {
                                                 key={ev.event_id}
                                                 className="rounded-lg border border-yellow-500/20 p-3 hover:border-yellow-500/40 transition-colors"
                                             >
-                                                <button
-                                                    type="button"
-                                                    className="text-left w-full"
-                                                    onClick={() => navigate(`/events/${ev.event_id}`)}
-                                                >
-                                                    <p className="text-white font-medium">{ev.title}</p>
-                                                    <p className="text-gray-500 text-xs mt-1">
-                                                        {ev.company_name}
-                                                        {ev.event_date
-                                                            ? ` · ${formatEventDateForDisplay(ev.event_date)}`
-                                                            : ''}
-                                                        {ev.location ? ` · ${ev.location}` : ''}
-                                                    </p>
-                                                </button>
+                                                <div className="flex items-start gap-2">
+                                                    <button
+                                                        type="button"
+                                                        className="text-left flex-1 min-w-0"
+                                                        onClick={() => navigate(`/events/${ev.event_id}`)}
+                                                    >
+                                                        <p className="text-white font-medium">{ev.title}</p>
+                                                        <p className="text-gray-500 text-xs mt-1">
+                                                            {ev.company_name}
+                                                            {ev.event_date
+                                                                ? ` · ${formatEventDateForDisplay(ev.event_date)}`
+                                                                : ''}
+                                                            {ev.location ? ` · ${ev.location}` : ''}
+                                                        </p>
+                                                    </button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 shrink-0 disabled:opacity-50"
+                                                        disabled={routingId === ev.event_id}
+                                                        onClick={() =>
+                                                            void handleOpenRoute(ev.event_id, {
+                                                                location: ev.location,
+                                                                address: ev.address,
+                                                                lat: ev.address_lat,
+                                                                lng: ev.address_lng,
+                                                            })
+                                                        }
+                                                    >
+                                                        {routingId === ev.event_id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Navigation className="h-4 w-4" />
+                                                        )}
+                                                        <span className="sr-only">Como chegar</span>
+                                                    </Button>
+                                                </div>
                                             </li>
                                         ))}
                                     </ul>
@@ -306,11 +397,42 @@ const ClientCreditWallet: React.FC = () => {
                                                 key={est.establishment_id}
                                                 className="rounded-lg border border-yellow-500/20 p-3"
                                             >
-                                                <p className="text-white font-medium">{est.name}</p>
-                                                <p className="text-gray-500 text-xs mt-1">
-                                                    {est.company_name}
-                                                    {est.event_title ? ` · ${est.event_title}` : ''}
-                                                </p>
+                                                <div className="flex items-start gap-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-white font-medium">{est.name}</p>
+                                                        <p className="text-gray-500 text-xs mt-1">
+                                                            {est.company_name}
+                                                            {est.event_title ? ` · ${est.event_title}` : ''}
+                                                            {est.address || est.location
+                                                                ? ` · ${est.address || est.location}`
+                                                                : ''}
+                                                        </p>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 shrink-0 disabled:opacity-50"
+                                                        disabled={routingId === est.establishment_id}
+                                                        onClick={() =>
+                                                            void handleOpenRoute(est.establishment_id, {
+                                                                location: est.location,
+                                                                address: est.address,
+                                                                lat: est.address_lat,
+                                                                lng: est.address_lng,
+                                                            })
+                                                        }
+                                                    >
+                                                        {routingId === est.establishment_id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <>
+                                                                <Navigation className="h-4 w-4 mr-1" />
+                                                                Mapa
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                </div>
                                             </li>
                                         ))}
                                     </ul>
