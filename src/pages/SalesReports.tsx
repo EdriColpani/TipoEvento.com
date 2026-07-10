@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, BarChart, Download, DollarSign, Loader2, TrendingUp } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { useSalesReport } from '@/hooks/use-sales-report';
+import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import { showSuccess, showError } from '@/utils/toast';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
@@ -22,14 +23,15 @@ const SalesReports: React.FC = () => {
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
 
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
-    const canAccess =
-        profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID ||
-        profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
+    const { tipoUsuarioId, isLoading: isLoadingRole, isFetched: roleFetched } = useUserRole(userId);
+    const tipo = normalizeTipoUsuarioId(tipoUsuarioId);
+    const isAdminMaster = tipo === ADMIN_MASTER_USER_TYPE_ID;
+    const canAccess = isAdminMaster || tipo === MANAGER_PRO_USER_TYPE_ID;
+
+    const queriesEnabled = Boolean(userId && roleFetched && canAccess);
 
     const { events, isLoading: isLoadingEvents } = useManagerEvents(userId, isAdminMaster, {
-        enabled: !!userId && !isLoadingProfile && !!profile && Boolean(canAccess),
+        enabled: queriesEnabled,
     });
 
     const filters = useMemo(
@@ -41,17 +43,22 @@ const SalesReports: React.FC = () => {
         [selectedEventId, startDate, endDate],
     );
 
-    const queryEnabled = Boolean(canAccess && (isAdminMaster || !!userId));
-
     const {
         data: salesReports = [],
         isLoading: isLoadingSales,
         isError: isSalesError,
-    } = useSalesReport(userId, isAdminMaster, filters, queryEnabled);
+    } = useSalesReport(userId, isAdminMaster, filters, queriesEnabled);
 
     useEffect(() => {
         if (isSalesError) showError('Erro ao carregar relatório de vendas.');
     }, [isSalesError]);
+
+    useEffect(() => {
+        if (roleFetched && userId && tipo != null && !canAccess) {
+            showError('Acesso negado. Você não tem permissão para acessar esta página.');
+            navigate('/manager/dashboard', { replace: true });
+        }
+    }, [roleFetched, userId, tipo, canAccess, navigate]);
 
     if (authPending) {
         return (
@@ -74,7 +81,7 @@ const SalesReports: React.FC = () => {
         );
     }
 
-    if (isLoadingProfile) {
+    if (isLoadingRole && !roleFetched) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
@@ -83,27 +90,8 @@ const SalesReports: React.FC = () => {
         );
     }
 
-    if (!profile) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20 px-4">
-                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Perfil não encontrado</h1>
-                <Button onClick={() => navigate('/manager/dashboard')} className="bg-yellow-500 text-black hover:bg-yellow-600">
-                    Voltar ao Dashboard
-                </Button>
-            </div>
-        );
-    }
-
-    if (!canAccess) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20">
-                <h1 className="text-3xl font-serif text-red-500 mb-4">Acesso Negado</h1>
-                <p className="text-gray-400">Você não tem permissão para acessar esta página.</p>
-                <Button onClick={() => navigate('/manager/dashboard')} className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600">
-                    Voltar para o Dashboard
-                </Button>
-            </div>
-        );
+    if (roleFetched && tipo != null && !canAccess) {
+        return null;
     }
 
     const totalSalesValue = salesReports.reduce((acc, r) => acc + r.total_sales_value, 0);
@@ -172,15 +160,17 @@ const SalesReports: React.FC = () => {
                     <div>
                         <label htmlFor="event-filter" className="block text-sm font-medium text-gray-400 mb-2">Filtrar por Evento</label>
                         <Select onValueChange={(value) => setSelectedEventId(value === 'all' ? null : value)} value={selectedEventId || 'all'}>
-                            <SelectTrigger className="w-full bg-black/60 border-cyan-500/30 text-white focus:ring-cyan-400/40 h-10 [&_svg]:text-cyan-400">
-                                <SelectValue className="text-white" placeholder="Todos os Eventos" />
+                            <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10">
+                                <SelectValue placeholder="Todos os Eventos" />
                             </SelectTrigger>
-                            <SelectContent className="bg-black border-cyan-500/30 text-white">
+                            <SelectContent className="bg-black border border-yellow-500/30 text-white">
                                 <SelectItem value="all" className="cursor-pointer">Todos os Eventos</SelectItem>
                                 {isLoadingEvents ? (
                                     <SelectItem value="loading" disabled>Carregando eventos...</SelectItem>
+                                ) : events.length === 0 ? (
+                                    <SelectItem value="empty" disabled>Nenhum evento encontrado</SelectItem>
                                 ) : (
-                                    events?.map((event) => (
+                                    events.map((event) => (
                                         <SelectItem key={event.id} value={event.id} className="cursor-pointer">
                                             {event.title}
                                         </SelectItem>
@@ -271,11 +261,15 @@ const SalesReports: React.FC = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {(isLoadingSales) ? (
+                    {isLoadingSales ? (
                         <div className="text-center py-8 text-gray-500 flex items-center justify-center">
-                            <BarChart className="h-6 w-6 animate-pulse mr-2" /> Carregando dados de vendas...
+                            <Loader2 className="h-6 w-6 animate-spin text-yellow-500 mr-2" /> Carregando dados de vendas...
                         </div>
-                    ) : (salesReports && salesReports.length > 0) ? (
+                    ) : isSalesError ? (
+                        <div className="text-center py-8 text-red-400">
+                            Erro ao carregar detalhes. Tente recarregar a página.
+                        </div>
+                    ) : salesReports.length > 0 ? (
                         <div className="overflow-x-auto">
                             <Table className="min-w-full">
                                 <TableHeader>

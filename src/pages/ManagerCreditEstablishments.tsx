@@ -32,6 +32,7 @@ import {
 import { isHybridPlan, isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { showError, showSuccess } from '@/utils/toast';
+import { resolveEventGeoOnSave } from '@/utils/google-maps';
 
 type EventOption = { id: string; title: string };
 
@@ -41,6 +42,7 @@ const ManagerCreditEstablishments: React.FC = () => {
     const [events, setEvents] = useState<EventOption[]>([]);
     const [editing, setEditing] = useState<CreditEstablishment | null>(null);
     const [name, setName] = useState('');
+    const [address, setAddress] = useState('');
     const [eventId, setEventId] = useState<string>('none');
     const [acceptanceEnabled, setAcceptanceEnabled] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -86,6 +88,7 @@ const ManagerCreditEstablishments: React.FC = () => {
     const resetForm = () => {
         setEditing(null);
         setName('');
+        setAddress('');
         setEventId('none');
         setAcceptanceEnabled(true);
     };
@@ -100,6 +103,7 @@ const ManagerCreditEstablishments: React.FC = () => {
     const startEdit = (item: CreditEstablishment) => {
         setEditing(item);
         setName(item.name);
+        setAddress(item.address ?? '');
         setEventId(item.event_id ?? 'none');
         setAcceptanceEnabled(item.credit_acceptance_enabled);
     };
@@ -112,6 +116,26 @@ const ManagerCreditEstablishments: React.FC = () => {
         }
         setSaving(true);
         try {
+            let addressLat = editing?.address_lat ?? null;
+            let addressLng = editing?.address_lng ?? null;
+            let addressToSave = address.trim() || null;
+
+            if (addressToSave) {
+                try {
+                    const geo = await resolveEventGeoOnSave({
+                        address: addressToSave,
+                        location: name.trim(),
+                        address_lat: addressLat,
+                        address_lng: addressLng,
+                    });
+                    addressToSave = geo.address || addressToSave;
+                    addressLat = geo.address_lat ?? addressLat;
+                    addressLng = geo.address_lng ?? addressLng;
+                } catch {
+                    /* geocode opcional — não bloqueia o save */
+                }
+            }
+
             await saveCreditEstablishment({
                 companyId: company.id,
                 name: name.trim(),
@@ -119,6 +143,9 @@ const ManagerCreditEstablishments: React.FC = () => {
                 establishmentId: editing?.id,
                 creditAcceptanceEnabled: acceptanceEnabled,
                 active: true,
+                address: addressToSave,
+                addressLat,
+                addressLng,
             });
             showSuccess(editing ? 'Estabelecimento atualizado.' : 'Estabelecimento criado.');
             resetForm();
@@ -265,6 +292,15 @@ const ManagerCreditEstablishments: React.FC = () => {
                         />
                     </div>
                     <div>
+                        <Label className="text-gray-300">Endereço (para rota no mapa)</Label>
+                        <Input
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            placeholder="Ex.: Rua Exemplo, 100 — Centro, Cidade/UF"
+                            className="bg-black/60 border-yellow-500/30 text-white mt-1"
+                        />
+                    </div>
+                    <div>
                         <Label className="text-gray-300">Evento (opcional)</Label>
                         <Select value={eventId} onValueChange={setEventId}>
                             <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white mt-1">
@@ -326,6 +362,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                         <p className="text-white font-medium">{item.name}</p>
                                         <p className="text-xs text-gray-500">
                                             {item.event_title ? `Evento: ${item.event_title}` : 'Sem evento'}
+                                            {item.address ? ` · ${item.address}` : ''}
                                             {' · '}
                                             {item.active ? 'Ativo' : 'Inativo'}
                                         </p>

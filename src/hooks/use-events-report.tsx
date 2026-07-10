@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
+import { fetchEventsVisibleToGestorRest } from '@/utils/manager-events-scope';
 import { resolveManagerEventStatusLabel } from '@/utils/manager-event-status';
+import { restGet } from '@/utils/supabase-rest';
 
 export interface EventReportRow {
     event_id: string;
@@ -29,6 +29,10 @@ function chunks<T>(arr: T[], size: number): T[][] {
     const out: T[][] = [];
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
     return out;
+}
+
+function inFilter(ids: string[]): string {
+    return ids.map((id) => encodeURIComponent(id)).join(',');
 }
 
 /** Mesma ideia de ManagerEventsList + coluna legacy `status` (ex.: pending). */
@@ -91,12 +95,12 @@ async function loadCounterInventoryByEvent(eventIds: string[]) {
         return { generatedByEvent, soldByEvent, remainingByEvent };
     }
 
-    const { data, error } = await supabase
-        .from('batch_inventory')
-        .select('event_id, total, sold, reserved')
-        .in('event_id', eventIds);
-
-    if (error) throw error;
+    const data = await restGet<
+        Array<{ event_id: string; total: number | null; sold: number | null; reserved: number | null }>
+    >(
+        `batch_inventory?select=event_id,total,sold,reserved&event_id=in.(${inFilter(eventIds)})`,
+        12_000,
+    );
 
     for (const row of data ?? []) {
         const eventId = String(row.event_id);
@@ -126,30 +130,30 @@ async function loadLegacyAnalyticsByEvent(eventIds: string[]) {
         return { generatedByEvent, soldByEvent };
     }
 
-    const { data: wristbands, error: wErr } = await supabase
-        .from('wristbands')
-        .select('id, event_id')
-        .in('event_id', eventIds);
-    if (wErr) throw wErr;
+    const wristbands = await restGet<Array<{ id: string; event_id: string }>>(
+        `wristbands?select=id,event_id&event_id=in.(${inFilter(eventIds)})`,
+        12_000,
+    );
 
-    const wristbandIds = (wristbands || []).map((w: { id: string }) => w.id);
+    const wristbandIds = (wristbands || []).map((w) => w.id);
     const eventByWristband = new Map<string, string>(
-        (wristbands || []).map((w: { id: string; event_id: string }) => [w.id, w.event_id]),
+        (wristbands || []).map((w) => [w.id, w.event_id]),
     );
 
     for (const wbChunk of chunks(wristbandIds, 250)) {
         if (wbChunk.length === 0) continue;
-        const { data: analytics, error: aErr } = await supabase
-            .from('wristband_analytics')
-            .select('wristband_id, client_user_id')
-            .in('wristband_id', wbChunk);
-        if (aErr) throw aErr;
+        const analytics = await restGet<
+            Array<{ wristband_id: string; client_user_id: string | null }>
+        >(
+            `wristband_analytics?select=wristband_id,client_user_id&wristband_id=in.(${inFilter(wbChunk)})`,
+            12_000,
+        );
         for (const row of analytics || []) {
-            const wid = (row as { wristband_id: string }).wristband_id;
+            const wid = row.wristband_id;
             const ev = eventByWristband.get(wid);
             if (!ev) continue;
             generatedByEvent.set(ev, (generatedByEvent.get(ev) || 0) + 1);
-            const cid = (row as { client_user_id: string | null }).client_user_id;
+            const cid = row.client_user_id;
             if (cid != null && String(cid).trim() !== '') {
                 soldByEvent.set(ev, (soldByEvent.get(ev) || 0) + 1);
             }
@@ -164,7 +168,7 @@ export async function fetchEventsReport(
     isAdminMaster: boolean,
     filters: EventsReportFilters,
 ): Promise<EventReportRow[]> {
-    const scoped = await fetchEventsVisibleToGestor(supabase, managerUserId, isAdminMaster);
+    const scoped = await fetchEventsVisibleToGestorRest(managerUserId, isAdminMaster);
     let ids = scoped.map((r) => r.id);
     if (ids.length === 0) return [];
 
@@ -174,11 +178,11 @@ export async function fetchEventsReport(
     if (ids.length === 0) return [];
 
     const selectAttempts = [
-        'id, title, date, location, company_id, status, is_active, is_draft, inventory_mode',
-        'id, title, date, location, company_id, status, is_active, is_draft',
-        'id, title, date, location, company_id, status, is_active',
-        'id, title, date, location, company_id, is_active',
-        'id, title, date, location, company_id',
+        'id,title,date,location,company_id,status,is_active,is_draft,inventory_mode',
+        'id,title,date,location,company_id,status,is_active,is_draft',
+        'id,title,date,location,company_id,status,is_active',
+        'id,title,date,location,company_id,is_active',
+        'id,title,date,location,company_id',
     ];
 
     type EvRow = {
@@ -195,14 +199,17 @@ export async function fetchEventsReport(
 
     let eventRows: EvRow[] = [];
     let lastErr = '';
+    const idsIn = inFilter(ids);
     for (const sel of selectAttempts) {
-        const { data, error } = await supabase.from('events').select(sel).in('id', ids);
-        if (error) {
-            lastErr = error.message;
-            continue;
+        try {
+            eventRows = await restGet<EvRow[]>(
+                `events?select=${sel}&id=in.(${idsIn})`,
+                12_000,
+            );
+            break;
+        } catch (e) {
+            lastErr = e instanceof Error ? e.message : String(e);
         }
-        eventRows = (data || []) as EvRow[];
-        break;
     }
     if (eventRows.length === 0 && lastErr) {
         throw new Error(lastErr);
@@ -211,12 +218,11 @@ export async function fetchEventsReport(
     const companyIds = [...new Set(eventRows.map((e) => e.company_id).filter(Boolean))] as string[];
     const companyNameById = new Map<string, string>();
     if (companyIds.length > 0) {
-        const { data: comps, error: cErr } = await supabase
-            .from('companies')
-            .select('id, corporate_name')
-            .in('id', companyIds);
-        if (cErr) throw cErr;
-        (comps || []).forEach((c: { id: string; corporate_name: string | null }) => {
+        const comps = await restGet<Array<{ id: string; corporate_name: string | null }>>(
+            `companies?select=id,corporate_name&id=in.(${inFilter(companyIds)})`,
+            12_000,
+        );
+        (comps || []).forEach((c) => {
             companyNameById.set(c.id, c.corporate_name?.trim() || 'N/A');
         });
     }
@@ -279,7 +285,8 @@ export const useEventsReport = (
         queryKey: ['events_report', managerUserId, isAdminMaster, filters],
         queryFn: () => fetchEventsReport(managerUserId!, isAdminMaster, filters),
         enabled: Boolean(enabled && managerUserId),
-        staleTime: 60_000,
+        staleTime: 30_000,
         retry: 1,
+        refetchOnWindowFocus: false,
     });
 };

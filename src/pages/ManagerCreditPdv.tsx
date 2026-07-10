@@ -127,7 +127,7 @@ const ManagerCreditPdv: React.FC = () => {
     }, [establishmentId]);
 
     const resolveClientWithToken = async (tokenRaw: string) => {
-        const token = tokenRaw.trim();
+        const token = tokenRaw.trim().toUpperCase();
         if (!establishmentId) {
             showError('Selecione o ponto de venda antes de identificar o cliente.');
             return;
@@ -145,7 +145,7 @@ const ManagerCreditPdv: React.FC = () => {
                 walletToken?: string;
                 balance?: number;
                 clientLabel?: string;
-            }>('resolve-wallet-qr', { walletToken: token, establishmentId }, { timeoutMs: 15_000 });
+            }>('resolve-wallet-qr', { walletToken: token, establishmentId }, { timeoutMs: 12_000 });
             if (payload?.error) throw new Error(payload.error);
             const normalizedWalletToken = (payload.walletToken ?? token).trim();
             setWalletToken(normalizedWalletToken);
@@ -512,7 +512,7 @@ const ManagerCreditPdv: React.FC = () => {
                         <p className="text-gray-500 text-xs">Leitor USB, QR da carteira ou código do cliente (Enter confirma)</p>
                         <Input
                             value={walletToken}
-                            onChange={(e) => setWalletToken(e.target.value)}
+                            onChange={(e) => setWalletToken(e.target.value.toUpperCase())}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                     e.preventDefault();
@@ -520,9 +520,11 @@ const ManagerCreditPdv: React.FC = () => {
                                 }
                             }}
                             placeholder="EFW.... ou código do cliente"
-                            className="bg-black/60 border-yellow-500/30 text-white font-mono text-xs"
+                            className="bg-black/60 border-yellow-500/30 text-white font-mono text-xs uppercase tracking-wider"
                             disabled={resolving || isScanning}
                             autoComplete="off"
+                            autoCapitalize="characters"
+                            spellCheck={false}
                         />
                         <Button
                             type="button"

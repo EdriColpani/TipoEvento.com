@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-
-import { supabase } from '@/integrations/supabase/client';
+import { restGet } from '@/utils/supabase-rest';
 
 export interface SalesReportRow {
     event_id: string;
@@ -17,8 +16,14 @@ export interface SalesReportFilters {
     endDate?: string | null;
 }
 
-const RECEIVABLE_PAID_OR =
-    'status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized';
+type SalesReceivableRow = {
+    id: string;
+    total_value: number | null;
+    created_at: string;
+    event_id: string;
+    wristband_analytics_ids: unknown;
+    events: { id: string; title: string } | null;
+};
 
 function ticketCountFromReceivable(row: { wristband_analytics_ids?: unknown }): number {
     const ids = row.wristband_analytics_ids;
@@ -31,39 +36,31 @@ export async function fetchSalesReport(
     isAdminMaster: boolean,
     filters: SalesReportFilters,
 ): Promise<SalesReportRow[]> {
-    let query = supabase
-        .from('receivables')
-        .select(`
-            id,
-            total_value,
-            created_at,
-            event_id,
-            wristband_analytics_ids,
-            events!inner (
-                id,
-                title
-            )
-        `);
+    const params: string[] = [
+        'select=id,total_value,created_at,event_id,wristband_analytics_ids,events!inner(id,title)',
+        'or=(status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized)',
+    ];
 
     if (!isAdminMaster && managerUserId) {
-        query = query.eq('manager_user_id', managerUserId);
+        params.push(`manager_user_id=eq.${encodeURIComponent(managerUserId)}`);
     }
-
     if (filters.eventId) {
-        query = query.eq('event_id', filters.eventId);
+        params.push(`event_id=eq.${encodeURIComponent(filters.eventId)}`);
     }
-
     if (filters.startDate) {
-        query = query.gte('created_at', `${filters.startDate}T00:00:00.000Z`);
+        params.push(`created_at=gte.${encodeURIComponent(`${filters.startDate}T00:00:00.000Z`)}`);
     }
     if (filters.endDate) {
         const end = new Date(filters.endDate);
         end.setHours(23, 59, 59, 999);
-        query = query.lte('created_at', end.toISOString());
+        params.push(`created_at=lte.${encodeURIComponent(end.toISOString())}`);
     }
 
-    const { data: receivables, error } = await query.or(RECEIVABLE_PAID_OR);
-    if (error) throw error;
+    const receivables = await restGet<SalesReceivableRow[]>(
+        `receivables?${params.join('&')}`,
+        15_000,
+    );
+
     if (!receivables?.length) return [];
 
     const byEvent = new Map<
@@ -76,8 +73,8 @@ export async function fetchSalesReport(
         }
     >();
 
-    for (const r of receivables as any[]) {
-        const eventId = r.event_id as string;
+    for (const r of receivables) {
+        const eventId = r.event_id;
         if (!eventId) continue;
         const title = r.events?.title || 'Evento';
         const value = Number(r.total_value ?? 0);
@@ -122,6 +119,8 @@ export const useSalesReport = (
         queryKey: ['sales-report', managerUserId, isAdminMaster, filters],
         queryFn: () => fetchSalesReport(managerUserId, isAdminMaster, filters),
         enabled,
-        staleTime: 60_000,
+        staleTime: 30_000,
+        retry: 1,
+        refetchOnWindowFocus: false,
     });
 };

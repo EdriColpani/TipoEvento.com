@@ -7,6 +7,9 @@ export type CreditEstablishment = {
     company_id: string;
     event_id: string | null;
     name: string;
+    address?: string | null;
+    address_lat?: number | null;
+    address_lng?: number | null;
     credit_acceptance_enabled: boolean;
     active: boolean;
     created_at: string;
@@ -71,6 +74,9 @@ export async function saveCreditEstablishment(input: {
     establishmentId?: string | null;
     creditAcceptanceEnabled?: boolean;
     active?: boolean;
+    address?: string | null;
+    addressLat?: number | null;
+    addressLng?: number | null;
 }) {
     return callRpcRest<{ ok: boolean; establishment_id: string }>(
         'save_credit_establishment',
@@ -81,6 +87,9 @@ export async function saveCreditEstablishment(input: {
             p_establishment_id: input.establishmentId ?? null,
             p_credit_acceptance_enabled: input.creditAcceptanceEnabled ?? true,
             p_active: input.active ?? true,
+            p_address: input.address ?? null,
+            p_address_lat: input.addressLat ?? null,
+            p_address_lng: input.addressLng ?? null,
         },
         15_000,
     );

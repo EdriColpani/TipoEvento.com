@@ -5,8 +5,8 @@ const btnBase = 'inline-flex items-center justify-center rounded-md transition-c
 /** Primário: fundo ciano, texto preto (Adicionar faixa, Nova cobrança, Confirmar) */
 export const billingBtnSolid = `${btnBase} bg-cyan-400 text-black hover:bg-cyan-300 font-semibold shadow-sm shadow-cyan-500/25`;
 
-/** Voltar / secundário: contorno ciano, fundo escuro */
-export const billingBtnBack = `${btnBase} bg-transparent border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 font-medium`;
+/** Voltar / secundário: padrão EventFest (amarelo + fundo escuro) */
+export const billingBtnBack = `${btnBase} bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 font-medium`;
 
 /** Secundário: contorno ciano, fundo transparente (Mostrar histórico, Cancelar) */
 export const billingBtnGhost = `${btnBase} bg-transparent border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 font-medium`;

@@ -5,15 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Activity, Search } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useProfile } from '@/hooks/use-profile';
+import { ArrowLeft, Activity, Search, Loader2 } from 'lucide-react';
+import { usePageAuth } from '@/hooks/use-page-auth';
+import { useUserRole } from '@/hooks/use-user-role';
+import { useManagerEvents } from '@/hooks/use-manager-events';
+import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
+import { restGet } from '@/utils/supabase-rest';
 import { showError } from '@/utils/toast';
 
-interface EventOption {
-    id: string;
-    title: string;
-}
+const ADMIN_MASTER_USER_TYPE_ID = 1;
+const MANAGER_PRO_USER_TYPE_ID = 2;
 
 interface MovementRow {
     wristband_id: string;
@@ -32,7 +33,6 @@ interface MovementStats {
     last_validated_at: string | null;
 }
 
-/** Ingresso atribuído a cliente (venda/reserva) — aparece mesmo sem leitura no portão */
 interface SoldAssignmentRow {
     analytics_id: string;
     wristband_id: string;
@@ -56,36 +56,14 @@ interface ReportTableRow {
     last_validated_at: string | null;
 }
 
-const fetchEventsForFilter = async (): Promise<EventOption[]> => {
-    const { data, error } = await supabase
-        .from('events')
-        .select('id, title')
-        .order('title', { ascending: true });
-
-    if (error) {
-        console.error('Erro ao carregar eventos para filtro de movimentação:', error);
-        throw error;
-    }
-
-    return (data || []) as EventOption[];
-};
-
 const fetchWristbandMovements = async (eventId: string): Promise<MovementRow[]> => {
-    const { data, error } = await supabase
-        .from('wristband_movements')
-        .select('wristband_id, event_id, movement_type, validated_at, wristbands(code)')
-        .eq('event_id', eventId)
-        .order('validated_at', { ascending: true });
-
-    if (error) {
-        console.error('Erro ao carregar movimentações de pulseiras:', error);
-        throw error;
-    }
-
-    return (data || []) as MovementRow[];
+    const data = await restGet<MovementRow[]>(
+        `wristband_movements?select=wristband_id,event_id,movement_type,validated_at,wristbands(code)&event_id=eq.${encodeURIComponent(eventId)}&order=validated_at.asc`,
+        15_000,
+    );
+    return data || [];
 };
 
-/** Estatísticas de leitura por pulseira (wristbands.id), conforme gravado pelo validador */
 const movementStatsByWristbandId = (rows: MovementRow[]): Map<string, MovementStats> => {
     const map = new Map<string, MovementStats>();
 
@@ -112,32 +90,27 @@ const movementStatsByWristbandId = (rows: MovementRow[]): Map<string, MovementSt
 };
 
 const fetchSoldAssignmentsForEvent = async (eventId: string): Promise<SoldAssignmentRow[]> => {
-    const { data: wristbandsForEvent, error: wbErr } = await supabase
-        .from('wristbands')
-        .select('id, code')
-        .eq('event_id', eventId);
+    const bands = await restGet<Array<{ id: string; code: string }>>(
+        `wristbands?select=id,code&event_id=eq.${encodeURIComponent(eventId)}`,
+        12_000,
+    );
 
-    if (wbErr) {
-        console.error('Erro ao carregar pulseiras do evento:', wbErr);
-        throw wbErr;
-    }
-
-    const bands = wristbandsForEvent || [];
-    const wristbandIds = bands.map((w) => w.id);
-    const batchCodeById = new Map(bands.map((w) => [w.id, w.code]));
+    const wristbandIds = (bands || []).map((w) => w.id);
+    const batchCodeById = new Map((bands || []).map((w) => [w.id, w.code]));
 
     if (wristbandIds.length === 0) return [];
 
-    const { data: analyticsRows, error: waErr } = await supabase
-        .from('wristband_analytics')
-        .select('id, wristband_id, code_wristbands, status, event_type')
-        .in('wristband_id', wristbandIds)
-        .not('client_user_id', 'is', null);
-
-    if (waErr) {
-        console.error('Erro ao carregar ingressos atribuídos:', waErr);
-        throw waErr;
-    }
+    const inList = wristbandIds.map((id) => encodeURIComponent(id)).join(',');
+    const analyticsRows = await restGet<Array<{
+        id: string;
+        wristband_id: string;
+        code_wristbands: string | null;
+        status: string;
+        event_type: string;
+    }>>(
+        `wristband_analytics?select=id,wristband_id,code_wristbands,status,event_type&wristband_id=in.(${inList})&client_user_id=not.is.null`,
+        15_000,
+    );
 
     return (analyticsRows || []).map((row) => ({
         analytics_id: row.id,
@@ -174,7 +147,6 @@ const buildReportRows = (
         };
     });
 
-    // Movimentações sem linha de analytics atribuída (ex.: fluxos antigos) — ainda aparecem
     const orphanRows: ReportTableRow[] = [];
     for (const [wbId, st] of statsMap) {
         if (!soldWristbandIds.has(wbId)) {
@@ -223,27 +195,21 @@ const ingressoStatusLabel = (status: string | null): string => {
 
 const WristbandMovementsReports: React.FC = () => {
     const navigate = useNavigate();
-    const { profile } = useProfile();
+    const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Acesso: mesmo critério dos outros relatórios (Admin Master ou Gestor PRO)
-    if (profile && profile.tipo_usuario_id !== 1 && profile.tipo_usuario_id !== 2) {
-        return (
-            <div className="max-w-7xl mx-auto text-center py-20">
-                <h1 className="text-3xl font-serif text-red-500 mb-4">Acesso Negado</h1>
-                <p className="text-gray-400">Você não tem permissão para acessar esta página.</p>
-                <Button onClick={() => navigate('/manager/dashboard')} className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600">
-                    Voltar para o Dashboard
-                </Button>
-            </div>
-        );
-    }
+    const { tipoUsuarioId, isLoading: isLoadingRole, isFetched: roleFetched } = useUserRole(userId);
+    const tipo = normalizeTipoUsuarioId(tipoUsuarioId);
+    const isAdminMaster = tipo === ADMIN_MASTER_USER_TYPE_ID;
+    const canAccess = isAdminMaster || tipo === MANAGER_PRO_USER_TYPE_ID;
+    const queriesEnabled = Boolean(userId && roleFetched && canAccess);
 
-    const { data: eventsForFilter, isLoading: isLoadingEvents } = useQuery<EventOption[]>({
-        queryKey: ['wristband_mov_events'],
-        queryFn: fetchEventsForFilter,
-    });
+    const { events: eventsForFilter, isLoading: isLoadingEvents } = useManagerEvents(
+        userId,
+        isAdminMaster,
+        { enabled: queriesEnabled },
+    );
 
     const {
         data: reportBundle,
@@ -252,12 +218,46 @@ const WristbandMovementsReports: React.FC = () => {
     } = useQuery({
         queryKey: ['wristband_movements_report', selectedEventId],
         queryFn: () => fetchMovementReportBundle(selectedEventId!),
-        enabled: !!selectedEventId,
+        enabled: queriesEnabled && !!selectedEventId,
+        staleTime: 30_000,
+        retry: 1,
+        refetchOnWindowFocus: false,
     });
 
     useEffect(() => {
         if (isError) showError('Erro ao carregar movimentações de ingressos.');
     }, [isError]);
+
+    useEffect(() => {
+        if (roleFetched && userId && tipo != null && !canAccess) {
+            showError('Acesso negado. Você não tem permissão para acessar esta página.');
+            navigate('/manager/dashboard', { replace: true });
+        }
+    }, [roleFetched, userId, tipo, canAccess, navigate]);
+
+    if (authPending || (isLoadingRole && !roleFetched)) {
+        return (
+            <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
+                <p>Carregando sessão...</p>
+            </div>
+        );
+    }
+
+    if (!userId && (sessionReady || bootExpired)) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20 px-4">
+                <h1 className="text-2xl font-serif text-yellow-500 mb-4">Sessão expirada</h1>
+                <Button onClick={() => navigate('/login')} className="bg-yellow-500 text-black hover:bg-yellow-600">
+                    Ir para login
+                </Button>
+            </div>
+        );
+    }
+
+    if (roleFetched && tipo != null && !canAccess) {
+        return null;
+    }
 
     const reportRows = reportBundle ?? [];
     const filtered = reportRows.filter((item) => {
@@ -308,7 +308,7 @@ const WristbandMovementsReports: React.FC = () => {
                             <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10">
                                 <SelectValue placeholder="Selecione um evento" />
                             </SelectTrigger>
-                            <SelectContent className="bg-black border-yellow-500/30 text-white max-h-64">
+                            <SelectContent className="bg-black border border-yellow-500/30 text-white max-h-64">
                                 <SelectItem value="none" className="hover:bg-yellow-500/10 cursor-pointer">
                                     Selecione um evento
                                 </SelectItem>
@@ -316,8 +316,12 @@ const WristbandMovementsReports: React.FC = () => {
                                     <SelectItem value="loading" disabled>
                                         Carregando eventos...
                                     </SelectItem>
+                                ) : eventsForFilter.length === 0 ? (
+                                    <SelectItem value="empty" disabled>
+                                        Nenhum evento encontrado
+                                    </SelectItem>
                                 ) : (
-                                    eventsForFilter?.map((event) => (
+                                    eventsForFilter.map((event) => (
                                         <SelectItem
                                             key={event.id}
                                             value={event.id}
@@ -360,67 +364,47 @@ const WristbandMovementsReports: React.FC = () => {
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <CardHeader>
-                    <CardTitle className="text-white text-xl">Detalhamento por ingresso</CardTitle>
-                    <CardDescription className="text-gray-400">
-                        Por ingresso atribuído: status, entradas/saídas no portão e última leitura.
-                    </CardDescription>
+                    <CardTitle className="text-white text-xl">Detalhes</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {!selectedEventId ? (
-                        <p className="text-gray-400 text-sm">
-                            Selecione um evento para visualizar as movimentações dos ingressos.
-                        </p>
+                        <div className="text-center py-8 text-gray-500">Selecione um evento para ver a movimentação.</div>
                     ) : isLoadingMovements ? (
-                        <p className="text-gray-400 text-sm">Carregando movimentações...</p>
+                        <div className="text-center py-8 text-gray-500 flex items-center justify-center">
+                            <Loader2 className="h-6 w-6 animate-spin text-yellow-500 mr-2" /> Carregando...
+                        </div>
+                    ) : isError ? (
+                        <div className="text-center py-8 text-red-400">Erro ao carregar. Tente novamente.</div>
                     ) : filtered.length === 0 ? (
-                        <p className="text-gray-400 text-sm">
-                            {searchTerm.trim()
-                                ? 'Nenhum resultado para o filtro de busca.'
-                                : 'Nenhum ingresso atribuído a compradores neste evento (e sem movimentações registradas). Quando houver vendas com ingresso vinculado ao cliente, os ingressos aparecem aqui — mesmo antes da primeira leitura no portão.'}
-                        </p>
+                        <div className="text-center py-8 text-gray-500">Nenhum ingresso encontrado para este evento.</div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <Table>
+                            <Table className="min-w-full">
                                 <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="text-gray-300">Código do ingresso</TableHead>
-                                        <TableHead className="text-gray-300">Lote / tipo</TableHead>
-                                        <TableHead className="text-gray-300 text-center">Status ingresso</TableHead>
-                                        <TableHead className="text-gray-300 text-center">Entradas</TableHead>
-                                        <TableHead className="text-gray-300 text-center">Saídas</TableHead>
-                                        <TableHead className="text-gray-300 text-center">Último movimento</TableHead>
-                                        <TableHead className="text-gray-300 text-center">Última leitura</TableHead>
+                                    <TableRow className="border-b border-yellow-500/20">
+                                        <TableHead className="text-gray-400">Código</TableHead>
+                                        <TableHead className="text-gray-400">Lote</TableHead>
+                                        <TableHead className="text-gray-400">Status</TableHead>
+                                        <TableHead className="text-right text-gray-400">Entradas</TableHead>
+                                        <TableHead className="text-right text-gray-400">Saídas</TableHead>
+                                        <TableHead className="text-gray-400">Último movimento</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filtered.map((item) => (
-                                        <TableRow key={item.rowKey}>
-                                            <TableCell className="font-mono text-sm text-yellow-500">
-                                                {item.individual_code}
-                                            </TableCell>
-                                            <TableCell className="font-mono text-xs text-gray-300">
-                                                {item.batch_code}
-                                            </TableCell>
-                                            <TableCell className="text-center text-gray-200 text-xs">
-                                                {ingressoStatusLabel(item.ingresso_status)}
-                                            </TableCell>
-                                            <TableCell className="text-center text-gray-200">
-                                                {item.total_entries}
-                                            </TableCell>
-                                            <TableCell className="text-center text-gray-200">
-                                                {item.total_exits}
-                                            </TableCell>
-                                            <TableCell className="text-center">
-                                                {item.last_movement_type === 'entry'
-                                                    ? <span className="text-green-400 text-xs px-2 py-1 rounded-full bg-green-500/10">Entrada</span>
-                                                    : item.last_movement_type === 'exit'
-                                                        ? <span className="text-red-400 text-xs px-2 py-1 rounded-full bg-red-500/10">Saída</span>
-                                                        : <span className="text-gray-500 text-xs">Sem leitura</span>}
-                                            </TableCell>
-                                            <TableCell className="text-center text-gray-300 text-xs">
+                                        <TableRow key={item.rowKey} className="border-b border-yellow-500/10">
+                                            <TableCell className="text-white font-medium">{item.individual_code}</TableCell>
+                                            <TableCell className="text-gray-300">{item.batch_code}</TableCell>
+                                            <TableCell className="text-gray-300">{ingressoStatusLabel(item.ingresso_status)}</TableCell>
+                                            <TableCell className="text-right text-white">{item.total_entries}</TableCell>
+                                            <TableCell className="text-right text-white">{item.total_exits}</TableCell>
+                                            <TableCell className="text-gray-400 text-sm">
                                                 {item.last_validated_at
                                                     ? new Date(item.last_validated_at).toLocaleString('pt-BR')
                                                     : '—'}
+                                                {item.last_movement_type
+                                                    ? ` (${item.last_movement_type === 'entry' ? 'entrada' : 'saída'})`
+                                                    : ''}
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -435,4 +419,3 @@ const WristbandMovementsReports: React.FC = () => {
 };
 
 export default WristbandMovementsReports;
-
