@@ -1,5 +1,6 @@
 import { isBefore, startOfDay } from 'date-fns';
 import { parseEventLocalDay } from '@/utils/format-event-date';
+import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
 
 export type ManagerEventStatusLabel =
     | 'Rascunho'
@@ -50,6 +51,7 @@ export function getManagerEventStatusPresentation(input: {
     is_draft?: boolean | null;
     is_active?: boolean | null;
     auto_deactivated_at?: string | null;
+    lifecycle_ended_at?: string | null;
     needs_more_tickets?: boolean;
     date?: string | null;
     time?: string | null;
@@ -67,6 +69,13 @@ export function getManagerEventStatusPresentation(input: {
         return { label: 'Cancelado', classes: STATUS_CLASSES.Cancelado };
     }
 
+    const lifecycleEnded =
+        Boolean(input.lifecycle_ended_at) || isEventLifecycleEnded(input.date, input.time);
+
+    if (lifecycleEnded) {
+        return { label: 'Encerrado', classes: STATUS_CLASSES.Encerrado };
+    }
+
     if (input.is_active === false) {
         if (input.auto_deactivated_at) {
             return { label: 'Inatividade comercial', classes: STATUS_CLASSES['Inatividade comercial'] };
@@ -77,10 +86,6 @@ export function getManagerEventStatusPresentation(input: {
         return { label: 'Desativado', classes: STATUS_CLASSES.Desativado };
     }
 
-    if (isEventDatePassed(input.date, input.time)) {
-        return { label: 'Encerrado', classes: STATUS_CLASSES.Encerrado };
-    }
-
     return { label: 'Publicado', classes: STATUS_CLASSES.Publicado };
 }
 
@@ -89,6 +94,7 @@ export function resolveManagerEventStatusLabel(input: {
     is_draft?: boolean | null;
     is_active?: boolean | null;
     auto_deactivated_at?: string | null;
+    lifecycle_ended_at?: string | null;
     needs_more_tickets?: boolean;
     date?: string | null;
     time?: string | null;

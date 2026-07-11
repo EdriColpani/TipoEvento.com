@@ -188,6 +188,14 @@ serve(async (req) => {
         });
     }
 
+    // Garante % de comissão (congela na 1ª venda se ainda null)
+    const { data: ensuredPct } = await supabaseService.rpc('ensure_event_applied_percentage', {
+        p_event_id: eventId,
+    });
+    if (ensuredPct != null && Number.isFinite(Number(ensuredPct))) {
+        eventData.applied_percentage = Number(ensuredPct);
+    }
+
     const { data: salesOpen, error: salesRpcError } = await supabaseService.rpc('event_accepts_new_sales', {
         p_event_id: eventId,
     });

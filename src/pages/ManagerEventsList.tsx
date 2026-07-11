@@ -20,6 +20,8 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { getInactiveEventGuidance } from '@/utils/inactive-event-guidance';
 import { getManagerEventStatusPresentation } from '@/utils/manager-event-status';
 import EventActivationBlockers from '@/components/EventActivationBlockers';
+import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
+import { showError } from '@/utils/toast';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -72,8 +74,19 @@ const ManagerEventsList: React.FC = () => {
         return <div className="text-red-400 text-center py-10">Erro ao carregar eventos. Tente recarregar a página.</div>;
     }
 
-    const handleRowClick = (eventId: string) => {
-        navigate(`/manager/events/edit/${eventId}`);
+    const handleRowClick = (event: {
+        id: string;
+        date?: string | null;
+        time?: string | null;
+        lifecycle_ended_at?: string | null;
+    }) => {
+        const ended =
+            Boolean(event.lifecycle_ended_at) || isEventLifecycleEnded(event.date, event.time);
+        if (ended && !isAdminMaster) {
+            showError('Evento encerrado: somente o administrador pode editar.');
+            return;
+        }
+        navigate(`/manager/events/edit/${event.id}`);
     };
 
     return (
@@ -158,11 +171,16 @@ const ManagerEventsList: React.FC = () => {
                                     const needsMoreTickets =
                                         readiness?.needs_more === true || guidance?.showMissingTicketsStatus === true;
                                     const autoDeactivated = Boolean(event.auto_deactivated_at);
+                                    const lifecycleEnded =
+                                        Boolean(event.lifecycle_ended_at) ||
+                                        isEventLifecycleEnded(event.date, event.time);
+                                    const editLocked = lifecycleEnded && !isAdminMaster;
                                     const { label: statusText, classes: statusClasses } =
                                         getManagerEventStatusPresentation({
                                             is_draft: isDraft,
                                             is_active: event.is_active,
                                             auto_deactivated_at: event.auto_deactivated_at,
+                                            lifecycle_ended_at: event.lifecycle_ended_at,
                                             needs_more_tickets: needsMoreTickets,
                                             date: event.date,
                                             time: event.time,
@@ -172,7 +190,7 @@ const ManagerEventsList: React.FC = () => {
                                         <TableRow 
                                             key={event.id} 
                                             className="border-b border-yellow-500/10 hover:bg-black/40 transition-colors text-sm cursor-pointer"
-                                            onClick={() => handleRowClick(event.id)}
+                                            onClick={() => handleRowClick(event)}
                                         >
                                             <TableCell className="relative z-[1] py-4">
                                                 <div className="text-white font-medium truncate max-w-[400px]">
@@ -255,11 +273,16 @@ const ManagerEventsList: React.FC = () => {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        className="shrink-0 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 h-8 px-3"
-                                                        onClick={() => handleRowClick(event.id)}
+                                                        disabled={editLocked}
+                                                        className="shrink-0 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 h-8 px-3 disabled:opacity-50"
+                                                        onClick={() => handleRowClick(event)}
                                                     >
                                                         <FileEdit className="h-4 w-4 mr-2 shrink-0" />
-                                                        {isDraft ? 'Continuar Edição' : 'Gerenciar'}
+                                                        {editLocked
+                                                            ? 'Encerrado'
+                                                            : isDraft
+                                                              ? 'Continuar Edição'
+                                                              : 'Gerenciar'}
                                                     </Button>
                                                     {event.inventory_mode === 'counter' && (
                                                         <Button
@@ -277,6 +300,10 @@ const ManagerEventsList: React.FC = () => {
                                                         eventTitle={event.title}
                                                         isDraft={isDraft}
                                                         isActive={event.is_active}
+                                                        eventDate={event.date}
+                                                        eventTime={event.time}
+                                                        lifecycleEndedAt={event.lifecycle_ended_at}
+                                                        isAdminMaster={isAdminMaster}
                                                         onSuccess={invalidateEvents}
                                                     />
                                                     <DeleteEventDialog

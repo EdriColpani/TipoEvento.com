@@ -55,6 +55,11 @@ export async function restGet<T>(
             throw normalizeRestError(response, data, 'Erro ao consultar dados.');
         }
         return data;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Tempo esgotado ao consultar dados.');
+        }
+        throw error;
     } finally {
         window.clearTimeout(timer);
     }
@@ -86,6 +91,11 @@ export async function restGetAuthOrPublic<T>(
             throw normalizeRestError(response, data, 'Erro ao consultar dados.');
         }
         return data;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Tempo esgotado ao consultar dados.');
+        }
+        throw error;
     } finally {
         window.clearTimeout(timer);
     }

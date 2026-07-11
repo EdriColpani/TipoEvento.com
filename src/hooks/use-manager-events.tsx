@@ -10,6 +10,8 @@ export interface ManagerEvent {
     is_active: boolean;
     /** Preenchido quando desativado automaticamente por inatividade comercial. */
     auto_deactivated_at?: string | null;
+    /** Preenchido quando encerrado automaticamente (início + 1 dia). */
+    lifecycle_ended_at?: string | null;
     date: string;
     time?: string | null;
     company_id: string;
@@ -98,6 +100,7 @@ const fetchManagerEvents = async (userId: string, isAdminMaster: boolean): Promi
             is_draft: Boolean(e.is_draft ?? false),
             is_active: e.is_active !== false,
             auto_deactivated_at: e.auto_deactivated_at ?? null,
+            lifecycle_ended_at: e.lifecycle_ended_at ?? null,
             date: e.date ?? '',
             time: e.time ?? null,
             company_id: companyId,

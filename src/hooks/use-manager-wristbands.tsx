@@ -1,67 +1,81 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { showError } from '@/utils/toast';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import { restGet } from '@/utils/supabase-rest';
+import { fetchManagerPrimaryCompanyIdRest } from '@/utils/manager-scope';
 
 export interface WristbandData {
     id: string;
     code: string;
     access_type: string;
-    status: 'active' | 'used' | 'lost' | 'cancelled';
+    status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending';
     created_at: string;
     event_id: string;
-    /** Grande porte: estoque por lote (não 1 linha = 1 ingresso). */
     inventory_mode?: 'counter' | 'unit_rows' | null;
     batch_stock_total?: number;
     batch_stock_sold?: number;
     batch_stock_reserved?: number;
     batch_stock_available?: number;
-
-    // Dados do evento associado (join)
+    /** Início da venda do lote (event_batches.start_date). */
+    sale_start_date?: string | null;
+    /** Término da venda do lote (event_batches.end_date). */
+    sale_end_date?: string | null;
     events: {
         title: string;
         date: string;
+        time?: string | null;
+        is_active?: boolean | null;
+        lifecycle_ended_at?: string | null;
     } | null;
 }
 
-const fetchManagerWristbands = async (userId: string, isAdminMaster: boolean): Promise<WristbandData[]> => {
-    if (!userId) {
-        console.warn("Attempted to fetch wristbands without a userId.");
-        return [];
-    }
+type WristbandRow = {
+    id: string;
+    code: string;
+    access_type: string;
+    status: WristbandData['status'];
+    created_at: string;
+    event_id: string;
+    events?: {
+        title?: string;
+        date?: string;
+        time?: string | null;
+        is_active?: boolean | null;
+        lifecycle_ended_at?: string | null;
+    } | null;
+};
 
-    let query = supabase
-        .from('wristbands')
-        .select(`
-            id,
-            code,
-            access_type,
-            status,
-            created_at,
-            event_id,
-            events!event_id (title, date) -- Adicionado: data do evento para o QR Code. Especificando relacionamento explícito via event_id para evitar erro PGRST201
-        `)
-        .order('created_at', { ascending: false });
+const fetchManagerWristbands = async (
+    userId: string,
+    isAdminMaster: boolean,
+): Promise<WristbandData[]> => {
+    if (!userId) return [];
+
+    let path =
+        'wristbands?select=id,code,access_type,status,created_at,event_id,events!event_id(title,date,time,is_active,lifecycle_ended_at)&order=created_at.desc&limit=5000';
 
     if (!isAdminMaster) {
-        const primaryCompanyId = await fetchManagerPrimaryCompanyId(supabase, userId);
+        const primaryCompanyId = await fetchManagerPrimaryCompanyIdRest(userId);
         if (primaryCompanyId) {
-            query = query.or(`company_id.eq.${primaryCompanyId},manager_user_id.eq.${userId}`);
+            path += `&or=(company_id.eq.${encodeURIComponent(primaryCompanyId)},manager_user_id.eq.${encodeURIComponent(userId)})`;
         } else {
-            query = query.eq('manager_user_id', userId);
+            path += `&manager_user_id=eq.${encodeURIComponent(userId)}`;
         }
     }
-    // Se for isAdminMaster, nenhum filtro de company_id é aplicado,
-    // e a RLS no banco de dados já garante o acesso total.
 
-    const { data, error } = await query;
+    const data = await restGet<WristbandRow[]>(path, 20_000);
+    const wristbands: WristbandData[] = (data ?? []).map((w) => ({
+        ...w,
+        events: w.events
+            ? {
+                  title: w.events.title || '',
+                  date: w.events.date || '',
+                  time: w.events.time ?? null,
+                  is_active: w.events.is_active,
+                  lifecycle_ended_at: w.events.lifecycle_ended_at ?? null,
+              }
+            : null,
+    }));
 
-    if (error) {
-        console.error("Error fetching manager wristbands from Supabase:", error);
-        throw new Error(error.message); 
-    }
-
-    const wristbands = (data || []) as WristbandData[];
     if (wristbands.length === 0) return [];
 
     const eventIds = [...new Set(wristbands.map((w) => w.event_id).filter(Boolean))];
@@ -71,68 +85,92 @@ const fetchManagerWristbands = async (userId: string, isAdminMaster: boolean): P
         string,
         { total: number; sold: number; reserved: number; available: number }
     > = {};
+    const saleDatesByWristbandId: Record<string, { start: string | null; end: string | null }> = {};
+    const inventoryModeByEventId: Record<string, string | null> = {};
 
     if (eventIds.length > 0) {
-        const { data: eventRows } = await supabase
-            .from('events')
-            .select('id, inventory_mode')
-            .in('id', eventIds);
-
-        const inventoryModeByEventId = Object.fromEntries(
-            (eventRows ?? []).map((e) => [e.id as string, e.inventory_mode as string | null]),
-        );
-
-        counterEventIds = new Set(
-            (eventRows ?? [])
-                .filter((e) => e.inventory_mode === 'counter')
-                .map((e) => e.id as string),
-        );
+        const inEvents = eventIds.map(encodeURIComponent).join(',');
+        try {
+            const eventRows = await restGet<Array<{ id: string; inventory_mode?: string | null }>>(
+                `events?select=id,inventory_mode&id=in.(${inEvents})`,
+                12_000,
+            );
+            for (const e of eventRows ?? []) {
+                inventoryModeByEventId[e.id] = e.inventory_mode ?? null;
+            }
+            counterEventIds = new Set(
+                (eventRows ?? [])
+                    .filter((e) => e.inventory_mode === 'counter')
+                    .map((e) => e.id),
+            );
+        } catch {
+            /* modo inventário opcional */
+        }
 
         if (counterEventIds.size > 0) {
-            const { data: batchRows } = await supabase
-                .from('event_batches')
-                .select('id, wristband_id, event_id')
-                .in('event_id', [...counterEventIds])
-                .not('wristband_id', 'is', null);
+            const inCounter = [...counterEventIds].map(encodeURIComponent).join(',');
+            try {
+                const batchRows = await restGet<
+                    Array<{
+                        id: string;
+                        wristband_id?: string | null;
+                        event_id: string;
+                        start_date?: string | null;
+                        end_date?: string | null;
+                    }>
+                >(
+                    `event_batches?select=id,wristband_id,event_id,start_date,end_date&event_id=in.(${inCounter})&wristband_id=not.is.null&limit=2000`,
+                    12_000,
+                );
+                linkedCounterWristbandIds = new Set(
+                    (batchRows ?? []).map((b) => b.wristband_id).filter(Boolean) as string[],
+                );
+                const batchIds = (batchRows ?? []).map((b) => b.id).filter(Boolean);
+                const wristbandIdByBatchId = Object.fromEntries(
+                    (batchRows ?? [])
+                        .filter((b) => b.wristband_id)
+                        .map((b) => [b.id, b.wristband_id as string]),
+                );
 
-            linkedCounterWristbandIds = new Set(
-                (batchRows ?? [])
-                    .map((b) => b.wristband_id as string)
-                    .filter(Boolean),
-            );
-
-            const batchIds = (batchRows ?? []).map((b) => b.id as string).filter(Boolean);
-            const wristbandIdByBatchId = Object.fromEntries(
-                (batchRows ?? []).map((b) => [b.id as string, b.wristband_id as string]),
-            );
-
-            if (batchIds.length > 0) {
-                const { data: invRows } = await supabase
-                    .from('batch_inventory')
-                    .select('batch_id, total, sold, reserved')
-                    .in('batch_id', batchIds);
-
-                for (const inv of invRows ?? []) {
-                    const wristbandId = wristbandIdByBatchId[inv.batch_id as string];
-                    if (!wristbandId) continue;
-                    const total = Number(inv.total ?? 0);
-                    const sold = Number(inv.sold ?? 0);
-                    const reserved = Number(inv.reserved ?? 0);
-                    stockByWristbandId[wristbandId] = {
-                        total,
-                        sold,
-                        reserved,
-                        available: Math.max(total - sold - reserved, 0),
+                for (const b of batchRows ?? []) {
+                    if (!b.wristband_id) continue;
+                    saleDatesByWristbandId[b.wristband_id] = {
+                        start: b.start_date ?? null,
+                        end: b.end_date ?? null,
                     };
                 }
+
+                if (batchIds.length > 0) {
+                    const inBatches = batchIds.map(encodeURIComponent).join(',');
+                    const invRows = await restGet<
+                        Array<{ batch_id: string; total?: number; sold?: number; reserved?: number }>
+                    >(
+                        `batch_inventory?select=batch_id,total,sold,reserved&batch_id=in.(${inBatches})&limit=2000`,
+                        12_000,
+                    );
+                    for (const inv of invRows ?? []) {
+                        const wristbandId = wristbandIdByBatchId[inv.batch_id];
+                        if (!wristbandId) continue;
+                        const total = Number(inv.total ?? 0);
+                        const sold = Number(inv.sold ?? 0);
+                        const reserved = Number(inv.reserved ?? 0);
+                        stockByWristbandId[wristbandId] = {
+                            total,
+                            sold,
+                            reserved,
+                            available: Math.max(total - sold - reserved, 0),
+                        };
+                    }
+                }
+            } catch {
+                /* estoque counter opcional */
             }
         }
 
-        // attach inventory_mode early for mapping below
         for (const w of wristbands) {
             const mode = inventoryModeByEventId[w.event_id];
             if (mode === 'counter' || mode === 'unit_rows') {
-                (w as WristbandData).inventory_mode = mode;
+                w.inventory_mode = mode;
             }
         }
     }
@@ -142,26 +180,28 @@ const fetchManagerWristbands = async (userId: string, isAdminMaster: boolean): P
         return linkedCounterWristbandIds.has(w.id);
     });
 
-    // Regras de negócio para exibição no gestor:
-    // - pulseira vendida = existe analytics com client_user_id preenchido
-    // - nesse caso, mostrar status "used" (vendida) na listagem de gestão
     const wristbandIds = scopedWristbands.map((w) => w.id);
-    const { data: soldAnalytics, error: soldError } = await supabase
-        .from('wristband_analytics')
-        .select('wristband_id')
-        .in('wristband_id', wristbandIds)
-        .not('client_user_id', 'is', null);
-
-    if (soldError) {
-        console.error("Error fetching sold analytics for wristbands:", soldError);
-        return scopedWristbands;
+    let soldSet = new Set<string>();
+    if (wristbandIds.length > 0) {
+        try {
+            const inWb = wristbandIds.map(encodeURIComponent).join(',');
+            const soldAnalytics = await restGet<Array<{ wristband_id: string }>>(
+                `wristband_analytics?select=wristband_id&wristband_id=in.(${inWb})&client_user_id=not.is.null&limit=10000`,
+                15_000,
+            );
+            soldSet = new Set((soldAnalytics ?? []).map((a) => a.wristband_id));
+        } catch {
+            /* status vendido opcional */
+        }
     }
 
-    const soldSet = new Set((soldAnalytics || []).map((a: { wristband_id: string }) => a.wristband_id));
     return scopedWristbands.map((w) => {
         const stock = stockByWristbandId[w.id];
+        const saleDates = saleDatesByWristbandId[w.id];
         const base: WristbandData = {
             ...w,
+            sale_start_date: saleDates?.start ?? null,
+            sale_end_date: saleDates?.end ?? null,
             ...(stock
                 ? {
                       batch_stock_total: stock.total,
@@ -179,19 +219,28 @@ export const useManagerWristbands = (userId: string | undefined, isAdminMaster: 
     const queryClient = useQueryClient();
 
     const query = useQuery({
-        queryKey: ['managerWristbands', userId, isAdminMaster], // Adiciona isAdminMaster à chave de cache
-        queryFn: () => fetchManagerWristbands(userId!, isAdminMaster),
-        enabled: !!userId, // Só executa se tiver o userId
-        staleTime: 1000 * 30, // 30 seconds
-        onError: (error) => {
-            console.error("Query Error:", error);
-            showError("Erro ao carregar lista de ingressos.");
-        }
+        queryKey: ['managerWristbands', userId, isAdminMaster],
+        queryFn: async () => {
+            try {
+                return await fetchManagerWristbands(userId!, isAdminMaster);
+            } catch (error) {
+                console.error('Query Error:', error);
+                showError('Erro ao carregar lista de ingressos.');
+                return [];
+            }
+        },
+        enabled: !!userId,
+        staleTime: 1000 * 30,
+        retry: 1,
+        placeholderData: [],
     });
 
     return {
         ...query,
         wristbands: query.data || [],
-        invalidateWristbands: () => queryClient.invalidateQueries({ queryKey: ['managerWristbands', userId, isAdminMaster] }),
+        invalidateWristbands: () =>
+            queryClient.invalidateQueries({
+                queryKey: ['managerWristbands', userId, isAdminMaster],
+            }),
     };
 };

@@ -9,6 +9,7 @@ export interface ManagerEventScopeRow {
     /** Quando false, evento desativado (fora da vitrine / sem novas vendas). Default true se coluna ausente. */
     is_active?: boolean;
     auto_deactivated_at?: string | null;
+    lifecycle_ended_at?: string | null;
     date: string | null;
     time: string | null;
     duration: string | null;
@@ -29,6 +30,10 @@ function normalizeRow(raw: Record<string, unknown>): ManagerEventScopeRow {
         auto_deactivated_at:
             raw.auto_deactivated_at != null && raw.auto_deactivated_at !== ''
                 ? String(raw.auto_deactivated_at)
+                : null,
+        lifecycle_ended_at:
+            raw.lifecycle_ended_at != null && raw.lifecycle_ended_at !== ''
+                ? String(raw.lifecycle_ended_at)
                 : null,
         date: dateVal != null && dateVal !== '' ? String(dateVal) : null,
         time: timeVal != null && timeVal !== '' ? String(timeVal) : null,
@@ -60,6 +65,7 @@ async function fetchEventsWithSchemaFallback(
     const createdBySelect = options?.createdByUserId ? ', created_by' : '';
     const inventorySelect = ', inventory_mode';
     const attempts = [
+        `id, title, date, time, duration, company_id, created_at, is_draft, is_active, auto_deactivated_at, lifecycle_ended_at${inventorySelect}${createdBySelect}`,
         `id, title, date, time, duration, company_id, created_at, is_draft, is_active, auto_deactivated_at${inventorySelect}${createdBySelect}`,
         `id, title, date, time, duration, company_id, created_at, is_draft, is_active${inventorySelect}${createdBySelect}`,
         `id, title, date, time, duration, company_id, created_at, is_active${inventorySelect}${createdBySelect}`,
@@ -109,6 +115,7 @@ async function fetchEventsWithSchemaFallbackRest(
     const createdBySelect = options?.createdByUserId ? ',created_by' : '';
     const inventorySelect = ',inventory_mode';
     const attempts = [
+        `id,title,date,time,duration,company_id,created_at,is_draft,is_active,auto_deactivated_at,lifecycle_ended_at${inventorySelect}${createdBySelect}`,
         `id,title,date,time,duration,company_id,created_at,is_draft,is_active,auto_deactivated_at${inventorySelect}${createdBySelect}`,
         `id,title,date,time,duration,company_id,created_at,is_draft,is_active${inventorySelect}${createdBySelect}`,
         `id,title,date,time,duration,company_id,created_at,is_active${inventorySelect}${createdBySelect}`,
