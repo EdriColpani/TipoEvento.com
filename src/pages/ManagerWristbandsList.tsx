@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,16 +12,28 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { companyAllowsTicketSales } from '@/utils/company-billing-rules';
 import EventActivationReminderBanner from '@/components/EventActivationReminderBanner';
+import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { showError } from '@/utils/toast';
 
 const formatQty = (n: number) => n.toLocaleString('pt-BR');
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
+type LifecycleFilter = 'active' | 'ended' | 'all';
+
+function isWristbandEventEnded(w: WristbandData): boolean {
+    const ev = w.events;
+    if (!ev) return false;
+    return Boolean(ev.lifecycle_ended_at) || isEventLifecycleEnded(ev.date, ev.time);
+}
+
 const ManagerWristbandsList: React.FC = () => {
     const navigate = useNavigate();
     const { userId, authPending } = usePageAuth();
     const [searchTerm, setSearchTerm] = useState('');
-    
+    const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>('active');
+
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
     const { company } = useManagerCompany(userId);
@@ -29,22 +41,37 @@ const ManagerWristbandsList: React.FC = () => {
     const requiresPaidTickets = companyAllowsTicketSales(billing?.billing_plan);
     const hideManualCreate = requiresPaidTickets && !isAdminMaster;
 
-    // O hook agora recebe isAdminMaster
-    const { wristbands, isLoading, isError, invalidateWristbands } = useManagerWristbands(userId, isAdminMaster);
+    const { wristbands, isLoading, isFetching, isError } = useManagerWristbands(userId, isAdminMaster);
 
-    const filteredWristbands = wristbands.filter(wristband =>
-        wristband.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        wristband.events?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        wristband.access_type.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredWristbands = useMemo(() => {
+        const term = searchTerm.toLowerCase();
+        return wristbands.filter((wristband) => {
+            const ended = isWristbandEventEnded(wristband);
+            if (lifecycleFilter === 'active' && ended) return false;
+            if (lifecycleFilter === 'ended' && !ended) return false;
+
+            if (!term) return true;
+            return (
+                wristband.code.toLowerCase().includes(term) ||
+                wristband.events?.title?.toLowerCase().includes(term) ||
+                wristband.access_type.toLowerCase().includes(term)
+            );
+        });
+    }, [wristbands, searchTerm, lifecycleFilter]);
+
+    const endedCount = useMemo(
+        () => wristbands.filter((w) => isWristbandEventEnded(w)).length,
+        [wristbands],
     );
+    const activeCount = wristbands.length - endedCount;
 
-    const hasCounterRows = wristbands.some((w) => w.inventory_mode === 'counter');
-    const counterStockTotal = wristbands
+    const hasCounterRows = filteredWristbands.some((w) => w.inventory_mode === 'counter');
+    const counterStockTotal = filteredWristbands
         .filter((w) => w.inventory_mode === 'counter')
         .reduce((sum, w) => sum + (w.batch_stock_total ?? 0), 0);
     const listCountLabel = hasCounterRows
-        ? `${wristbands.length} tipo(s) · ${formatQty(counterStockTotal)} ingressos em estoque`
-        : String(wristbands.length);
+        ? `${filteredWristbands.length} tipo(s) · ${formatQty(counterStockTotal)} ingressos em estoque`
+        : String(filteredWristbands.length);
 
     const getStatusClasses = (status: WristbandData['status']) => {
         switch (status) {
@@ -55,7 +82,7 @@ const ManagerWristbandsList: React.FC = () => {
                 return 'bg-gray-500/20 text-gray-400';
             case 'lost':
                 return 'bg-red-500/20 text-red-400';
-            case 'pending': // NOVO
+            case 'pending':
                 return 'bg-yellow-500/20 text-yellow-400';
             default:
                 return 'bg-yellow-500/20 text-yellow-400';
@@ -64,20 +91,24 @@ const ManagerWristbandsList: React.FC = () => {
 
     const getStatusText = (status: WristbandData['status']) => {
         switch (status) {
-            case 'active': return 'Ativa';
-            case 'used': return 'Utilizada';
-            case 'lost': return 'Perdida';
-            case 'cancelled': return 'Cancelada';
-            case 'pending': return 'Pendente'; // NOVO
+            case 'active': return 'Lote ativo';
+            case 'used': return 'Vendido / associado';
+            case 'lost': return 'Perdido';
+            case 'cancelled': return 'Cancelado';
+            case 'pending': return 'Pendente';
             default: return 'Desconhecido';
         }
     };
 
-    const handleManageClick = (eventId: string) => {
-        navigate(`/manager/wristbands/manage/${eventId}`);
+    const handleManageClick = (wristband: WristbandData) => {
+        const ended = isWristbandEventEnded(wristband);
+        if (ended && !isAdminMaster) {
+            showError('Evento encerrado: ingressos só podem ser alterados pelo administrador.');
+            return;
+        }
+        navigate(`/manager/wristbands/manage/${wristband.id}`);
     };
 
-    // Estado de carregamento inicial (antes de saber se o usuário está logado ou o perfil carregado)
     if (authPending || (userId && isLoadingProfile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
@@ -86,9 +117,6 @@ const ManagerWristbandsList: React.FC = () => {
             </div>
         );
     }
-    
-    // Removemos o check de !company para Admin Master, pois eles não precisam de uma empresa associada
-    // para visualizar todas as pulseiras. Para gestores normais, o hook já lida com a ausência de companyId.
 
     if (isError) {
         return (
@@ -99,12 +127,28 @@ const ManagerWristbandsList: React.FC = () => {
         );
     }
 
+    const filterBtn = (key: LifecycleFilter, label: string, count: number) => (
+        <Button
+            key={key}
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLifecycleFilter(key)}
+            className={
+                lifecycleFilter === key
+                    ? 'bg-yellow-500 text-black border-yellow-500 hover:bg-yellow-600 hover:text-black'
+                    : 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400'
+            }
+        >
+            {label} ({count})
+        </Button>
+    );
+
     return (
         <>
             <div className="max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
                 <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0 flex items-center">
-                    {/* <QrCodeIcon className="h-7 w-7 mr-3" /> Removido o ícone de QR Code aqui */}
                     {isAdminMaster ? `Todos os Ingressos (${listCountLabel})` : `Gestão de Ingressos (${listCountLabel})`}
                 </h1>
                 <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
@@ -116,7 +160,7 @@ const ManagerWristbandsList: React.FC = () => {
                         Voltar para o Dashboard
                     </Button>
                     {!hideManualCreate && (
-                    <Button 
+                    <Button
                         onClick={() => navigate('/manager/wristbands/create')}
                         className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
                     >
@@ -145,7 +189,7 @@ const ManagerWristbandsList: React.FC = () => {
                     </div>
                 )}
                 {!hideManualCreate && (
-                <Button 
+                <Button
                     onClick={() => navigate('/manager/wristbands/create')}
                     className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 px-8 text-lg font-semibold transition-all duration-300 cursor-pointer shadow-lg shadow-yellow-500/30 hover:shadow-yellow-500/50 mb-6"
                 >
@@ -154,10 +198,20 @@ const ManagerWristbandsList: React.FC = () => {
                 </Button>
                 )}
 
+                <div className="flex flex-wrap gap-2 mb-2">
+                    {filterBtn('active', 'Ativos', activeCount)}
+                    {filterBtn('ended', 'Encerrados', endedCount)}
+                    {filterBtn('all', 'Todos', wristbands.length)}
+                </div>
+                <p className="text-xs text-gray-500 mb-4">
+                    <strong className="text-gray-400">Status do lote</strong> (ativo / vendido) é do ingresso.
+                    Evento encerrado aparece no nome e na aba — não muda o status do lote.
+                </p>
+
                 <div className="relative mb-6">
-                    <Input 
-                        type="search" 
-                        placeholder="Pesquisar por código ou evento..." 
+                    <Input
+                        type="search"
+                        placeholder="Pesquisar por código ou evento..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 w-full pl-10 py-3 rounded-xl"
@@ -165,7 +219,7 @@ const ManagerWristbandsList: React.FC = () => {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-500/60" />
                 </div>
 
-                {isLoading ? (
+                {isLoading || (isFetching && wristbands.length === 0) ? (
                     <div className="text-center py-10">
                         <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
                         <p className="text-gray-400">Carregando ingressos...</p>
@@ -174,26 +228,36 @@ const ManagerWristbandsList: React.FC = () => {
                     <div className="text-center py-10">
                         <Tag className="h-12 w-12 text-gray-600 mx-auto mb-4" />
                         <p className="text-gray-400 text-lg">Nenhum ingresso encontrado.</p>
-                        <p className="text-gray-500 text-sm mt-2">Cadastre o primeiro ingresso para começar a gerenciar.</p>
+                        <p className="text-gray-500 text-sm mt-2">
+                            {lifecycleFilter === 'active'
+                                ? 'Não há ingressos de eventos ativos. Veja a aba Encerrados se precisar consultar o histórico.'
+                                : 'Cadastre o primeiro ingresso para começar a gerenciar.'}
+                        </p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <Table className="w-full min-w-[800px]">
+                        <Table className="w-full min-w-[1000px]">
                             <TableHeader>
                                 <TableRow className="border-b border-yellow-500/20 text-sm hover:bg-black/40">
                                     <TableHead className="text-left text-gray-400 font-semibold py-3">Código</TableHead>
                                     <TableHead className="text-left text-gray-400 font-semibold py-3">Evento</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3">Tipo de Acesso</TableHead>
+                                    <TableHead className="text-center text-gray-400 font-semibold py-3">Início venda</TableHead>
+                                    <TableHead className="text-center text-gray-400 font-semibold py-3">Término venda</TableHead>
                                     <TableHead className="text-center text-gray-400 font-semibold py-3">Estoque</TableHead>
-                                    <TableHead className="text-center text-gray-400 font-semibold py-3">Status</TableHead>
+                                    <TableHead className="text-center text-gray-400 font-semibold py-3">Status do lote</TableHead>
                                     <TableHead className="text-right text-gray-400 font-semibold py-3 w-[220px]">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {filteredWristbands.map((wristband) => {
+                                    const ended = isWristbandEventEnded(wristband);
+                                    const manageLocked = ended && !isAdminMaster;
+                                    const saleStart = formatEventDateForDisplay(wristband.sale_start_date);
+                                    const saleEnd = formatEventDateForDisplay(wristband.sale_end_date);
                                     return (
-                                        <TableRow 
-                                            key={wristband.id} 
+                                        <TableRow
+                                            key={wristband.id}
                                             className="border-b border-yellow-500/10 hover:bg-black/40 transition-colors text-sm"
                                         >
                                             <TableCell className="py-4">
@@ -201,9 +265,20 @@ const ManagerWristbandsList: React.FC = () => {
                                             </TableCell>
                                             <TableCell className="py-4">
                                                 <div className="text-gray-300 truncate max-w-[200px]">{wristband.events?.title || 'Evento Removido'}</div>
+                                                {ended && (
+                                                    <span className="mt-1 inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-500/20 text-slate-300">
+                                                        Evento encerrado
+                                                    </span>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-center py-4">
                                                 <span className="text-yellow-500 font-medium">{wristband.access_type}</span>
+                                            </TableCell>
+                                            <TableCell className="text-center py-4 text-gray-300 text-xs sm:text-sm tabular-nums">
+                                                {saleStart || '—'}
+                                            </TableCell>
+                                            <TableCell className="text-center py-4 text-gray-300 text-xs sm:text-sm tabular-nums">
+                                                {saleEnd || '—'}
                                             </TableCell>
                                             <TableCell className="text-center py-4 tabular-nums text-gray-200">
                                                 {wristband.inventory_mode === 'counter' ? (
@@ -224,19 +299,32 @@ const ManagerWristbandsList: React.FC = () => {
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-center py-4">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusClasses(wristband.status)}`}>
-                                                    {getStatusText(wristband.status)}
-                                                </span>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusClasses(wristband.status)}`}>
+                                                        {getStatusText(wristband.status)}
+                                                    </span>
+                                                    {ended && (
+                                                        <span className="text-[10px] text-slate-400">
+                                                            (evento já encerrado)
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                             <TableCell className="text-right py-4 flex items-center justify-end space-x-2">
-                                                <Button 
-                                                    variant="outline" 
+                                                <Button
+                                                    variant="outline"
                                                     size="sm"
-                                                    className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 h-8 px-3"
-                                                    onClick={() => handleManageClick(wristband.id)}
+                                                    disabled={manageLocked}
+                                                    title={
+                                                        manageLocked
+                                                            ? 'Evento encerrado — só o administrador pode editar'
+                                                            : 'Gerenciar ingresso'
+                                                    }
+                                                    className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 h-8 px-3 disabled:opacity-50"
+                                                    onClick={() => handleManageClick(wristband)}
                                                 >
                                                     <Settings className="h-4 w-4 mr-2" />
-                                                    Gerenciar
+                                                    {manageLocked ? 'Bloqueado' : 'Gerenciar'}
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -247,8 +335,6 @@ const ManagerWristbandsList: React.FC = () => {
                     </div>
                 )}
             </Card>
-            
-            {/* O botão duplicado na parte inferior foi removido */}
         </div>
         </>
     );

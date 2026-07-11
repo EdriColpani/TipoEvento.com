@@ -20,6 +20,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import QrCodeModal from '@/components/QrCodeModal';
+import { useProfile } from '@/hooks/use-profile';
+import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
+
+const ADMIN_MASTER_USER_TYPE_ID = 1;
 
 // Tipos de dados para a pulseira e analytics
 interface WristbandDetails {
@@ -29,7 +33,7 @@ interface WristbandDetails {
     status: 'active' | 'used' | 'lost' | 'cancelled' | 'pending'; // NOVO: Adicionado 'pending'
     created_at: string;
     manager_user_id: string;
-    events: { title: string; date: string; allow_printed_tickets?: boolean } | null;
+    events: { title: string; date: string; time?: string | null; lifecycle_ended_at?: string | null; allow_printed_tickets?: boolean } | null;
     company_id: string;
     event_id: string; // Adicionando event_id para uso na lógica de atualização em massa
     price: number; // NOVO: Preço da pulseira
@@ -62,7 +66,7 @@ const fetchWristbandData = async (id: string): Promise<{ details: WristbandDetai
         .from('wristbands')
         .select(`
             id, code, access_type, status, created_at, manager_user_id, company_id, event_id, price,
-            events!event_id (title, date, allow_printed_tickets)
+            events!event_id (title, date, time, lifecycle_ended_at, allow_printed_tickets)
         `)
         .eq('id', id)
         .single();
@@ -138,7 +142,9 @@ const formatPriceInput = (value: string): string => {
 const ManagerManageWristband: React.FC = () => {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
-    const { authPending } = usePageAuth();
+    const { userId, authPending } = usePageAuth();
+    const { profile } = useProfile(userId);
+    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
     const { data, isLoading, isError, invalidate, refetch } = useWristbandManagement(id);
     const [newStatus, setNewStatus] = useState<WristbandDetails['status'] | string>('');
     const [newPrice, setNewPrice] = useState<string>(''); 
@@ -206,6 +212,14 @@ const ManagerManageWristband: React.FC = () => {
 
     const handleStatusUpdate = async () => {
         if (!id || !data?.details) return;
+
+        const ev = data.details.events;
+        const eventEnded =
+            Boolean(ev?.lifecycle_ended_at) || isEventLifecycleEnded(ev?.date, ev?.time);
+        if (eventEnded && !isAdminMaster) {
+            showError('Evento encerrado: alterações só pelo administrador.');
+            return;
+        }
         
         const statusChanged = newStatus !== data.details.status;
         
@@ -353,6 +367,10 @@ const ManagerManageWristband: React.FC = () => {
     }
 
     const { details, analytics } = data;
+    const eventEnded =
+        Boolean(details.events?.lifecycle_ended_at) ||
+        isEventLifecycleEnded(details.events?.date, details.events?.time);
+    const editsLocked = eventEnded && !isAdminMaster;
     const currentStatusOption = STATUS_OPTIONS.find(opt => opt.value === details.status);
     
     // Filtragem dos analytics
@@ -399,9 +417,22 @@ const ManagerManageWristband: React.FC = () => {
                     className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Voltar para a Lista
+                    Voltar
                 </Button>
             </div>
+
+            {editsLocked && (
+                <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/50 p-4 text-sm text-amber-50">
+                    <AlertTriangle className="h-5 w-5 text-amber-300 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-semibold text-white mb-1">Evento encerrado</p>
+                        <p className="text-amber-100/90 text-xs leading-relaxed">
+                            Este evento já foi realizado (mais de 1 dia após o horário de início). Status e preço
+                            não podem ser alterados. Somente o administrador pode editar.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Coluna de Detalhes e Status (CONSOLIDADA) */}
@@ -436,7 +467,7 @@ const ManagerManageWristband: React.FC = () => {
                                     onBlur={handlePriceBlur}
                                     placeholder="0,00"
                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                    disabled={isUpdatingStatus}
+                                    disabled={isUpdatingStatus || editsLocked}
                                 />
                             </div>
                         </div>
@@ -455,8 +486,8 @@ const ManagerManageWristband: React.FC = () => {
                             
                             <div>
                                 <label htmlFor="status" className="block text-sm font-medium text-white mb-2">Alterar Status</label>
-                                <Select onValueChange={setNewStatus} value={newStatus}>
-                                    <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10">
+                                <Select onValueChange={setNewStatus} value={newStatus} disabled={editsLocked}>
+                                    <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500 h-10 disabled:opacity-50">
                                         <SelectValue placeholder="Selecione o novo status" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-black border-yellow-500/30 text-white">
@@ -487,7 +518,7 @@ const ManagerManageWristband: React.FC = () => {
                             <div className="flex space-x-4 pt-2">
                                 <Button
                                     onClick={handleStatusUpdate}
-                                    disabled={isUpdatingStatus || !hasChanges}
+                                    disabled={isUpdatingStatus || !hasChanges || editsLocked}
                                     className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 py-2 text-base font-semibold transition-all duration-300 cursor-pointer disabled:opacity-50 h-10"
                                 >
                                     {isUpdatingStatus ? (

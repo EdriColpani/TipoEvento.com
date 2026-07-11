@@ -64,13 +64,14 @@ import {
 import { fetchEventContractVersion } from '@/utils/fetch-event-contract-version';
 import { useEventEditSalesGuard } from '@/hooks/use-event-edit-sales-guard';
 import {
-    batchesDifferFromSnapshot,
+    batchesIncreaseOnlyViolation,
     salesGuardLockedMessage,
     snapshotBatchesForLock,
     turmasDifferFromSnapshot,
     type LockedBatchSnapshot,
     type LockedTurmaSnapshot,
 } from '@/utils/event-edit-sales-guard';
+import { resolveCommissionFromRanges } from '@/utils/resolve-commission-percentage';
 
 interface EventContract {
     id: string;
@@ -262,6 +263,7 @@ const eventFormSchema = z.object({
     }, "Número de lotes deve ser um número inteiro positivo."),
     // Detalhes de cada lote: campos opcionais no schema; validação condicional em superRefine (só quando is_paid)
     batches: z.array(z.object({
+        id: z.string().optional(),
         name: z.string().optional(),
         quantity: z.string().optional(),
         price: z.string().optional(),
@@ -374,6 +376,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const lockedIsPaidRef = useRef<boolean | null>(null);
     const { data: salesGuard } = useEventEditSalesGuard(eventId);
     const ticketsLocked = Boolean(eventId && salesGuard?.has_sales);
+    const quantityIncreaseOnly = ticketsLocked;
     const [turmasDraft, setTurmasDraft] = useState<Array<{ id?: string; nome: string; capacity: string }>>([
         { nome: 'Turma 1', capacity: '50' },
         { nome: 'Turma 2', capacity: '50' },
@@ -652,33 +655,37 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             }
             setEditPricingLoading(true);
             try {
-                const { data: event, error: eventError } = await supabase
-                    .from('events')
-                    .select(
-                        'is_paid, allow_printed_tickets, entry_qr_ttl_seconds, validator_show_holder, credit_consumption_enabled, inventory_mode, ticket_price, contract_id, capacity, date',
-                    )
-                    .eq('id', eventId)
-                    .maybeSingle();
-
-                if (eventError || !event) return;
+                const eventRows = await restGet<
+                    Array<{
+                        is_paid?: boolean;
+                        allow_printed_tickets?: boolean;
+                        entry_qr_ttl_seconds?: number;
+                        validator_show_holder?: boolean;
+                        credit_consumption_enabled?: boolean;
+                        inventory_mode?: string | null;
+                        ticket_price?: number | string | null;
+                        contract_id?: string | null;
+                        capacity?: number | null;
+                        date?: string | null;
+                    }>
+                >(
+                    `events?id=eq.${encodeURIComponent(eventId)}&select=is_paid,allow_printed_tickets,entry_qr_ttl_seconds,validator_show_holder,credit_consumption_enabled,inventory_mode,ticket_price,contract_id,capacity,date&limit=1`,
+                    12_000,
+                );
+                const event = eventRows?.[0];
+                if (!event) return;
 
                 const eventIsPaid = Boolean(event.is_paid);
                 lockedIsPaidRef.current = eventIsPaid;
                 setValue('is_paid', eventIsPaid);
                 setValue('allow_printed_tickets', Boolean(event.allow_printed_tickets));
-                const ttl = Number((event as { entry_qr_ttl_seconds?: number }).entry_qr_ttl_seconds);
+                const ttl = Number(event.entry_qr_ttl_seconds);
                 setValue(
                     'entry_qr_ttl_seconds',
                     ttl === 60 || ttl === 120 ? String(ttl) : '90',
                 );
-                setValue(
-                    'validator_show_holder',
-                    (event as { validator_show_holder?: boolean }).validator_show_holder !== false,
-                );
-                setValue(
-                    'credit_consumption_enabled',
-                    (event as { credit_consumption_enabled?: boolean }).credit_consumption_enabled === true,
-                );
+                setValue('validator_show_holder', event.validator_show_holder !== false);
+                setValue('credit_consumption_enabled', event.credit_consumption_enabled === true);
                 if (event.contract_id) {
                     setValue('contract_id', event.contract_id);
                     setValue('contractAccepted', true);
@@ -693,13 +700,20 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                 if (!event.is_paid) return;
 
-                const { data: batches, error: batchError } = await supabase
-                    .from('event_batches')
-                    .select('name, quantity, price, start_date, end_date')
-                    .eq('event_id', eventId)
-                    .order('start_date', { ascending: true });
-
-                if (batchError && batchError.code !== 'PGRST205') {
+                let batches: Array<{
+                    id?: string;
+                    name?: string | null;
+                    quantity?: number | null;
+                    price?: number | null;
+                    start_date?: string | null;
+                    end_date?: string | null;
+                }> = [];
+                try {
+                    batches = await restGet(
+                        `event_batches?event_id=eq.${encodeURIComponent(eventId)}&select=id,name,quantity,price,start_date,end_date&order=start_date.asc&limit=500`,
+                        12_000,
+                    );
+                } catch (batchError) {
                     console.error('Erro ao carregar lotes do evento:', batchError);
                     return;
                 }
@@ -712,6 +726,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                 if (batches && batches.length > 0) {
                     const mapped = batches.map((b, idx) => ({
+                        id: String(b.id ?? ''),
                         name: (b.name as string)?.trim() || `Lote ${idx + 1}`,
                         quantity: String(b.quantity ?? ''),
                         price: formatPriceBr(b.price),
@@ -750,7 +765,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 setEditPricingLoading(false);
             }
         };
-        loadEventEditExtras();
+        void loadEventEditExtras();
     }, [eventId, setValue, methods]);
 
     // AGORA PODEMOS FAZER OS RETURNS CONDICIONAIS
@@ -870,16 +885,16 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 setCurrentStep(showContractStep ? 3 : 2);
                 return;
             }
-            if (
-                values.is_paid &&
-                lockedBatchesRef.current &&
-                batchesDifferFromSnapshot(values.batches, lockedBatchesRef.current)
-            ) {
-                showError(
-                    'Lotes, preços e quantidades não podem ser alterados após ingressos vendidos. Atualize apenas local, endereço, imagens e descrição.',
+            if (values.is_paid && lockedBatchesRef.current) {
+                const batchErr = batchesIncreaseOnlyViolation(
+                    values.batches,
+                    lockedBatchesRef.current,
                 );
-                setCurrentStep(showContractStep ? 4 : 3);
-                return;
+                if (batchErr) {
+                    showError(batchErr);
+                    setCurrentStep(showContractStep ? 4 : 3);
+                    return;
+                }
             }
             if (
                 !values.is_paid &&
@@ -1008,6 +1023,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 : 0;
             const totalTickets = effectiveIsPaid ? totalTicketsQuantity : Number(values.capacity);
 
+            const commissionMatch =
+                effectiveIsPaid && !isListingPlan
+                    ? resolveCommissionFromRanges(totalTicketsQuantity || totalTickets, commissionRanges || [])
+                    : null;
+
             // Preço mínimo para exibição no card: lotes têm prioridade; senão usa o campo único ticket_price
             const minPriceFromBatches = effectiveIsPaid && values.batches?.length
                 ? Math.min(...values.batches.map(b => parseFloat(String(b.price || '0').replace(',', '.')) || 0))
@@ -1090,15 +1110,27 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 contract_id: effectiveContractId,
                 contract_version: resolvedContractVersion,
             };
+            if (commissionMatch && !ticketsLocked) {
+                eventData.applied_percentage = commissionMatch.percentage;
+                eventData.commission_range_id = Number(commissionMatch.commission_range_id);
+            }
             if (clientSubmitId) {
                 eventData.client_submit_id = clientSubmitId;
             }
 
-            // Com vendas, não sobrescreve totais/preço/tipo no registro do evento (lotes não são recriados).
+            // Com vendas: atualiza total_tickets se aumentou; % fica congelado no banco.
             if (persistenceEventId && ticketsLocked) {
-                delete eventData.total_tickets;
                 delete eventData.ticket_price;
                 delete eventData.is_paid;
+                delete eventData.applied_percentage;
+                delete eventData.commission_range_id;
+                // Mantém total_tickets se lotes aumentaram
+                if (effectiveIsPaid && totalTicketsQuantity > 0) {
+                    eventData.total_tickets = totalTicketsQuantity;
+                    eventData.capacity = totalTicketsQuantity;
+                } else {
+                    delete eventData.total_tickets;
+                }
             }
 
             let newEventId = persistenceEventId;
@@ -1156,10 +1188,46 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 }
             }
 
-            // Lógica para lotes (se for pago) — não recria lotes se já houve vendas
-            const skipBatchRewrite =
+            // Lotes pagos: sem vendas = recreate; com vendas = só UPDATE de quantity (aumento)
+            const increaseOnlyBatches =
                 Boolean(eventId && salesGuard?.has_sales && lockedBatchesRef.current);
-            if (effectiveIsPaid && newEventId && values.batches && !skipBatchRewrite) {
+
+            if (effectiveIsPaid && newEventId && values.batches && increaseOnlyBatches) {
+                try {
+                    const locked = lockedBatchesRef.current ?? [];
+                    for (let i = 0; i < values.batches.length; i++) {
+                        const batch = values.batches[i];
+                        const snap = locked[i];
+                        const batchId = snap?.id || (batch as { id?: string }).id;
+                        if (!batchId) continue;
+                        const newQty = batchQuantityAsNumber(batch.quantity);
+                        const oldQty = Number(String(snap?.quantity ?? '').replace(/\D/g, '')) || 0;
+                        if (newQty <= oldQty) continue;
+                        const { error: updErr } = await supabase
+                            .from('event_batches')
+                            .update({ quantity: newQty })
+                            .eq('id', batchId)
+                            .eq('event_id', newEventId);
+                        if (updErr) throw updErr;
+                    }
+                    await callRpcRest(
+                        'backfill_event_counter_inventory',
+                        { p_event_id: newEventId },
+                        15_000,
+                    );
+                } catch (batchError: unknown) {
+                    console.error('Erro ao aumentar estoque dos lotes:', batchError);
+                    const msg =
+                        batchError && typeof batchError === 'object' && 'message' in batchError
+                            ? String((batchError as { message?: string }).message)
+                            : 'Erro desconhecido';
+                    showError(
+                        msg.includes('STOCK_INCREASE_ONLY')
+                            ? 'Após a primeira venda a quantidade só pode aumentar.'
+                            : `Não foi possível atualizar o estoque: ${msg}`,
+                    );
+                }
+            } else if (effectiveIsPaid && newEventId && values.batches && !increaseOnlyBatches) {
                 try {
                     if (effectiveIsPaid && newEventId) {
                         await callRpcRest('cleanup_orphan_counter_wristbands', {
@@ -1167,13 +1235,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         }, 12_000);
                     }
 
-                    // Exclui lotes antigos para recriar (simples para este exemplo, considerar updates mais complexos para produção)
                     const { error: deleteError } = await supabase
                         .from('event_batches')
                         .delete()
                         .eq('event_id', newEventId);
 
-                    // Se a tabela não existir neste ambiente, apenas registra log e segue sem quebrar o fluxo
                     if (deleteError && deleteError.code !== 'PGRST205') {
                         throw deleteError;
                     }
@@ -1195,7 +1261,6 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         throw batchesError;
                     }
 
-                    // Só mostra sucesso se a tabela existir e a operação for concluída
                     if (!deleteError && !batchesError) {
                         if (effectiveIsPaid && newEventId) {
                             await callRpcRest(
@@ -2018,7 +2083,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                 <FormField
                                                     control={control}
                                                     name={`batches.${batchIndex}.quantity`}
-                                                    render={({ field }) => (
+                                                    render={({ field }) => {
+                                                        const lockedQty = lockedBatchesRef.current?.[batchIndex]?.quantity;
+                                                        const minQty = quantityIncreaseOnly
+                                                            ? Number(String(lockedQty ?? '').replace(/\D/g, '')) || 1
+                                                            : 1;
+                                                        return (
                                                         <FormItem>
                                                             <FormLabel className="text-white">Quantidade de Ingressos</FormLabel>
                                                             <FormControl>
@@ -2027,22 +2097,32 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                     inputMode="numeric"
                                                                     placeholder="Ex: 200 ou 50.000"
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                                                    disabled={ticketsLocked}
+                                                                    disabled={false}
                                                                     {...field} 
                                                                     onChange={(e) => field.onChange(e.target.value)}
                                                                     onBlur={(e) => {
                                                                         const normalized = parseBatchQuantity(e.target.value);
-                                                                        if (normalized) field.onChange(normalized);
+                                                                        if (normalized) {
+                                                                            const n = Number(normalized);
+                                                                            field.onChange(
+                                                                                quantityIncreaseOnly && n < minQty
+                                                                                    ? String(minQty)
+                                                                                    : normalized,
+                                                                            );
+                                                                        }
                                                                         field.onBlur();
                                                                     }}
                                                                 />
                                                             </FormControl>
                                                             <FormDescription className="text-cyan-200/90 text-xs">
-                                                                Estoque deste tipo. Os QR codes são gerados automaticamente na venda.
+                                                                {quantityIncreaseOnly
+                                                                    ? `Após vendas, só pode aumentar (mínimo: ${minQty.toLocaleString('pt-BR')}).`
+                                                                    : 'Estoque deste tipo. Os QR codes são gerados automaticamente na venda.'}
                                                             </FormDescription>
                                                             <FormMessage />
                                                         </FormItem>
-                                                    )}
+                                                        );
+                                                    }}
                                                 />
                                                 <FormField
                                                     control={control}

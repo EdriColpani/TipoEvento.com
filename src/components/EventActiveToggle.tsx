@@ -19,24 +19,34 @@ import { formatMinEventTicketsActivationError } from '@/utils/min-event-tickets-
 import { formatTicketInactivityError } from '@/utils/ticket-inactivity-errors';
 import { fetchGoLiveChecklistOnce, type GoLiveChecklistItem } from '@/hooks/use-event-go-live-checklist';
 import { getGoLiveAutoBlockers, getGoLiveFixAction, isGoLiveAutoReady } from '@/utils/go-live-activation';
+import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
 
 interface EventActiveToggleProps {
     eventId: string;
     eventTitle: string;
     isDraft: boolean;
     isActive: boolean;
+    eventDate?: string | null;
+    eventTime?: string | null;
+    lifecycleEndedAt?: string | null;
+    isAdminMaster?: boolean;
     onSuccess: () => void;
 }
 
 /**
  * Ativa / desativa evento na listagem do gestor (não aparece na vitrine nem aceita novas vendas quando inativo).
  * Rascunhos não exibem o controle.
+ * Evento encerrado (início + 1 dia): só Admin Master pode reativar.
  */
 const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
     eventId,
     eventTitle,
     isDraft,
     isActive,
+    eventDate,
+    eventTime,
+    lifecycleEndedAt,
+    isAdminMaster = false,
     onSuccess,
 }) => {
     const navigate = useNavigate();
@@ -48,6 +58,10 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
         return null;
     }
 
+    const lifecycleEnded =
+        Boolean(lifecycleEndedAt) || isEventLifecycleEnded(eventDate, eventTime);
+    const canReactivate = !lifecycleEnded || isAdminMaster;
+
     const applyToggle = async (nextActive: boolean) => {
         setBusy(true);
         const toastId = showLoading(nextActive ? 'Ativando evento...' : 'Desativando evento...');
@@ -57,23 +71,30 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                 throw error;
             }
             dismissToast(toastId);
-            showSuccess(nextActive ? 'Evento ativado novamente.' : 'Evento desativado. Ele sai da vitrine e não aceita novas vendas.');
+            showSuccess(
+                nextActive
+                    ? 'Evento ativado novamente.'
+                    : 'Evento desativado. Ele sai da vitrine e não aceita novas vendas.',
+            );
             onSuccess();
         } catch (err: unknown) {
             dismissToast(toastId);
             const raw = err instanceof Error ? err.message : 'Erro desconhecido';
             const msg = formatTicketInactivityError(formatMinEventTicketsActivationError(raw));
-            showError(
-                nextActive
-                    ? msg
-                    : `Não foi possível desativar o evento: ${msg}`,
-            );
+            const lifecycleMsg = /EVENT_LIFECYCLE_ENDED/i.test(raw)
+                ? 'Este evento já foi realizado. Somente o administrador pode reativá-lo.'
+                : msg;
+            showError(nextActive ? lifecycleMsg : `Não foi possível desativar o evento: ${msg}`);
         } finally {
             setBusy(false);
         }
     };
 
     const tryActivate = async () => {
+        if (lifecycleEnded && !isAdminMaster) {
+            showError('Este evento já foi realizado. Somente o administrador pode reativá-lo.');
+            return;
+        }
         setBusy(true);
         try {
             const checklist = await fetchGoLiveChecklistOnce(eventId);
@@ -99,13 +120,19 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="shrink-0 border-green-500/40 bg-black/60 text-green-400 hover:bg-green-500/15 hover:text-green-300 h-8 px-3"
-                        disabled={busy}
+                        className="shrink-0 border-green-500/40 bg-black/60 text-green-400 hover:bg-green-500/15 hover:text-green-300 h-8 px-3 disabled:opacity-50"
+                        disabled={busy || !canReactivate}
                         onClick={() => void tryActivate()}
-                        title="Ativar evento na vitrine. Mega eventos exigem checklist go-live completo."
+                        title={
+                            !canReactivate
+                                ? 'Evento encerrado — só o administrador pode reativar'
+                                : 'Ativar evento na vitrine. Mega eventos exigem checklist go-live completo.'
+                        }
                     >
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-                        <span className="ml-1.5 hidden sm:inline">Ativar</span>
+                        <span className="ml-1.5 hidden sm:inline">
+                            {lifecycleEnded && !isAdminMaster ? 'Encerrado' : 'Ativar'}
+                        </span>
                     </Button>
                 </span>
 
@@ -189,7 +216,7 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                     <AlertDialogDescription className="text-gray-400">
                         <span className="font-semibold text-white">"{eventTitle}"</span> deixará de aparecer na vitrine
                         pública e não aceitará novas compras ou inscrições. Quem já comprou ou se inscreveu não é
-                        afetado; você pode reativar quando quiser.
+                        afetado; você pode reativar quando quiser (exceto após o encerramento automático).
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
