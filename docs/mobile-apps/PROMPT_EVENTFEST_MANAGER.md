@@ -1,7 +1,13 @@
 # PROMPT — EventFest Manager (App Gestor)
 
-> **Uso:** copie este documento integralmente ao iniciar o projeto mobile do gestor/promotor.
-> **Repositório sugerido:** `eventfest-manager` (1 repo, iOS + Android)
+> **Status:** histórico. A decisão atual é **não** criar um segundo app gestor.
+> Use em vez disso: [`PROMPT_EVENTFEST_RUSH_GESTOR_INTEGRATION.md`](./PROMPT_EVENTFEST_RUSH_GESTOR_INTEGRATION.md)
+> (Modo Cliente + Modo Gestor no app Rush existente).
+>
+> Este arquivo permanece como referência de escopo funcional do gestor.
+
+> **Uso (legado):** copiar para criar app gestor separado — **não recomendado** no momento.
+> **Repositório sugerido (legado):** `eventfest-manager`
 > **Backend:** mesmo Supabase do projeto web EventFest (`tipoevento`)
 
 ---

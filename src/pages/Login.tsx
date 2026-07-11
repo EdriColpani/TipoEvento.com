@@ -51,7 +51,9 @@ const Login: React.FC = () => {
         } catch (error) {
             const code = error instanceof Error ? error.message : '';
             if (code === 'PROFILE_NOT_FOUND') {
-                showError('Erro ao carregar dados do perfil. Tente novamente.');
+                showError(
+                    'Não foi possível carregar seu perfil a tempo. Verifique a conexão e tente entrar de novo.',
+                );
             } else if (code === 'UNKNOWN_USER_TYPE') {
                 showError('Tipo de usuário desconhecido. Acesso negado.');
             } else {

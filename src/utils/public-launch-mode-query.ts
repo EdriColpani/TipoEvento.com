@@ -4,7 +4,7 @@ import { withTimeout } from '@/utils/promise-timeout';
 
 export const PUBLIC_LAUNCH_MODE_QUERY_KEY = ['publicLaunchMode'] as const;
 
-async function fetchPublicLaunchModeRest(timeoutMs = 8_000): Promise<PublicLaunchMode> {
+export async function fetchPublicLaunchModeRest(timeoutMs = 12_000): Promise<PublicLaunchMode> {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -42,5 +42,5 @@ async function fetchPublicLaunchModeRest(timeoutMs = 8_000): Promise<PublicLaunc
 }
 
 export async function fetchPublicLaunchMode(): Promise<PublicLaunchMode> {
-    return withTimeout(fetchPublicLaunchModeRest(), 10_000, 'preview' as PublicLaunchMode);
+    return withTimeout(fetchPublicLaunchModeRest(), 14_000, 'preview' as PublicLaunchMode);
 }
