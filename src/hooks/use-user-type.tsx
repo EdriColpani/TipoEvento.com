@@ -1,25 +1,26 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { restGetAuthOrPublic } from '@/utils/supabase-rest';
 
 interface UserType {
     id: number;
     nome: string;
 }
 
+const LOCAL_TYPE_NAMES: Record<number, string> = {
+    1: 'Administrador Master',
+    2: 'Gestor',
+    3: 'Cliente',
+};
+
 const fetchUserTypes = async (): Promise<UserType[]> => {
     try {
-        const { data, error } = await supabase
-            .from('tipo_usuario')
-            .select('id, nome');
-
-        if (error) {
-            console.warn('tipo_usuario:', error.message);
-            return [];
-        }
-
-        return data as UserType[];
+        const data = await restGetAuthOrPublic<UserType[]>(
+            'tipo_usuario?select=id,nome&order=id.asc',
+            8_000,
+        );
+        return Array.isArray(data) ? data : [];
     } catch (e) {
-        console.warn('tipo_usuario failed', e);
+        console.warn('tipo_usuario failed', e instanceof Error ? e.message : e);
         return [];
     }
 };
@@ -35,20 +36,16 @@ export const useUserType = (userTypeId: number | undefined) => {
     });
 
     const getUserTypeName = (id: number | undefined): string => {
-        if (id === undefined || !userTypes) return 'Carregando...';
+        if (id === undefined) return 'Carregando...';
 
         const tipo = Number(id);
-        const type = userTypes.find((t) => Number(t.id) === tipo);
-        
-        // Mapeamento para nomes mais amigáveis, se necessário
-        if (type) {
-            if (tipo === 1) return 'Administrador Master';
-            if (tipo === 2) return 'Gestor';
-            if (tipo === 3) return 'Cliente';
-            return type.nome;
-        }
-        
-        return 'Desconhecido';
+        if (LOCAL_TYPE_NAMES[tipo]) return LOCAL_TYPE_NAMES[tipo];
+
+        const type = userTypes?.find((t) => Number(t.id) === tipo);
+        if (type?.nome) return type.nome;
+
+        if (isLoading) return 'Carregando...';
+        return 'Conta EventFest';
     };
 
     return {

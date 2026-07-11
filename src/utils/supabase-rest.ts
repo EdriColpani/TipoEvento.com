@@ -21,8 +21,9 @@ function normalizeRestError(response: Response, data: unknown, fallback: string)
     const message = row?.message ?? fallback;
     const lower = message.toLowerCase();
     const isSessionExpired =
-        response.status === 401 || response.status === 403 || lower.includes('jwt expired');
+        response.status === 401 || lower.includes('jwt expired') || lower.includes('invalid jwt');
 
+    // NÃO limpar sessão em 403 (RLS/permissão) — só em token inválido/expirado.
     if (isSessionExpired) {
         clearAuthSessionStorage();
         window.dispatchEvent(new CustomEvent(AUTH_SIGNED_OUT_EVENT));

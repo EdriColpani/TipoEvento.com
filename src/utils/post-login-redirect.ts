@@ -12,7 +12,7 @@ import {
 import type { User } from '@supabase/supabase-js';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest } from '@/utils/auth-rest';
-import { fetchProfileTipoUsuarioId } from '@/utils/fetch-profile-tipo';
+import { fetchProfileTipoUsuarioIdResilient } from '@/utils/fetch-profile-tipo';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export type PostLoginRedirect = {
@@ -67,7 +67,7 @@ export async function resolvePostLoginRedirect(
         };
     }
 
-    const userType = await fetchProfileTipoUsuarioId(userId);
+    const userType = await fetchProfileTipoUsuarioIdResilient(userId);
     if (userType == null) {
         throw new Error('PROFILE_NOT_FOUND');
     }

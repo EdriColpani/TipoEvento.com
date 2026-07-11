@@ -1,29 +1,28 @@
 # Prompts para aplicativos mobile EventFest
 
-Este diretório contém **3 prompts completos** para criação dos projetos mobile (iOS + Android), um por segmento de usuário.
+Este diretório contém prompts para os projetos mobile (iOS + Android).
 
-| Arquivo | App | Público |
+| Arquivo | Uso | Público |
 |---------|-----|---------|
-| [PROMPT_EVENTFEST_MANAGER.md](./PROMPT_EVENTFEST_MANAGER.md) | **EventFest Manager** | Gestor / Promotor |
-| [PROMPT_EVENTFEST_RUSH.md](./PROMPT_EVENTFEST_RUSH.md) | **EventFest Rush** | Cliente final |
-| [PROMPT_EVENTFEST_VALIDATOR.md](./PROMPT_EVENTFEST_VALIDATOR.md) | **EventFest Validator** | Equipe de portaria |
+| [PROMPT_EVENTFEST_RUSH_GESTOR_INTEGRATION.md](./PROMPT_EVENTFEST_RUSH_GESTOR_INTEGRATION.md) | **Preferencial** — integrar Modo Gestor no app do cliente já existente (app único) | Cliente + Gestor |
+| [PROMPT_EVENTFEST_RUSH.md](./PROMPT_EVENTFEST_RUSH.md) | App cliente (baseline) | Cliente final |
+| [PROMPT_EVENTFEST_MANAGER.md](./PROMPT_EVENTFEST_MANAGER.md) | Histórico — app gestor separado (substituído pela integração acima) | Gestor / Promotor |
+| [PROMPT_EVENTFEST_VALIDATOR.md](./PROMPT_EVENTFEST_VALIDATOR.md) | **Criar do zero** o app de portaria (paridade com `/validator` web) | Equipe de validação |
 
 ## Como usar
 
-1. Abra o prompt do app desejado.
-2. Copie o conteúdo integral para um novo chat de IA ou brief de desenvolvimento.
-3. Crie **um repositório GitHub por app** (ou um monorepo com 3 packages — decisão do time).
-4. Reutilize o mesmo backend Supabase e Edge Functions do projeto web `tipoevento`.
+1. **App único (recomendado agora):** abra `PROMPT_EVENTFEST_RUSH_GESTOR_INTEGRATION.md`, copie o conteúdo (ou o bloco “Prompt final”) no chat do repositório mobile do cliente.
+2. **Validador:** use `PROMPT_EVENTFEST_VALIDATOR.md` em repositório separado.
+3. Reutilize o mesmo backend Supabase e Edge Functions do projeto web `tipoevento`.
 
-## Stack recomendada (comum aos 3)
+## Stack recomendada
 
-- **Expo (React Native)** ou **Flutter**
+- **Expo (React Native)** + **TypeScript**
 - **Supabase** (auth, Postgres, RPC, Edge Functions)
-- **TypeScript**
 - Push: Expo Notifications / FCM + APNs
-- Repositório: **1 projeto = iOS + Android** (pastas `ios/` e `android/` nativas geradas pelo framework)
+- React Query + React Navigation
 
-## O que NÃO entra nestes apps
+## O que NÃO entra nos apps mobile
 
 - Painel **Admin Master** completo (permanece na web)
 - Backup de banco, configurações globais da plataforma

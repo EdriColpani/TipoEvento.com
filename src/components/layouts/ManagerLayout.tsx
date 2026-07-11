@@ -489,6 +489,15 @@ const ManagerLayout: React.FC = () => {
                         <div
                             className="flex items-center gap-2 sm:gap-3 cursor-pointer"
                             onClick={() => navigate('/')}
+                            role="link"
+                            tabIndex={0}
+                            aria-label="Ir para a página principal EventFest"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    navigate('/');
+                                }
+                            }}
                         >
                             <SiteLogo header onClick={() => navigate('/')} />
                             <span className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black px-2.5 sm:px-3 py-1 rounded-lg text-sm sm:text-base font-bold shrink-0">
