@@ -7,16 +7,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, Plus, Loader2, Key, Copy, CheckCircle, XCircle, Eye, EyeOff, Calendar, AlertTriangle, RefreshCw, Trash2, History, Edit, Share2, MessageCircle } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { fetchEventsVisibleToGestor } from '@/utils/manager-events-scope';
+import { fetchEventsVisibleToGestorRest } from '@/utils/manager-events-scope';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
+import { restDelete, restGet, restPatch } from '@/utils/supabase-rest';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 
 interface ValidationApiKey {
     id: string;
@@ -41,60 +42,68 @@ interface ValidationLog {
     event_title?: string;
 }
 
-const fetchValidationKeys = async (userId: string, isAdminMaster: boolean): Promise<ValidationApiKey[]> => {
-    // A RLS no banco já filtra por empresa automaticamente
-    // Não precisamos filtrar manualmente aqui
-    const { data, error } = await supabase
-        .from('validation_api_keys')
-        .select(`
-            id,
-            name,
-            event_id,
-            is_active,
-            expires_at,
-            last_used_at,
-            created_at,
-            events!event_id (title)
-        `)
-        .order('created_at', { ascending: false });
+type ValidationKeyRow = {
+    id: string;
+    name: string;
+    event_id: string | null;
+    is_active: boolean;
+    expires_at: string | null;
+    last_used_at: string | null;
+    created_at: string;
+    events?: { title?: string } | null;
+};
 
-    if (error) throw error;
+type ValidationLogRow = {
+    id: string;
+    wristband_code: string;
+    validation_type: string;
+    validation_status: string;
+    validation_message: string;
+    validated_by_name: string;
+    created_at: string;
+    event_id?: string | null;
+    events?: { title?: string } | null;
+};
 
-    return data.map((key: any) => ({
-        ...key,
-        event_title: key.events?.title || null,
-        // api_key não é buscada por segurança - só existe no estado local após criação
+const fetchValidationKeys = async (_userId: string, _isAdminMaster: boolean): Promise<ValidationApiKey[]> => {
+    // RLS no banco filtra por empresa / admin
+    const data = await restGet<ValidationKeyRow[]>(
+        'validation_api_keys?select=id,name,event_id,is_active,expires_at,last_used_at,created_at,events!event_id(title)&order=created_at.desc&limit=500',
+        15_000,
+    );
+
+    return (data ?? []).map((key) => ({
+        id: key.id,
+        name: key.name,
+        event_id: key.event_id,
+        is_active: key.is_active,
+        expires_at: key.expires_at,
+        last_used_at: key.last_used_at,
+        created_at: key.created_at,
+        event_title: key.events?.title || undefined,
     }));
 };
 
 const fetchValidationLogs = async (apiKeyId: string): Promise<ValidationLog[]> => {
-    const { data, error } = await supabase
-        .from('validation_logs')
-        .select(`
-            id,
-            wristband_code,
-            validation_type,
-            validation_status,
-            validation_message,
-            validated_by_name,
-            created_at,
-            event_id,
-            events!event_id (title)
-        `)
-        .eq('api_key_id', apiKeyId)
-        .order('created_at', { ascending: false })
-        .limit(50);
+    const data = await restGet<ValidationLogRow[]>(
+        `validation_logs?select=id,wristband_code,validation_type,validation_status,validation_message,validated_by_name,created_at,event_id,events!event_id(title)&api_key_id=eq.${encodeURIComponent(apiKeyId)}&order=created_at.desc&limit=50`,
+        12_000,
+    );
 
-    if (error) throw error;
-
-    return data.map((log: any) => ({
-        ...log,
-        event_title: log.events?.title || null,
+    return (data ?? []).map((log) => ({
+        id: log.id,
+        wristband_code: log.wristband_code,
+        validation_type: log.validation_type,
+        validation_status: log.validation_status,
+        validation_message: log.validation_message,
+        validated_by_name: log.validated_by_name,
+        created_at: log.created_at,
+        event_title: log.events?.title || undefined,
     }));
 };
 
 const fetchEvents = async (userId: string, isAdminMaster: boolean) => {
-    const rows = await fetchEventsVisibleToGestor(supabase, userId, isAdminMaster);
+    const rows = await fetchEventsVisibleToGestorRest(userId, isAdminMaster);
     return [...rows].sort((a, b) =>
         (a.title || '').localeCompare(b.title || '', 'pt-BR', { sensitivity: 'base' }),
     );
@@ -102,7 +111,6 @@ const fetchEvents = async (userId: string, isAdminMaster: boolean) => {
 
 const ManagerValidationKeys: React.FC = () => {
     const navigate = useNavigate();
-    const queryClient = useQueryClient();
     const { userId, authPending } = usePageAuth();
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [showLogsDialog, setShowLogsDialog] = useState(false);
@@ -121,10 +129,21 @@ const ManagerValidationKeys: React.FC = () => {
     const { profile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
 
-    const { data: keys, isLoading: isLoadingKeys, refetch: refetchKeys } = useQuery({
+    const { data: keys, isLoading: isLoadingKeys, isError: isKeysError, refetch: refetchKeys } = useQuery({
         queryKey: ['validationApiKeys', userId, isAdminMaster],
-        queryFn: () => fetchValidationKeys(userId!, isAdminMaster),
+        queryFn: async () => {
+            try {
+                return await fetchValidationKeys(userId!, isAdminMaster);
+            } catch (error) {
+                console.error('[validationApiKeys]', error);
+                showError('Erro ao carregar chaves de validação.');
+                return [];
+            }
+        },
         enabled: !!userId,
+        staleTime: 1000 * 30,
+        retry: 1,
+        refetchOnWindowFocus: false,
     });
 
     const {
@@ -244,75 +263,78 @@ const ManagerValidationKeys: React.FC = () => {
         const toastId = showLoading('Criando chave de acesso...');
 
         try {
-            const token = getAuthAccessToken();
-            if (!token) {
+            if (!getAuthAccessToken()) {
                 dismissToast(toastId);
                 showError('Sessão expirada. Entre de novo no gestor.');
                 return;
             }
-            const { data: edgeData, error: edgeError } = await supabase.functions.invoke(
+
+            type CreateKeyResult = {
+                success?: boolean;
+                error?: string;
+                hint?: string;
+                key?: { id: string; api_key?: string };
+            };
+
+            const edgeData = await invokeEdgeFunctionRest<CreateKeyResult>(
                 'create-validation-key',
                 {
-                    body: {
-                        name: newKeyName.trim(),
-                        event_id: newKeyEventId,
-                        expires_at: newKeyExpiresAt,
-                        created_by: userId,
-                    },
-                    headers: { Authorization: `Bearer ${token}` },
+                    name: newKeyName.trim(),
+                    event_id: newKeyEventId,
+                    expires_at: newKeyExpiresAt,
+                    created_by: userId,
                 },
+                { timeoutMs: 25_000 },
             );
 
-            if (edgeError) {
-                dismissToast(toastId);
-                console.error('Erro ao chamar Edge Function:', edgeError);
-                throw new Error(
-                    edgeError.message ||
-                        'Erro ao criar chave. No Supabase: Edge Functions → create-validation-key → desligar Verify JWT.',
-                );
-            }
-
-            const payload = edgeData as { success?: boolean; error?: string; hint?: string } | null;
-            if (!payload?.success) {
+            if (!edgeData?.success) {
                 dismissToast(toastId);
                 const msg =
-                    payload?.error ||
+                    edgeData?.error ||
                     'Erro ao criar chave. Se persistir: Dashboard → Edge Functions → create-validation-key → Details → Verify JWT = OFF.';
                 throw new Error(msg);
             }
 
-            const insertedData = (edgeData as { key?: { id: string; api_key?: string } }).key;
+            const insertedData = edgeData.key;
 
             if (!insertedData) {
                 dismissToast(toastId);
                 throw new Error('Chave criada mas não foi possível recuperar os dados.');
             }
 
-            // Fechar toast de loading antes de mostrar sucesso
             dismissToast(toastId);
             
             showSuccess('Chave de acesso criada com sucesso!');
             
-            // Armazenar a chave no estado local (ela não será retornada nas próximas consultas)
-            // A chave em texto plano vem da Edge Function
             if (insertedData.api_key) {
-                setStoredApiKeys(prev => new Map(prev).set(insertedData.id, insertedData.api_key));
+                setStoredApiKeys(prev => new Map(prev).set(insertedData.id, insertedData.api_key!));
             }
             
-            // Mostrar a chave ao usuário
             setRevealedKeys(new Set([insertedData.id]));
             setShowCreateDialog(false);
             setNewKeyName('');
             setNewKeyEventId('');
             setNewKeyExpiresAt('');
             
-            // Refetch keys para atualizar a lista
-            await refetchKeys();
+            try {
+                await refetchKeys();
+            } catch (refetchErr) {
+                console.warn('[create-validation-key] refetch após criar:', refetchErr);
+            }
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             dismissToast(toastId);
             console.error('Erro completo ao criar chave:', error);
-            showError(`Erro ao criar chave: ${error.message || 'Erro desconhecido'}`);
+            const raw = error instanceof Error ? error.message : 'Erro desconhecido';
+            const timedOut =
+                raw.toLowerCase().includes('aborted') ||
+                raw.toLowerCase().includes('timeout') ||
+                (error instanceof DOMException && error.name === 'AbortError');
+            showError(
+                timedOut
+                    ? 'Tempo esgotado ao criar a chave. Verifique a conexão e tente de novo (Edge Function create-validation-key).'
+                    : `Erro ao criar chave: ${raw}`,
+            );
         }
     };
 
@@ -320,12 +342,11 @@ const ManagerValidationKeys: React.FC = () => {
         const toastId = showLoading(currentStatus ? 'Desativando chave...' : 'Ativando chave...');
 
         try {
-            const { error } = await supabase
-                .from('validation_api_keys')
-                .update({ is_active: !currentStatus })
-                .eq('id', keyId);
-
-            if (error) throw error;
+            await restPatch(
+                `validation_api_keys?id=eq.${encodeURIComponent(keyId)}`,
+                { is_active: !currentStatus },
+                12_000,
+            );
 
             dismissToast(toastId);
             showSuccess(`Chave ${!currentStatus ? 'ativada' : 'desativada'} com sucesso!`);
@@ -377,12 +398,11 @@ const ManagerValidationKeys: React.FC = () => {
                 updateData.expires_at = null;
             }
 
-            const { error } = await supabase
-                .from('validation_api_keys')
-                .update(updateData)
-                .eq('id', editingKey.id);
-
-            if (error) throw error;
+            await restPatch(
+                `validation_api_keys?id=eq.${encodeURIComponent(editingKey.id)}`,
+                updateData,
+                12_000,
+            );
 
             dismissToast(toastId);
             showSuccess('Chave atualizada com sucesso!');
@@ -404,12 +424,7 @@ const ManagerValidationKeys: React.FC = () => {
         const toastId = showLoading('Excluindo chave...');
 
         try {
-            const { error } = await supabase
-                .from('validation_api_keys')
-                .delete()
-                .eq('id', keyId);
-
-            if (error) throw error;
+            await restDelete(`validation_api_keys?id=eq.${encodeURIComponent(keyId)}`, 12_000);
 
             dismissToast(toastId);
             showSuccess('Chave excluída com sucesso!');
