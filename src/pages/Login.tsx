@@ -20,6 +20,27 @@ import {
     userMustSetPartnerPassword,
 } from '@/utils/partner-password-setup';
 
+/** JWT no localStorage já passou do exp — limpa antes do login. */
+function clearExpiredCachedJwt(): void {
+    const token = readCachedAuthSession().accessToken;
+    if (!token) return;
+    try {
+        const payloadPart = token.split('.')[1];
+        if (!payloadPart) {
+            clearAuthSessionStorage();
+            return;
+        }
+        const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/'))) as {
+            exp?: number;
+        };
+        if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now() - 5_000) {
+            clearAuthSessionStorage();
+        }
+    } catch {
+        clearAuthSessionStorage();
+    }
+}
+
 const Login: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -65,6 +86,9 @@ const Login: React.FC = () => {
 
     useEffect(() => {
         let cancelled = false;
+
+        // Sessão antiga com JWT expirado polui a tela de login (401/JWT expired).
+        clearExpiredCachedJwt();
 
         const hash = window.location.hash;
         if (

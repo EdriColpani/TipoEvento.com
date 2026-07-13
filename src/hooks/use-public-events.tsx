@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { formatEventDateForDisplay, parseEventLocalDay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import { pickMinimumPaidPrice } from '@/utils/public-event-pricing';
-import { callRpcRest } from '@/utils/supabase-rest-rpc';
-import { restGet } from '@/utils/supabase-rest';
+import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
+import { restGetAuthOrPublic } from '@/utils/supabase-rest';
 
 export interface PublicEvent {
     id: string;
@@ -40,7 +40,7 @@ async function fillMinPriceFromAvailabilityRpc(
 ): Promise<void> {
     let data: unknown = null;
     try {
-        data = await callRpcRest<unknown>('get_event_ticket_availability', { p_event_id: eventId }, 8_000);
+        data = await callRpcPublicRest<unknown>('get_event_ticket_availability', { p_event_id: eventId }, 8_000);
     } catch (error) {
         console.error('[usePublicEvents] get_event_ticket_availability:', eventId, error);
         return;
@@ -65,7 +65,7 @@ async function fillMinPriceFromAvailabilityRpc(
 const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
     const startedAt = performance.now();
     try {
-        const eventsData = await callRpcRest<Record<string, unknown>[]>(
+        const eventsData = await callRpcPublicRest<Record<string, unknown>[]>(
             'get_public_vitrine_events',
             {},
             10_000,
@@ -101,7 +101,7 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
         // Preços dos lotes (ignora Staff/gratuitos com price = 0)
         let batchesData: Array<{ event_id: string; price: unknown }> = [];
         try {
-            batchesData = await restGet<Array<{ event_id: string; price: unknown }>>(
+            batchesData = await restGetAuthOrPublic<Array<{ event_id: string; price: unknown }>>(
                 `event_batches?select=event_id,price&event_id=in.(${ticketSalesEventIds.join(',')})&price=gt.0`,
                 8_000,
             );
@@ -122,7 +122,7 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
         if (counterEventIds.size > 0) {
             let inventoryData: Array<{ event_id: string; total: unknown; sold: unknown; reserved: unknown }> = [];
             try {
-                inventoryData = await restGet<
+                inventoryData = await restGetAuthOrPublic<
                     Array<{ event_id: string; total: unknown; sold: unknown; reserved: unknown }>
                 >(
                     `batch_inventory?select=event_id,total,sold,reserved&event_id=in.(${[...counterEventIds].join(',')})`,
@@ -148,7 +148,7 @@ const fetchPublicEvents = async (): Promise<PublicEvent[]> => {
         if (unitRowsEventIds.length > 0) {
             let wristbandsData: Array<{ event_id: string; id: string; price: unknown; status: string | null }> = [];
             try {
-                wristbandsData = await restGet<
+                wristbandsData = await restGetAuthOrPublic<
                     Array<{ event_id: string; id: string; price: unknown; status: string | null }>
                 >(
                     `wristbands?select=event_id,id,price,status&event_id=in.(${unitRowsEventIds.join(',')})`,
