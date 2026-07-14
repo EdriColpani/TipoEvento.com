@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { resolveWebhookPayment } from './mp-ticket-payment.ts';
 import { extractMpPaymentFinancials, resolveSplitAmounts } from './mp-payment-financials.ts';
 import { triggerChargebackNotifyFromWebhook } from '../_shared/credit-topup-chargeback-notify.ts';
+import { triggerTicketChargebackNotifyFromWebhook } from '../_shared/ticket-chargeback-notify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -586,6 +587,71 @@ serve(async (req) => {
     console.log(`  - Date Approved: ${mpPaymentData.date_approved || 'N/A'}`);
     console.log(`  - Has Date Approved: ${hasDateApproved}`);
     console.log(`  - Is Payment Approved: ${isPaymentApproved}`);
+
+    const TICKET_CHARGEBACK_STATUSES = new Set([
+      'charged_back',
+      'refunded',
+      'partially_refunded',
+    ]);
+
+    // Chargeback/refund pós-pago: não altera o caminho approved; só trata reversão.
+    if (
+      TICKET_CHARGEBACK_STATUSES.has(paymentStatus) &&
+      (receivable.status === 'paid' || receivable.status === 'refunded')
+    ) {
+      const chargebackReason = paymentStatusDetail
+        ? `Chargeback/refund Mercado Pago no ingresso (${paymentStatus}: ${paymentStatusDetail}).`
+        : `Chargeback/refund Mercado Pago no ingresso (${paymentStatus}).`;
+
+      const { data: ticketChargebackData, error: ticketChargebackErr } = await supabaseService.rpc(
+        'ticket_handle_mp_chargeback',
+        {
+          p_receivable_id: finalTransactionId,
+          p_mp_payment_id: mpPaymentId,
+          p_mp_status: paymentStatus,
+          p_reason: chargebackReason,
+        },
+      );
+
+      if (ticketChargebackErr) {
+        console.error('[MP Webhook] ticket_handle_mp_chargeback:', ticketChargebackErr);
+        return new Response(JSON.stringify({ error: ticketChargebackErr.message }), {
+          status: 500,
+          headers: corsHeaders,
+        });
+      }
+
+      console.log('[MP Webhook] ticket_handle_mp_chargeback result:', ticketChargebackData);
+      const caseId = (ticketChargebackData as Record<string, unknown>)?.chargeback_case_id as
+        | string
+        | undefined;
+      if ((ticketChargebackData as Record<string, unknown>)?.ok && caseId) {
+        await triggerTicketChargebackNotifyFromWebhook(supabaseService, caseId);
+      }
+
+      await logPaymentEvent({
+        transactionId: finalTransactionId,
+        source: 'webhook',
+        paymentStatus,
+        receivableStatus: paymentStatus === 'partially_refunded' ? receivable.status : 'refunded',
+        paymentStatusDetail,
+        mpPaymentId,
+        mpPreferenceId,
+        payload: {
+          stage: 'ticket_chargeback',
+          result: ticketChargebackData,
+        },
+      });
+
+      return new Response(
+        JSON.stringify({
+          received: true,
+          type: 'ticket_chargeback',
+          result: ticketChargebackData,
+        }),
+        { status: 200, headers: corsHeaders },
+      );
+    }
     
     if (isPaymentApproved) {
         // 6. Atualizar status da transação para 'paid'

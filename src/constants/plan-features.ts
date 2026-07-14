@@ -109,6 +109,7 @@ export const ROUTE_PLAN_FEATURE_RULES: Array<{ pathPrefix: string; featureKey: P
     { pathPrefix: '/manager/reports/complimentary-bundles', featureKey: 'wristbands' },
     { pathPrefix: '/manager/reports/wristband-movements', featureKey: 'reports_wristband_movements' },
     { pathPrefix: '/manager/reports/listing-monthly', featureKey: 'reports_listing_monthly' },
+    { pathPrefix: '/manager/reports/ticket-chargebacks', featureKey: 'reports_financial' },
     { pathPrefix: '/manager/reports', featureKey: 'reports' },
     { pathPrefix: '/manager/credit/establishments', featureKey: 'settings' },
     { pathPrefix: '/manager/credit/pdv', featureKey: 'settings' },

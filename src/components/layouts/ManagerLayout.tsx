@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Globe, Share2, Store } from 'lucide-react';
+import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Globe, Share2, Store, KeyRound } from 'lucide-react';
 import SiteLogo from '@/components/SiteLogo';
 import { SITE_HEADER_BAR_CLASS } from '@/constants/branding';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
@@ -635,6 +635,13 @@ const ManagerLayout: React.FC = () => {
                                                             <Share2 className="mr-2 h-4 w-4" />
                                                             Redes e contato público
                                                         </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() => navigate('/admin/settings/ticket-chargeback-pix')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/ticket-chargeback-pix' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <KeyRound className="mr-2 h-4 w-4" />
+                                                            Chave PIX — chargeback
+                                                        </DropdownMenuItem>
                                                         <DropdownMenuItem 
                                                             onClick={() => navigate('/admin/banners')}
                                                             className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/banners' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
@@ -824,6 +831,13 @@ const ManagerLayout: React.FC = () => {
                                                             >
                                                                 <Share2 className="mr-2 h-4 w-4" />
                                                                 Redes e contato público
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { navigate('/admin/settings/ticket-chargeback-pix'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <KeyRound className="mr-2 h-4 w-4" />
+                                                                Chave PIX — chargeback
                                                             </button>
                                                             <button 
                                                                 onClick={() => { navigate('/admin/banners'); setIsMobileMenuOpen(false); }}

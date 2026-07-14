@@ -91,3 +91,6 @@ verify_jwt = false
 
 [functions.run-credit-chargeback-notify-job]
 verify_jwt = false
+
+[functions.run-ticket-chargeback-notify-job]
+verify_jwt = false

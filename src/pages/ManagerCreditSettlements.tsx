@@ -13,7 +13,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useManagerCreditSettlements } from '@/hooks/use-credit-reports';
+import { useManagerCreditSettlements, useManagerTicketChargebackDebts } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 
 function money(v: number): string {
@@ -42,6 +42,7 @@ const ManagerCreditSettlements: React.FC = () => {
 
     const access = useCreditReportsAccess(userId);
     const { data, isLoading, isError, error, refetch } = useManagerCreditSettlements(access.company?.id);
+    const debts = useManagerTicketChargebackDebts(access.company?.id);
 
     const summary = data?.summary;
     const retentionDays = data?.retention_days ?? 1;
@@ -99,6 +100,61 @@ const ManagerCreditSettlements: React.FC = () => {
                 <SummaryCard label="Já recebidos" value={money(Number(summary?.paid ?? 0))} />
                 <SummaryCard label="Clawback" value={money(Number(summary?.clawback ?? 0))} />
             </div>
+
+            {(debts.data ?? []).some((d) => d.status === 'open' || d.status === 'partial') && (
+                <Alert className="mb-6 border-amber-500/40 bg-amber-950/40">
+                    <AlertTitle className="text-amber-200">Descontos de chargeback de ingresso</AlertTitle>
+                    <AlertDescription className="text-gray-300 text-sm">
+                        Há valores de chargeback de ingresso a descontar automaticamente nos próximos repasses liquidados
+                        pela EventFest. Veja o detalhe abaixo.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {(debts.data ?? []).length > 0 && (
+                <Card className="bg-black border-yellow-500/30 mb-6">
+                    <CardHeader>
+                        <CardTitle className="text-white">Chargebacks de ingresso (dívidas / descontos)</CardTitle>
+                        <CardDescription className="text-gray-400">
+                            Registrados quando o Mercado Pago avisa chargeback/estorno de uma venda de ingresso.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="overflow-x-auto">
+                        {debts.isLoading ? (
+                            <Loader2 className="h-6 w-6 animate-spin text-yellow-500 mx-auto" />
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="border-yellow-500/20">
+                                        <TableHead className="text-yellow-500">Data</TableHead>
+                                        <TableHead className="text-yellow-500">Evento</TableHead>
+                                        <TableHead className="text-yellow-500">Status</TableHead>
+                                        <TableHead className="text-yellow-500 text-right">Devido</TableHead>
+                                        <TableHead className="text-yellow-500 text-right">Já descontado</TableHead>
+                                        <TableHead className="text-yellow-500 text-right">Restante</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {debts.data!.map((row) => (
+                                        <TableRow key={row.id} className="border-yellow-500/10">
+                                            <TableCell className="text-gray-400 text-xs whitespace-nowrap">{dt(row.created_at)}</TableCell>
+                                            <TableCell className="text-gray-300 text-xs max-w-[14rem] truncate">
+                                                {row.event_title ?? '—'}
+                                            </TableCell>
+                                            <TableCell className="text-gray-300 text-sm">{row.status}</TableCell>
+                                            <TableCell className="text-right text-gray-400">{money(Number(row.amount_due))}</TableCell>
+                                            <TableCell className="text-right text-gray-500">{money(Number(row.amount_applied))}</TableCell>
+                                            <TableCell className="text-right text-amber-300 font-medium">
+                                                {money(Number(row.amount_remaining))}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             <Card className="bg-black border-yellow-500/30">
                 <CardHeader>

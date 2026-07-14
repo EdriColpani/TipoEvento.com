@@ -28,6 +28,7 @@ import ManagerCreditPdv from "./pages/ManagerCreditPdv";
 import ManagerCreditSpendsReport from "./pages/ManagerCreditSpendsReport";
 import ManagerCreditAccountingReport from "./pages/ManagerCreditAccountingReport";
 import ManagerCreditSettlements from "./pages/ManagerCreditSettlements";
+import ManagerTicketChargebacks from "./pages/ManagerTicketChargebacks";
 import ManagerPdvOperators from "./pages/ManagerPdvOperators";
 import AdminCreatePartnerCompany from "./pages/AdminCreatePartnerCompany";
 import AdminCreditReports from "./pages/AdminCreditReports";
@@ -73,6 +74,7 @@ import AdminEventGeoBackfill from "./pages/AdminEventGeoBackfill";
 import AdminCheckoutObservability from "./pages/AdminCheckoutObservability";
 import AdminPublicLaunchSettings from "./pages/AdminPublicLaunchSettings";
 import AdminPublicSocialSettings from "./pages/AdminPublicSocialSettings";
+import AdminTicketChargebackPixSettings from "./pages/AdminTicketChargebackPixSettings";
 import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
 import ManagerConsumptionLicenseBilling from "./pages/ManagerConsumptionLicenseBilling";
 import SalesReports from "./pages/SalesReports"; // NOVO
@@ -169,6 +171,7 @@ function AppRoutes() {
             <Route path="/manager/reports/consumption-license" element={<ManagerConsumptionLicenseBilling />} />
             <Route path="/manager/reports/credit-spends" element={<ManagerCreditSpendsReport />} />
             <Route path="/manager/reports/credit-accounting" element={<ManagerCreditAccountingReport />} />
+            <Route path="/manager/reports/ticket-chargebacks" element={<ManagerTicketChargebacks />} />
             <Route path="/manager/reports/admin-ticket-inventory" element={<AdminCompaniesTicketInventoryReport />} />
             <Route path="/manager/reports/admin-contract-acceptances" element={<AdminContractAcceptancesReport />} />
             <Route path="/manager/credit/settlements" element={<ManagerCreditSettlements />} />
@@ -203,6 +206,7 @@ function AppRoutes() {
                 <Route path="/admin/settings/checkout-observability" element={<AdminCheckoutObservability />} />
                 <Route path="/admin/settings/public-launch" element={<AdminPublicLaunchSettings />} />
                 <Route path="/admin/settings/public-social" element={<AdminPublicSocialSettings />} />
+                <Route path="/admin/settings/ticket-chargeback-pix" element={<AdminTicketChargebackPixSettings />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 

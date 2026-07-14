@@ -31,6 +31,10 @@ import {
     useAdminCreditTopupChargebacks,
     useAdminCreditTopupChargebackSummary,
     fetchAdminCreditTopupChargebacksExport,
+    useAdminTicketChargebacks,
+    useAdminTicketChargebackSummary,
+    registerTicketChargebackDebtManualPayment,
+    waiveTicketChargebackDebt,
     useAdminPlatformBillingRevenue,
 } from '@/hooks/use-credit-reports';
 import { usePageAuth } from '@/hooks/use-page-auth';
@@ -95,8 +99,13 @@ const AdminCreditReports: React.FC = () => {
     const [chargebackStartDate, setChargebackStartDate] = useState('');
     const [chargebackEndDate, setChargebackEndDate] = useState('');
     const [chargebackAbsorbOnly, setChargebackAbsorbOnly] = useState(false);
+    const [ticketCbOpenDebtOnly, setTicketCbOpenDebtOnly] = useState(false);
     const [chargebackExporting, setChargebackExporting] = useState(false);
     const [chargebackNotifying, setChargebackNotifying] = useState(false);
+    const [ticketCbNotifying, setTicketCbNotifying] = useState(false);
+    const [ticketDebtPayingId, setTicketDebtPayingId] = useState<string | null>(null);
+    const [ticketDebtPayRef, setTicketDebtPayRef] = useState('');
+    const [ticketDebtBusy, setTicketDebtBusy] = useState(false);
 
     useEffect(() => {
         if (requestedTab && ADMIN_CREDIT_REPORT_TABS.has(requestedTab)) {
@@ -141,6 +150,15 @@ const AdminCreditReports: React.FC = () => {
         chargebackStartDate || null,
         chargebackEndDate || null,
         chargebackAbsorbOnly,
+    );
+    const ticketCbSummary = useAdminTicketChargebackSummary(
+        chargebackStartDate || null,
+        chargebackEndDate || null,
+    );
+    const ticketChargebacks = useAdminTicketChargebacks(
+        chargebackStartDate || null,
+        chargebackEndDate || null,
+        ticketCbOpenDebtOnly,
     );
 
     const handleRefund = async (e: React.FormEvent) => {
@@ -215,6 +233,81 @@ const AdminCreditReports: React.FC = () => {
             showError(err instanceof Error ? err.message : 'Erro ao enviar alertas.');
         } finally {
             setChargebackNotifying(false);
+        }
+    };
+
+    const handleTicketChargebackNotify = async () => {
+        setTicketCbNotifying(true);
+        try {
+            const payload = await invokeEdgeFunctionRest<{
+                success?: boolean;
+                emailsSent?: number;
+                emailsFailed?: number;
+                casesProcessed?: number;
+                error?: string;
+            }>(
+                'run-ticket-chargeback-notify-job',
+                { limit: 50 },
+                { timeoutMs: 30_000 },
+            );
+            if (payload?.error) throw new Error(payload.error);
+            if ((payload?.casesProcessed ?? 0) === 0) {
+                showSuccess('Nenhum alerta de ingresso pendente.');
+            } else {
+                showSuccess(
+                    `Ingressos: ${payload.emailsSent ?? 0} e-mail(s), ${payload.casesProcessed ?? 0} caso(s).`,
+                );
+            }
+            queryClient.invalidateQueries({ queryKey: ['adminTicketChargebacks'] });
+            queryClient.invalidateQueries({ queryKey: ['adminTicketChargebackSummary'] });
+        } catch (err: unknown) {
+            showError(err instanceof Error ? err.message : 'Erro ao enviar alertas de ingresso.');
+        } finally {
+            setTicketCbNotifying(false);
+        }
+    };
+
+    const handleRegisterTicketDebtPayment = async (debtId: string) => {
+        if (!ticketDebtPayRef.trim()) {
+            showError('Informe a referência do comprovante.');
+            return;
+        }
+        setTicketDebtBusy(true);
+        try {
+            await registerTicketChargebackDebtManualPayment({
+                debtId,
+                paymentReference: ticketDebtPayRef.trim(),
+                paymentMethod: 'pix',
+            });
+            showSuccess('Recebimento registrado — dívida atualizada.');
+            setTicketDebtPayingId(null);
+            setTicketDebtPayRef('');
+            queryClient.invalidateQueries({ queryKey: ['adminTicketChargebacks'] });
+            queryClient.invalidateQueries({ queryKey: ['adminTicketChargebackSummary'] });
+            queryClient.invalidateQueries({ queryKey: ['managerTicketChargebackDebts'] });
+            queryClient.invalidateQueries({ queryKey: ['companyTicketChargebackBlock'] });
+        } catch (err: unknown) {
+            showError(err instanceof Error ? err.message : 'Falha ao registrar pagamento.');
+        } finally {
+            setTicketDebtBusy(false);
+        }
+    };
+
+    const handleWaiveTicketDebt = async (debtId: string) => {
+        const reason = window.prompt('Motivo do perdão/baixa da dívida (obrigatório):');
+        if (!reason?.trim()) return;
+        setTicketDebtBusy(true);
+        try {
+            await waiveTicketChargebackDebt(debtId, reason.trim());
+            showSuccess('Dívida perdoada.');
+            queryClient.invalidateQueries({ queryKey: ['adminTicketChargebacks'] });
+            queryClient.invalidateQueries({ queryKey: ['adminTicketChargebackSummary'] });
+            queryClient.invalidateQueries({ queryKey: ['managerTicketChargebackDebts'] });
+            queryClient.invalidateQueries({ queryKey: ['companyTicketChargebackBlock'] });
+        } catch (err: unknown) {
+            showError(err instanceof Error ? err.message : 'Falha ao perdoar dívida.');
+        } finally {
+            setTicketDebtBusy(false);
         }
     };
 
@@ -1001,6 +1094,212 @@ const AdminCreditReports: React.FC = () => {
                                         ))}
                                     </TableBody>
                                 </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {(ticketCbSummary.data?.has_open_debt_alert ?? false) && (
+                        <Alert className="mb-4 mt-6 border-amber-500/50 bg-amber-500/10 text-amber-100">
+                            <AlertTriangle className="h-4 w-4 text-amber-400" />
+                            <AlertTitle className="text-amber-200">Dívidas abertas — chargeback de ingresso</AlertTitle>
+                            <AlertDescription className="text-amber-100/90">
+                                Há{' '}
+                                <strong>{money(ticketCbSummary.data?.open_debt_remaining)}</strong>{' '}
+                                em aberto. Plano só ingresso = cobrança PIX/TED; plano com crédito = abate no D+1.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    <Alert className="mb-4 mt-6 border-yellow-500/30 bg-yellow-500/5 text-yellow-50">
+                        <AlertTitle className="text-yellow-200">Chave PIX e telefone</AlertTitle>
+                        <AlertDescription className="text-yellow-50/90 text-sm space-y-2">
+                            <p>
+                                Configure a chave PIX em{' '}
+                                <button
+                                    type="button"
+                                    className="text-yellow-400 underline hover:text-yellow-300"
+                                    onClick={() => navigate('/admin/settings/ticket-chargeback-pix')}
+                                >
+                                    Configurações → Chave PIX — chargeback
+                                </button>
+                                . O telefone usado no contato ao gestor é o de{' '}
+                                <button
+                                    type="button"
+                                    className="text-yellow-400 underline hover:text-yellow-300"
+                                    onClick={() => navigate('/admin/settings/public-social')}
+                                >
+                                    Redes e contato público
+                                </button>
+                                .
+                            </p>
+                        </AlertDescription>
+                    </Alert>
+
+                    <Card className="bg-black border-yellow-500/30 mb-4">
+                        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div>
+                                <CardTitle className="text-white">Chargebacks de ingresso</CardTitle>
+                                <CardDescription className="text-gray-400">
+                                    Cancela ingresso + dívida. Ticket-only: baixe com comprovante PIX. Híbrido: desconto D+1.
+                                </CardDescription>
+                            </div>
+                            <div className="flex flex-wrap gap-2 items-center">
+                                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={ticketCbOpenDebtOnly}
+                                        onChange={(e) => setTicketCbOpenDebtOnly(e.target.checked)}
+                                        className="rounded border-yellow-500/50"
+                                    />
+                                    Somente com dívida aberta
+                                </label>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={ticketCbNotifying}
+                                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                    onClick={() => void handleTicketChargebackNotify()}
+                                >
+                                    {ticketCbNotifying ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                    ) : (
+                                        <AlertTriangle className="h-4 w-4 mr-1" />
+                                    )}
+                                    Reenviar e-mails pendentes
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {ticketCbSummary.isLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6">
+                                    <Metric label="Casos" value={String(ticketCbSummary.data?.total_cases ?? 0)} />
+                                    <Metric label="Líquido gestor (dívida)" value={money(ticketCbSummary.data?.total_manager_net)} />
+                                    <Metric label="Fee plataforma" value={money(ticketCbSummary.data?.total_platform_fee)} />
+                                    <Metric
+                                        label="Dívida em aberto"
+                                        value={money(ticketCbSummary.data?.open_debt_remaining)}
+                                        ok={(ticketCbSummary.data?.open_debt_remaining ?? 0) === 0}
+                                    />
+                                </div>
+                            )}
+
+                            {ticketChargebacks.isLoading ? (
+                                <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                            ) : (ticketChargebacks.data?.items ?? []).length === 0 ? (
+                                <p className="text-gray-500 text-sm text-center py-6">Nenhum chargeback de ingresso no período.</p>
+                            ) : (
+                                <div className="overflow-x-auto max-h-[36rem]">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="border-yellow-500/20">
+                                                <TableHead className="text-yellow-500">Data</TableHead>
+                                                <TableHead className="text-yellow-500">Empresa / Evento</TableHead>
+                                                <TableHead className="text-yellow-500">Cobrança</TableHead>
+                                                <TableHead className="text-yellow-500 text-right">Restante</TableHead>
+                                                <TableHead className="text-yellow-500">Ações</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {ticketChargebacks.data?.items.map((row) => {
+                                                const isManual =
+                                                    row.recovery_mode === 'manual_pix' ||
+                                                    (!row.recovery_mode && row.billing_plan === 'ticket_commission');
+                                                const canPay =
+                                                    Boolean(row.debt_id) &&
+                                                    isManual &&
+                                                    (row.debt_status === 'open' || row.debt_status === 'partial') &&
+                                                    Number(row.debt_remaining ?? 0) > 0;
+                                                return (
+                                                    <TableRow key={row.id} className="border-yellow-500/10 align-top">
+                                                        <TableCell className="text-gray-400 text-xs whitespace-nowrap">
+                                                            {dt(row.created_at)}
+                                                        </TableCell>
+                                                        <TableCell className="text-gray-300 text-xs max-w-[14rem]">
+                                                            <div className="truncate font-medium">{row.company_name ?? '—'}</div>
+                                                            <div className="truncate text-gray-500">{row.event_title ?? '—'}</div>
+                                                            <div className="text-gray-600 font-mono mt-1">{row.payment_ref_hint}</div>
+                                                        </TableCell>
+                                                        <TableCell className="text-gray-300 text-xs">
+                                                            {isManual ? 'PIX/TED gestor → EF' : 'Abate no D+1'}
+                                                            <div className="text-gray-500 mt-1">
+                                                                {row.debt_status ?? 'sem dívida'} · {row.mp_status}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-amber-300">
+                                                            {money(row.debt_remaining)}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs space-y-2 min-w-[12rem]">
+                                                            {canPay && ticketDebtPayingId === row.debt_id ? (
+                                                                <div className="space-y-2">
+                                                                    <Input
+                                                                        value={ticketDebtPayRef}
+                                                                        onChange={(e) => setTicketDebtPayRef(e.target.value)}
+                                                                        placeholder="E2E PIX / ref. TED"
+                                                                        className="bg-black border-yellow-500/30 text-white h-8 text-xs"
+                                                                    />
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="sm"
+                                                                            disabled={ticketDebtBusy}
+                                                                            className="bg-yellow-500 text-black hover:bg-yellow-600 h-7 text-xs disabled:opacity-50"
+                                                                            onClick={() =>
+                                                                                void handleRegisterTicketDebtPayment(row.debt_id!)
+                                                                            }
+                                                                        >
+                                                                            Confirmar
+                                                                        </Button>
+                                                                        <Button
+                                                                            type="button"
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 h-7 text-xs"
+                                                                            onClick={() => {
+                                                                                setTicketDebtPayingId(null);
+                                                                                setTicketDebtPayRef('');
+                                                                            }}
+                                                                        >
+                                                                            Cancelar
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : canPay ? (
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        className="bg-yellow-500 text-black hover:bg-yellow-600 h-7 text-xs"
+                                                                        onClick={() => {
+                                                                            setTicketDebtPayingId(row.debt_id);
+                                                                            setTicketDebtPayRef(row.payment_ref_hint ?? '');
+                                                                        }}
+                                                                    >
+                                                                        Baixar PIX
+                                                                    </Button>
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        disabled={ticketDebtBusy}
+                                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 h-7 text-xs disabled:opacity-50"
+                                                                        onClick={() => void handleWaiveTicketDebt(row.debt_id!)}
+                                                                    >
+                                                                        Perdoar
+                                                                    </Button>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-gray-600">—</span>
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
                             )}
                         </CardContent>
                     </Card>

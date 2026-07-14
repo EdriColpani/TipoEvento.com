@@ -16,6 +16,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
 import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
 import TicketInactivityBanner from '@/components/TicketInactivityBanner';
+import TicketChargebackBlockBanner from '@/components/TicketChargebackBlockBanner';
+import { useCompanyTicketChargebackBlock } from '@/hooks/use-company-ticket-chargeback-block';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -32,6 +34,10 @@ const ManagerCreateEvent: React.FC = () => {
     const requiresTicketSales = companyAllowsTicketSales(billing?.billing_plan);
     const needsBillingConfirm = !isAdminMaster && !!company?.id && !isLoadingBilling && !billingReady;
     const { data: inactivityStatus, isLoading: isLoadingInactivity } = useCompanyTicketInactivity(
+        company?.id,
+        !isAdminMaster,
+    );
+    const { data: chargebackBlock, isLoading: isLoadingChargebackBlock } = useCompanyTicketChargebackBlock(
         company?.id,
         !isAdminMaster,
     );
@@ -123,6 +129,11 @@ const ManagerCreateEvent: React.FC = () => {
 
             <TicketInactivityBanner status={inactivityStatus} isLoading={isLoadingInactivity} />
 
+            <TicketChargebackBlockBanner
+                status={chargebackBlock}
+                isLoading={isLoadingChargebackBlock}
+            />
+
             {needsBillingConfirm && (
                 <Card className="mb-6 bg-amber-500/10 border border-amber-500/40">
                     <CardContent className="pt-6 flex gap-3">
@@ -145,12 +156,22 @@ const ManagerCreateEvent: React.FC = () => {
                 </Card>
             )}
 
-            <EventFormSteps
-                userId={userId}
-                onCreateSuccess={handleSaveSuccess}
-                draftPersistedEventId={newEventId}
-                freezeFormAfterCreate={showWristbandModal}
-            />
+            {!needsBillingConfirm && chargebackBlock?.blocked && !isAdminMaster ? (
+                <Card className="bg-black border-yellow-500/30">
+                    <CardContent className="pt-6 text-sm text-gray-400">
+                        O formulário de criação fica indisponível enquanto houver 3 ou mais chargebacks de
+                        ingresso em aberto. Após a EventFest confirmar o recebimento, atualize a página —
+                        a liberação é automática.
+                    </CardContent>
+                </Card>
+            ) : (
+                <EventFormSteps
+                    userId={userId}
+                    onCreateSuccess={handleSaveSuccess}
+                    draftPersistedEventId={newEventId}
+                    freezeFormAfterCreate={showWristbandModal}
+                />
+            )}
             
             {!isListingPlan && (
             <AlertDialog

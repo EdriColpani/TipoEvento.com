@@ -4,7 +4,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { useUserRole } from '@/hooks/use-user-role';
 import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest } from '@/utils/auth-rest';
-import { clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
+import { clearAuthSessionIfCurrentToken, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import {
     canBypassPublicLaunchPreview,
@@ -75,9 +75,15 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
                 return;
             }
 
-            if (result.error?.status === 401 || result.error?.status === 403) {
-                clearAuthSessionStorage();
-                clearSession();
+            // Só 401 = token inválido. 403/rede/timeout não apagam sessão (race com login novo).
+            if (result.error?.status === 401) {
+                if (clearAuthSessionIfCurrentToken(stored.accessToken)) {
+                    clearSession();
+                } else if (stored.userId) {
+                    setSessionReady(true);
+                } else {
+                    clearSession();
+                }
                 return;
             }
 

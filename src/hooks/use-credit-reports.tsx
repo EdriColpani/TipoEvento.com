@@ -688,3 +688,161 @@ export async function fetchAdminCreditTopupChargebacksExport(
 
     return all;
 }
+
+export type AdminTicketChargebackSummary = {
+    total_cases?: number;
+    total_manager_net?: number;
+    total_platform_fee?: number;
+    open_debt_remaining?: number;
+    needs_manual_review_count?: number;
+    last_chargeback_at?: string | null;
+    has_open_debt_alert?: boolean;
+};
+
+export type AdminTicketChargebackRow = {
+    id: string;
+    receivable_id: string;
+    event_id: string | null;
+    company_id: string | null;
+    client_user_id: string | null;
+    manager_user_id: string | null;
+    mp_payment_id: string;
+    mp_status: string;
+    gross_amount: number;
+    platform_fee_amount: number;
+    manager_net_amount: number;
+    tickets_cancelled_count: number;
+    already_checked_in: boolean;
+    needs_manual_review: boolean;
+    reason: string;
+    created_at: string;
+    manager_notified_at?: string | null;
+    admin_notified_at?: string | null;
+    event_title: string | null;
+    company_name: string | null;
+    billing_plan?: string | null;
+    debt_id: string | null;
+    debt_status: string | null;
+    recovery_mode?: string | null;
+    debt_amount_due: number | null;
+    debt_amount_applied: number | null;
+    debt_remaining: number | null;
+    debt_payment_reference?: string | null;
+    payment_ref_hint?: string | null;
+};
+
+export function useAdminTicketChargebackSummary(
+    startDate?: string | null,
+    endDate?: string | null,
+    enabled = true,
+) {
+    return useQuery({
+        queryKey: ['adminTicketChargebackSummary', startDate, endDate],
+        queryFn: () =>
+            callRpcRest<AdminTicketChargebackSummary>(
+                'get_admin_ticket_chargeback_summary',
+                { p_start_date: startDate || null, p_end_date: endDate || null },
+                20_000,
+            ),
+        staleTime: 30_000,
+        enabled,
+    });
+}
+
+export function useAdminTicketChargebacks(
+    startDate?: string | null,
+    endDate?: string | null,
+    openDebtOnly = false,
+) {
+    return useQuery({
+        queryKey: ['adminTicketChargebacks', startDate, endDate, openDebtOnly],
+        queryFn: async () => {
+            const payload = await callRpcRest<{ items: AdminTicketChargebackRow[]; total: number }>(
+                'list_admin_ticket_chargebacks',
+                {
+                    p_start_date: startDate || null,
+                    p_end_date: endDate || null,
+                    p_open_debt_only: openDebtOnly,
+                    p_limit: 200,
+                    p_offset: 0,
+                },
+                20_000,
+            );
+            return {
+                items: payload?.items ?? [],
+                total: payload?.total ?? 0,
+            };
+        },
+        staleTime: 20_000,
+    });
+}
+
+export type ManagerTicketChargebackDebtRow = {
+    id: string;
+    chargeback_case_id: string;
+    company_id: string;
+    amount_due: number;
+    amount_applied: number;
+    amount_remaining: number;
+    status: string;
+    recovery_mode?: string | null;
+    payment_method?: string | null;
+    payment_reference?: string | null;
+    payment_ref_hint?: string | null;
+    created_at: string;
+    mp_payment_id: string;
+    event_id: string | null;
+    event_title: string | null;
+    manager_net_amount: number;
+    reason: string;
+};
+
+export function useManagerTicketChargebackDebts(companyId?: string | null) {
+    return useQuery({
+        queryKey: ['managerTicketChargebackDebts', companyId],
+        queryFn: async () => {
+            const payload = await callRpcRest<{ items: ManagerTicketChargebackDebtRow[] }>(
+                'list_manager_ticket_chargeback_debts',
+                { p_company_id: companyId || null },
+                20_000,
+            );
+            return payload?.items ?? [];
+        },
+        staleTime: 20_000,
+        enabled: Boolean(companyId),
+    });
+}
+
+export async function registerTicketChargebackDebtManualPayment(params: {
+    debtId: string;
+    amount?: number | null;
+    paymentMethod?: 'pix' | 'ted' | 'mp_transfer' | 'other';
+    paymentReference: string;
+    notes?: string | null;
+}) {
+    return callRpcRest<{
+        ok?: boolean;
+        debt_id?: string;
+        applied?: number;
+        status?: string;
+        amount_remaining?: number;
+    }>(
+        'register_ticket_chargeback_debt_manual_payment',
+        {
+            p_debt_id: params.debtId,
+            p_amount: params.amount ?? null,
+            p_payment_method: params.paymentMethod ?? 'pix',
+            p_payment_reference: params.paymentReference,
+            p_notes: params.notes ?? null,
+        },
+        20_000,
+    );
+}
+
+export async function waiveTicketChargebackDebt(debtId: string, reason: string) {
+    return callRpcRest<{ ok?: boolean; debt_id?: string; status?: string }>(
+        'waive_ticket_chargeback_debt',
+        { p_debt_id: debtId, p_reason: reason },
+        20_000,
+    );
+}

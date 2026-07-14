@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings, User, Building, Bell, CreditCard, History, Loader2, Store, ShoppingBag, Banknote, Globe, Share2, Users } from 'lucide-react';
+import { Settings, User, Building, Bell, History, Loader2, Store, ShoppingBag, Banknote, Globe, Share2, Users, KeyRound } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
+import { useUserRole } from '@/hooks/use-user-role';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
@@ -15,12 +16,14 @@ const ManagerSettings: React.FC = () => {
     const navigate = useNavigate();
     const { userId } = usePageAuth();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const { tipoUsuarioId, isFetched: roleFetched } = useUserRole(userId);
     const { company } = useManagerCompany(userId);
     const { context: companyContext } = useManagerCompanyContext(userId);
     const { billing } = useCompanyBilling(company?.id);
 
-    const isManagerPro = profile?.tipo_usuario_id === MANAGER_PRO_USER_TYPE_ID;
-    const isAdminMaster = profile?.tipo_usuario_id === 1;
+    const tipo = Number(tipoUsuarioId ?? profile?.tipo_usuario_id);
+    const isManagerPro = tipo === MANAGER_PRO_USER_TYPE_ID;
+    const isAdminMaster = tipo === 1;
     const showCreditOptions = companyAllowsCreditConsumption(billing?.billing_plan);
 
     let settingsOptions = [
@@ -42,7 +45,8 @@ const ManagerSettings: React.FC = () => {
     if (isAdminMaster) {
         settingsOptions.push(
             { icon: <Globe className="h-6 w-6 text-yellow-500" />, title: "Site Público", description: "Modo pré-lançamento ou vitrine ao vivo para visitantes.", path: "/admin/settings/public-launch" },
-            { icon: <Share2 className="h-6 w-6 text-yellow-500" />, title: "Redes e contato público", description: "Instagram, LinkedIn e telefone exibidos na landing.", path: "/admin/settings/public-social" },
+            { icon: <Share2 className="h-6 w-6 text-yellow-500" />, title: "Redes e contato público", description: "Instagram, LinkedIn e telefone exibidos na landing e nos avisos ao gestor.", path: "/admin/settings/public-social" },
+            { icon: <KeyRound className="h-6 w-6 text-yellow-500" />, title: "Chave PIX — chargeback", description: "PIX EventFest para gestores devolverem chargeback de ingresso (ticket-only).", path: "/admin/settings/ticket-chargeback-pix" },
             { icon: <History className="h-6 w-6 text-yellow-500" />, title: "Histórico de Configurações", description: "Visualize todas as alterações feitas nas configurações da sua conta.", path: "/manager/settings/history" },
             { icon: <Settings className="h-6 w-6 text-yellow-500" />, title: "Configurações Avançadas", description: "Mercado Pago da plataforma (mensalidade), sistema e backup.", path: "/manager/settings/advanced" }
         );
@@ -92,7 +96,7 @@ const ManagerSettings: React.FC = () => {
         }
     }
 
-    if (isLoadingProfile) {
+    if (userId && !roleFetched && isLoadingProfile && tipoUsuarioId == null && !profile) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />

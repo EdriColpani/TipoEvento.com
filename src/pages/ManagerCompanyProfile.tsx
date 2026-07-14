@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -15,7 +14,6 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { restGet, restPatch } from '@/utils/supabase-rest';
-import { withTimeout } from '@/utils/promise-timeout';
 import CompanyForm, { createCompanySchema, CompanyFormData } from '@/components/CompanyForm';
 import ManagerCompanyTabs from '@/components/ManagerCompanyTabs'; // Importando o novo componente
 
@@ -148,41 +146,32 @@ const ManagerCompanyProfile: React.FC = () => {
             let data: Record<string, unknown> | null = null;
             try {
                 const rows = await restGet<Record<string, unknown>[]>(
-                    `companies?id=eq.${companyId}&limit=1`,
+                    `companies?id=eq.${encodeURIComponent(companyId)}&limit=1`,
                     10_000,
                 );
                 data = rows?.[0] ?? null;
+                if (data) {
+                    form.reset({
+                        cnpj: formatCNPJ(String(data.cnpj || '')),
+                        corporate_name: String(data.corporate_name || ''),
+                        trade_name: String(data.trade_name || ''),
+                        phone: formatPhone(String(data.phone || '')),
+                        email: String(data.email || ''),
+                        cep: formatCEP(String(data.cep || '')),
+                        street: String(data.street || ''),
+                        neighborhood: String(data.neighborhood || ''),
+                        city: String(data.city || ''),
+                        state: String(data.state || ''),
+                        number: String(data.number || ''),
+                        complement: String(data.complement || ''),
+                    });
+                }
             } catch (restError) {
                 console.warn('[ManagerCompanyProfile] REST falhou:', restError);
-                const { data: row, error } = await withTimeout(
-                    supabase.from('companies').select('*').eq('id', companyId).single(),
-                    10_000,
-                    { data: null, error: { code: 'TIMEOUT', message: 'timeout' } as { code: string; message: string } },
-                );
-                if (error && error.code !== 'PGRST116' && error.code !== 'TIMEOUT') {
-                    console.error('Error fetching company profile:', error);
-                    showError('Erro ao carregar perfil da empresa.');
-                }
-                data = row as Record<string, unknown> | null;
+                showError('Erro ao carregar perfil da empresa.');
+            } finally {
+                setIsFetching(false);
             }
-
-            if (data) {
-                form.reset({
-                    cnpj: formatCNPJ(String(data.cnpj || '')),
-                    corporate_name: String(data.corporate_name || ''),
-                    trade_name: String(data.trade_name || ''),
-                    phone: formatPhone(String(data.phone || '')),
-                    email: String(data.email || ''),
-                    cep: formatCEP(String(data.cep || '')),
-                    street: String(data.street || ''),
-                    neighborhood: String(data.neighborhood || ''),
-                    city: String(data.city || ''),
-                    state: String(data.state || ''),
-                    number: String(data.number || ''),
-                    complement: String(data.complement || ''),
-                });
-            }
-            setIsFetching(false);
         };
         void fetchProfileDetails();
     }, [userId, sessionReady, companyId, isLoadingCompany, isLoadingProfile, form, navigate]);

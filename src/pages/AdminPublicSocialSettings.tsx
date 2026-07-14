@@ -5,9 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowLeft, Loader2, Share2, Info, Instagram, Linkedin, Phone } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
 import { showError, showLoading, showSuccess, dismissToast } from '@/utils/toast';
 import { useInvalidatePublicSiteContact } from '@/hooks/use-public-site-contact';
 import {
@@ -16,6 +15,7 @@ import {
     normalizeLinkedInUrl,
 } from '@/utils/public-site-contact';
 import { formatPhoneInput } from '@/utils/phone-format';
+import { restGet, restPatch } from '@/utils/supabase-rest';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -37,12 +37,12 @@ const AdminPublicSocialSettings: React.FC = () => {
     const navigate = useNavigate();
     const invalidateContact = useInvalidatePublicSiteContact();
     const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const { tipoUsuarioId, isFetched: roleFetched } = useUserRole(userId);
     const [form, setForm] = useState<SocialFormState>(DEFAULT_FORM);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
-    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
+    const isAdminMaster = Number(tipoUsuarioId) === ADMIN_MASTER_USER_TYPE_ID;
 
     useEffect(() => {
         if (authPending) return;
@@ -52,38 +52,49 @@ const AdminPublicSocialSettings: React.FC = () => {
             return;
         }
 
+        let cancelled = false;
         const load = async () => {
             try {
-                const { data, error } = await supabase
-                    .from('system_billing_settings')
-                    .select(
-                        'public_instagram_handle, public_linkedin_url, public_contact_phone, public_contact_label',
-                    )
-                    .eq('id', 1)
-                    .maybeSingle();
-
-                if (error && error.code !== 'PGRST116' && !error.message?.includes('column')) {
-                    showError('Erro ao carregar redes e contato público.');
-                } else if (data) {
-                    setForm({
-                        instagram_handle: String(data.public_instagram_handle ?? 'eventfest.app'),
-                        linkedin_url: String(data.public_linkedin_url ?? ''),
-                        public_contact_phone: data.public_contact_phone
-                            ? formatPhoneInput(String(data.public_contact_phone))
-                            : '',
-                        public_contact_label: String(data.public_contact_label ?? 'EventFest'),
-                    });
-                }
+                const rows = await restGet<
+                    {
+                        public_instagram_handle?: string | null;
+                        public_linkedin_url?: string | null;
+                        public_contact_phone?: string | null;
+                        public_contact_label?: string | null;
+                    }[]
+                >(
+                    'system_billing_settings?id=eq.1&select=public_instagram_handle,public_linkedin_url,public_contact_phone,public_contact_label&limit=1',
+                    12_000,
+                );
+                const data = rows?.[0];
+                if (cancelled || !data) return;
+                setForm({
+                    instagram_handle: String(data.public_instagram_handle ?? 'eventfest.app'),
+                    linkedin_url: String(data.public_linkedin_url ?? ''),
+                    public_contact_phone: data.public_contact_phone
+                        ? formatPhoneInput(String(data.public_contact_phone))
+                        : '',
+                    public_contact_label: String(data.public_contact_label ?? 'EventFest'),
+                });
             } catch (e) {
                 console.warn('public social settings load failed', e);
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         };
         void load();
+
+        return () => {
+            cancelled = true;
+        };
     }, [authPending, userId, sessionReady, bootExpired, navigate]);
 
     const handleSave = async () => {
+        if (!userId) {
+            showError('Sessão expirada. Faça login novamente.');
+            return;
+        }
+
         const handle = normalizeInstagramHandle(form.instagram_handle);
         if (!handle) {
             showError('Informe o usuário do Instagram.');
@@ -95,20 +106,18 @@ const AdminPublicSocialSettings: React.FC = () => {
         try {
             const phoneDigits = form.public_contact_phone.replace(/\D/g, '');
 
-            const { error } = await supabase.from('system_billing_settings').upsert(
+            await restPatch(
+                'system_billing_settings?id=eq.1',
                 {
-                    id: 1,
                     public_instagram_handle: handle,
                     public_linkedin_url: normalizeLinkedInUrl(form.linkedin_url),
                     public_contact_phone: phoneDigits.length >= 10 ? phoneDigits : null,
                     public_contact_label: form.public_contact_label.trim() || 'EventFest',
                     updated_at: new Date().toISOString(),
-                    updated_by: userId ?? null,
+                    updated_by: userId,
                 },
-                { onConflict: 'id' },
+                15_000,
             );
-
-            if (error) throw error;
 
             invalidateContact();
             dismissToast(toastId);
@@ -121,7 +130,7 @@ const AdminPublicSocialSettings: React.FC = () => {
         }
     };
 
-    if (authPending || isLoading || (userId && isLoadingProfile && !profile)) {
+    if (authPending || isLoading || (userId && !roleFetched && tipoUsuarioId == null)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -245,7 +254,7 @@ const AdminPublicSocialSettings: React.FC = () => {
                         type="button"
                         onClick={() => void handleSave()}
                         disabled={isSaving}
-                        className="bg-yellow-500 text-black hover:bg-yellow-400"
+                        className="bg-yellow-500 text-black hover:bg-yellow-400 disabled:opacity-50"
                     >
                         {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                         Salvar configuração

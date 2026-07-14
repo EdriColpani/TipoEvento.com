@@ -1,6 +1,6 @@
 import { supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
-import { clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
+import { clearAuthSessionIfCurrentToken, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import { RpcTimeoutError } from '@/utils/supabase-rpc';
 
 function formatRestRpcError(payload: unknown): string {
@@ -91,8 +91,9 @@ export async function callRpcRest<T>(
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (isJwtAuthError(message)) {
-            clearAuthSessionStorage();
-            window.dispatchEvent(new CustomEvent(AUTH_SIGNED_OUT_EVENT));
+            if (clearAuthSessionIfCurrentToken(token)) {
+                window.dispatchEvent(new CustomEvent(AUTH_SIGNED_OUT_EVENT));
+            }
             throw new Error('Sessão expirada. Faça login novamente.');
         }
         throw error;
@@ -115,8 +116,9 @@ export async function callRpcAuthOrPublicRest<T>(
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (isJwtAuthError(message)) {
-            clearAuthSessionStorage();
-            window.dispatchEvent(new CustomEvent(AUTH_SIGNED_OUT_EVENT));
+            if (clearAuthSessionIfCurrentToken(token)) {
+                window.dispatchEvent(new CustomEvent(AUTH_SIGNED_OUT_EVENT));
+            }
             return postRpc<T>(fn, args, supabaseAnonKey, timeoutMs);
         }
         throw error;

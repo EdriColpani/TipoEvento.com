@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Loader2, History, User, Clock, ChevronDown, ChevronUp } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useProfile } from '@/hooks/use-profile';
+import { ArrowLeft, Loader2, History } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { showError } from '@/utils/toast';
+import { restGet } from '@/utils/supabase-rest';
 import {
     Accordion,
     AccordionContent,
@@ -19,40 +18,30 @@ interface HistoryEntry {
     id: string;
     user_id: string;
     changed_at: string;
-    old_settings: any;
-    new_settings: any;
+    old_settings: unknown;
+    new_settings: unknown;
     changed_by: string;
     change_type: string;
 }
 
 const fetchSettingsHistory = async (userId: string): Promise<HistoryEntry[]> => {
-    // A RLS já garante que o usuário só veja o próprio histórico
-    const { data, error } = await supabase
-        .from('manager_settings_history')
-        .select('*')
-        .eq('user_id', userId)
-        .order('changed_at', { ascending: false });
-
-    if (error) {
-        console.error("Error fetching settings history:", error);
-        throw new Error(error.message);
-    }
-    
-    return data as HistoryEntry[];
+    const rows = await restGet<HistoryEntry[]>(
+        `manager_settings_history?user_id=eq.${encodeURIComponent(userId)}&select=*&order=changed_at.desc`,
+        15_000,
+    );
+    return rows ?? [];
 };
 
-const formatJson = (json: any): string => {
+const formatJson = (json: unknown): string => {
     if (!json) return "{}";
     try {
-        // Remove campos de metadados que não são relevantes para a auditoria visual
-        const cleanedJson = { ...json };
+        const cleanedJson = { ...(json as Record<string, unknown>) };
         delete cleanedJson.created_at;
         delete cleanedJson.updated_at;
         delete cleanedJson.user_id;
         delete cleanedJson.id;
-        
         return JSON.stringify(cleanedJson, null, 2);
-    } catch (e) {
+    } catch {
         return JSON.stringify(json, null, 2);
     }
 };
@@ -60,7 +49,6 @@ const formatJson = (json: any): string => {
 const ManagerSettingsHistory: React.FC = () => {
     const navigate = useNavigate();
     const { userId, authPending, sessionReady } = usePageAuth();
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const [history, setHistory] = useState<HistoryEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isError, setIsError] = useState(false);
@@ -75,21 +63,29 @@ const ManagerSettingsHistory: React.FC = () => {
             return;
         }
 
+        let cancelled = false;
         const loadData = async () => {
             try {
                 const data = await fetchSettingsHistory(userId);
-                setHistory(data);
+                if (!cancelled) setHistory(data);
             } catch (e) {
-                setIsError(true);
-                showError("Falha ao carregar o histórico de configurações.");
+                console.error('Error fetching settings history:', e);
+                if (!cancelled) {
+                    setIsError(true);
+                    showError("Falha ao carregar o histórico de configurações.");
+                }
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         };
-        loadData();
+        void loadData();
+
+        return () => {
+            cancelled = true;
+        };
     }, [authPending, userId, sessionReady, navigate]);
 
-    if (authPending || isLoading || (userId && isLoadingProfile)) {
+    if (authPending || isLoading) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -109,7 +105,7 @@ const ManagerSettingsHistory: React.FC = () => {
                     <History className="h-7 w-7 mr-3" />
                     Histórico de Configurações
                 </h1>
-                <Button 
+                <Button
                     onClick={() => navigate('/manager/settings')}
                     variant="outline"
                     className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm"
@@ -143,8 +139,8 @@ const ManagerSettingsHistory: React.FC = () => {
                                 </TableHeader>
                                 <TableBody>
                                     {history.map((entry) => (
-                                        <TableRow 
-                                            key={entry.id} 
+                                        <TableRow
+                                            key={entry.id}
                                             className="border-b border-yellow-500/10 hover:bg-black/40 transition-colors text-sm"
                                         >
                                             <TableCell className="py-4">
@@ -156,7 +152,9 @@ const ManagerSettingsHistory: React.FC = () => {
                                                 {new Date(entry.changed_at).toLocaleString('pt-BR')}
                                             </TableCell>
                                             <TableCell className="py-4 text-gray-300">
-                                                {entry.changed_by === profile?.id ? 'Você' : entry.changed_by.substring(0, 8) + '...'}
+                                                {entry.changed_by === userId
+                                                    ? 'Você'
+                                                    : `${entry.changed_by.substring(0, 8)}...`}
                                             </TableCell>
                                             <TableCell className="py-4 text-right">
                                                 <Accordion type="single" collapsible className="w-full">
