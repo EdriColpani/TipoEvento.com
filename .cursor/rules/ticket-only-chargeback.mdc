@@ -1,0 +1,37 @@
+---
+description: Chargeback de ingresso para gestores só com venda de ingressos (sem crédito D+1)
+alwaysApply: true
+---
+
+# Gestores só de ingresso — chargeback
+
+## Quem é
+
+Empresa com plano **somente ingresso** (`ticket_commission`) ou sem módulo de crédito/repasse D+1 ativo.  
+Nesses casos **não há** (ou quase não há) `manager_credit_settlement_ledger` para abater a dívida automaticamente.
+
+## Regra de negócio (obrigatória)
+
+1. **Venda normal de ingresso não muda** (split MP / `marketplace_fee` intacto).
+2. No chargeback MP: mesmo pipeline — cancelar ingresso, auditar em `ticket_chargeback_cases`, criar `manager_ticket_chargeback_debt` com `recovery_mode`.
+3. **Como cobrar (ticket-only / `manual_pix`):**
+   - O gestor **devolve** o líquido do chargeback à EventFest via **PIX ou TED**.
+   - Referência do pagamento: `EF-TCB-{id}` (exibida no painel e no e-mail).
+   - Chave PIX / instruções vêm de `system_billing_settings` (Admin configura).
+   - Admin Master registra o comprovante com `register_ticket_chargeback_debt_manual_payment` (ou `waive` com motivo).
+4. **Plano híbrido/consumo (`credit_settlement_offset`):** abate automaticamente no repasse D+1 — **não** misturar com baixa PIX manual.
+5. **Proibido** inventar clawback em splits já liquidados no MP sem fluxo/contrato claro.
+
+
+## Contrato
+
+Já autorizado pelo aditivo `ticket-chargeback-2026-07` (compensação em repasses futuros e demais créditos na plataforma). Ticket-only usa o braço **cobrança/compensação manual** até existir crédito ou outra liquidação.
+
+## Bloqueio de cadastro (3 chargebacks)
+
+- Contagem: dívidas `open`/`partial` com saldo > 0 em `manager_ticket_chargeback_debt`.
+- **1 ou 2 em aberto:** aviso amigável (valor pendente + “ao 3º o cadastro bloqueia”) + botão contato EventFest.
+- **3 ou mais:** bloqueio de `INSERT` de eventos e de reativação (`is_active` false→true) via trigger; UI esconde o formulário.
+- Liberação: automática quando Admin baixa/quita e a contagem cai abaixo de 3 (sem flag extra na empresa).
+- Contato: `get_public_contact_info()` (telefone público Admin) + PIX de chargeback; dialog com Ligar / WhatsApp.
+

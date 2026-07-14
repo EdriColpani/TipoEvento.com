@@ -5,12 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowLeft, Globe, Loader2, Rocket, Eye, Info, ExternalLink } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
 import { showError, showLoading, showSuccess, dismissToast } from '@/utils/toast';
 import { useInvalidatePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 import { normalizePublicLaunchMode, type PublicLaunchMode } from '@/utils/public-launch-access';
+import { fetchPublicLaunchMode } from '@/utils/public-launch-mode-query';
+import { restPatch } from '@/utils/supabase-rest';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -18,12 +19,12 @@ const AdminPublicLaunchSettings: React.FC = () => {
     const navigate = useNavigate();
     const invalidateLaunchMode = useInvalidatePublicLaunchMode();
     const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
-    const { profile, isLoading: isLoadingProfile } = useProfile(userId);
+    const { tipoUsuarioId, isFetched: roleFetched } = useUserRole(userId);
     const [mode, setMode] = useState<PublicLaunchMode>('preview');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
-    const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
+    const isAdminMaster = Number(tipoUsuarioId) === ADMIN_MASTER_USER_TYPE_ID;
     const isPreview = mode === 'preview';
 
     useEffect(() => {
@@ -34,43 +35,41 @@ const AdminPublicLaunchSettings: React.FC = () => {
             return;
         }
 
+        let cancelled = false;
         const load = async () => {
             try {
-                const { data, error } = await supabase
-                    .from('system_billing_settings')
-                    .select('public_launch_mode')
-                    .eq('id', 1)
-                    .maybeSingle();
-
-                if (error && error.code !== 'PGRST116' && !error.message?.includes('column')) {
-                    showError('Erro ao carregar configuração do site público.');
-                } else {
-                    setMode(normalizePublicLaunchMode(data?.public_launch_mode ?? 'preview'));
-                }
+                const next = await fetchPublicLaunchMode();
+                if (!cancelled) setMode(normalizePublicLaunchMode(next));
             } catch (e) {
                 console.warn('public_launch_mode load failed', e);
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         };
         void load();
+
+        return () => {
+            cancelled = true;
+        };
     }, [authPending, userId, sessionReady, bootExpired, navigate]);
 
     const handleSave = async () => {
+        if (!userId) {
+            showError('Sessão expirada. Faça login novamente.');
+            return;
+        }
         setIsSaving(true);
         const toastId = showLoading('Salvando configuração do site público...');
         try {
-            const { error } = await supabase.from('system_billing_settings').upsert(
+            await restPatch(
+                'system_billing_settings?id=eq.1',
                 {
-                    id: 1,
                     public_launch_mode: mode,
                     updated_at: new Date().toISOString(),
-                    updated_by: userId ?? null,
+                    updated_by: userId,
                 },
-                { onConflict: 'id' },
+                15_000,
             );
-
-            if (error) throw error;
 
             invalidateLaunchMode();
             dismissToast(toastId);
@@ -87,7 +86,7 @@ const AdminPublicLaunchSettings: React.FC = () => {
         }
     };
 
-    if (authPending || isLoading || (userId && isLoadingProfile && !profile)) {
+    if (authPending || isLoading || (userId && !roleFetched && tipoUsuarioId == null)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -189,7 +188,7 @@ const AdminPublicLaunchSettings: React.FC = () => {
                             type="button"
                             onClick={() => void handleSave()}
                             disabled={isSaving}
-                            className="bg-yellow-500 text-black hover:bg-yellow-400"
+                            className="bg-yellow-500 text-black hover:bg-yellow-400 disabled:opacity-50"
                         >
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                             Salvar configuração

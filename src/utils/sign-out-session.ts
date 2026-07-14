@@ -1,4 +1,5 @@
 import { supabase, supabaseUrl } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { withTimeout } from '@/utils/promise-timeout';
 
 export const AUTH_SIGNED_OUT_EVENT = 'eventfest:auth-signed-out';
@@ -16,6 +17,20 @@ export function clearAuthSessionStorage(): void {
     } catch {
         /* ignore */
     }
+}
+
+/**
+ * Limpa a sessão só se o JWT que falhou (401) ainda for o da sessão atual.
+ * Evita que uma requisição antiga com token expirado apague um login recém-feito.
+ */
+export function clearAuthSessionIfCurrentToken(failedAccessToken: string | null | undefined): boolean {
+    if (!failedAccessToken) return false;
+    const current = readCachedAuthSession().accessToken;
+    if (!current || current !== failedAccessToken) {
+        return false;
+    }
+    clearAuthSessionStorage();
+    return true;
 }
 
 function notifySignedOut(): void {

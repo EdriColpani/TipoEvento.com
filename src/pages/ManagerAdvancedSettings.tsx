@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -25,17 +25,9 @@ const DEFAULT_ADVANCED_SETTINGS: AdvancedSettingsState = {
 const ManagerAdvancedSettings: React.FC = () => {
     const navigate = useNavigate();
     // Página já está sob AdminMasterRouteGuard: apenas Administrador Global acessa
+    // Sem spinner artificial — a página só usa mock local + MP via REST.
     const [settings, setSettings] = useState<AdvancedSettingsState>(DEFAULT_ADVANCED_SETTINGS);
-    const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    // Simulação de carregamento de dados
-    useEffect(() => {
-        // Em um cenário real, buscaríamos essas configurações do DB (ex: manager_advanced_settings)
-        setTimeout(() => {
-            setSettings(DEFAULT_ADVANCED_SETTINGS);
-            setIsLoading(false);
-        }, 800);
-    }, []);
 
     const handleSwitchChange = (key: keyof AdvancedSettingsState, checked: boolean) => {
         setSettings(prev => ({ ...prev, [key]: checked }));
@@ -51,9 +43,7 @@ const ManagerAdvancedSettings: React.FC = () => {
 
         // Simulação de salvamento no DB
         try {
-            await new Promise(resolve => setTimeout(resolve, 1500)); 
-            
-            // Lógica de salvamento real iria aqui (ex: Supabase update)
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             dismissToast(toastId);
             showSuccess("Configurações avançadas salvas com sucesso!");
@@ -67,15 +57,6 @@ const ManagerAdvancedSettings: React.FC = () => {
             setIsSaving(false);
         }
     };
-
-    if (isLoading) {
-        return (
-            <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
-                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
-                <p className="text-gray-400">Carregando configurações avançadas...</p>
-            </div>
-        );
-    }
 
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-0">

@@ -15,6 +15,8 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivity';
 import { useEventTicketReadiness } from '@/hooks/use-event-ticket-readiness';
 import TicketInactivityBanner from '@/components/TicketInactivityBanner';
+import TicketChargebackBlockBanner from '@/components/TicketChargebackBlockBanner';
+import { useCompanyTicketChargebackBlock } from '@/hooks/use-company-ticket-chargeback-block';
 import { companyAllowsTicketSales, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { getInactiveEventGuidance } from '@/utils/inactive-event-guidance';
@@ -39,6 +41,10 @@ const ManagerEventsList: React.FC = () => {
     const minEventTickets = billing?.min_event_tickets ?? DEFAULT_MIN_EVENT_TICKETS;
     const { data: inactivityStatus, isLoading: isLoadingInactivity, refetch: refetchInactivity } =
         useCompanyTicketInactivity(company?.id, !isAdminMaster);
+    const { data: chargebackBlock, isLoading: isLoadingChargebackBlock } = useCompanyTicketChargebackBlock(
+        company?.id,
+        !isAdminMaster,
+    );
     const { data: ticketReadiness = [] } = useEventTicketReadiness(company?.id, showTicketRules);
     const readinessByEventId = Object.fromEntries(ticketReadiness.map((r) => [r.event_id, r]));
 
@@ -54,6 +60,7 @@ const ManagerEventsList: React.FC = () => {
         void refetchInactivity();
         void queryClient.invalidateQueries({ queryKey: ['companyBilling', company?.id] });
         void queryClient.invalidateQueries({ queryKey: ['eventTicketReadiness', company?.id] });
+        void queryClient.invalidateQueries({ queryKey: ['companyTicketChargebackBlock', company?.id] });
     }, [invalidateManagerEvents, queryClient, refetchInactivity, company?.id]);
 
     const filteredEvents = events.filter(event =>
@@ -122,6 +129,10 @@ const ManagerEventsList: React.FC = () => {
             </div>
 
             <TicketInactivityBanner status={inactivityStatus} isLoading={isLoadingInactivity} />
+            <TicketChargebackBlockBanner
+                status={chargebackBlock}
+                isLoading={isLoadingChargebackBlock}
+            />
 
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
                 <div className="relative mb-6">

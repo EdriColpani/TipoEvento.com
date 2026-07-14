@@ -66,11 +66,26 @@ const Login: React.FC = () => {
 
     const completeAuthenticatedRedirect = async (userId: string, authUser?: import('@supabase/supabase-js').User | null) => {
         try {
+            // #region agent log
+            console.info('[login-debug] redirect:start', {
+                userId,
+                hasToken: Boolean(readCachedAuthSession().accessToken),
+            });
+            // #endregion
             const { path, message } = await resolvePostLoginRedirect(userId, returnTo, authUser);
+            // #region agent log
+            console.info('[login-debug] redirect:ok', { path });
+            // #endregion
             showSuccess(message);
             navigate(path, { replace: true });
         } catch (error) {
             const code = error instanceof Error ? error.message : '';
+            // #region agent log
+            console.warn('[login-debug] redirect:fail', {
+                code,
+                hasToken: Boolean(readCachedAuthSession().accessToken),
+            });
+            // #endregion
             if (code === 'PROFILE_NOT_FOUND') {
                 showError(
                     'Não foi possível carregar seu perfil a tempo. Verifique a conexão e tente entrar de novo.',

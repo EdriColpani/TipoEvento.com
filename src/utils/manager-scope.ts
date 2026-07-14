@@ -79,6 +79,21 @@ export async function fetchManagerCompanyNotificationEmail(
     return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null;
 }
 
+/** Versão REST — evita hang do supabase-js na tela de notificações. */
+export async function fetchManagerCompanyNotificationEmailRest(
+    userId: string,
+): Promise<string | null> {
+    const companyId = await fetchManagerPrimaryCompanyIdRest(userId);
+    if (!companyId) return null;
+
+    const rows = await restGet<{ email?: string | null }[]>(
+        `companies?id=eq.${encodeURIComponent(companyId)}&select=email&limit=1`,
+        8_000,
+    );
+    const raw = rows?.[0]?.email;
+    return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null;
+}
+
 /** Todas as empresas vinculadas ao usuário (não só a principal). */
 export async function fetchManagerCompanyIds(
     client: SupabaseClient,

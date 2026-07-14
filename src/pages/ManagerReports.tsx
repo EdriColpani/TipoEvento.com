@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift, ScrollText } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift, ScrollText, AlertTriangle } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useSalesChartData } from '@/hooks/use-sales-chart-data';
@@ -10,7 +10,7 @@ import SalesLineChart from '@/components/SalesLineChart';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
-import { isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
+import { isConsumptionOrLicensePlan, companyAllowsTicketSales } from '@/utils/company-billing-rules';
 import { isPlanFeatureEnabled, type PlanFeatureKey } from '@/constants/plan-features';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
@@ -119,6 +119,12 @@ const ManagerReports: React.FC = () => {
     const showCreditReport = creditAccess.showCreditReportCards;
     const showConsumptionLicenseReport =
         !isAdminMaster && isConsumptionOrLicensePlan(billing?.billing_plan);
+    const showTicketChargebacks =
+        isManagerPro &&
+        !isAdminMaster &&
+        billingReady &&
+        companyAllowsTicketSales(billing?.billing_plan) &&
+        isPlanFeatureEnabled(features, 'reports_financial', false);
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -137,7 +143,7 @@ const ManagerReports: React.FC = () => {
                 </Button>
             </div>
 
-            {visibleReports.length === 0 && !showCreditReport && !showConsumptionLicenseReport ? (
+            {visibleReports.length === 0 && !showCreditReport && !showConsumptionLicenseReport && !showTicketChargebacks ? (
                 <p className="text-gray-400 text-sm mb-8">
                     Nenhum relatório disponível no plano comercial da sua empresa.
                 </p>
@@ -219,6 +225,14 @@ const ManagerReports: React.FC = () => {
                                 onClick={() => navigate('/manager/reports/credit-accounting')}
                             />
                         </>
+                    )}
+                    {showTicketChargebacks && (
+                        <ReportCard
+                            icon={<AlertTriangle className="h-6 w-6 text-amber-400" />}
+                            title="Chargebacks de ingresso"
+                            description="Dívidas por chargeback MP: devolução PIX/TED (plano só ingresso) ou desconto no repasse de crédito."
+                            onClick={() => navigate('/manager/reports/ticket-chargebacks')}
+                        />
                     )}
                     {showConsumptionLicenseReport && billingReady && (
                         <ReportCard

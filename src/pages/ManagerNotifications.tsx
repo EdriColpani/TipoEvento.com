@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Bell, ArrowLeft, Loader2, Save } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { fetchManagerCompanyNotificationEmail } from '@/utils/manager-scope';
+import { fetchManagerCompanyNotificationEmailRest } from '@/utils/manager-scope';
 import { usePageAuth } from '@/hooks/use-page-auth';
+import { restGet, restUpsert } from '@/utils/supabase-rest';
 
 interface SettingsState {
     newSaleEmail: boolean;
@@ -17,6 +17,15 @@ interface SettingsState {
     lowStockEmail: boolean;
     lowStockSystem: boolean;
 }
+
+type ManagerSettingsRow = {
+    new_sale_email?: boolean | null;
+    new_sale_system?: boolean | null;
+    event_update_email?: boolean | null;
+    event_update_system?: boolean | null;
+    low_stock_email?: boolean | null;
+    low_stock_system?: boolean | null;
+};
 
 const DEFAULT_SETTINGS: SettingsState = {
     newSaleEmail: true,
@@ -37,7 +46,6 @@ const ManagerNotifications: React.FC = () => {
     const [companyEmail, setCompanyEmail] = useState<string | null>(null);
     const isEmailConfigured = !!companyEmail;
 
-    // 1. Fetch Settings and Company Email when user is known
     useEffect(() => {
         if (authPending) return;
 
@@ -49,52 +57,57 @@ const ManagerNotifications: React.FC = () => {
             return;
         }
 
+        let cancelled = false;
         const fetchSettings = async () => {
-            const fetchedCompanyEmail = await fetchManagerCompanyNotificationEmail(
-                supabase,
-                userId,
-            );
-            setCompanyEmail(fetchedCompanyEmail);
+            try {
+                const fetchedCompanyEmail = await fetchManagerCompanyNotificationEmailRest(userId);
+                if (cancelled) return;
+                setCompanyEmail(fetchedCompanyEmail);
 
-            // Fetch Manager Settings
-            const { data: settingsData, error: settingsError } = await supabase
-                .from('manager_settings')
-                .select('*')
-                .eq('user_id', userId)
-                .single();
+                const rows = await restGet<ManagerSettingsRow[]>(
+                    `manager_settings?user_id=eq.${encodeURIComponent(userId)}&select=*&limit=1`,
+                    12_000,
+                );
+                if (cancelled) return;
 
-            if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 = No rows found
-                console.error("Error fetching settings:", settingsError);
-                showError("Erro ao carregar configurações de notificação.");
+                const settingsData = rows?.[0];
+                let initialSettings = DEFAULT_SETTINGS;
+                if (settingsData) {
+                    initialSettings = {
+                        newSaleEmail: settingsData.new_sale_email ?? DEFAULT_SETTINGS.newSaleEmail,
+                        newSaleSystem: settingsData.new_sale_system ?? DEFAULT_SETTINGS.newSaleSystem,
+                        eventUpdateEmail: settingsData.event_update_email ?? DEFAULT_SETTINGS.eventUpdateEmail,
+                        eventUpdateSystem: settingsData.event_update_system ?? DEFAULT_SETTINGS.eventUpdateSystem,
+                        lowStockEmail: settingsData.low_stock_email ?? DEFAULT_SETTINGS.lowStockEmail,
+                        lowStockSystem: settingsData.low_stock_system ?? DEFAULT_SETTINGS.lowStockSystem,
+                    };
+                }
+
+                if (!fetchedCompanyEmail) {
+                    initialSettings = {
+                        ...initialSettings,
+                        newSaleEmail: false,
+                        eventUpdateEmail: false,
+                        lowStockEmail: false,
+                    };
+                }
+
+                setSettings(initialSettings);
+            } catch (e) {
+                console.error('Error fetching notification settings:', e);
+                showError('Erro ao carregar configurações de notificação.');
+            } finally {
+                if (!cancelled) setIsLoading(false);
             }
-
-            let initialSettings = DEFAULT_SETTINGS;
-            if (settingsData) {
-                initialSettings = {
-                    newSaleEmail: settingsData.new_sale_email ?? DEFAULT_SETTINGS.newSaleEmail,
-                    newSaleSystem: settingsData.new_sale_system ?? DEFAULT_SETTINGS.newSaleSystem,
-                    eventUpdateEmail: settingsData.event_update_email ?? DEFAULT_SETTINGS.eventUpdateEmail,
-                    eventUpdateSystem: settingsData.event_update_system ?? DEFAULT_SETTINGS.eventUpdateSystem,
-                    lowStockEmail: settingsData.low_stock_email ?? DEFAULT_SETTINGS.lowStockEmail,
-                    lowStockSystem: settingsData.low_stock_system ?? DEFAULT_SETTINGS.lowStockSystem,
-                };
-            }
-            
-            // Se o e-mail da empresa não estiver configurado, desabilita as opções de e-mail
-            if (!fetchedCompanyEmail) {
-                initialSettings.newSaleEmail = false;
-                initialSettings.eventUpdateEmail = false;
-                initialSettings.lowStockEmail = false;
-            }
-
-            setSettings(initialSettings);
-            setIsLoading(false);
         };
-        fetchSettings();
+        void fetchSettings();
+
+        return () => {
+            cancelled = true;
+        };
     }, [authPending, userId, sessionReady, navigate]);
 
     const handleSwitchChange = (key: keyof SettingsState, checked: boolean) => {
-        // Se for uma configuração de e-mail e o e-mail da empresa não estiver configurado, impede a mudança
         if (key.endsWith('Email') && checked && !isEmailConfigured) {
             showError("Para receber notificações por e-mail, cadastre o E-mail da Empresa no Perfil da Empresa.");
             return;
@@ -109,7 +122,6 @@ const ManagerNotifications: React.FC = () => {
 
         const dataToSave = {
             user_id: userId,
-            // Garantir que as configurações de e-mail sejam salvas como FALSE se o e-mail da empresa não estiver configurado
             new_sale_email: isEmailConfigured ? settings.newSaleEmail : false,
             new_sale_system: settings.newSaleSystem,
             event_update_email: isEmailConfigured ? settings.eventUpdateEmail : false,
@@ -119,23 +131,16 @@ const ManagerNotifications: React.FC = () => {
         };
 
         try {
-            // Tenta atualizar (UPSERT)
-            const { error } = await supabase
-                .from('manager_settings')
-                .upsert(dataToSave, { onConflict: 'user_id' });
-
-            if (error) {
-                throw error;
-            }
-
+            await restUpsert('manager_settings?on_conflict=user_id', dataToSave, 15_000);
             dismissToast(toastId);
             showSuccess("Preferências de notificação salvas com sucesso!");
             navigate('/manager/settings');
-
-        } catch (e: any) {
+        } catch (e: unknown) {
             dismissToast(toastId);
-            console.error("Supabase Save Error:", e);
-            showError(`Falha ao salvar preferências: ${e.message || 'Erro desconhecido'}`);
+            console.error("Save Error:", e);
+            showError(
+                `Falha ao salvar preferências: ${e instanceof Error ? e.message : 'Erro desconhecido'}`,
+            );
         } finally {
             setIsSaving(false);
         }
@@ -158,10 +163,10 @@ const ManagerNotifications: React.FC = () => {
                     Notificações e Alertas
                 </h1>
                 <div className="flex space-x-3">
-                    <Button 
+                    <Button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="bg-yellow-500 text-black hover:bg-yellow-600 text-sm h-9 px-4"
+                        className="bg-yellow-500 text-black hover:bg-yellow-600 text-sm h-9 px-4 disabled:opacity-50"
                     >
                         {isSaving ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -169,7 +174,7 @@ const ManagerNotifications: React.FC = () => {
                             <Save className="w-4 h-4" />
                         )}
                     </Button>
-                    <Button 
+                    <Button
                         onClick={() => navigate('/manager/settings')}
                         variant="outline"
                         className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm h-9 px-4"
@@ -188,8 +193,6 @@ const ManagerNotifications: React.FC = () => {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    
-                    {/* Aviso de E-mail da Empresa */}
                     {!isEmailConfigured && (
                         <div className="bg-red-500/20 border border-red-500/50 text-red-400 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-3 sm:space-y-0 animate-fadeInUp">
                             <div className="flex items-start space-x-3">
@@ -201,8 +204,8 @@ const ManagerNotifications: React.FC = () => {
                                     </p>
                                 </div>
                             </div>
-                            <Button 
-                                variant="default" 
+                            <Button
+                                variant="default"
                                 className="bg-yellow-500 text-black hover:bg-yellow-600 h-8 px-4 text-sm w-full sm:w-auto flex-shrink-0"
                                 onClick={() => navigate('/manager/settings/company-profile')}
                             >
@@ -211,20 +214,19 @@ const ManagerNotifications: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Alertas de Vendas */}
                     <div className="space-y-4 pt-4 border-t border-yellow-500/10">
                         <h3 className="text-lg font-semibold text-white flex items-center">
                             <i className="fas fa-dollar-sign mr-2 text-yellow-500"></i>
                             Alertas de Vendas
                         </h3>
-                        
+
                         <div className="flex items-center justify-between p-4 bg-black/60 rounded-xl border border-yellow-500/20">
                             <div>
                                 <p className={`font-medium ${isEmailConfigured ? 'text-white' : 'text-gray-500'}`}>Nova Venda (E-mail)</p>
                                 <p className="text-gray-400 text-xs">Receba um e-mail a cada nova transação no endereço: <span className="text-yellow-500">{companyEmail || 'Não configurado'}</span></p>
                             </div>
-                            <Switch 
-                                checked={settings.newSaleEmail} 
+                            <Switch
+                                checked={settings.newSaleEmail}
                                 onCheckedChange={(checked) => handleSwitchChange('newSaleEmail', checked)}
                                 className="data-[state=checked]:bg-yellow-500 data-[state=unchecked]:bg-gray-700"
                                 disabled={isSaving || !isEmailConfigured}
@@ -236,8 +238,8 @@ const ManagerNotifications: React.FC = () => {
                                 <p className="text-white font-medium">Nova Venda (Notificação no Sistema)</p>
                                 <p className="text-gray-400 text-xs">Alerta visual no Dashboard.</p>
                             </div>
-                            <Switch 
-                                checked={settings.newSaleSystem} 
+                            <Switch
+                                checked={settings.newSaleSystem}
                                 onCheckedChange={(checked) => handleSwitchChange('newSaleSystem', checked)}
                                 className="data-[state=checked]:bg-yellow-500 data-[state=unchecked]:bg-gray-700"
                                 disabled={isSaving}
@@ -245,20 +247,19 @@ const ManagerNotifications: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Alertas de Eventos */}
                     <div className="space-y-4 pt-4 border-t border-yellow-500/10">
                         <h3 className="text-lg font-semibold text-white flex items-center">
                             <i className="fas fa-calendar-alt mr-2 text-yellow-500"></i>
                             Alertas de Eventos
                         </h3>
-                        
+
                         <div className="flex items-center justify-between p-4 bg-black/60 rounded-xl border border-yellow-500/20">
                             <div>
                                 <p className={`font-medium ${isEmailConfigured ? 'text-white' : 'text-gray-500'}`}>Atualização de Evento (E-mail)</p>
                                 <p className="text-gray-400 text-xs">Notificações sobre alterações de data ou local.</p>
                             </div>
-                            <Switch 
-                                checked={settings.eventUpdateEmail} 
+                            <Switch
+                                checked={settings.eventUpdateEmail}
                                 onCheckedChange={(checked) => handleSwitchChange('eventUpdateEmail', checked)}
                                 className="data-[state=checked]:bg-yellow-500 data-[state=unchecked]:bg-gray-700"
                                 disabled={isSaving || !isEmailConfigured}
@@ -266,33 +267,32 @@ const ManagerNotifications: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Alertas de Estoque */}
                     <div className="space-y-4 pt-4 border-t border-yellow-500/10">
                         <h3 className="text-lg font-semibold text-white flex items-center">
                             <i className="fas fa-box-open mr-2 text-yellow-500"></i>
                             Alertas de Estoque
                         </h3>
-                        
+
                         <div className="flex items-center justify-between p-4 bg-black/60 rounded-xl border border-yellow-500/20">
                             <div>
                                 <p className={`font-medium ${isEmailConfigured ? 'text-white' : 'text-gray-500'}`}>Ingressos com Baixo Estoque (E-mail)</p>
                                 <p className="text-gray-400 text-xs">Alerta quando a disponibilidade de ingressos cai abaixo de 10%.</p>
                             </div>
-                            <Switch 
-                                checked={settings.lowStockEmail} 
+                            <Switch
+                                checked={settings.lowStockEmail}
                                 onCheckedChange={(checked) => handleSwitchChange('lowStockEmail', checked)}
                                 className="data-[state=checked]:bg-yellow-500 data-[state=unchecked]:bg-gray-700"
                                 disabled={isSaving || !isEmailConfigured}
                             />
                         </div>
-                        
+
                         <div className="flex items-center justify-between p-4 bg-black/60 rounded-xl border border-yellow-500/20">
                             <div>
                                 <p className="text-white font-medium">Ingressos com Baixo Estoque (Sistema)</p>
                                 <p className="text-gray-400 text-xs">Alerta visual no Dashboard.</p>
                             </div>
-                            <Switch 
-                                checked={settings.lowStockSystem} 
+                            <Switch
+                                checked={settings.lowStockSystem}
                                 onCheckedChange={(checked) => handleSwitchChange('lowStockSystem', checked)}
                                 className="data-[state=checked]:bg-yellow-500 data-[state=unchecked]:bg-gray-700"
                                 disabled={isSaving}

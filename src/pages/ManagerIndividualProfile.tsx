@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { restPatch } from '@/utils/supabase-rest';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -254,18 +254,11 @@ const ManagerIndividualProfile: React.FC = () => {
         }
 
         try {
-            const { error } = await supabase
-                .from('profiles')
-                .update(dataToSave)
-                .eq('id', userId);
-
-            if (error) {
-                throw error;
-            }
+            await restPatch(`profiles?id=eq.${encodeURIComponent(userId)}`, dataToSave, 15_000);
 
             dismissToast(toastId);
             showSuccess("Perfil de Gestor PF atualizado com sucesso!");
-            queryClient.invalidateQueries({ queryKey: ['profile', userId] }); // Invalida o cache do perfil
+            queryClient.invalidateQueries({ queryKey: ['profile', userId] });
             navigate('/manager/settings');
 
         } catch (e: any) {
