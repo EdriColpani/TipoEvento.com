@@ -165,13 +165,22 @@ const CreditAccountingReportPanel: React.FC<CreditAccountingReportPanelProps> = 
                         <div className="min-w-[220px]">
                             <Label className="text-gray-400 text-xs">Empresa</Label>
                             <Select value={companyFilter} onValueChange={setCompanyFilter}>
-                                <SelectTrigger className="bg-black border-yellow-500/30 text-white mt-1">
+                                <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white mt-1">
                                     <SelectValue placeholder="Todas" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Todas as empresas</SelectItem>
+                                <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                    <SelectItem
+                                        value="all"
+                                        className="text-white focus:bg-yellow-500/10 focus:text-yellow-400"
+                                    >
+                                        Todas as empresas
+                                    </SelectItem>
                                     {companies.map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>
+                                        <SelectItem
+                                            key={c.id}
+                                            value={c.id}
+                                            className="text-white focus:bg-yellow-500/10 focus:text-yellow-400"
+                                        >
                                             {c.name}
                                         </SelectItem>
                                     ))}
@@ -181,7 +190,7 @@ const CreditAccountingReportPanel: React.FC<CreditAccountingReportPanelProps> = 
                     )}
                     <Button
                         variant="outline"
-                        className="border-yellow-500/40 text-yellow-500"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                         disabled={exporting || query.isLoading}
                         onClick={handleExport}
                     >

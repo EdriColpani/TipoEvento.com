@@ -76,6 +76,13 @@ const ADMIN_CREDIT_REPORT_TABS = new Set([
     'chargebacks',
 ]);
 
+/** Aba ativa: amarelo suave (não bloco amarelo sólido / fundo branco do shadcn). */
+const TAB_TRIGGER =
+    'text-gray-400 hover:text-yellow-500/90 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-500 data-[state=active]:shadow-none';
+
+const BTN_OUTLINE =
+    'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50';
+
 const AdminCreditReports: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -332,47 +339,48 @@ const AdminCreditReports: React.FC = () => {
                         Passivo, comissões de consumo, fluxos cross-empresa e auditoria.
                     </p>
                 </div>
-                <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/admin/dashboard')}>
+                <Button
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/admin/dashboard')}
+                >
                     <ArrowLeft className="h-4 w-4 mr-1" /> Dashboard
                 </Button>
             </div>
 
             <Tabs value={tab} onValueChange={setTab}>
-                <TabsList className="bg-black border border-yellow-500/30 mb-4 flex flex-wrap h-auto">
-                    <TabsTrigger value="liability" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                <TabsList className="bg-black border border-yellow-500/30 mb-4 flex flex-wrap h-auto gap-1 p-1">
+                    <TabsTrigger value="liability" className={TAB_TRIGGER}>
                         <Scale className="h-4 w-4 mr-1" /> Passivo
                     </TabsTrigger>
-                    <TabsTrigger value="commission" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="commission" className={TAB_TRIGGER}>
                         Comissões
                     </TabsTrigger>
-                    <TabsTrigger value="cross" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="cross" className={TAB_TRIGGER}>
                         <MapPin className="h-4 w-4 mr-1" /> Cross-empresa
                     </TabsTrigger>
-                    <TabsTrigger value="audit" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="audit" className={TAB_TRIGGER}>
                         <Shield className="h-4 w-4 mr-1" /> Auditoria
                     </TabsTrigger>
-                    <TabsTrigger value="settlements" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="settlements" className={TAB_TRIGGER}>
                         <Banknote className="h-4 w-4 mr-1" /> Repasses
                     </TabsTrigger>
-                    <TabsTrigger value="refunds" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="refunds" className={TAB_TRIGGER}>
                         <Undo2 className="h-4 w-4 mr-1" /> Estornos
                     </TabsTrigger>
-                    <TabsTrigger value="accounting" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="accounting" className={TAB_TRIGGER}>
                         <FileSpreadsheet className="h-4 w-4 mr-1" /> Contábil
                     </TabsTrigger>
-                    <TabsTrigger value="position" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="position" className={TAB_TRIGGER}>
                         Posição financeira
                     </TabsTrigger>
-                    <TabsTrigger value="revenue" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="revenue" className={TAB_TRIGGER}>
                         <TrendingUp className="h-4 w-4 mr-1" /> Receita plataforma
                     </TabsTrigger>
-                    <TabsTrigger value="mp-recon" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black">
+                    <TabsTrigger value="mp-recon" className={TAB_TRIGGER}>
                         Conciliação MP
                     </TabsTrigger>
-                    <TabsTrigger
-                        value="chargebacks"
-                        className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black relative"
-                    >
+                    <TabsTrigger value="chargebacks" className={`${TAB_TRIGGER} relative`}>
                         <AlertTriangle className="h-4 w-4 mr-1" /> Chargebacks
                         {(chargebackSummary.data?.cases_with_platform_absorb ?? 0) > 0 && (
                             <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-red-500" title="Absorção EventFest pendente" />
@@ -997,7 +1005,7 @@ const AdminCreditReports: React.FC = () => {
                                     variant="outline"
                                     size="sm"
                                     disabled={chargebackExporting}
-                                    className="border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10"
+                                    className={BTN_OUTLINE}
                                     onClick={handleChargebackExport}
                                 >
                                     {chargebackExporting ? (
@@ -1012,7 +1020,7 @@ const AdminCreditReports: React.FC = () => {
                                     variant="outline"
                                     size="sm"
                                     disabled={chargebackNotifying}
-                                    className="border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                    className={BTN_OUTLINE}
                                     onClick={() => handleChargebackNotify(true)}
                                 >
                                     {chargebackNotifying ? (

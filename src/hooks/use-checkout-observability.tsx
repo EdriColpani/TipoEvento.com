@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { restGet } from '@/utils/supabase-rest';
 
 export type CheckoutObservabilityAlert = {
     level: 'critical' | 'warning' | 'info';
@@ -65,23 +65,47 @@ export type HighTrafficEventOption = {
     checkout_queue_enabled: boolean;
 };
 
-async function fetchHighTrafficEvents(): Promise<HighTrafficEventOption[]> {
-    const { data, error } = await supabase
-        .from('events')
-        .select('id, title, date, inventory_mode, checkout_queue_enabled')
-        .or('inventory_mode.eq.counter,checkout_queue_enabled.eq.true,checkout_async_webhook.eq.true')
-        .order('date', { ascending: false })
-        .limit(100);
+type EventRow = {
+    id: string;
+    title: string;
+    date: string | null;
+    inventory_mode?: string | null;
+    checkout_queue_enabled?: boolean | null;
+    checkout_async_webhook?: boolean | null;
+};
 
-    if (error) throw error;
-
-    return (data ?? []).map((row) => ({
+function mapEventRows(rows: EventRow[] | null | undefined): HighTrafficEventOption[] {
+    return (rows ?? []).map((row) => ({
         id: row.id,
         title: row.title,
         date: row.date,
         inventory_mode: row.inventory_mode ?? 'unit_rows',
         checkout_queue_enabled: row.checkout_queue_enabled ?? false,
     }));
+}
+
+/** Lista via REST (evita hang do supabase-js). Prioriza alto tráfego; fallback = ativos. */
+async function fetchObservabilityEvents(): Promise<HighTrafficEventOption[]> {
+    const select =
+        'id,title,date,inventory_mode,checkout_queue_enabled,checkout_async_webhook';
+    const highTrafficFilter =
+        'or=(inventory_mode.eq.counter,checkout_queue_enabled.eq.true,checkout_async_webhook.eq.true)';
+
+    try {
+        const highTraffic = await restGet<EventRow[]>(
+            `events?select=${select}&${highTrafficFilter}&order=date.desc&limit=100`,
+            12_000,
+        );
+        if (highTraffic?.length) return mapEventRows(highTraffic);
+    } catch (e) {
+        console.warn('[fetchObservabilityEvents] filtro alto tráfego falhou:', e);
+    }
+
+    const active = await restGet<EventRow[]>(
+        `events?select=${select}&is_active=eq.true&order=date.desc&limit=100`,
+        12_000,
+    );
+    return mapEventRows(active);
 }
 
 async function fetchCheckoutObservability(
@@ -100,7 +124,8 @@ export function useHighTrafficEvents(enabled: boolean) {
         queryKey: ['high_traffic_events'],
         enabled,
         staleTime: 60_000,
-        queryFn: fetchHighTrafficEvents,
+        retry: 1,
+        queryFn: fetchObservabilityEvents,
     });
 }
 

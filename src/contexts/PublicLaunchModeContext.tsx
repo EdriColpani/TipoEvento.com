@@ -2,9 +2,9 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { useQuery } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserRole } from '@/hooks/use-user-role';
-import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT } from '@/utils/auth-session-cache';
+import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT, isAccessTokenTimeValid, isAuthApiRejectedStatus } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest } from '@/utils/auth-rest';
-import { clearAuthSessionIfCurrentToken, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
+import { clearAuthSessionIfCurrentToken, clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import {
     canBypassPublicLaunchPreview,
@@ -33,10 +33,10 @@ export type PublicSiteContextValue = {
 const PublicSiteContext = createContext<PublicSiteContextValue | null>(null);
 
 export function PublicLaunchModeProvider({ children }: { children: React.ReactNode }) {
-    const cached = readCachedAuthSession();
-    const [userId, setUserId] = useState<string | undefined>(cached.userId);
-    const [userEmail, setUserEmail] = useState<string | undefined>(cached.userEmail);
-    const [sessionReady, setSessionReady] = useState(!cached.accessToken);
+    // Não assume logado pelo cache: evita Menu Avatar ↔ Login piscando com JWT morto.
+    const [userId, setUserId] = useState<string | undefined>(undefined);
+    const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
+    const [sessionReady, setSessionReady] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -63,8 +63,10 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
                 return;
             }
 
-            if (stored.userId) {
-                applyUser(stored.userId, stored.userEmail);
+            if (!isAccessTokenTimeValid(stored.accessToken)) {
+                clearAuthSessionStorage();
+                clearSession();
+                return;
             }
 
             const result = await fetchAuthUserViaRest(stored.accessToken, 5_000);
@@ -75,23 +77,27 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
                 return;
             }
 
-            // Só 401 = token inválido. 403/rede/timeout não apagam sessão (race com login novo).
-            if (result.error?.status === 401) {
+            // 401/403 no /auth/v1/user = sessão rejeitada (comum no cold boot com JWT morto).
+            if (isAuthApiRejectedStatus(result.error?.status)) {
                 if (clearAuthSessionIfCurrentToken(stored.accessToken)) {
                     clearSession();
-                } else if (stored.userId) {
-                    setSessionReady(true);
                 } else {
                     clearSession();
                 }
                 return;
             }
 
-            if (stored.userId) {
-                setSessionReady(true);
+            // Rede/timeout: só mantém se o JWT ainda está no prazo e há userId.
+            if (
+                stored.userId &&
+                isAccessTokenTimeValid(stored.accessToken) &&
+                (result.error?.message === 'timeout' || result.error?.message === 'network_error')
+            ) {
+                applyUser(stored.userId, stored.userEmail);
                 return;
             }
 
+            clearAuthSessionIfCurrentToken(stored.accessToken);
             clearSession();
         };
 
@@ -103,12 +109,16 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
             applyUser(detail.userId, detail.userEmail);
         };
 
-        window.addEventListener(AUTH_SIGNED_OUT_EVENT, clearSession);
+        const onSignedOut = () => {
+            clearSession();
+        };
+
+        window.addEventListener(AUTH_SIGNED_OUT_EVENT, onSignedOut);
         window.addEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
 
         return () => {
             cancelled = true;
-            window.removeEventListener(AUTH_SIGNED_OUT_EVENT, clearSession);
+            window.removeEventListener(AUTH_SIGNED_OUT_EVENT, onSignedOut);
             window.removeEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
         };
     }, []);

@@ -40,6 +40,9 @@ import ContractHtmlBody from '@/components/ContractHtmlBody';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
+const BTN_OUTLINE =
+    'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400';
+
 function dt(iso: string | null | undefined): string {
     if (!iso) return '—';
     return new Date(iso).toLocaleString('pt-BR');
@@ -97,7 +100,11 @@ const AdminContractAcceptancesReport: React.FC = () => {
         return (
             <div className="max-w-3xl mx-auto text-center py-24">
                 <p className="text-gray-400">Este relatório é exclusivo do Admin Master.</p>
-                <Button className="mt-4" variant="outline" onClick={() => navigate('/manager/reports')}>
+                <Button
+                    className={`mt-4 ${BTN_OUTLINE}`}
+                    variant="outline"
+                    onClick={() => navigate('/manager/reports')}
+                >
                     Voltar aos relatórios
                 </Button>
             </div>
@@ -119,7 +126,11 @@ const AdminContractAcceptancesReport: React.FC = () => {
                         Trilha de aceite por empresa: usuário, versão, hash, snapshot e metadados do navegador.
                     </p>
                 </div>
-                <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports')}>
+                <Button
+                    variant="outline"
+                    className={BTN_OUTLINE}
+                    onClick={() => navigate('/manager/reports')}
+                >
                     <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                 </Button>
             </div>
@@ -147,19 +158,31 @@ const AdminContractAcceptancesReport: React.FC = () => {
                     <div>
                         <Label className="text-gray-300">Empresa</Label>
                         <Select
-                            value={selectedCompanyId}
+                            value={selectedCompanyId || undefined}
                             onValueChange={setSelectedCompanyId}
                         >
-                            <SelectTrigger className="mt-1 bg-black border-yellow-500/30 text-white">
+                            <SelectTrigger className="mt-1 bg-black/60 border-yellow-500/30 text-white">
                                 <SelectValue placeholder="Selecione uma empresa" />
                             </SelectTrigger>
-                            <SelectContent>
-                                {companyOptions.map((companyOption) => (
-                                    <SelectItem key={companyOption.company_id} value={companyOption.company_id}>
-                                        {companyOption.company_name}
-                                        {companyOption.billing_plan ? ` · ${companyOption.billing_plan}` : ''}
-                                    </SelectItem>
-                                ))}
+                            <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                {companiesQuery.isLoading ? (
+                                    <div className="px-3 py-2 text-sm text-gray-400">Carregando...</div>
+                                ) : companyOptions.length === 0 ? (
+                                    <div className="px-3 py-2 text-sm text-gray-400">
+                                        Nenhuma empresa encontrada.
+                                    </div>
+                                ) : (
+                                    companyOptions.map((companyOption) => (
+                                        <SelectItem
+                                            key={companyOption.company_id}
+                                            value={companyOption.company_id}
+                                            className="text-white focus:bg-yellow-500/10 focus:text-yellow-400"
+                                        >
+                                            {companyOption.company_name}
+                                            {companyOption.billing_plan ? ` · ${companyOption.billing_plan}` : ''}
+                                        </SelectItem>
+                                    ))
+                                )}
                             </SelectContent>
                         </Select>
                     </div>
@@ -247,7 +270,7 @@ const AdminContractAcceptancesReport: React.FC = () => {
                                                 type="button"
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-yellow-500/30 text-yellow-500"
+                                                className={BTN_OUTLINE}
                                                 onClick={() => setDetailRow(row)}
                                             >
                                                 Detalhes

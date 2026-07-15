@@ -38,6 +38,26 @@ export function readCachedAuthSession(): CachedAuthSession {
     }
 }
 
+/** true se o JWT ainda não passou do exp (margem de 5s). */
+export function isAccessTokenTimeValid(accessToken: string | null | undefined): boolean {
+    if (!accessToken) return false;
+    try {
+        const payloadPart = accessToken.split('.')[1];
+        if (!payloadPart) return false;
+        const payload = JSON.parse(
+            atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')),
+        ) as { exp?: number };
+        return typeof payload.exp === 'number' && payload.exp * 1000 > Date.now() + 5_000;
+    } catch {
+        return false;
+    }
+}
+
+/** 401/403 do Auth API = token rejeitado (não é RLS de tabela). */
+export function isAuthApiRejectedStatus(status: number | undefined): boolean {
+    return status === 401 || status === 403;
+}
+
 /** Grava sessão no localStorage e notifica a app (sem depender de setSession). */
 export function persistAuthSession(session: {
     access_token: string;

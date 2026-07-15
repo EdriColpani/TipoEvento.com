@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
 import { signInWithPasswordResilient, fetchAuthUserViaRest } from '@/utils/auth-rest';
-import { signOutSession, clearAuthSessionStorage } from '@/utils/sign-out-session';
-import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { signOutSession, clearAuthSessionStorage, clearAuthSessionIfCurrentToken } from '@/utils/sign-out-session';
+import {
+    readCachedAuthSession,
+    isAccessTokenTimeValid,
+    isAuthApiRejectedStatus,
+} from '@/utils/auth-session-cache';
 import { showSuccess, showError } from '@/utils/toast';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { resolvePostLoginRedirect } from '@/utils/post-login-redirect';
@@ -13,32 +17,64 @@ import {
     resolveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
 import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
+import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { withTimeout } from '@/utils/promise-timeout';
 import {
     isPartnerOwnerInviteCallback,
     RESET_PASSWORD_PATH,
     userMustSetPartnerPassword,
 } from '@/utils/partner-password-setup';
+import type { User } from '@supabase/supabase-js';
 
 /** JWT no localStorage já passou do exp — limpa antes do login. */
 function clearExpiredCachedJwt(): void {
     const token = readCachedAuthSession().accessToken;
     if (!token) return;
-    try {
-        const payloadPart = token.split('.')[1];
-        if (!payloadPart) {
-            clearAuthSessionStorage();
-            return;
-        }
-        const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/'))) as {
-            exp?: number;
-        };
-        if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now() - 5_000) {
-            clearAuthSessionStorage();
-        }
-    } catch {
+    if (!isAccessTokenTimeValid(token)) {
         clearAuthSessionStorage();
     }
+}
+
+/**
+ * Resolve usuário já autenticado priorizando REST + cache local.
+ * Nunca inventa sessão a partir de 401/403 — isso gerava loop Avatar ↔ Login.
+ */
+async function resolveExistingSessionUser(): Promise<User | null> {
+    clearExpiredCachedJwt();
+    const cached = readCachedAuthSession();
+
+    if (cached.accessToken) {
+        const rest = await fetchAuthUserViaRest(cached.accessToken, 5_000);
+        if (rest.user) return rest.user;
+
+        if (isAuthApiRejectedStatus(rest.error?.status)) {
+            clearAuthSessionIfCurrentToken(cached.accessToken);
+            return null;
+        }
+
+        // Só em timeout/rede com JWT ainda no prazo (cold boot sem Auth API).
+        const softNet =
+            rest.error?.message === 'timeout' || rest.error?.message === 'network_error';
+        if (softNet && cached.userId && isAccessTokenTimeValid(cached.accessToken)) {
+            return {
+                id: cached.userId,
+                email: cached.userEmail ?? undefined,
+                email_confirmed_at: new Date().toISOString(),
+                app_metadata: {},
+                user_metadata: {},
+                aud: 'authenticated',
+                created_at: '',
+            } as User;
+        }
+
+        return null;
+    }
+
+    const {
+        data: { session },
+    } = await withTimeout(supabase.auth.getSession(), 4_000, { data: { session: null } });
+
+    return session?.user ?? null;
 }
 
 const Login: React.FC = () => {
@@ -63,47 +99,54 @@ const Login: React.FC = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(true);
     const { isPreview } = usePublicLaunchMode();
+    const { tipoUsuarioId: contextTipo } = usePublicSiteAuth();
+    const redirectingRef = useRef(false);
 
-    const completeAuthenticatedRedirect = async (userId: string, authUser?: import('@supabase/supabase-js').User | null) => {
+    const completeAuthenticatedRedirect = async (
+        userId: string,
+        authUser?: User | null,
+        options?: { silent?: boolean },
+    ) => {
+        if (redirectingRef.current) return;
+        redirectingRef.current = true;
         try {
-            // #region agent log
-            console.info('[login-debug] redirect:start', {
-                userId,
-                hasToken: Boolean(readCachedAuthSession().accessToken),
-            });
-            // #endregion
             const { path, message } = await resolvePostLoginRedirect(userId, returnTo, authUser);
-            // #region agent log
-            console.info('[login-debug] redirect:ok', { path });
-            // #endregion
-            showSuccess(message);
+            if (!options?.silent) {
+                showSuccess(message);
+            }
             navigate(path, { replace: true });
         } catch (error) {
+            redirectingRef.current = false;
             const code = error instanceof Error ? error.message : '';
-            // #region agent log
-            console.warn('[login-debug] redirect:fail', {
-                code,
-                hasToken: Boolean(readCachedAuthSession().accessToken),
-            });
-            // #endregion
             if (code === 'PROFILE_NOT_FOUND') {
+                // Cold boot: NÃO desloga — evita /login com menu ainda autenticado.
                 showError(
-                    'Não foi possível carregar seu perfil a tempo. Verifique a conexão e tente entrar de novo.',
+                    'Sessão ativa, mas o perfil demorou a responder. Continuando…',
                 );
-            } else if (code === 'UNKNOWN_USER_TYPE') {
-                showError('Tipo de usuário desconhecido. Acesso negado.');
-            } else {
-                showError('Ocorreu um erro inesperado. Tente novamente.');
+                const tipo = Number(contextTipo);
+                if (tipo === 1) {
+                    navigate('/admin/dashboard', { replace: true });
+                } else if (tipo === 2) {
+                    navigate('/manager/dashboard', { replace: true });
+                } else if (tipo === 3) {
+                    navigate('/', { replace: true });
+                } else {
+                    navigate('/informacoes', { replace: true });
+                }
+                return;
             }
+            if (code === 'UNKNOWN_USER_TYPE') {
+                showError('Tipo de usuário desconhecido. Acesso negado.');
+                await signOutSession();
+                return;
+            }
+            showError('Ocorreu um erro inesperado. Tente novamente.');
             await signOutSession();
         }
     };
 
     useEffect(() => {
         let cancelled = false;
-
-        // Sessão antiga com JWT expirado polui a tela de login (401/JWT expired).
-        clearExpiredCachedJwt();
 
         const hash = window.location.hash;
         if (
@@ -115,29 +158,6 @@ const Login: React.FC = () => {
             return;
         }
 
-        const redirectIfPasswordSetupRequired = async () => {
-            const cached = readCachedAuthSession();
-            let user = cached.accessToken
-                ? (await fetchAuthUserViaRest(cached.accessToken, 4_000)).user
-                : null;
-
-            if (!user) {
-                const {
-                    data: { session },
-                } = await withTimeout(supabase.auth.getSession(), 4_000, { data: { session: null } });
-                user = session?.user ?? null;
-            }
-
-            if (cancelled || !user) {
-                return false;
-            }
-            if (!(await userMustSetPartnerPassword(user))) {
-                return false;
-            }
-            navigate(RESET_PASSWORD_PATH, { replace: true });
-            return true;
-        };
-
         const isAuthCallbackUrl = () => {
             const currentHash = window.location.hash;
             const search = window.location.search;
@@ -148,52 +168,59 @@ const Login: React.FC = () => {
             );
         };
 
-        const handleAuthReturn = async () => {
-            const { data: { session } } = await withTimeout(
-                supabase.auth.getSession(),
-                4_000,
-                { data: { session: null } },
-            );
-            if (cancelled || !session?.user?.id) {
-                return;
+        const redirectIfPasswordSetupRequired = async (user: User) => {
+            if (!(await userMustSetPartnerPassword(user))) {
+                return false;
             }
-
-            if (await redirectIfPasswordSetupRequired()) {
-                return;
+            if (!cancelled) {
+                navigate(RESET_PASSWORD_PATH, { replace: true });
             }
-
-            if (!isAuthCallbackUrl() || !isAuthEmailConfirmed(session.user)) {
-                if (!isAuthCallbackUrl() && isAuthEmailConfirmed(session.user)) {
-                    if (!(await userMustSetPartnerPassword(session.user))) {
-                        await completeAuthenticatedRedirect(session.user.id, session.user);
-                    }
-                }
-                return;
-            }
-
-            await completeAuthenticatedRedirect(session.user.id, session.user);
+            return true;
         };
 
-        void handleAuthReturn();
+        /** Se já há sessão (menu logado), sai de /login imediatamente. */
+        const redirectIfAlreadyAuthenticated = async () => {
+            const user = await resolveExistingSessionUser();
+            if (cancelled || !user?.id) return;
 
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-            if (cancelled || event !== 'SIGNED_IN' || !session?.user?.id) {
+            if (await redirectIfPasswordSetupRequired(user)) return;
+
+            if (!isAuthEmailConfirmed(user)) {
                 return;
             }
+
+            if (isPartnerOwnerInviteCallback()) {
+                navigate(`${RESET_PASSWORD_PATH}${window.location.hash}`, { replace: true });
+                return;
+            }
+
+            await completeAuthenticatedRedirect(user.id, user, { silent: true });
+        };
+
+        void redirectIfAlreadyAuthenticated();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (cancelled || !session?.user?.id) return;
+
+            // INITIAL_SESSION / TOKEN_REFRESHED com JWT morto causava loop de redirect.
+            // Só confia em SIGNED_IN real (login / setSession fresco).
+            if (event !== 'SIGNED_IN') return;
+
             void (async () => {
-                if (await redirectIfPasswordSetupRequired()) {
-                    return;
-                }
+                // Revalida: sessão client pode estar stale.
+                const verified = await resolveExistingSessionUser();
+                if (cancelled || !verified?.id) return;
+
+                if (await redirectIfPasswordSetupRequired(verified)) return;
                 if (isPartnerOwnerInviteCallback()) {
                     navigate(`${RESET_PASSWORD_PATH}${window.location.hash}`, { replace: true });
                     return;
                 }
-                if (!isAuthEmailConfirmed(session.user)) {
-                    return;
-                }
-                if (isAuthCallbackUrl()) {
-                    await completeAuthenticatedRedirect(session.user.id, session.user);
-                }
+                if (!isAuthEmailConfirmed(verified)) return;
+
+                await completeAuthenticatedRedirect(verified.id, verified, {
+                    silent: isAuthCallbackUrl(),
+                });
             })();
         });
 
@@ -201,11 +228,13 @@ const Login: React.FC = () => {
             cancelled = true;
             authListener.subscription.unsubscribe();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- montagem /login
     }, [navigate, returnTo]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
+        redirectingRef.current = false;
         clearAuthSessionStorage();
 
         try {
@@ -304,8 +333,8 @@ const Login: React.FC = () => {
                         </div>
                         <div className="flex items-center justify-between">
                             <label className="flex items-center cursor-pointer">
-                                <input 
-                                    type="checkbox" 
+                                <input
+                                    type="checkbox"
                                     checked={rememberMe}
                                     onChange={(e) => setRememberMe(e.target.checked)}
                                     className="mr-2 h-4 w-4 accent-[#22d3ee] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:ring-offset-2 focus:ring-offset-black/80"
@@ -313,8 +342,8 @@ const Login: React.FC = () => {
                                 />
                                 <span className="text-xs sm:text-sm text-gray-300">Lembrar-me</span>
                             </label>
-                            <button 
-                                type="button" 
+                            <button
+                                type="button"
                                 onClick={() => navigate('/forgot-password')}
                                 className="text-xs sm:text-sm text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
                             >
