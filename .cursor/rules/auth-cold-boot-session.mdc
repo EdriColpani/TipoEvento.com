@@ -1,0 +1,39 @@
+---
+description: Sessão auth cold boot — validação diária e regras anti-loop Avatar/Login
+alwaysApply: true
+---
+
+# Auth cold boot (EventFest)
+
+## Contexto (jul/2026)
+
+Usuário Admin (`edricolpani@hotmail.com`) via `localhost:8080`. Sintoma diário no **primeiro open do dia**:
+
+- Menu piscando Login ↔ Avatar (“usuário alternando”)
+- Ficar em `/login` com sessão residual
+- Console: `401`/`403` em `/auth/v1/user` + `fetchProfileTipoUsuarioId` “Sessão expirada”
+
+## Causa raiz (corrigida)
+
+1. JWT morto no `localStorage`, mas o app **mostrava usuário pelo cache** antes de validar.
+2. **403** no Auth era tratado como “ainda logado” (só 401 limpava).
+3. `/login` **inventava usuário mínimo** em falha não-401 → redirect → perfil 401 → limpa → loop.
+
+## Correção definitiva (arquivos)
+
+- `PublicLaunchModeContext.tsx` — não assume logado pelo cache; valida REST; limpa em 401/403
+- `Login.tsx` — não fabrica sessão em 401/403; redirect só com token validado
+- `auth-session-cache.ts` — `isAccessTokenTimeValid`, `isAuthApiRejectedStatus`
+- Guards admin — não expulsam logado com toast “Faça login” por perfil lento
+
+## Se o usuário perguntar “amanhã / ainda acontece?”
+
+Checklist rápido:
+
+1. Abrir o site **sem login manual** (sessão de ontem).
+2. Header deve estar **estável** (Login **ou** Avatar — sem piscar).
+3. Se sessão válida → pode redirecionar do `/login` para o painel.
+4. Se sessão expirada → fica em login **limpo**, sem Avatar piscando.
+5. Console: um 401/403 isolado no boot é OK; **loop contínuo** = regrediou.
+
+Não dizer que “é normal todo dia”. Se voltar, investigar regressão nestes arquivos — não maquiar com mais toast/redirect.

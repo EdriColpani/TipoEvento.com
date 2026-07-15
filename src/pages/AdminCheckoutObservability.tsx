@@ -12,6 +12,7 @@ import {
 import { ArrowLeft, Activity, AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
+import { useUserRole } from '@/hooks/use-user-role';
 import {
     useCheckoutObservability,
     useHighTrafficEvents,
@@ -22,6 +23,10 @@ import { showError } from '@/utils/toast';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 const WINDOW_OPTIONS = [5, 15, 30, 60];
+
+const BTN_OUTLINE =
+    'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400';
+const BTN_PRIMARY = 'bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50';
 
 const alertClasses = (level: CheckoutObservabilityAlert['level']) => {
     switch (level) {
@@ -53,9 +58,16 @@ const AdminCheckoutObservability: React.FC = () => {
     const [windowMinutes, setWindowMinutes] = useState(15);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
+    const { tipoUsuarioId, isFetched: roleFetched } = useUserRole(userId);
+    const isAdminMaster =
+        Number(tipoUsuarioId ?? profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
 
-    const { data: events = [], isLoading: isLoadingEvents } = useHighTrafficEvents(isAdminMaster);
+    const {
+        data: events = [],
+        isLoading: isLoadingEvents,
+        isError: isEventsError,
+        refetch: refetchEvents,
+    } = useHighTrafficEvents(isAdminMaster);
     const {
         data,
         isLoading,
@@ -68,6 +80,12 @@ const AdminCheckoutObservability: React.FC = () => {
         windowMinutes,
         isAdminMaster && Boolean(selectedEventId),
     );
+
+    useEffect(() => {
+        if (isEventsError) {
+            showError('Não foi possível carregar a lista de eventos.');
+        }
+    }, [isEventsError]);
 
     useEffect(() => {
         if (isError && error) {
@@ -89,7 +107,7 @@ const AdminCheckoutObservability: React.FC = () => {
         [events, selectedEventId],
     );
 
-    if (authPending || (userId && isLoadingProfile)) {
+    if (authPending || (userId && isLoadingProfile && !roleFetched && tipoUsuarioId == null)) {
         return (
             <div className="max-w-7xl mx-auto flex flex-col items-center justify-center py-24 text-gray-400">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mb-4" />
@@ -102,7 +120,11 @@ const AdminCheckoutObservability: React.FC = () => {
         return (
             <div className="max-w-3xl mx-auto text-center py-20">
                 <p className="text-red-400">Acesso restrito ao Admin Master.</p>
-                <Button className="mt-4" onClick={() => navigate('/admin/dashboard')}>
+                <Button
+                    variant="outline"
+                    className={`mt-4 ${BTN_OUTLINE}`}
+                    onClick={() => navigate('/admin/dashboard')}
+                >
                     Voltar
                 </Button>
             </div>
@@ -124,17 +146,20 @@ const AdminCheckoutObservability: React.FC = () => {
                 <div className="flex flex-wrap gap-2">
                     <Button
                         variant="outline"
-                        className="border-yellow-500/30 text-yellow-500"
+                        className={BTN_OUTLINE}
                         onClick={() => navigate('/admin/dashboard')}
                     >
                         <ArrowLeft className="h-4 w-4 mr-2" />
                         Dashboard
                     </Button>
                     <Button
-                        variant="outline"
-                        className="border-yellow-500/30 text-yellow-500"
-                        onClick={() => refetch()}
-                        disabled={!selectedEventId || isFetching}
+                        type="button"
+                        className={BTN_PRIMARY}
+                        onClick={() => {
+                            void refetchEvents();
+                            void refetch();
+                        }}
+                        disabled={isFetching || isLoadingEvents}
                     >
                         <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
                         Atualizar
@@ -149,20 +174,32 @@ const AdminCheckoutObservability: React.FC = () => {
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <p className="text-sm text-gray-400 mb-2">Evento</p>
-                        <Select value={selectedEventId} onValueChange={setSelectedEventId}>
+                        <Select
+                            value={selectedEventId || undefined}
+                            onValueChange={setSelectedEventId}
+                            disabled={isLoadingEvents && events.length === 0}
+                        >
                             <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
                                 <SelectValue placeholder="Selecione um evento" />
                             </SelectTrigger>
                             <SelectContent className="bg-black border-yellow-500/30 text-white">
-                                {isLoadingEvents ? (
+                                {isLoadingEvents && events.length === 0 ? (
                                     <div className="px-3 py-2 text-sm text-gray-400">Carregando...</div>
+                                ) : isEventsError ? (
+                                    <div className="px-3 py-2 text-sm text-red-300">
+                                        Falha ao carregar. Use Atualizar.
+                                    </div>
                                 ) : events.length === 0 ? (
                                     <div className="px-3 py-2 text-sm text-gray-400">
-                                        Nenhum evento com checkout monitorado encontrado.
+                                        Nenhum evento ativo encontrado.
                                     </div>
                                 ) : (
                                     events.map((event) => (
-                                        <SelectItem key={event.id} value={event.id} className="hover:bg-yellow-500/10">
+                                        <SelectItem
+                                            key={event.id}
+                                            value={event.id}
+                                            className="hover:bg-yellow-500/10 focus:bg-yellow-500/10"
+                                        >
                                             {event.title}
                                             {event.date ? ` · ${formatEventDateForDisplay(event.date)}` : ''}
                                         </SelectItem>
