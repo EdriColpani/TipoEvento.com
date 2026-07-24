@@ -12,8 +12,6 @@ import type { LandingModalId } from '@/contexts/LandingUiContext';
 const TITLES: Record<Exclude<LandingModalId, null>, string> = {
     about: 'Sobre Nós',
     'how-it-works': 'Como Funciona',
-    terms: 'Termos de Uso',
-    privacy: 'Privacidade',
     'help-center': 'Central de Ajuda',
     faq: 'Perguntas Frequentes (FAQ)',
     feedback: 'Feedback',

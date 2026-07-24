@@ -10,12 +10,10 @@ import {
     LANDING_FAQ_ITEMS,
     LANDING_HELP_CENTER_SECTIONS,
     LANDING_HOW_IT_WORKS,
-    LANDING_PRIVACY_CONTENT,
 } from '@/constants/landing-content';
 import type { LandingModalId } from '@/contexts/LandingUiContext';
 import LandingContentModal from '@/components/landing/LandingContentModal';
 import LandingFeedbackPanel from '@/components/landing/LandingFeedbackPanel';
-import LandingTermsBody from '@/components/landing/LandingTermsBody';
 
 type LandingModalsProps = {
     activeModal: LandingModalId;
@@ -41,10 +39,6 @@ const LandingModals: React.FC<LandingModalsProps> = ({ activeModal, onClose }) =
                         ))}
                     </ul>
                 );
-            case 'terms':
-                return <LandingTermsBody />;
-            case 'privacy':
-                return <p className="whitespace-pre-line">{LANDING_PRIVACY_CONTENT}</p>;
             case 'help-center':
                 return (
                     <div className="space-y-4">

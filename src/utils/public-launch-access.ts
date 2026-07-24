@@ -8,6 +8,8 @@ export const GUEST_ALLOWED_PATHS = new Set([
     '/informacoes',
     '/login',
     '/forgot-password',
+    '/terms',
+    '/privacy',
 ]);
 
 /** Rotas de cadastro (cliente e gestor). */
