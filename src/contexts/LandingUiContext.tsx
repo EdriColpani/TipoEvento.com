@@ -4,8 +4,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 export type LandingModalId =
     | 'about'
     | 'how-it-works'
-    | 'terms'
-    | 'privacy'
     | 'help-center'
     | 'faq'
     | 'feedback'

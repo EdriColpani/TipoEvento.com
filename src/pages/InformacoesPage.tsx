@@ -36,7 +36,7 @@ const InformacoesPage: React.FC = () => {
     const [sendingContact, setSendingContact] = useState(false);
 
     useEffect(() => {
-        document.title = 'EventFest — Informações';
+        document.title = 'EventFest';
         return () => {
             document.title = 'EventFest';
         };

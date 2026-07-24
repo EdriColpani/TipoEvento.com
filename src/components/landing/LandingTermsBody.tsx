@@ -1,9 +1,18 @@
 import React from 'react';
-import { LANDING_TERMS_SECTIONS } from '@/constants/landing-content';
+import {
+    LANDING_TERMS_SECTIONS,
+    type LandingTermsSection,
+} from '@/constants/landing-content';
 
-const LandingTermsBody: React.FC = () => (
+type LandingTermsBodyProps = {
+    sections?: LandingTermsSection[];
+};
+
+const LandingTermsBody: React.FC<LandingTermsBodyProps> = ({
+    sections = LANDING_TERMS_SECTIONS,
+}) => (
     <div className="space-y-5 text-sm text-gray-300">
-        {LANDING_TERMS_SECTIONS.map((section) => (
+        {sections.map((section) => (
             <section
                 key={section.title}
                 className="rounded-xl border border-cyan-400/20 bg-black/50 p-4"

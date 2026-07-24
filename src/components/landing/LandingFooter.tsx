@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useLandingUi } from '@/contexts/LandingUiContext';
 import type { LandingModalId } from '@/contexts/LandingUiContext';
@@ -8,13 +9,14 @@ type FooterLink = {
     label: string;
     modal?: Exclude<LandingModalId, null>;
     action?: 'contact';
+    to?: string;
 };
 
 const USEFUL_LINKS: FooterLink[] = [
     { label: 'Sobre Nós', modal: 'about' },
     { label: 'Como Funciona', modal: 'how-it-works' },
-    { label: 'Termos de Uso', modal: 'terms' },
-    { label: 'Privacidade', modal: 'privacy' },
+    { label: 'Termos de Uso', to: '/terms' },
+    { label: 'Política de Privacidade', to: '/privacy' },
 ];
 
 const SUPPORT_LINKS: FooterLink[] = [
@@ -33,22 +35,31 @@ const LandingFooter: React.FC<LandingFooterProps> = ({ isMobile }) => {
 
     const renderLink = (item: FooterLink) => (
         <li key={item.label}>
-            <button
-                type="button"
-                onClick={() => {
-                    if (item.action === 'contact') {
-                        openContact();
-                        return;
-                    }
-                    if (item.modal) openModal(item.modal);
-                }}
-                className={cn(
-                    'text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer text-left',
-                    item.action === 'contact' && contactOpen && 'text-cyan-400',
-                )}
-            >
-                {item.label}
-            </button>
+            {item.to ? (
+                <Link
+                    to={item.to}
+                    className="text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer text-left"
+                >
+                    {item.label}
+                </Link>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (item.action === 'contact') {
+                            openContact();
+                            return;
+                        }
+                        if (item.modal) openModal(item.modal);
+                    }}
+                    className={cn(
+                        'text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer text-left',
+                        item.action === 'contact' && contactOpen && 'text-cyan-400',
+                    )}
+                >
+                    {item.label}
+                </button>
+            )}
         </li>
     );
 

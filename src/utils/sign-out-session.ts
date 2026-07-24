@@ -37,14 +37,19 @@ function notifySignedOut(): void {
     window.dispatchEvent(new CustomEvent(AUTH_SIGNED_OUT_EVENT));
 }
 
-/** Encerra sessão local de forma confiável (gestor, cliente, admin). */
+/**
+ * Encerra sessão local de forma confiável (gestor, cliente, admin).
+ * Limpa storage e notifica na hora — não espera o client JS do Supabase
+ * (signOut às vezes trava vários segundos / até o timeout de 4s).
+ */
 export async function signOutSession(): Promise<void> {
-    await withTimeout(
-        supabase.auth.signOut({ scope: 'local' }).catch(() => undefined),
-        4_000,
-        undefined,
-    );
-
     clearAuthSessionStorage();
     notifySignedOut();
+
+    // Best-effort: limpa estado interno do supabase-js sem bloquear a UI.
+    void withTimeout(
+        supabase.auth.signOut({ scope: 'local' }).catch(() => undefined),
+        2_000,
+        undefined,
+    );
 }

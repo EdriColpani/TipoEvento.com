@@ -87,8 +87,11 @@ import ClientCreditWallet from "./pages/ClientCreditWallet";
 import ClientCreditMenu from "./pages/ClientCreditMenu";
 import ManagerComplimentaryBundles from "./pages/ManagerComplimentaryBundles";
 import ManagerComplimentaryBundlesReport from "./pages/ManagerComplimentaryBundlesReport";
+import ManagerFeedbackReport from "./pages/ManagerFeedbackReport";
 import ComplimentaryBundlePage from "./pages/ComplimentaryBundlePage";
 import ComplimentarySeatRedeemPage from "./pages/ComplimentarySeatRedeemPage";
+import TermsPage from "./pages/TermsPage";
+import PrivacyPage from "./pages/PrivacyPage";
 import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
 import { usePasswordSetupGate } from "./hooks/use-password-setup-gate";
 import { PublicLaunchModeProvider } from "./contexts/PublicLaunchModeContext";
@@ -112,6 +115,8 @@ function AppRoutes() {
           <Route path="/" element={<ClientLayout />}>
             <Route element={<ClientAuthGate />}>
             <Route path="informacoes" element={<InformacoesPage />} />
+            <Route path="terms" element={<TermsPage />} />
+            <Route path="privacy" element={<PrivacyPage />} />
             <Route index element={<ClientHomeRoute />} />
             <Route path="events/:id" element={<EventDetails />} />
             <Route path="events/:eventId/inscricao" element={<EventInscriptionPage />} />
@@ -166,6 +171,7 @@ function AppRoutes() {
             <Route path="/manager/reports/audience" element={<AudienceReports />} />
             <Route path="/manager/reports/registrations" element={<RegistrationsReports />} />
             <Route path="/manager/reports/complimentary-bundles" element={<ManagerComplimentaryBundlesReport />} />
+            <Route path="/manager/reports/feedback" element={<ManagerFeedbackReport />} />
             <Route path="/manager/reports/wristband-movements" element={<WristbandMovementsReports />} />
             <Route path="/manager/reports/listing-monthly" element={<ManagerListingMonthlyBilling />} />
             <Route path="/manager/reports/consumption-license" element={<ManagerConsumptionLicenseBilling />} />

@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift, ScrollText, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileText, TrendingUp, Users, DollarSign, ClipboardList, Activity, Receipt, Wallet, Banknote, FileSpreadsheet, Ticket, Gift, ScrollText, AlertTriangle, MessageSquareHeart } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useSalesChartData } from '@/hooks/use-sales-chart-data';
@@ -248,6 +248,14 @@ const ManagerReports: React.FC = () => {
                             title="Pacotes cortesia"
                             description="Pacotes Staff enviados, resgates por ingresso e destinatários — exclusivo do gestor."
                             onClick={() => navigate('/manager/reports/complimentary-bundles')}
+                        />
+                    )}
+                    {isManagerPro && !isAdminMaster && isPlanFeatureEnabled(features, 'reports', false) && billingReady && (
+                        <ReportCard
+                            icon={<MessageSquareHeart className="h-6 w-6 text-yellow-500" />}
+                            title="Feedback dos clientes"
+                            description="Notas, temas e opiniões dos clientes sobre seus eventos — exclusivo do gestor."
+                            onClick={() => navigate('/manager/reports/feedback')}
                         />
                     )}
                     {isAdminMaster && (
