@@ -62,15 +62,13 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
     // Por enquanto, exibimos 1x e o preço unitário.
     const totalValue = unitPrice; 
 
-    const isActive = isTicketActiveForDisplay(ticket);
     const awaitingEmission =
         ticket.status === 'pending' &&
         (ticket.event_type === 'checkout_pending' || !ticket.event_data?.transaction_id);
+    const eventStillOn = isEventDateStillValidForEntryQr(eventDetails?.date);
     const canShowQrButton =
-        isEventDateStillValidForEntryQr(eventDetails?.date) &&
-        canShowEntryQrCode(ticket) &&
-        (isActive || awaitingEmission);
-    const alreadyUsedAtGate = ticket.status === 'used';
+        eventStillOn && (canShowEntryQrCode(ticket) || awaitingEmission);
+    const alreadyUsedAtGate = ticket.status === 'used' && eventStillOn;
 
     return (
         <Card className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-4 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0 hover:border-yellow-500/60 transition-all duration-300">
@@ -128,7 +126,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                     </Button>
                 ) : alreadyUsedAtGate ? (
                     <p className="text-xs text-gray-400 mt-2 md:mt-0 text-right">Já utilizado na entrada</p>
-                ) : !isEventDateStillValidForEntryQr(eventDetails?.date) && isActive ? (
+                ) : !eventStillOn ? (
                     <p className="text-xs text-gray-500 mt-2 md:mt-0">Evento encerrado</p>
                 ) : null}
             </div>

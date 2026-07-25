@@ -9,24 +9,35 @@ export function isEventDateStillValidForEntryQr(dateStr: string | null | undefin
     return !isBefore(startOfDay(eventDay), startOfDay(new Date()));
 }
 
-/** Ingresso exibido em "Ativos" (inclui reserva pós-checkout aguardando emissão). */
+/**
+ * Ingresso em "Ativos" vs "Histórico":
+ * - Evento com data já passada → histórico
+ * - cancelled/lost → histórico
+ * - active/pending → ativos (se evento ainda vigente)
+ * - used (compra) com evento ainda vigente → ativos (já usou na porta, mas o evento não encerrou)
+ */
 export function isTicketActiveForDisplay(ticket: TicketData): boolean {
     if (ticket.status === 'cancelled' || ticket.status === 'lost') return false;
+
+    const eventDate = ticket.wristbands?.events?.date;
+    if (eventDate && !isEventDateStillValidForEntryQr(eventDate)) {
+        return false;
+    }
+
     if (ticket.status === 'active' || ticket.status === 'pending') return true;
+    if (ticket.status === 'used' && ticket.event_type === 'purchase') return true;
     return false;
 }
 
 /**
- * QR dinâmico de entrada: só com status `active` (ou pending aguardando emissão).
- * Ingresso `used` já passou na portaria — não deve ficar em "Gerando QR…".
+ * QR dinâmico: só status `active`.
+ * `used` = já passou na portaria (não gerar token).
+ * `pending` = ainda emitindo (botão desabilitado na UI).
  */
 export function canShowEntryQrCode(ticket: {
     status: TicketData['status'];
-    event_type?: string | null;
 }): boolean {
-    if (ticket.status === 'active') return true;
-    if (ticket.status === 'pending') return true;
-    return false;
+    return ticket.status === 'active';
 }
 
 export function isTicketEmittedForPurchase(ticket: TicketData): boolean {
