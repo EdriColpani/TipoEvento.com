@@ -72,14 +72,9 @@ serve(async (req) => {
       });
     }
 
-    if (wa.status === 'used') {
-      return new Response(JSON.stringify({ error: 'Ingresso já utilizado na entrada.' }), {
-        status: 409,
-        headers: corsHeaders,
-      });
-    }
-
-    if (wa.status !== 'active') {
+    // Após a portaria o status fica `used`, mas o cliente ainda precisa abrir o QR
+    // (app ou navegador) para consumo no evento. A 2ª entrada é bloqueada no validate-ticket.
+    if (wa.status !== 'active' && wa.status !== 'used') {
       return new Response(JSON.stringify({ error: 'Ingresso ainda não liberado para entrada.' }), {
         status: 409,
         headers: corsHeaders,

@@ -30,14 +30,14 @@ export function isTicketActiveForDisplay(ticket: TicketData): boolean {
 }
 
 /**
- * QR dinâmico: só status `active`.
- * `used` = já passou na portaria (não gerar token).
- * `pending` = ainda emitindo (botão desabilitado na UI).
+ * QR dinâmico: liberado com status `active` (pré-portaria) ou `used` (já entrou —
+ * ainda precisa abrir o QR no app/navegador para consumo dentro do evento).
+ * A portaria bloqueia 2ª entrada em `validate-ticket`, não aqui.
  */
 export function canShowEntryQrCode(ticket: {
     status: TicketData['status'];
 }): boolean {
-    return ticket.status === 'active';
+    return ticket.status === 'active' || ticket.status === 'used';
 }
 
 export function isTicketEmittedForPurchase(ticket: TicketData): boolean {

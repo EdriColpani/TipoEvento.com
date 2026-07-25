@@ -28,7 +28,7 @@ async function fetchEntryQrToken(analyticsId: string): Promise<EntryQrTokenData>
 
 function isRetryableEntryQrError(error: unknown): boolean {
     const msg = error instanceof Error ? error.message : String(error ?? '');
-    if (/utilizado|não liberado|não pertence|não encontrado|Sessão|obrigatório/i.test(msg)) {
+    if (/não liberado|não pertence|não encontrado|Sessão|obrigatório/i.test(msg)) {
         return false;
     }
     return /Tempo esgotado|AbortError|Failed to fetch|NetworkError|network/i.test(msg);
