@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
-import { managerCanViewCreditReports } from '@/utils/company-billing-rules';
+import { managerCanViewCreditReports, managerCanViewSettlements } from '@/utils/company-billing-rules';
 import { useProfile } from '@/hooks/use-profile';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
@@ -37,6 +37,7 @@ export function useCreditReportsAccess(userId: string | undefined) {
     const billingReady = isCompanyBillingReady(billing);
     const globalModuleOn = moduleQuery.data === true;
     const planAllowsCredit = managerCanViewCreditReports(billing?.billing_plan, globalModuleOn);
+    const planAllowsSettlements = managerCanViewSettlements(billing?.billing_plan, globalModuleOn);
 
     const canAccessManagerCreditReports =
         isManagerPro &&
@@ -44,6 +45,13 @@ export function useCreditReportsAccess(userId: string | undefined) {
         !!company?.id &&
         billingReady &&
         planAllowsCredit;
+
+    const canAccessManagerSettlements =
+        isManagerPro &&
+        !isAdminMaster &&
+        !!company?.id &&
+        billingReady &&
+        planAllowsSettlements;
 
     const canAccessAdminCreditReports = isAdminMaster;
 
@@ -56,8 +64,10 @@ export function useCreditReportsAccess(userId: string | undefined) {
         billing,
         billingReady,
         planAllowsCredit,
+        planAllowsSettlements,
         globalModuleOn,
         canAccessManagerCreditReports,
+        canAccessManagerSettlements,
         canAccessAdminCreditReports,
         showCreditReportCards,
         shouldUseAdminAccountingPanel: isAdminMaster,

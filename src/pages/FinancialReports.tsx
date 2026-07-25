@@ -365,20 +365,22 @@ const FinancialReports: React.FC = () => {
 
             <Card className="bg-black border border-cyan-500/20 rounded-2xl p-5 mb-6">
                 <CardContent className="p-0 space-y-2 text-sm text-gray-300">
-                    <p className="text-cyan-400 font-semibold">Como saber se o split (duas contas) deu certo</p>
+                    <p className="text-cyan-400 font-semibold">Split MP vs repasse D+1 (banco)</p>
                     <ol className="list-decimal list-inside space-y-1 text-gray-400">
                         <li>
-                            Abaixo, filtre <strong className="text-white">Pagas</strong> e confira a coluna{' '}
-                            <strong className="text-white">Split</strong>: deve aparecer <strong className="text-green-400">Registrado</strong>{' '}
-                            (sistema gravou comissão EventFest + líquido do gestor).
+                            <strong className="text-white">Modo Mercado Pago</strong>: coluna{' '}
+                            <strong className="text-white">Split</strong> = Registrado; líquido cai na conta MP do
+                            gestor no ato; comissão EventFest via marketplace.
                         </li>
                         <li>
-                            <strong className="text-white">R$ Comissão Sistema</strong> = valor creditado à conta EventFest (marketplace).{' '}
-                            <strong className="text-white">Recebido gestor</strong> = mesmo valor do extrato MP do gestor (net_received).
+                            <strong className="text-white">Modo conta bancária</strong>: EventFest cobra na própria
+                            conta MP; o líquido do gestor entra em <strong className="text-white">Repasses D+1</strong>{' '}
+                            (TED/PIX). Veja também a coluna Canal (quando disponível).
                         </li>
                         <li>
-                            <strong className="text-white">R$ MP</strong> = taxa de processamento do Mercado Pago (não é a comissão EventFest).{' '}
-                            Bruto ≈ Recebido gestor + Comissão + Taxa MP.
+                            <strong className="text-white">R$ Comissão Sistema</strong> = comissão EventFest.{' '}
+                            <strong className="text-white">Recebido gestor</strong> = líquido (extrato MP no modo
+                            split, ou a pagar/pago no D+1 no modo banco).
                         </li>
                     </ol>
                     {isAdminMaster && transactionTotals.systemCommission > 0 && (

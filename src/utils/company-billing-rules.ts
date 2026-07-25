@@ -36,5 +36,14 @@ export function managerCanViewCreditReports(
         || (plan === 'ticket_commission' && creditModuleGloballyEnabled);
 }
 
+/** Repasses D+1: crédito e/ou ingresso em modo banco. */
+export function managerCanViewSettlements(
+    plan: BillingPlanCode | string | null | undefined,
+    creditModuleGloballyEnabled: boolean,
+): boolean {
+    return managerCanViewCreditReports(plan, creditModuleGloballyEnabled)
+        || companyAllowsTicketSales(plan);
+}
+
 export const DEFAULT_LISTING_MONTHLY_FEE = 199.9;
 export const DEFAULT_MIN_EVENT_TICKETS = 10;

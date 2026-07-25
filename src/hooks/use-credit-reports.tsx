@@ -165,6 +165,23 @@ export function useAdminCreditFinancialPosition(startDate?: string | null, endDa
     });
 }
 
+export type TicketManualSettlementTotals = {
+    pending_retention: number;
+    awaiting_payment: number;
+    paid: number;
+    clawback: number;
+};
+
+export function useTicketManualSettlementTotals(enabled = true) {
+    return useQuery({
+        queryKey: ['ticketManualSettlementTotals'],
+        queryFn: () =>
+            callRpcRest<TicketManualSettlementTotals>('get_ticket_manual_settlement_totals', {}, 12_000),
+        enabled,
+        staleTime: 20_000,
+    });
+}
+
 export function useAdminPlatformBillingRevenue(startDate?: string | null, endDate?: string | null) {
     return useQuery({
         queryKey: ['adminPlatformBillingRevenue', startDate, endDate],
@@ -276,8 +293,9 @@ export type AdminSettlementRow = ManagerSettlementRow & {
 export type ManagerSettlementRow = {
     id: string;
     company_id: string;
-    spend_order_id: string;
-    split_id?: string;
+    spend_order_id: string | null;
+    split_id?: string | null;
+    receivable_id?: string | null;
     manager_amount: number;
     platform_amount?: number;
     gross_amount?: number;
@@ -297,6 +315,8 @@ export type ManagerSettlementRow = {
     establishment_kind?: string | null;
     group_type?: string | null;
     group_label?: string | null;
+    source_type?: 'credit' | 'ticket' | string | null;
+    source_label?: string | null;
 };
 
 export type SettlementSummary = {
@@ -309,12 +329,27 @@ export type SettlementSummary = {
     failed?: number;
 };
 
+export type CompanyPayoutBankSnapshot = {
+    payout_mode?: string | null;
+    bank_code?: string | null;
+    bank_name?: string | null;
+    agency?: string | null;
+    account_number?: string | null;
+    account_digit?: string | null;
+    account_type?: string | null;
+    holder_name?: string | null;
+    holder_document?: string | null;
+    pix_key?: string | null;
+    pix_key_type?: string | null;
+} | null;
+
 export type AdminSettlementGroupedCompany = {
     company_id: string;
     company_name: string;
     pending_retention_total: number;
     awaiting_payment_total: number;
     paid_total: number;
+    payout_bank?: CompanyPayoutBankSnapshot;
     groups: Array<{
         group_type: string;
         group_key: string;
@@ -378,7 +413,11 @@ export async function fetchAdminCreditSettlementsExport(
     return all;
 }
 
-export function useAdminCreditSettlements(status?: string | null, companyId?: string | null) {
+export function useAdminCreditSettlements(
+    status?: string | null,
+    companyId?: string | null,
+    options?: { enabled?: boolean },
+) {
     return useQuery({
         queryKey: ['adminCreditSettlements', status, companyId],
         queryFn: async () => {
@@ -397,11 +436,15 @@ export function useAdminCreditSettlements(status?: string | null, companyId?: st
             );
             return data;
         },
+        enabled: options?.enabled !== false,
         staleTime: 20_000,
     });
 }
 
-export function useAdminCreditSettlementsGrouped(status: string = 'released') {
+export function useAdminCreditSettlementsGrouped(
+    status: string | null = 'released',
+    options?: { enabled?: boolean },
+) {
     return useQuery({
         queryKey: ['adminCreditSettlementsGrouped', status],
         queryFn: () =>
@@ -410,6 +453,7 @@ export function useAdminCreditSettlementsGrouped(status: string = 'released') {
                 { p_status: status },
                 25_000,
             ),
+        enabled: options?.enabled !== false,
         staleTime: 20_000,
     });
 }

@@ -16,6 +16,8 @@ export type ReceivableRestRow = {
     paid_at: string | null;
     event_id: string;
     wristband_analytics_ids: string[] | null;
+    settlement_channel?: string | null;
+    collector_type?: string | null;
     events: {
         id: string;
         title: string;
@@ -87,7 +89,7 @@ export async function fetchReceivablesRest(
     options: ListOptions = {},
 ): Promise<ReceivableRestRow[]> {
     const select =
-        'id,status,payment_status,mp_status_detail,mp_payment_id,total_value,gross_amount,mp_fee_amount,platform_fee_amount,net_amount_after_mp,created_at,paid_at,event_id,wristband_analytics_ids,events(id,title,date,applied_percentage)';
+        'id,status,payment_status,mp_status_detail,mp_payment_id,total_value,gross_amount,mp_fee_amount,platform_fee_amount,net_amount_after_mp,created_at,paid_at,event_id,wristband_analytics_ids,settlement_channel,collector_type,events(id,title,date,applied_percentage)';
 
     const path = buildReceivablesPath(filters, userId, isAdminMaster, select, options);
     return restGet<ReceivableRestRow[]>(path, 15_000);
@@ -99,7 +101,7 @@ export async function fetchPaidReceivablesForReport(
     isAdminMaster: boolean,
 ): Promise<ReceivableRestRow[]> {
     const select =
-        'id,total_value,gross_amount,mp_fee_amount,net_amount_after_mp,platform_fee_amount,created_at,event_id,wristband_analytics_ids,events!inner(id,title,date,applied_percentage)';
+        'id,total_value,gross_amount,mp_fee_amount,net_amount_after_mp,platform_fee_amount,created_at,event_id,wristband_analytics_ids,settlement_channel,collector_type,events!inner(id,title,date,applied_percentage)';
 
     const path = buildReceivablesPath(filters, userId, isAdminMaster, select, { paidOnly: true });
     return restGet<ReceivableRestRow[]>(path, 15_000);

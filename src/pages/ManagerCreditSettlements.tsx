@@ -65,10 +65,10 @@ const ManagerCreditSettlements: React.FC = () => {
         );
     }
 
-    if (!access.canAccessManagerCreditReports) {
+    if (!access.canAccessManagerSettlements && !access.canAccessManagerCreditReports) {
         return (
             <div className="max-w-3xl mx-auto text-center py-16 text-gray-400">
-                Módulo de créditos não disponível para sua conta.
+                Relatório de repasses não disponível para sua conta.
                 <Button variant="outline" className="mt-4 block mx-auto" onClick={() => navigate('/manager/settings')}>
                     Voltar
                 </Button>
@@ -79,19 +79,18 @@ const ManagerCreditSettlements: React.FC = () => {
     return (
         <div className="max-w-6xl mx-auto">
             <div className="flex items-center gap-4 mb-6">
-                <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports/credit-spends')}>
-                    <ArrowLeft className="h-4 w-4 mr-1" /> Consumos
+                <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports')}>
+                    <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                 </Button>
                 <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
                     <Banknote className="h-6 w-6" />
-                    Repasses pendentes — Crédito EventFest
+                    Repasses D+1 — Crédito e ingressos (banco)
                 </h1>
             </div>
 
             <p className="text-gray-400 text-sm mb-4">
-                Cada venda com crédito gera um repasse com retenção de {retentionDays} dia(s) (D+1). Após a liberação,
-                a EventFest liquida manualmente via TED ou PIX e registra o pagamento no sistema. Seu extrato de vendas
-                permanece correto independentemente do calendário de repasse — não há “erro MP” neste fluxo.
+                Crédito EventFest e vendas de ingresso no modo conta bancária geram repasse com retenção de{' '}
+                {retentionDays} dia(s) (D+1). Após a liberação, a EventFest liquida via TED/PIX.
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -204,6 +203,9 @@ const ManagerCreditSettlements: React.FC = () => {
                                         <TableCell className="text-gray-300 text-sm">{statusLabel(row.status)}</TableCell>
                                         <TableCell className="text-gray-400 text-xs whitespace-nowrap">{dt(row.spend_at)}</TableCell>
                                         <TableCell className="text-gray-300 text-xs max-w-[14rem]">
+                                            <div className="text-yellow-500/80 text-[10px] uppercase tracking-wide mb-0.5">
+                                                {row.source_type === 'ticket' ? 'Ingresso D+1' : 'Crédito'}
+                                            </div>
                                             <div className="truncate" title={row.spend_description ?? undefined}>
                                                 {row.event_title
                                                     ? `Evento: ${row.event_title}`

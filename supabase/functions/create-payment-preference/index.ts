@@ -271,15 +271,23 @@ serve(async (req) => {
     }
     console.log(`[DEBUG] Event found. Manager ID: ${managerUserId}`);
     
-    // 3. Mercado Pago — ingressos: token do gestor (Perfil da Empresa) + marketplace_fee = comissão EventFest
+    // 3. Mercado Pago — split (gestor) ou cobrança plataforma (bank_transfer → D+1)
     let mpAccessToken: string;
-    let checkoutTokenSource: 'manager' | 'legacy_env' = 'legacy_env';
+    let checkoutTokenSource: 'manager' | 'platform' = 'manager';
     let checkoutCollectorId: string | null = null;
+    let settlementChannel: 'mp_split' | 'manual_d1' = 'mp_split';
+    let collectorType: 'manager' | 'platform' = 'manager';
     try {
-        const resolved = await resolveTicketCheckoutToken(supabaseService, managerUserId);
+        const resolved = await resolveTicketCheckoutToken(
+            supabaseService,
+            managerUserId,
+            (eventData.company_id as string | null) ?? null,
+        );
         mpAccessToken = resolved.accessToken;
         checkoutTokenSource = resolved.source;
         checkoutCollectorId = resolved.collectorId ?? null;
+        settlementChannel = resolved.settlementChannel;
+        collectorType = resolved.collectorType;
     } catch (credErr) {
         const msg = credErr instanceof Error ? credErr.message : 'Credencial de pagamento não configurada.';
         return new Response(JSON.stringify({ error: msg }), { status: 400, headers: corsHeaders });
@@ -291,7 +299,7 @@ serve(async (req) => {
         : 0;
 
     console.log(
-        `[DEBUG] MP checkout ingressos source=${checkoutTokenSource} collector=${checkoutCollectorId ?? 'n/a'} fee=${marketplaceFee} pct=${appliedPercentage}% gross=${totalValue}`,
+        `[DEBUG] MP checkout ingressos source=${checkoutTokenSource} channel=${settlementChannel} collector=${checkoutCollectorId ?? 'n/a'} fee=${marketplaceFee} pct=${appliedPercentage}% gross=${totalValue}`,
     );
 
     const cleanToken = mpAccessToken.trim();
@@ -517,7 +525,7 @@ serve(async (req) => {
         const hint = isPolicyBlock
             ? 'Mercado Pago (PolicyAgent) bloqueou o checkout. Confira: (1) por padrão, back_urls usam SITE_URL; valide SITE_URL https público da mesma aplicação cadastrada no MP. (2) Se optar por origem dinâmica, ative USE_DYNAMIC_BACK_URLS=true e preencha CHECKOUT_PUBLIC_ORIGINS. (3) No painel MP, libere o(s) domínio(s) nas URLs de retorno. (4) PAYMENT_API_KEY_SECRET de produção válido.'
             : mpApiResponse.status === 401 || mpApiResponse.status === 403
-            ? 'Token do Mercado Pago recusado. Verifique o Access Token em Perfil da Empresa → Ingressos MP (conta do gestor vinculada ao marketplace EventFest).'
+            ? 'Token do Mercado Pago recusado. Verifique o Access Token em Perfil da Empresa → Recebimento (conta do gestor ou plataforma EventFest).'
             : undefined;
 
         await releaseCheckoutReservation(transactionId, 'mp_preference_failed');
@@ -553,13 +561,15 @@ serve(async (req) => {
         });
     }
 
-    // 9. Update receivables with payment gateway ID (MP preference ID)
+    // 9. Update receivables with payment gateway ID (MP preference ID) + canal de liquidação
     await supabaseService
         .from('receivables')
         .update({
             payment_gateway_id: mpResponse.id,
             mp_preference_id: mpResponse.id,
             payment_status: 'pending',
+            settlement_channel: settlementChannel,
+            collector_type: collectorType,
         })
         .eq('id', transactionId);
 

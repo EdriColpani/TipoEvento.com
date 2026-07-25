@@ -18,6 +18,9 @@ import { useCompanyTicketInactivity } from '@/hooks/use-company-ticket-inactivit
 import TicketInactivityBanner from '@/components/TicketInactivityBanner';
 import TicketChargebackBlockBanner from '@/components/TicketChargebackBlockBanner';
 import { useCompanyTicketChargebackBlock } from '@/hooks/use-company-ticket-chargeback-block';
+import { useCompanyPayoutSetupValid } from '@/hooks/use-company-payout-profile';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Wallet } from 'lucide-react';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -41,6 +44,11 @@ const ManagerCreateEvent: React.FC = () => {
         company?.id,
         !isAdminMaster,
     );
+    const { data: payoutValid, isLoading: isLoadingPayout } = useCompanyPayoutSetupValid(
+        company?.id,
+        !isAdminMaster && requiresTicketSales,
+    );
+    const payoutBlocked = requiresTicketSales && !isAdminMaster && payoutValid === false;
     const [showWristbandModal, setShowWristbandModal] = useState(false);
     const [newEventId, setNewEventId] = useState<string | null>(null);
     const userIdRef = useRef<string | null>(null);
@@ -134,6 +142,28 @@ const ManagerCreateEvent: React.FC = () => {
                 isLoading={isLoadingChargebackBlock}
             />
 
+            {payoutBlocked && !isLoadingPayout && (
+                <Alert className="mb-6 bg-amber-950/60 border-amber-500/40 text-amber-50">
+                    <Wallet className="h-4 w-4" />
+                    <AlertTitle>Recebimento obrigatório</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                        <p>
+                            Para criar eventos com venda de ingresso, configure Mercado Pago ou conta
+                            bancária/PIX em Perfil da Empresa → Recebimento.
+                        </p>
+                        <Button
+                            type="button"
+                            className="bg-yellow-500 text-black hover:bg-yellow-600"
+                            onClick={() =>
+                                navigate('/manager/settings/company-profile?tab=payments')
+                            }
+                        >
+                            Ir para Recebimento
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             {needsBillingConfirm && (
                 <Card className="mb-6 bg-amber-500/10 border border-amber-500/40">
                     <CardContent className="pt-6 flex gap-3">
@@ -164,7 +194,7 @@ const ManagerCreateEvent: React.FC = () => {
                         a liberação é automática.
                     </CardContent>
                 </Card>
-            ) : (
+            ) : payoutBlocked ? null : (
                 <EventFormSteps
                     userId={userId}
                     onCreateSuccess={handleSaveSuccess}
