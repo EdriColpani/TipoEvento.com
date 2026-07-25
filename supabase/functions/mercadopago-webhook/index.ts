@@ -438,7 +438,7 @@ serve(async (req) => {
     // Primeiro, tentar encontrar com status 'pending'
     let { data: receivable, error: fetchReceivableError } = await supabaseService
         .from('receivables')
-        .select('id, client_user_id, wristband_analytics_ids, counter_reservation_items, manager_user_id, event_id, total_value, status, payment_gateway_id')
+        .select('id, client_user_id, wristband_analytics_ids, counter_reservation_items, manager_user_id, event_id, total_value, status, payment_gateway_id, settlement_channel, collector_type')
         .eq('id', transactionId)
         .eq('status', 'pending')
         .maybeSingle();
@@ -448,7 +448,7 @@ serve(async (req) => {
         console.log(`[MP Webhook] Receivable not found with status 'pending', searching without status filter...`);
         const { data: receivableAnyStatus, error: fetchAnyStatusError } = await supabaseService
             .from('receivables')
-            .select('id, client_user_id, wristband_analytics_ids, counter_reservation_items, manager_user_id, event_id, total_value, status, payment_gateway_id')
+            .select('id, client_user_id, wristband_analytics_ids, counter_reservation_items, manager_user_id, event_id, total_value, status, payment_gateway_id, settlement_channel, collector_type')
             .eq('id', transactionId)
             .maybeSingle();
         
@@ -755,25 +755,57 @@ serve(async (req) => {
             throw new Error(`Invalid commission percentage for event ${eventId}.`);
         }
 
-        // 6. Split alinhado ao extrato MP: gestor = net_received; plataforma = marketplace_fee
-        const split = resolveSplitAmounts({
+        // 6. Split alinhado ao extrato MP (gestor) OU comissão calculada (cobrança plataforma / D+1)
+        const isManualD1 =
+          receivable.settlement_channel === 'manual_d1'
+          || receivable.collector_type === 'platform';
+
+        let split = resolveSplitAmounts({
           grossFallback: Number(totalValue),
           appliedPercentage,
           financials: mpFinancials,
         });
+
+        if (isManualD1) {
+          const grossSale = split.grossSaleAmount;
+          const mpFee = split.mpFeeAmount;
+          const platformAmt = Math.round((grossSale * (appliedPercentage / 100)) * 100) / 100;
+          const managerAmt = Math.max(
+            Math.round((grossSale - mpFee - platformAmt) * 100) / 100,
+            0,
+          );
+          split = {
+            ...split,
+            platformAmount: platformAmt,
+            managerAmount: managerAmt,
+          };
+        }
+
         const grossSaleAmount = split.grossSaleAmount;
         const feeAmount = split.mpFeeAmount;
         const platformAmount = split.platformAmount;
         const managerAmount = split.managerAmount;
 
         console.log(`[MP Webhook] Financial Calculation for transaction ${finalTransactionId}:`);
+        console.log(`  - Channel: ${isManualD1 ? 'manual_d1' : 'mp_split'}`);
         console.log(`  - Gross Sale Amount: R$ ${grossSaleAmount.toFixed(2)}`);
         console.log(`  - Mercado Pago Fee: R$ ${feeAmount.toFixed(2)}`);
-        console.log(`  - Collector net (gestor extrato): R$ ${(split.collectorNetAmount ?? managerAmount).toFixed(2)}`);
+        console.log(`  - Collector net (extrato): R$ ${(split.collectorNetAmount ?? managerAmount).toFixed(2)}`);
         console.log(`  - Applied Percentage (evento): ${appliedPercentage}%`);
-        console.log(`  - Platform Commission (extrato MP): R$ ${platformAmount.toFixed(2)}`);
+        console.log(`  - Platform Commission: R$ ${platformAmount.toFixed(2)}`);
         console.log(`  - Manager amount (financial_splits): R$ ${managerAmount.toFixed(2)}`);
         console.log(`  - Company ID: ${companyId}`);
+
+        if (isManualD1) {
+          await supabaseService
+            .from('receivables')
+            .update({
+              platform_fee_amount: platformAmount,
+              settlement_channel: 'manual_d1',
+              collector_type: 'platform',
+            })
+            .eq('id', finalTransactionId);
+        }
 
         // 7. Registrar a divisão financeira na tabela financial_splits
         // IMPORTANTE: Gravar 2 registros separados conforme regra de negócio:
@@ -843,6 +875,26 @@ serve(async (req) => {
             console.log(`[MP Webhook] Successfully inserted 2 financial split records for transaction ${finalTransactionId}:`);
             console.log(`  - Manager Net Amount Record: R$ ${managerAmount.toFixed(2)}`);
             console.log(`  - Platform Commission Record: R$ ${platformAmount.toFixed(2)}`);
+        }
+
+        if (isManualD1 && companyId && managerAmount > 0) {
+          const { data: settlementId, error: settlementErr } = await supabaseService.rpc(
+            'create_ticket_settlement_from_receivable',
+            {
+              p_receivable_id: finalTransactionId,
+              p_company_id: companyId,
+              p_event_id: eventId,
+              p_gross_amount: grossSaleAmount,
+              p_platform_fee: platformAmount,
+              p_mp_fee_amount: feeAmount,
+              p_manager_amount: managerAmount,
+            },
+          );
+          if (settlementErr) {
+            console.error('[MP Webhook] Failed to create ticket D+1 settlement:', settlementErr);
+            throw new Error(`Failed to create ticket settlement ledger: ${settlementErr.message}`);
+          }
+          console.log(`[MP Webhook] Ticket D+1 settlement created: ${settlementId}`);
         }
 
         // 7. Atualizar wristband analytics: associar cliente e marcar como 'used'/'purchase'

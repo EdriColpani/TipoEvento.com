@@ -4,6 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useManagerNotifications } from '@/hooks/use-manager-notifications';
+import { useAdminManagerialNotifications } from '@/hooks/use-admin-managerial-notifications';
 import { useAdminContactInboxSummary } from '@/hooks/use-admin-contact-inbox';
 import type { ManagerNotificationItem } from '@/hooks/use-manager-notifications';
 import type { ProfileData } from '@/hooks/use-profile';
@@ -28,21 +29,27 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
     const profile = profileProp ?? undefined;
 
     const tipo = Number(profile?.tipo_usuario_id);
-    const isAdminMaster = profile && tipo === 1;
-    const isGestor = profile && tipo === 2;
-    const isManager = Boolean(isAdminMaster || isGestor);
-    const isClient = profile && tipo === 3;
+    const isAdminMaster = Boolean(profile && tipo === 1);
+    const isGestor = Boolean(profile && tipo === 2);
+    const isClient = Boolean(profile && tipo === 3);
 
+    /** Estoque baixo: só gestor PRO — no Admin Master travava o sino. */
     const {
-        notifications: managerNotifications,
-        isLoading: isLoadingManagerNotifications,
-    } = useManagerNotifications(userId, isManager);
+        notifications: stockNotifications,
+        isLoading: isLoadingStock,
+    } = useManagerNotifications(userId, isGestor);
+
+    /** Adesões e mudanças de plano: só Admin Master. */
+    const {
+        notifications: managerialNotifications,
+        isLoading: isLoadingManagerial,
+    } = useAdminManagerialNotifications(isAdminMaster);
 
     const { newCount: newContactCount, isLoading: isLoadingContactInbox } =
-        useAdminContactInboxSummary(Boolean(isAdminMaster));
+        useAdminContactInboxSummary(isAdminMaster);
 
     const contactNotifications: ManagerNotificationItem[] =
-        newContactCount > 0
+        isAdminMaster && newContactCount > 0
             ? [
                   {
                       id: 'contact_messages:new',
@@ -61,13 +68,21 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
               ]
             : [];
 
-    const allManagerNotifications = [...contactNotifications, ...managerNotifications];
-    const showManagerAlert = isManager && allManagerNotifications.length > 0;
-    const managerCount = allManagerNotifications.length;
+    const adminNotifications = isAdminMaster
+        ? [...managerialNotifications, ...contactNotifications]
+        : [];
+    const gestorNotifications = isGestor ? stockNotifications : [];
+    const allNotifications = isAdminMaster ? adminNotifications : gestorNotifications;
+
+    const showManagerAlert = allNotifications.length > 0;
+    const managerCount = allNotifications.length;
     const clientHasAlert = isClient && hasPendingNotifications;
     const badgeCount = showManagerAlert ? managerCount : clientHasAlert ? 1 : 0;
+
     const isLoadingBell =
-        loading || (isManager && isLoadingManagerNotifications) || (isAdminMaster && isLoadingContactInbox);
+        loading ||
+        (isGestor && isLoadingStock) ||
+        (isAdminMaster && (isLoadingManagerial || isLoadingContactInbox));
 
     if (!userId || !profile) {
         return null;
@@ -100,6 +115,11 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                     <h4 className={`text-lg font-semibold ${isLandingPage ? 'text-cyan-300' : 'text-yellow-500'}`}>
                         Notificações
                     </h4>
+                    {isAdminMaster ? (
+                        <p className="text-gray-500 text-xs mt-1">
+                            Gerenciais: novas empresas, planos e contato.
+                        </p>
+                    ) : null}
                 </div>
                 <div className="p-4 max-h-80 overflow-y-auto">
                     {isLoadingBell ? (
@@ -108,7 +128,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
                         </div>
                     ) : showManagerAlert ? (
                         <div className="space-y-3">
-                            {allManagerNotifications.map((notif) => (
+                            {allNotifications.map((notif) => (
                                 <div
                                     key={notif.id}
                                     className={`flex items-start p-3 ${notif.bgColor} border ${notif.borderColor} rounded-lg`}

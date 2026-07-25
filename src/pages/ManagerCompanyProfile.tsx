@@ -106,6 +106,7 @@ const ManagerCompanyProfile: React.FC = () => {
     const companyId = company?.id;
     const isAdminMaster = profile?.tipo_usuario_id === 1;
 
+    const [isPartnerCompany, setIsPartnerCompany] = useState(false);
     const form = useForm<CompanyProfileData>({
         resolver: zodResolver(companyProfileSchema),
         defaultValues: {
@@ -146,11 +147,12 @@ const ManagerCompanyProfile: React.FC = () => {
             let data: Record<string, unknown> | null = null;
             try {
                 const rows = await restGet<Record<string, unknown>[]>(
-                    `companies?id=eq.${encodeURIComponent(companyId)}&limit=1`,
+                    `companies?id=eq.${encodeURIComponent(companyId)}&select=*,company_kind&limit=1`,
                     10_000,
                 );
                 data = rows?.[0] ?? null;
                 if (data) {
+                    setIsPartnerCompany(String(data.company_kind || '') === 'partner');
                     form.reset({
                         cnpj: formatCNPJ(String(data.cnpj || '')),
                         corporate_name: String(data.corporate_name || ''),
@@ -397,6 +399,7 @@ const ManagerCompanyProfile: React.FC = () => {
                 fetchAddressByCep={fetchAddressByCep}
                 formComponent={CompanyFormContent}
                 isAdminMaster={isAdminMaster}
+                forceBankPayout={isPartnerCompany}
             />
         </div>
     );

@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { User, Building, Mail, Phone, MapPin, Calendar, Plus, CreditCard, Wallet } from 'lucide-react';
 import CompanyBillingPlanSection from '@/components/CompanyBillingPlanSection';
-import ManagerTicketMpCredentialsSection from '@/components/ManagerTicketMpCredentialsSection';
+import ManagerCompanyPayoutSection from '@/components/ManagerCompanyPayoutSection';
 import { ProfileData } from '@/hooks/use-profile';
 import { CompanyFormData } from './CompanyForm'; // Reutilizando o tipo de dados da empresa
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,8 @@ interface ManagerCompanyTabsProps {
     fetchAddressByCep: (cep: string) => void;
     formComponent: React.ReactNode; // O formulário de edição da empresa
     isAdminMaster?: boolean;
+    /** Parceira: só conta bancária (sem split MP de ingresso). */
+    forceBankPayout?: boolean;
 }
 
 // Helper para formatar dados
@@ -38,6 +40,7 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
     fetchAddressByCep, 
     formComponent,
     isAdminMaster = false,
+    forceBankPayout = false,
 }) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -46,7 +49,7 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
     const initialTab =
         tabParam === 'billing'
             ? 'billing'
-            : tabParam === 'payments' && showPaymentsTab
+            : (tabParam === 'payments' || tabParam === 'payout') && showPaymentsTab
               ? 'payments'
               : tabParam === 'manager'
                 ? 'manager'
@@ -78,7 +81,7 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
                 {showPaymentsTab && (
                     <TabsTrigger value="payments" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black text-xs sm:text-sm">
                         <Wallet className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                        <span className="truncate">Ingressos MP</span>
+                        <span className="truncate">Recebimento</span>
                     </TabsTrigger>
                 )}
                 <TabsTrigger value="manager" className="text-white data-[state=active]:bg-yellow-500 data-[state=active]:text-black text-xs sm:text-sm">
@@ -98,7 +101,10 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
 
             {showPaymentsTab && (
                 <TabsContent value="payments" className="mt-6">
-                    <ManagerTicketMpCredentialsSection companyId={companyId} />
+                    <ManagerCompanyPayoutSection
+                        companyId={companyId}
+                        forceBankOnly={forceBankPayout}
+                    />
                 </TabsContent>
             )}
 

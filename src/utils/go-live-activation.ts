@@ -19,8 +19,9 @@ export function getGoLiveFixAction(
 ): { label: string; path: string } | null {
     switch (itemKey) {
         case 'mp_configured':
+        case 'payout_configured':
             return {
-                label: 'Ir para Perfil da Empresa',
+                label: 'Ir para Recebimento',
                 path: '/manager/settings/company-profile?tab=payments',
             };
         case 'inventory_configured':

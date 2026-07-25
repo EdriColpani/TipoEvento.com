@@ -1,0 +1,302 @@
+import React, { useMemo, useState } from 'react';
+import { Loader2, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import {
+    useAdminCreditSettlements,
+    useAdminCreditSettlementsGrouped,
+    type AdminSettlementRow,
+} from '@/hooks/use-credit-reports';
+
+function money(v: number): string {
+    return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function dt(iso: string | null | undefined): string {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('pt-BR');
+}
+
+function statusLabel(s: string): string {
+    const map: Record<string, string> = {
+        pending: 'Retenção D+1',
+        released: 'Aguardando TED/PIX',
+        paid: 'Pago',
+        clawback: 'Clawback',
+        cancelled: 'Cancelado',
+    };
+    return map[s] ?? s;
+}
+
+type StatusFilter = 'all' | 'paid' | 'released' | 'pending' | 'clawback';
+
+type CompanyOption = { id: string; name: string };
+
+type AdminCreditSettlementsHistoryPanelProps = {
+    companies?: CompanyOption[];
+};
+
+/** Conferência em tela: todos os repasses (incl. pagos), filtro por gestor/status. */
+const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistoryPanelProps> = ({
+    companies: companiesProp = [],
+}) => {
+    const [companyId, setCompanyId] = useState<string>('all');
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('paid');
+
+    const rpcStatus = statusFilter === 'all' ? null : statusFilter;
+    const rpcCompanyId = companyId === 'all' ? null : companyId;
+
+    /** Catálogo: empresas que têm ao menos um lançamento no ledger de repasse. */
+    const companyCatalog = useAdminCreditSettlementsGrouped(null, { enabled: true });
+    const listQuery = useAdminCreditSettlements(null, null, { enabled: true });
+
+    const companyOptions = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const c of companyCatalog.data?.companies ?? []) {
+            if (c.company_id) {
+                map.set(c.company_id, (c.company_name || '').trim() || c.company_id);
+            }
+        }
+        for (const row of listQuery.data?.items ?? []) {
+            if (row.company_id) {
+                map.set(row.company_id, (row.company_name || '').trim() || row.company_id);
+            }
+        }
+        for (const c of companiesProp) {
+            if (c.id && map.has(c.id)) {
+                map.set(c.id, c.name.trim() || map.get(c.id)!);
+            }
+        }
+        return [...map.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+    }, [companyCatalog.data?.companies, listQuery.data?.items, companiesProp]);
+
+    const query = useAdminCreditSettlements(rpcStatus, rpcCompanyId, { enabled: true });
+    const items = query.data?.items ?? [];
+    const summary = query.data?.summary;
+
+    const totalsOnScreen = useMemo(() => {
+        let net = 0;
+        for (const row of items) {
+            net += Number(row.manager_amount ?? 0);
+        }
+        return { net, count: items.length };
+    }, [items]);
+
+    const destinationLabel = (row: AdminSettlementRow) => {
+        if (row.event_title) return row.event_title;
+        if (row.establishment_name) return row.establishment_name;
+        if (row.group_label) return row.group_label;
+        return '—';
+    };
+
+    const companiesLoading = companyCatalog.isLoading && listQuery.isLoading && companyOptions.length === 0;
+
+    return (
+        <Card className="bg-black border-yellow-500/30">
+            <CardHeader>
+                <CardTitle className="text-white">Conferência de repasses</CardTitle>
+                <CardDescription className="text-gray-400">
+                    Histórico em tela (incluindo já pagos). Filtre por gestor e status — sem precisar exportar CSV.
+                    Até 500 linhas mais recentes do filtro.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_13rem_auto] gap-x-4 gap-y-1 items-end">
+                    <div className="min-w-0">
+                        <Label className="text-gray-300">Gestor / empresa</Label>
+                        <Select value={companyId} onValueChange={setCompanyId}>
+                            <SelectTrigger className="mt-1 h-10 bg-black border-yellow-500/30 text-white">
+                                <SelectValue placeholder="Todas" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-black border border-yellow-500/30 text-white max-h-72">
+                                <SelectItem
+                                    value="all"
+                                    className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
+                                >
+                                    Todas as empresas
+                                </SelectItem>
+                                {companiesLoading ? (
+                                    <SelectItem value="__loading" disabled className="text-gray-500">
+                                        Carregando empresas com repasse...
+                                    </SelectItem>
+                                ) : (
+                                    companyOptions.map((c) => (
+                                        <SelectItem
+                                            key={c.id}
+                                            value={c.id}
+                                            className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
+                                        >
+                                            {c.name}
+                                        </SelectItem>
+                                    ))
+                                )}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label className="text-gray-300">Status</Label>
+                        <Select
+                            value={statusFilter}
+                            onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+                        >
+                            <SelectTrigger className="mt-1 h-10 bg-black border-yellow-500/30 text-white">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-black border border-yellow-500/30 text-white">
+                                <SelectItem value="paid" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    Só pagos
+                                </SelectItem>
+                                <SelectItem value="all" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    Todos os status
+                                </SelectItem>
+                                <SelectItem value="released" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    Aguardando TED/PIX
+                                </SelectItem>
+                                <SelectItem value="pending" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    Retenção D+1
+                                </SelectItem>
+                                <SelectItem value="clawback" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    Clawback
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 mt-1 sm:mt-0 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 shrink-0"
+                        onClick={() => {
+                            void companyCatalog.refetch();
+                            void listQuery.refetch();
+                            void query.refetch();
+                        }}
+                        disabled={query.isFetching || companyCatalog.isFetching}
+                    >
+                        {query.isFetching || companyCatalog.isFetching ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                        )}
+                        Atualizar
+                    </Button>
+                    <p className="text-xs sm:col-span-3 -mt-0.5">
+                        {!companiesLoading && companyOptions.length === 0 ? (
+                            <span className="text-amber-300/90">Nenhuma empresa com repasse encontrada.</span>
+                        ) : (
+                            <span className="text-gray-500">{companyOptions.length} empresa(s) com repasse</span>
+                        )}
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
+                        <p className="text-gray-500 text-xs">Linhas na tela</p>
+                        <p className="text-yellow-500 font-semibold">{totalsOnScreen.count}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
+                        <p className="text-gray-500 text-xs">Soma líquido (filtro)</p>
+                        <p className="text-yellow-500 font-semibold">{money(totalsOnScreen.net)}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
+                        <p className="text-gray-500 text-xs">Pago (rede / filtro empresa)</p>
+                        <p className="text-yellow-500 font-semibold">{money(Number(summary?.paid ?? 0))}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
+                        <p className="text-gray-500 text-xs">Aguardando (rede / filtro)</p>
+                        <p className="text-yellow-500 font-semibold">
+                            {money(Number(summary?.awaiting_payment ?? summary?.released ?? 0))}
+                        </p>
+                    </div>
+                </div>
+
+                {query.isLoading ? (
+                    <div className="flex justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-yellow-500" />
+                    </div>
+                ) : query.isError ? (
+                    <p className="text-red-400 text-sm">
+                        {query.error instanceof Error
+                            ? query.error.message
+                            : 'Erro ao carregar repasses.'}
+                    </p>
+                ) : items.length === 0 ? (
+                    <p className="text-gray-500 text-sm text-center py-8">
+                        Nenhum repasse com esses filtros.
+                    </p>
+                ) : (
+                    <div className="overflow-x-auto max-h-[32rem]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="border-yellow-500/20">
+                                    <TableHead className="text-yellow-500">Consumo</TableHead>
+                                    <TableHead className="text-yellow-500">Gestor</TableHead>
+                                    <TableHead className="text-yellow-500">Evento / destino</TableHead>
+                                    <TableHead className="text-yellow-500">Status</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
+                                    <TableHead className="text-yellow-500">Pago em</TableHead>
+                                    <TableHead className="text-yellow-500">Comprovante</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {items.map((row) => (
+                                    <TableRow key={row.id} className="border-yellow-500/10">
+                                        <TableCell className="text-gray-400 text-xs whitespace-nowrap">
+                                            {dt(row.spend_at)}
+                                        </TableCell>
+                                        <TableCell
+                                            className="text-gray-200 text-xs max-w-[10rem] truncate"
+                                            title={row.company_name ?? undefined}
+                                        >
+                                            {row.company_name ?? '—'}
+                                        </TableCell>
+                                        <TableCell
+                                            className="text-gray-300 text-xs max-w-[12rem] truncate"
+                                            title={destinationLabel(row)}
+                                        >
+                                            {destinationLabel(row)}
+                                        </TableCell>
+                                        <TableCell className="text-gray-300 text-xs">
+                                            {statusLabel(row.status)}
+                                        </TableCell>
+                                        <TableCell className="text-right text-yellow-400 text-xs font-medium">
+                                            {money(Number(row.manager_amount ?? 0))}
+                                        </TableCell>
+                                        <TableCell className="text-gray-400 text-xs whitespace-nowrap">
+                                            {dt(row.paid_at)}
+                                        </TableCell>
+                                        <TableCell
+                                            className="text-gray-500 text-xs font-mono max-w-[8rem] truncate"
+                                            title={row.payment_reference ?? undefined}
+                                        >
+                                            {row.payment_reference ?? '—'}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+};
+
+export default AdminCreditSettlementsHistoryPanel;

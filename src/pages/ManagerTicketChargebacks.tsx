@@ -240,7 +240,8 @@ const ManagerTicketChargebacks: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white">Histórico de dívidas</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Chargebacks Mercado Pago em vendas de ingresso desta empresa.
+                        Chargebacks Mercado Pago em vendas de ingresso desta empresa (split ou cobrança
+                        EventFest no modo banco). A dívida e a forma de quitação seguem o plano da empresa.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">

@@ -36,6 +36,7 @@ import {
     registerTicketChargebackDebtManualPayment,
     waiveTicketChargebackDebt,
     useAdminPlatformBillingRevenue,
+    useTicketManualSettlementTotals,
 } from '@/hooks/use-credit-reports';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { adminCreditRefund } from '@/utils/credit-manager-payout';
@@ -143,6 +144,7 @@ const AdminCreditReports: React.FC = () => {
 
     const recon = useAdminCreditReconciliation();
     const position = useAdminCreditFinancialPosition(positionStartDate || null, positionEndDate || null);
+    const ticketSettlements = useTicketManualSettlementTotals(tab === 'position');
     const platformRevenue = useAdminPlatformBillingRevenue(revenueStartDate || null, revenueEndDate || null);
     const mpIssues = useAdminCreditMpReconciliationIssues(mpIssuesStartDate || null, mpIssuesEndDate || null);
     const commission = useAdminCreditCommissionReport();
@@ -534,7 +536,7 @@ const AdminCreditReports: React.FC = () => {
                 </TabsContent>
 
                 <TabsContent value="settlements">
-                    <AdminCreditManualSettlementsPanel />
+                    <AdminCreditManualSettlementsPanel companies={companies} />
                 </TabsContent>
 
                 <TabsContent value="refunds">
@@ -696,6 +698,18 @@ const AdminCreditReports: React.FC = () => {
                                     <Metric
                                         label="Repasse líquido gestores"
                                         value={money(position.data?.platform_revenue?.manager_net)}
+                                    />
+                                    <Metric
+                                        label="Ingressos D+1 (retenção)"
+                                        value={money(ticketSettlements.data?.pending_retention)}
+                                    />
+                                    <Metric
+                                        label="Ingressos D+1 (a pagar)"
+                                        value={money(ticketSettlements.data?.awaiting_payment)}
+                                    />
+                                    <Metric
+                                        label="Ingressos D+1 (já pagos)"
+                                        value={money(ticketSettlements.data?.paid)}
                                     />
 
                                     <Metric

@@ -1,12 +1,14 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { decryptCredential, encryptCredential } from './mp-credential-crypto.ts';
 
-export type TicketCheckoutTokenSource = 'manager' | 'legacy_env';
+export type TicketCheckoutTokenSource = 'manager' | 'platform';
 
 export type TicketCheckoutTokenResult = {
   accessToken: string;
   source: TicketCheckoutTokenSource;
   collectorId?: string | null;
+  settlementChannel: 'mp_split' | 'manual_d1';
+  collectorType: 'manager' | 'platform';
 };
 
 async function refreshManagerTokenIfNeeded(
@@ -98,17 +100,56 @@ export async function getManagerMpAccessToken(
   };
 }
 
-function getLegacyTicketMpAccessToken(): string | null {
-  const token = (Deno.env.get('PAYMENT_API_KEY_SECRET') ?? '').trim();
-  return token || null;
+async function getPlatformMpAccessToken(supabaseService: SupabaseClient): Promise<string> {
+  const envToken = (Deno.env.get('PLATFORM_MP_ACCESS_TOKEN') ?? '').trim();
+  if (envToken) return envToken;
+
+  const { data, error } = await supabaseService
+    .from('system_billing_settings')
+    .select('platform_mp_access_token_ciphertext')
+    .eq('id', 1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Erro ao ler credencial da plataforma: ${error.message}`);
+
+  const cipher = data?.platform_mp_access_token_ciphertext as string | null;
+  if (!cipher?.trim()) {
+    throw new Error(
+      'Pagamento da plataforma não configurado. Admin: configure Mercado Pago da EventFest em Configurações Avançadas.',
+    );
+  }
+
+  return (await decryptCredential(cipher.trim())).trim();
 }
 
 export async function resolveTicketCheckoutToken(
   supabaseService: SupabaseClient,
   managerUserId: string,
+  companyId: string | null,
 ): Promise<TicketCheckoutTokenResult> {
-  const allowLegacy = (Deno.env.get('TICKET_MP_ALLOW_LEGACY_SECRET') ?? 'true').trim() !== 'false';
-  const requireOAuth = (Deno.env.get('TICKET_MP_REQUIRE_MANAGER_CREDENTIAL') ?? 'false').trim() === 'true';
+  let checkoutMode: string | null = null;
+  if (companyId) {
+    const { data: modeData, error: modeErr } = await supabaseService.rpc(
+      'get_company_ticket_checkout_mode',
+      { p_company_id: companyId },
+    );
+    if (modeErr) {
+      console.warn('[mp-ticket-payment] get_company_ticket_checkout_mode:', modeErr.message);
+    } else {
+      checkoutMode = modeData ? String(modeData) : null;
+    }
+  }
+
+  if (checkoutMode === 'bank_transfer') {
+    const accessToken = await getPlatformMpAccessToken(supabaseService);
+    return {
+      accessToken,
+      source: 'platform',
+      collectorId: null,
+      settlementChannel: 'manual_d1',
+      collectorType: 'platform',
+    };
+  }
 
   const manager = await getManagerMpAccessToken(supabaseService, managerUserId);
   if (manager) {
@@ -116,24 +157,13 @@ export async function resolveTicketCheckoutToken(
       accessToken: manager.accessToken,
       source: 'manager',
       collectorId: manager.collectorId,
+      settlementChannel: 'mp_split',
+      collectorType: 'manager',
     };
   }
 
-  if (requireOAuth) {
-    throw new Error(
-      'Conecte sua conta Mercado Pago em Perfil da Empresa → Ingressos MP (botão Conectar com Mercado Pago).',
-    );
-  }
-
-  if (allowLegacy) {
-    const legacy = getLegacyTicketMpAccessToken();
-    if (legacy) {
-      return { accessToken: legacy, source: 'legacy_env', collectorId: null };
-    }
-  }
-
   throw new Error(
-    'Conta Mercado Pago não configurada. Use Conectar com Mercado Pago ou cadastre o token em Perfil da Empresa → Ingressos MP.',
+    'Recebimento não configurado. Em Perfil da Empresa → Recebimento, conecte o Mercado Pago ou cadastre conta bancária/PIX.',
   );
 }
 
@@ -142,4 +172,18 @@ export function calcMarketplaceFee(grossTotal: number, appliedPercentage: number
   if (!Number.isFinite(appliedPercentage) || appliedPercentage <= 0) return 0;
   const fee = grossTotal * (appliedPercentage / 100);
   return Math.round(fee * 100) / 100;
+}
+
+/** Modo bank_transfer: líquido a pagar ao gestor após taxa MP e comissão EventFest. */
+export function calcManualD1ManagerAmount(
+  grossTotal: number,
+  appliedPercentage: number,
+  mpFeeAmount: number,
+): { platformFee: number; managerAmount: number } {
+  const platformFee = calcMarketplaceFee(grossTotal, appliedPercentage);
+  const managerAmount = Math.max(
+    Math.round((grossTotal - (mpFeeAmount || 0) - platformFee) * 100) / 100,
+    0,
+  );
+  return { platformFee, managerAmount };
 }

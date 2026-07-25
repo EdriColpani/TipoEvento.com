@@ -30,6 +30,7 @@ import {
 import { registerAdminCreditSettlementPayment } from '@/utils/credit-manager-payout';
 import { exportCreditSettlementsCsv } from '@/utils/export-credit-settlements-csv';
 import { showError, showSuccess } from '@/utils/toast';
+import AdminCreditSettlementsHistoryPanel from '@/components/AdminCreditSettlementsHistoryPanel';
 
 function money(v: number): string {
     return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -40,19 +41,78 @@ function dt(iso: string | null | undefined): string {
     return new Date(iso).toLocaleString('pt-BR');
 }
 
+function PayoutBankBlock({
+    bank,
+}: {
+    bank: AdminSettlementGroupedCompany['payout_bank'];
+}) {
+    if (!bank?.pix_key && !bank?.bank_name) {
+        return (
+            <p className="text-amber-200/90 text-xs mt-2">
+                Empresa sem conta bancária/PIX cadastrada em Recebimento.
+            </p>
+        );
+    }
+    return (
+        <div className="mt-3 rounded-lg border border-yellow-500/20 bg-black/50 p-3 text-xs text-gray-300 space-y-1">
+            <p className="text-yellow-500 font-medium">Dados para PIX/TED</p>
+            {bank.holder_name && <p>Titular: {bank.holder_name}</p>}
+            {bank.bank_name && (
+                <p>
+                    Banco: {bank.bank_name}
+                    {bank.bank_code ? ` (${bank.bank_code})` : ''} · Ag {bank.agency} · Cc{' '}
+                    {bank.account_number}
+                    {bank.account_digit ? `-${bank.account_digit}` : ''}
+                </p>
+            )}
+            {bank.pix_key && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span>
+                        PIX ({bank.pix_key_type ?? 'chave'}):{' '}
+                        <span className="text-yellow-400 font-mono">{bank.pix_key}</span>
+                    </span>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                        onClick={() => {
+                            void navigator.clipboard.writeText(String(bank.pix_key));
+                            showSuccess('Chave PIX copiada.');
+                        }}
+                    >
+                        Copiar PIX
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function groupTypeLabel(t: string): string {
     if (t === 'event') return 'Evento';
     if (t === 'establishment') return 'Estabelecimento parceiro';
     return 'Empresa';
 }
 
-type SettlementViewFilter = 'released' | 'pending';
+type SettlementViewFilter = 'released' | 'pending' | 'history';
 
-const AdminCreditManualSettlementsPanel: React.FC = () => {
+type AdminCreditManualSettlementsPanelProps = {
+    companies?: Array<{ id: string; name: string }>;
+};
+
+const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPanelProps> = ({
+    companies: companyOptions = [],
+}) => {
     const queryClient = useQueryClient();
     const [viewFilter, setViewFilter] = useState<SettlementViewFilter>('released');
-    const grouped = useAdminCreditSettlementsGrouped(viewFilter);
-    const releasedGrouped = useAdminCreditSettlementsGrouped('released');
+    const showOperationalList = viewFilter !== 'history';
+    const grouped = useAdminCreditSettlementsGrouped(viewFilter === 'pending' ? 'pending' : 'released', {
+        enabled: showOperationalList,
+    });
+    const releasedGrouped = useAdminCreditSettlementsGrouped('released', {
+        enabled: showOperationalList,
+    });
     const [payingCompanyId, setPayingCompanyId] = useState<string | null>(null);
     const [paymentMethod, setPaymentMethod] = useState<'pix' | 'ted' | 'other'>('pix');
     const [paymentReference, setPaymentReference] = useState('');
@@ -121,7 +181,7 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                     <div>
                         <CardTitle className="text-white">Liquidação manual D+1 (TED / PIX)</CardTitle>
                         <CardDescription className="text-gray-400">
-                            Repasses com retenção de 1 dia. Aguardando pagamento:{' '}
+                            Crédito EventFest e ingressos em modo banco. Retenção de 1 dia. Aguardando pagamento:{' '}
                             <span className="text-yellow-500 font-semibold">{money(totalAwaiting)}</span>
                             {totalRetention > 0 && (
                                 <span className="ml-2 text-gray-500">
@@ -191,10 +251,17 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                                     >
                                         Em retenção D+1
                                     </SelectItem>
+                                    <SelectItem
+                                        value="history"
+                                        className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
+                                    >
+                                        Conferência / histórico
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                     </div>
+                    {showOperationalList && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
                         <div>
                             <Label className="text-gray-300">Meio de pagamento</Label>
@@ -246,6 +313,7 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                             />
                         </div>
                     </div>
+                    )}
 
                     {viewFilter === 'pending' && (
                         <Alert className="border-amber-500/30 bg-amber-950/40">
@@ -308,7 +376,9 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                 </CardContent>
             </Card>
 
-            {grouped.isError ? (
+            {viewFilter === 'history' ? (
+                <AdminCreditSettlementsHistoryPanel companies={companyOptions} />
+            ) : grouped.isError ? (
                 <Alert className="border-red-500/40 bg-red-950/40">
                     <AlertTitle className="text-red-400">Não foi possível carregar os repasses</AlertTitle>
                     <AlertDescription className="text-gray-300 text-sm space-y-3">
@@ -363,6 +433,7 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                                                 {money(Number(company.pending_retention_total))}
                                             </span>
                                         )}
+                                    <PayoutBankBlock bank={company.payout_bank} />
                                 </CardDescription>
                             </div>
                             {canRegisterPayment && (
@@ -401,6 +472,7 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                                         <Table>
                                             <TableHeader>
                                                 <TableRow className="border-yellow-500/20">
+                                                    <TableHead className="text-yellow-500">Origem</TableHead>
                                                     <TableHead className="text-yellow-500">Consumo</TableHead>
                                                     <TableHead className="text-yellow-500">Descrição</TableHead>
                                                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
@@ -412,6 +484,9 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                                             <TableBody>
                                                 {(group.items ?? []).map((item: ManagerSettlementRow) => (
                                                     <TableRow key={item.id} className="border-yellow-500/10">
+                                                        <TableCell className="text-yellow-500/90 text-xs whitespace-nowrap">
+                                                            {item.source_type === 'ticket' ? 'Ingresso' : 'Crédito'}
+                                                        </TableCell>
                                                         <TableCell className="text-gray-400 text-xs whitespace-nowrap">
                                                             {dt(item.spend_at)}
                                                         </TableCell>
@@ -426,8 +501,11 @@ const AdminCreditManualSettlementsPanel: React.FC = () => {
                                                         </TableCell>
                                                         <TableCell className="text-right text-gray-500">
                                                             {money(
-                                                                Number(item.gross_amount ?? 0) -
-                                                                    Number(item.manager_amount ?? 0),
+                                                                Number(
+                                                                    item.platform_amount ??
+                                                                        Number(item.gross_amount ?? 0) -
+                                                                            Number(item.manager_amount ?? 0),
+                                                                ),
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="text-right text-yellow-400 font-medium">
