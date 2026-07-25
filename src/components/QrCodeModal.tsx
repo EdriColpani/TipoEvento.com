@@ -89,11 +89,12 @@ const QrCodeModal: React.FC<QrCodeModalProps> = ({
 
     const statusHint = useMemo(() => {
         if (!isDynamic) return null;
-        if (tokenLoading) return 'Gerando QR seguro…';
+        if (tokenLoading && !tokenData) return 'Gerando QR seguro…';
         if (tokenError) return null;
         if (tokenFetching) return 'Atualizando QR…';
+        if (!tokenData?.token) return null;
         return `Válido por ~${secondsLeft}s`;
-    }, [isDynamic, tokenLoading, tokenError, tokenFetching, secondsLeft]);
+    }, [isDynamic, tokenLoading, tokenData, tokenError, tokenFetching, secondsLeft]);
 
     return (
         <AlertDialog

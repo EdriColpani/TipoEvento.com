@@ -18,6 +18,7 @@ import {
     isTicketActiveForDisplay,
     isTicketEmittedForPurchase,
     isEventDateStillValidForEntryQr,
+    canShowEntryQrCode,
 } from '@/utils/ticket-display-status';
 import ClientAccountPageShell from '@/components/client/ClientAccountPageShell';
 import { CLIENT_ACCOUNT_PAGE_CLASS, CLIENT_ACCOUNT_SECTION_TITLE_CLASS } from '@/constants/client-account-ui';
@@ -66,7 +67,10 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
         ticket.status === 'pending' &&
         (ticket.event_type === 'checkout_pending' || !ticket.event_data?.transaction_id);
     const canShowQrButton =
-        isEventDateStillValidForEntryQr(eventDetails?.date) && (isActive || awaitingEmission);
+        isEventDateStillValidForEntryQr(eventDetails?.date) &&
+        canShowEntryQrCode(ticket) &&
+        (isActive || awaitingEmission);
+    const alreadyUsedAtGate = ticket.status === 'used';
 
     return (
         <Card className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10 p-4 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0 hover:border-yellow-500/60 transition-all duration-300">
@@ -122,6 +126,8 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                         <QrCode className="mr-2 h-4 w-4" />
                         {awaitingEmission ? 'Aguardando emissão' : 'Ver QR Code'}
                     </Button>
+                ) : alreadyUsedAtGate ? (
+                    <p className="text-xs text-gray-400 mt-2 md:mt-0 text-right">Já utilizado na entrada</p>
                 ) : !isEventDateStillValidForEntryQr(eventDetails?.date) && isActive ? (
                     <p className="text-xs text-gray-500 mt-2 md:mt-0">Evento encerrado</p>
                 ) : null}

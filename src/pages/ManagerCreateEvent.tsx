@@ -10,6 +10,10 @@ import { useProfile } from '@/hooks/use-profile';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { isCompanyBillingReady } from '@/constants/billing-plans';
+import {
+    isBillingContractReacceptance,
+    MANAGER_BILLING_SETUP_PATH,
+} from '@/constants/manager-billing-gate';
 import { companyAllowsTicketSales, isListingOnlyCompanyPlan } from '@/utils/company-billing-rules';
 import { clearManagerCreateEventSession } from '@/utils/manager-create-event-session';
 import { Card, CardContent } from '@/components/ui/card';
@@ -169,15 +173,20 @@ const ManagerCreateEvent: React.FC = () => {
                     <CardContent className="pt-6 flex gap-3">
                         <AlertTriangle className="h-6 w-6 text-amber-400 shrink-0" />
                         <div className="text-sm text-amber-100">
-                            <p className="font-medium">Confirme o plano da empresa antes de criar eventos</p>
+                            <p className="font-medium">
+                                {isBillingContractReacceptance(billing)
+                                    ? 'Há uma nova versão do contrato do plano'
+                                    : 'Confirme o plano da empresa antes de criar eventos'}
+                            </p>
                             <p className="mt-1 text-amber-200/90">
-                                Acesse Configurações → Perfil da Empresa → aba Plano e cobrança, confirme o plano
-                                e aceite o contrato.
+                                {isBillingContractReacceptance(billing)
+                                    ? 'O contrato está atrelado à empresa: aceite a nova versão uma vez em Perfil da Empresa → Plano e cobrança. Depois disso, criar eventos não pedirá aceite de novo.'
+                                    : 'Acesse Configurações → Perfil da Empresa → aba Plano e cobrança, confirme o plano e aceite o contrato. O aceite vale para a empresa; não é por evento.'}
                             </p>
                             <Button
                                 type="button"
                                 className="mt-3 bg-yellow-500 text-black hover:bg-yellow-600"
-                                onClick={() => navigate('/manager/settings/company-profile')}
+                                onClick={() => navigate(MANAGER_BILLING_SETUP_PATH)}
                             >
                                 Ir para Plano e cobrança
                             </Button>
@@ -186,7 +195,7 @@ const ManagerCreateEvent: React.FC = () => {
                 </Card>
             )}
 
-            {!needsBillingConfirm && chargebackBlock?.blocked && !isAdminMaster ? (
+            {needsBillingConfirm ? null : chargebackBlock?.blocked && !isAdminMaster ? (
                 <Card className="bg-black border-yellow-500/30">
                     <CardContent className="pt-6 text-sm text-gray-400">
                         O formulário de criação fica indisponível enquanto houver 3 ou mais chargebacks de

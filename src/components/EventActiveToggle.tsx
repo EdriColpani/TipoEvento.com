@@ -13,13 +13,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Power, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { formatMinEventTicketsActivationError } from '@/utils/min-event-tickets-errors';
 import { formatTicketInactivityError } from '@/utils/ticket-inactivity-errors';
 import { fetchGoLiveChecklistOnce, type GoLiveChecklistItem } from '@/hooks/use-event-go-live-checklist';
 import { getGoLiveAutoBlockers, getGoLiveFixAction, isGoLiveAutoReady } from '@/utils/go-live-activation';
 import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
+import { restPatch } from '@/utils/supabase-rest';
 
 interface EventActiveToggleProps {
     eventId: string;
@@ -66,14 +66,16 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
         setBusy(true);
         const toastId = showLoading(nextActive ? 'Ativando evento...' : 'Desativando evento...');
         try {
-            const { error } = await supabase.from('events').update({ is_active: nextActive }).eq('id', eventId);
-            if (error) {
-                throw error;
-            }
+            console.debug('[EventActiveToggle] PATCH is_active=', nextActive, eventId);
+            await restPatch(
+                `events?id=eq.${encodeURIComponent(eventId)}`,
+                { is_active: nextActive },
+                20_000,
+            );
             dismissToast(toastId);
             showSuccess(
                 nextActive
-                    ? 'Evento ativado novamente.'
+                    ? 'Evento ativado na vitrine.'
                     : 'Evento desativado. Ele sai da vitrine e não aceita novas vendas.',
             );
             onSuccess();
@@ -102,13 +104,15 @@ const EventActiveToggle: React.FC<EventActiveToggleProps> = ({
                 const pending = getGoLiveAutoBlockers(checklist.items);
                 setBlockers(pending);
                 setGoLiveBlockOpen(true);
+                setBusy(false);
                 return;
             }
+            // applyToggle gerencia busy/toast; liberamos o busy do checklist antes.
+            setBusy(false);
             await applyToggle(true);
         } catch (err) {
-            showError(err instanceof Error ? err.message : 'Erro ao validar checklist go-live.');
-        } finally {
             setBusy(false);
+            showError(err instanceof Error ? err.message : 'Erro ao validar checklist go-live.');
         }
     };
 
