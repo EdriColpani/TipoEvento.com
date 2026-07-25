@@ -13,8 +13,19 @@ export function isEventDateStillValidForEntryQr(dateStr: string | null | undefin
 export function isTicketActiveForDisplay(ticket: TicketData): boolean {
     if (ticket.status === 'cancelled' || ticket.status === 'lost') return false;
     if (ticket.status === 'active' || ticket.status === 'pending') return true;
-    // Legado: algumas vendas antigas gravaram "used" ao associar a compra (antes da entrada no evento)
-    if (ticket.status === 'used' && ticket.event_type === 'purchase') return true;
+    return false;
+}
+
+/**
+ * QR dinâmico de entrada: só com status `active` (ou pending aguardando emissão).
+ * Ingresso `used` já passou na portaria — não deve ficar em "Gerando QR…".
+ */
+export function canShowEntryQrCode(ticket: {
+    status: TicketData['status'];
+    event_type?: string | null;
+}): boolean {
+    if (ticket.status === 'active') return true;
+    if (ticket.status === 'pending') return true;
     return false;
 }
 

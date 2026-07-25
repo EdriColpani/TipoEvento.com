@@ -12,7 +12,7 @@ import { ENTRY_QR_ALLOWED_TTLS, ENTRY_QR_TTL_LABELS } from '@/constants/entry-qr
 import CompanyEventCategoryField from '@/components/CompanyEventCategoryField';
 import { normalizeContractContentForDisplay, looksLikeContractHtml, prepareContractContentForHtmlDisplay } from '@/utils/contractContent';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseAnonKey, supabaseUrl } from '@/integrations/supabase/client';
 import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, CheckSquare, FileText, XCircle, Plus, Ticket } from 'lucide-react';
 import { format } from 'date-fns';
 import { parseEventLocalDay } from '@/utils/format-event-date';
@@ -20,7 +20,10 @@ import { DatePicker } from '@/components/DatePicker';
 import EventImagesUploadSection from '@/components/EventImagesUploadSection';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import {
+    fetchManagerPrimaryCompanyId,
+    fetchManagerPrimaryCompanyIdRest,
+} from '@/utils/manager-scope';
 import { useProfile } from '@/hooks/use-profile';
 import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -40,7 +43,15 @@ import {
     isListingOnlyCompanyPlan,
 } from '@/utils/company-billing-rules';
 import { validateMinBatchTicketSum } from '@/utils/min-event-tickets-validation';
-import { parseBatchQuantity, isValidBatchQuantity, batchQuantityAsNumber } from '@/utils/batch-quantity';
+import {
+    parseBatchQuantity,
+    isValidBatchQuantity,
+    batchQuantityAsNumber,
+    isValidBatchPriceBr,
+    parseBatchPriceBr,
+} from '@/utils/batch-quantity';
+import { withTimeout } from '@/utils/promise-timeout';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
@@ -48,9 +59,8 @@ import EventGrandePorteGuide from '@/components/EventGrandePorteGuide';
 import EventLocationFormFields from '@/components/EventLocationFormFields';
 import { resolveEventGeoOnSave } from '@/utils/google-maps';
 import { cn } from '@/lib/utils';
-import { restGet } from '@/utils/supabase-rest';
+import { restGet, restPatch, restPost, restDelete } from '@/utils/supabase-rest';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
-import { withTimeout } from '@/utils/promise-timeout';
 import {
     getOrCreateClientSubmitId,
     persistManagerCreateEventDraftId,
@@ -190,6 +200,130 @@ async function fetchActiveEventContract(): Promise<EventContract | null> {
     return null;
 }
 
+/**
+ * Empresa do gestor no momento do save.
+ * Preferência: company.id já carregado no hook (empresa do usuário logado).
+ * Só busca no banco se faltar — REST primeiro, sempre com timeout.
+ */
+async function resolveManagerCompanyIdForSave(
+    userId: string,
+    knownCompanyId: string | null,
+): Promise<string | null> {
+    if (knownCompanyId) return knownCompanyId;
+
+    try {
+        const viaRest = await withTimeout(fetchManagerPrimaryCompanyIdRest(userId), 8_000, null);
+        if (viaRest) return viaRest;
+    } catch (restError) {
+        console.warn('[EventFormSteps] REST user_companies no save:', restError);
+    }
+
+    return withTimeout(fetchManagerPrimaryCompanyId(supabase, userId), 8_000, null);
+}
+
+async function insertEventViaRest(
+    eventData: Record<string, unknown>,
+): Promise<{ id: string } | { error: { message: string; code?: string } }> {
+    try {
+        const token = readCachedAuthSession().accessToken;
+        if (!token) {
+            return { error: { message: 'Sessão expirada. Faça login novamente.', code: '401' } };
+        }
+
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 25_000);
+        try {
+            const response = await fetch(`${supabaseUrl}/rest/v1/events?select=id`, {
+                method: 'POST',
+                signal: controller.signal,
+                headers: {
+                    apikey: supabaseAnonKey,
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    Prefer: 'return=representation',
+                },
+                body: JSON.stringify([eventData]),
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                const msg =
+                    (payload as { message?: string; details?: string } | null)?.message ||
+                    (payload as { details?: string } | null)?.details ||
+                    `Erro HTTP ${response.status} ao criar evento.`;
+                return {
+                    error: {
+                        message: String(msg),
+                        code: String((payload as { code?: string } | null)?.code || response.status),
+                    },
+                };
+            }
+            const id = Array.isArray(payload) ? payload[0]?.id : (payload as { id?: string } | null)?.id;
+            if (!id) {
+                return { error: { message: 'Servidor não retornou o ID do evento.', code: 'NO_ID' } };
+            }
+            return { id: String(id) };
+        } finally {
+            window.clearTimeout(timer);
+        }
+    } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+            return {
+                error: {
+                    message:
+                        'Tempo esgotado ao criar o evento. Verifique Recebimento (MP ou banco/PIX) e tente de novo.',
+                    code: 'ETIMEDOUT',
+                },
+            };
+        }
+        const anyErr = err as { message?: string; code?: string };
+        return {
+            error: {
+                message: String(anyErr?.message || 'Falha ao criar evento.'),
+                code: anyErr?.code,
+            },
+        };
+    }
+}
+
+async function updateEventViaRest(
+    eventId: string,
+    eventData: Record<string, unknown>,
+): Promise<{ ok: true } | { error: { message: string; code?: string } }> {
+    const payload = { ...eventData };
+    delete payload.created_by;
+    delete payload.client_submit_id;
+
+    try {
+        await restPatch(`events?id=eq.${encodeURIComponent(eventId)}`, payload, 25_000);
+        return { ok: true };
+    } catch (err: unknown) {
+        const anyErr = err as { message?: string; code?: string };
+        return {
+            error: {
+                message: String(anyErr?.message || 'Falha ao atualizar o evento.'),
+                code: anyErr?.code || 'UPDATE_FAIL',
+            },
+        };
+    }
+}
+
+async function replaceEventBatchesViaRest(
+    eventId: string,
+    batches: Array<{
+        event_id: string;
+        name: string | undefined;
+        quantity: number;
+        price: number;
+        start_date: string;
+        end_date: string;
+    }>,
+): Promise<void> {
+    await restDelete(`event_batches?event_id=eq.${encodeURIComponent(eventId)}`, 15_000);
+    if (batches.length === 0) return;
+    await restPost('event_batches', batches, 20_000);
+}
+
 async function fetchActiveCommissionRanges(): Promise<CommissionRange[]> {
     try {
         return await restGet<CommissionRange[]>(
@@ -285,24 +419,95 @@ const eventFormSchema = z.object({
         return;
     }
     data.batches.forEach((batch, i) => {
-        if (!batch.name || !String(batch.name).trim()) ctx.addIssue({ code: 'custom', message: 'Nome do lote é obrigatório.', path: ['batches', i, 'name'] });
+        if (!batch.name || !String(batch.name).trim()) {
+            ctx.addIssue({
+                code: 'custom',
+                message: `Lote ${i + 1}: nome é obrigatório.`,
+                path: ['batches', i, 'name'],
+            });
+        }
         const qtyNorm = parseBatchQuantity(batch.quantity);
         const qtyMax = 500_000;
         if (!isValidBatchQuantity(batch.quantity, qtyMax)) {
             ctx.addIssue({
                 code: 'custom',
                 message: qtyMax && qtyNorm && Number(qtyNorm) > qtyMax
-                    ? `Quantidade máxima por lote: ${qtyMax.toLocaleString('pt-BR')}.`
-                    : 'Quantidade deve ser um número inteiro positivo (ex.: 50000 ou 50.000).',
+                    ? `Lote ${i + 1}: quantidade máxima ${qtyMax.toLocaleString('pt-BR')}.`
+                    : `Lote ${i + 1}: quantidade deve ser um número inteiro positivo (ex.: 2000 ou 2.000).`,
                 path: ['batches', i, 'quantity'],
             });
         }
-        const priceStr = batch.price ? String(batch.price).replace(/\./g, '').replace(',', '.') : '';
-        if (!batch.price || !/^[0-9]+(\.[0-9]{1,2})?$/.test(priceStr)) ctx.addIssue({ code: 'custom', message: 'Preço inválido.', path: ['batches', i, 'price'] });
-        if (!batch.start_date) ctx.addIssue({ code: 'custom', message: 'Data de início é obrigatória.', path: ['batches', i, 'start_date'] });
-        if (!batch.end_date) ctx.addIssue({ code: 'custom', message: 'Data de término é obrigatória.', path: ['batches', i, 'end_date'] });
+        if (!isValidBatchPriceBr(batch.price)) {
+            ctx.addIssue({
+                code: 'custom',
+                message: `Lote ${i + 1}: informe um preço válido maior que zero (ex.: 0,50 ou 50,00).`,
+                path: ['batches', i, 'price'],
+            });
+        }
+        if (!batch.start_date) {
+            ctx.addIssue({
+                code: 'custom',
+                message: `Lote ${i + 1}: data de início das vendas é obrigatória.`,
+                path: ['batches', i, 'start_date'],
+            });
+        }
+        if (!batch.end_date) {
+            ctx.addIssue({
+                code: 'custom',
+                message: `Lote ${i + 1}: data de término das vendas é obrigatória.`,
+                path: ['batches', i, 'end_date'],
+            });
+        }
+        if (
+            batch.start_date instanceof Date &&
+            batch.end_date instanceof Date &&
+            !Number.isNaN(batch.start_date.getTime()) &&
+            !Number.isNaN(batch.end_date.getTime()) &&
+            batch.end_date < batch.start_date
+        ) {
+            ctx.addIssue({
+                code: 'custom',
+                message: `Lote ${i + 1}: término das vendas não pode ser antes do início.`,
+                path: ['batches', i, 'end_date'],
+            });
+        }
     });
 });
+
+/** Lista pares campo→mensagem de erro (achatando aninhados de lotes/turmas). */
+function collectFormErrorPaths(
+    errors: Record<string, unknown>,
+    prefix = '',
+    out: string[] = [],
+    depth = 0,
+): string[] {
+    if (!errors || depth > 6) return out;
+    const message = (errors as { message?: unknown }).message;
+    if (typeof message === 'string' && message) {
+        out.push(`${prefix || '(campo)'}: ${message}`);
+    }
+    for (const [key, value] of Object.entries(errors)) {
+        if (key === 'message' || key === 'type' || key === 'ref') continue;
+        if (!value || typeof value !== 'object') continue;
+        const nextPrefix = prefix ? `${prefix}.${key}` : key;
+        collectFormErrorPaths(value as Record<string, unknown>, nextPrefix, out, depth + 1);
+    }
+    return out;
+}
+
+/** Extrai a 1ª mensagem útil de erros aninhados do react-hook-form / Zod. */
+function firstFormErrorMessage(errors: Record<string, unknown>, depth = 0): string | null {
+    if (!errors || depth > 6) return null;
+    if (typeof (errors as { message?: unknown }).message === 'string') {
+        return (errors as { message: string }).message;
+    }
+    for (const value of Object.values(errors)) {
+        if (!value || typeof value !== 'object') continue;
+        const nested = firstFormErrorMessage(value as Record<string, unknown>, depth + 1);
+        if (nested) return nested;
+    }
+    return null;
+}
 
 type EventFormData = z.infer<typeof eventFormSchema>;
 
@@ -519,7 +724,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         }
     }, [companyBillingReady, companyBilling, setValue]);
 
-    const showContractStep = Boolean(activeContract) && !companyBillingReady;
+    // Contrato do plano é da empresa (Perfil → Plano e cobrança). No formulário de evento
+    // só mantemos o passo legado quando ainda não há plano na empresa. Com plano (mesmo
+    // pendente de reaceitação), não pedimos aceite por evento — evita a tela de scroll.
+    const showContractStep =
+        Boolean(activeContract) && !companyBillingReady && !companyBilling?.billing_plan;
 
     const contractScrollKey =
         activeContract && showContractStep
@@ -955,7 +1164,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
             if (isGestorPro) {
                 try {
-                    const fromDb = await fetchManagerPrimaryCompanyId(supabase, userId);
+                    console.debug('[EventFormSteps][save] empresa do hook:', companyIdForEvent);
+                    const fromDb = await resolveManagerCompanyIdForSave(userId, companyIdForEvent);
+                    console.debug('[EventFormSteps][save] empresa resolvida:', fromDb);
                     if (fromDb) {
                         companyIdForEvent = fromDb;
                     }
@@ -965,20 +1176,24 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                 if (!companyIdForEvent) {
                     try {
-                        const ensured = await ensureGestorCompanyLinked(supabase, userId, {
-                            tipo_usuario_id: Number(profile.tipo_usuario_id),
-                            natureza_juridica_id: profile.natureza_juridica_id,
-                            first_name: profile.first_name,
-                            last_name: profile.last_name,
-                            cpf: profile.cpf,
-                            cep: profile.cep,
-                            rua: profile.rua,
-                            bairro: profile.bairro,
-                            cidade: profile.cidade,
-                            estado: profile.estado,
-                            numero: profile.numero,
-                            complemento: profile.complemento || null,
-                        });
+                        const ensured = await withTimeout(
+                            ensureGestorCompanyLinked(supabase, userId, {
+                                tipo_usuario_id: Number(profile.tipo_usuario_id),
+                                natureza_juridica_id: profile.natureza_juridica_id,
+                                first_name: profile.first_name,
+                                last_name: profile.last_name,
+                                cpf: profile.cpf,
+                                cep: profile.cep,
+                                rua: profile.rua,
+                                bairro: profile.bairro,
+                                cidade: profile.cidade,
+                                estado: profile.estado,
+                                numero: profile.numero,
+                                complemento: profile.complemento || null,
+                            }),
+                            12_000,
+                            null,
+                        );
                         if (ensured) {
                             companyIdForEvent = ensured.id;
                             await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
@@ -1030,10 +1245,16 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
             // Preço mínimo para exibição no card: lotes têm prioridade; senão usa o campo único ticket_price
             const minPriceFromBatches = effectiveIsPaid && values.batches?.length
-                ? Math.min(...values.batches.map(b => parseFloat(String(b.price || '0').replace(',', '.')) || 0))
+                ? Math.min(
+                    ...values.batches.map((b) => parseBatchPriceBr(b.price) ?? Number.POSITIVE_INFINITY),
+                )
                 : null;
             const ticketPriceForEvent = effectiveIsPaid
-                ? (minPriceFromBatches ?? (values.ticket_price ? parseFloat(values.ticket_price.replace(',', '.')) : null))
+                ? (
+                    minPriceFromBatches != null && Number.isFinite(minPriceFromBatches)
+                        ? minPriceFromBatches
+                        : (values.ticket_price ? parseBatchPriceBr(values.ticket_price) : null)
+                )
                 : null;
 
             const clientSubmitId =
@@ -1042,18 +1263,29 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             // Com empresa já vinculada, publica automaticamente (evita ficar preso em "pending").
             const eventStatus = companyIdForEvent ? 'approved' : 'pending';
             const createSuccessMessage = requiresPaidTickets
-                ? 'Evento criado. Cadastre os ingressos e depois ative o evento na lista.'
+                ? 'Evento criado. Os ingressos vêm dos lotes que você definiu. Ative o evento em Meus Eventos para publicar na vitrine.'
                 : companyIdForEvent
                   ? 'Evento criado com sucesso e publicado!'
                   : 'Evento criado com sucesso e enviado para aprovação!';
 
-            const resolvedGeo = await resolveEventGeoOnSave({
-                address: values.address,
-                location: values.location,
-                address_lat: values.address_lat ?? null,
-                address_lng: values.address_lng ?? null,
-                address_place_id: values.address_place_id ?? null,
-            });
+            console.debug('[EventFormSteps][save] geocodificando endereço...');
+            const resolvedGeo = await withTimeout(
+                resolveEventGeoOnSave({
+                    address: values.address,
+                    location: values.location,
+                    address_lat: values.address_lat ?? null,
+                    address_lng: values.address_lng ?? null,
+                    address_place_id: values.address_place_id ?? null,
+                }),
+                8_000,
+                {
+                    address: values.address,
+                    location: values.location,
+                    address_lat: values.address_lat ?? null,
+                    address_lng: values.address_lng ?? null,
+                    address_place_id: values.address_place_id ?? null,
+                },
+            );
 
             let resolvedContractVersion =
                 companyBillingReady && companyBilling?.billing_contract_version
@@ -1134,25 +1366,57 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             }
 
             let newEventId = persistenceEventId;
+            let justCreated = false;
             if (persistenceEventId) {
-                const { error } = await supabase
-                    .from('events')
-                    .update(eventData)
-                    .eq('id', persistenceEventId);
-
-                if (error) throw error;
-                dismissToast(toastId);
-                showSuccess(
-                    companyIdForEvent
-                        ? 'Evento atualizado com sucesso e publicado!'
-                        : 'Evento atualizado com sucesso!',
-                );
+                console.debug('[EventFormSteps][save] UPDATE events (REST)...', {
+                    id: persistenceEventId,
+                    company_id: eventData.company_id,
+                });
+                const restUpdate = await updateEventViaRest(persistenceEventId, eventData);
+                if ('error' in restUpdate) {
+                    dismissToast(toastId);
+                    throw restUpdate.error;
+                }
             } else {
-                const { data, error } = await supabase
-                    .from('events')
-                    .insert([eventData])
-                    .select('id')
-                    .single();
+                console.debug('[EventFormSteps][save] INSERT events (REST)...', {
+                    company_id: eventData.company_id,
+                    contract_id: eventData.contract_id,
+                });
+                const restInsert = await insertEventViaRest(eventData);
+                let data: { id: string } | null = 'id' in restInsert ? { id: restInsert.id } : null;
+                let error: { message: string; code?: string } | null =
+                    'error' in restInsert ? restInsert.error : null;
+
+                // Fallback supabase-js se REST falhar por rede (não por regra de negócio)
+                if (error && !/recebimento|mercado pago|bloqueado|payout|pix|JWT|Sessão/i.test(error.message)) {
+                    console.warn('[EventFormSteps][save] REST falhou, tentando supabase-js:', error.message);
+                    const insertResult = await withTimeout(
+                        supabase
+                            .from('events')
+                            .insert([eventData])
+                            .select('id')
+                            .single()
+                            .then((res) => res),
+                        25_000,
+                        {
+                            data: null,
+                            error: {
+                                message:
+                                    'Tempo esgotado ao criar o evento. Verifique Recebimento (MP ou banco/PIX) e tente de novo.',
+                                code: 'ETIMEDOUT',
+                            } as never,
+                        },
+                    );
+                    if (insertResult.data?.id) {
+                        data = { id: insertResult.data.id };
+                        error = null;
+                    } else if (insertResult.error) {
+                        error = {
+                            message: String(insertResult.error.message || error.message),
+                            code: String((insertResult.error as { code?: string }).code || error.code || ''),
+                        };
+                    }
+                }
 
                 if (error) {
                     const isUniqueViolation = String(error.code) === '23505';
@@ -1169,8 +1433,6 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             newEventId = existing.id;
                             createdEventIdRef.current = existing.id;
                             if (userId) persistManagerCreateEventDraftId(userId, existing.id);
-                            dismissToast(toastId);
-                            showSuccess(createSuccessMessage);
                         } else {
                             dismissToast(toastId);
                             throw error;
@@ -1180,11 +1442,16 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         throw error;
                     }
                 } else if (data?.id) {
+                    console.debug('[EventFormSteps][save] evento criado:', data.id);
                     newEventId = data.id;
                     createdEventIdRef.current = data.id;
+                    justCreated = true;
                     if (userId) persistManagerCreateEventDraftId(userId, data.id);
+                } else {
                     dismissToast(toastId);
-                    showSuccess(createSuccessMessage);
+                    throw new Error(
+                        'O servidor não retornou o ID do evento. Verifique Recebimento (Mercado Pago ou banco/PIX) e tente novamente.',
+                    );
                 }
             }
 
@@ -1203,12 +1470,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         const newQty = batchQuantityAsNumber(batch.quantity);
                         const oldQty = Number(String(snap?.quantity ?? '').replace(/\D/g, '')) || 0;
                         if (newQty <= oldQty) continue;
-                        const { error: updErr } = await supabase
-                            .from('event_batches')
-                            .update({ quantity: newQty })
-                            .eq('id', batchId)
-                            .eq('event_id', newEventId);
-                        if (updErr) throw updErr;
+                        await restPatch(
+                            `event_batches?id=eq.${encodeURIComponent(batchId)}&event_id=eq.${encodeURIComponent(newEventId)}`,
+                            { quantity: newQty },
+                            15_000,
+                        );
                     }
                     await callRpcRest(
                         'backfill_event_counter_inventory',
@@ -1217,11 +1483,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     );
                 } catch (batchError: unknown) {
                     console.error('Erro ao aumentar estoque dos lotes:', batchError);
+                    dismissToast(toastId);
                     const msg =
                         batchError && typeof batchError === 'object' && 'message' in batchError
                             ? String((batchError as { message?: string }).message)
                             : 'Erro desconhecido';
-                    showError(
+                    throw new Error(
                         msg.includes('STOCK_INCREASE_ONLY')
                             ? 'Após a primeira venda a quantidade só pode aumentar.'
                             : `Não foi possível atualizar o estoque: ${msg}`,
@@ -1229,49 +1496,42 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 }
             } else if (effectiveIsPaid && newEventId && values.batches && !increaseOnlyBatches) {
                 try {
-                    if (effectiveIsPaid && newEventId) {
-                        await callRpcRest('cleanup_orphan_counter_wristbands', {
-                            p_event_id: newEventId,
-                        }, 12_000);
-                    }
+                    await callRpcRest('cleanup_orphan_counter_wristbands', {
+                        p_event_id: newEventId,
+                    }, 12_000);
 
-                    const { error: deleteError } = await supabase
-                        .from('event_batches')
-                        .delete()
-                        .eq('event_id', newEventId);
-
-                    if (deleteError && deleteError.code !== 'PGRST205') {
-                        throw deleteError;
-                    }
-
-                    const batchesToInsert = values.batches.map(batch => ({
-                        event_id: newEventId,
-                        name: batch.name,
-                        quantity: batchQuantityAsNumber(batch.quantity),
-                        price: parseFloat(batch.price.replace(',', '.')),
-                        start_date: format(batch.start_date!, 'yyyy-MM-dd'),
-                        end_date: format(batch.end_date!, 'yyyy-MM-dd'),
-                    }));
-
-                    const { error: batchesError } = await supabase
-                        .from('event_batches')
-                        .insert(batchesToInsert);
-                    
-                    if (batchesError && batchesError.code !== 'PGRST205') {
-                        throw batchesError;
-                    }
-
-                    if (!deleteError && !batchesError) {
-                        if (effectiveIsPaid && newEventId) {
-                            await callRpcRest(
-                                'backfill_event_counter_inventory',
-                                { p_event_id: newEventId },
-                                15_000,
-                            );
+                    const batchesToInsert = values.batches.map(batch => {
+                        const price = parseBatchPriceBr(batch.price);
+                        if (price == null || price <= 0) {
+                            throw new Error(`Preço inválido no lote "${batch.name || ''}". Use formato 0,50 ou 50,00.`);
                         }
-                    }
+                        if (!(batch.start_date instanceof Date) || !(batch.end_date instanceof Date)) {
+                            throw new Error(`Datas do lote "${batch.name || ''}" estão incompletas.`);
+                        }
+                        return {
+                            event_id: newEventId!,
+                            name: batch.name,
+                            quantity: batchQuantityAsNumber(batch.quantity),
+                            price,
+                            start_date: format(batch.start_date, 'yyyy-MM-dd'),
+                            end_date: format(batch.end_date, 'yyyy-MM-dd'),
+                        };
+                    });
+
+                    console.debug('[EventFormSteps][save] substituindo lotes (REST)...', {
+                        event_id: newEventId,
+                        count: batchesToInsert.length,
+                    });
+                    await replaceEventBatchesViaRest(newEventId, batchesToInsert);
+
+                    await callRpcRest(
+                        'backfill_event_counter_inventory',
+                        { p_event_id: newEventId },
+                        15_000,
+                    );
                 } catch (batchError: unknown) {
                     console.error("Erro ao salvar lotes do evento:", batchError);
+                    dismissToast(toastId);
                     const msg =
                         batchError && typeof batchError === 'object' && 'message' in batchError
                             ? String((batchError as { message?: string }).message)
@@ -1279,9 +1539,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     const friendlyBatchMsg = msg.includes('soma das quantidades dos lotes')
                         ? msg.replace(/pulseiras/gi, 'ingressos')
                         : msg;
-                    showError(
-                        `Evento salvo, mas os lotes de ingressos não foram gravados: ${friendlyBatchMsg}. ` +
-                            'Se for erro de permissão (RLS), aplique a migration event_batches_rls no Supabase.',
+                    throw new Error(
+                        `Não foi possível gravar os lotes de ingressos: ${friendlyBatchMsg}`,
                     );
                 }
             }
@@ -1361,6 +1620,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 }
             }
 
+            dismissToast(toastId);
+            if (justCreated || willInsertNewRow) {
+                showSuccess(createSuccessMessage);
+            } else {
+                showSuccess(
+                    companyIdForEvent
+                        ? 'Evento atualizado com sucesso e publicado!'
+                        : 'Evento atualizado com sucesso!',
+                );
+            }
+
             queryClient.invalidateQueries({ queryKey: ['managerEvents', userId] });
             queryClient.invalidateQueries({ queryKey: ['publicEvents'] });
 
@@ -1372,9 +1642,14 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
         } catch (error: any) {
             dismissToast(toastId);
-            console.error("Erro ao salvar evento:", error);
-            showError(`Falha ao salvar evento: ${error.message || 'Erro desconhecido'}`);
+            console.error('Erro ao salvar evento:', error);
+            const raw = String(error?.message || error?.details || 'Erro desconhecido');
+            const friendly = /recebimento|mercado pago|conta banc|pix|payout/i.test(raw)
+                ? `${raw} Abra Perfil da Empresa → Recebimento.`
+                : raw;
+            showError(`Falha ao salvar evento: ${friendly}`);
         } finally {
+            dismissToast(toastId);
             submitInFlightRef.current = false;
             setIsSaving(false);
         }
@@ -1404,13 +1679,12 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const maxFormStep = showContractStep ? (isListingPlan ? 3 : 4) : isListingPlan ? 2 : 3;
 
     const onValidationError = (errors: Parameters<Parameters<typeof handleSubmit>[1]>[0]) => {
-        console.error("Erros de validação:", errors);
-        const firstError = Object.values(errors)[0];
-        if (firstError?.message) {
-            showError(firstError.message as string);
-        } else {
-            showError("Por favor, verifique todos os campos obrigatórios antes de salvar.");
-        }
+        const paths = collectFormErrorPaths(errors as Record<string, unknown>);
+        console.error('[EventFormSteps] Erros de validação (campos):', paths.length ? paths : errors);
+        const message =
+            firstFormErrorMessage(errors as Record<string, unknown>) ||
+            (paths[0] ?? 'Por favor, verifique todos os campos obrigatórios antes de salvar.');
+        showError(message);
 
         if (errors.date || errors.time || errors.title || errors.description || errors.min_age || errors.category || errors.capacity || errors.duration) {
             setCurrentStep(showContractStep ? 2 : 1);
@@ -1419,6 +1693,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         } else if (errors.batches || errors.num_batches) {
             setCurrentStep(showContractStep ? 4 : 3);
         }
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
     };
 
     const onFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -2070,7 +2345,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                     placeholder="Ex: Standard, VIP, Staff"
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={ticketsLocked}
-                                                                    {...field} 
+                                                                    {...field}
+                                                                    value={field.value ?? ''}
                                                                 />
                                                             </FormControl>
                                                             <FormDescription className="text-cyan-200/80 text-xs">
@@ -2098,7 +2374,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                     placeholder="Ex: 200 ou 50.000"
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={false}
-                                                                    {...field} 
+                                                                    {...field}
+                                                                    value={field.value ?? ''}
                                                                     onChange={(e) => field.onChange(e.target.value)}
                                                                     onBlur={(e) => {
                                                                         const normalized = parseBatchQuantity(e.target.value);
@@ -2135,7 +2412,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                                     placeholder="Ex: 50,00" 
                                                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
                                                                     disabled={ticketsLocked}
-                                                                    {...field} 
+                                                                    {...field}
+                                                                    value={field.value ?? ''}
                                                                     onChange={e => field.onChange(e.target.value.replace('.', ',') )}
                                                                     min="0"
                                                                 />
