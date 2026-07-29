@@ -23,6 +23,8 @@ import { Loader2, User, ArrowLeft } from 'lucide-react';
 import { ProfileData } from '@/hooks/use-profile';
 import { useQueryClient } from '@tanstack/react-query';
 import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
+import { restPatch } from '@/utils/supabase-rest';
+import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 
 interface ManagerIndividualRegisterDialogProps {
     isOpen: boolean;
@@ -258,18 +260,12 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
         const dataToSave = prepareDataToSave(currentValues, false);
 
         try {
-            // Salva o rascunho no perfil do usuário
-            const { error } = await supabase
-                .from('profiles')
-                .update(dataToSave)
-                .eq('id', userId);
-
-            if (error) {
-                console.error("Warning: Failed to save draft profile:", error);
-            } else {
-                // Invalida o cache do perfil para que os dados preenchidos sejam carregados na próxima vez
-                queryClient.invalidateQueries({ queryKey: ['profile', userId] });
-            }
+            await restPatch(
+                `profiles?id=eq.${userId}`,
+                dataToSave as Record<string, unknown>,
+                15_000,
+            );
+            queryClient.invalidateQueries({ queryKey: ['profile', userId] });
         } catch (e) {
             console.error("Unexpected error during draft save:", e);
         }
@@ -293,15 +289,11 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
         const dataToSave = prepareDataToSave(values, true);
 
         try {
-            // 1. Atualiza o perfil e promove o usuário
-            const { error } = await supabase
-                .from('profiles')
-                .update(dataToSave)
-                .eq('id', userId);
-
-            if (error) {
-                throw error;
-            }
+            await restPatch(
+                `profiles?id=eq.${userId}`,
+                dataToSave as Record<string, unknown>,
+                15_000,
+            );
 
             // Vínculo obrigatório empresa ↔ gestor (pulseiras, eventos, relatórios usam company_id)
             try {
@@ -326,10 +318,26 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
             }
 
             dismissToast(toastId);
-            showSuccess('Cadastro como gestor PF realizado com sucesso! Redirecionando para o Dashboard.');
-            queryClient.invalidateQueries({ queryKey: ['profile', userId] }); // Invalida o cache do perfil
-            onClose(); // Fecha o modal
-            navigate('/manager/dashboard'); // Redireciona para o dashboard do gestor
+            showSuccess('Cadastro como gestor PF realizado com sucesso! Redirecionando…');
+
+            // Evita race: ManagerLayout ainda via perfil antigo (cliente) e expulsava para "/".
+            queryClient.setQueryData(['profile', userId], (old: ProfileData | null | undefined) =>
+                old
+                    ? {
+                          ...old,
+                          ...dataToSave,
+                          tipo_usuario_id: 2,
+                          natureza_juridica_id: 1,
+                      }
+                    : old,
+            );
+            await queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+            await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
+
+            // Sem plano aceito → aba Plano e cobrança; com plano → dashboard.
+            const nextPath = await resolveManagerPostLoginPath(userId);
+            onClose();
+            navigate(nextPath, { replace: true });
 
         } catch (e: any) {
             dismissToast(toastId);
@@ -341,7 +349,12 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={handleCloseModal}>
+        <Dialog
+            open={isOpen}
+            onOpenChange={(open) => {
+                if (!open) handleCloseModal();
+            }}
+        >
             <DialogContent className="sm:max-w-[800px] bg-black/90 border border-yellow-500/30 text-white p-6">
                 <DialogHeader>
                     <DialogTitle className="text-yellow-500 text-2xl flex items-center">

@@ -7,6 +7,7 @@ import MultiLineEditor from '@/components/MultiLineEditor';
 import { Loader2 } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { usePageAuth } from '@/hooks/use-page-auth';
+import { useProfile } from '@/hooks/use-profile';
 import ManagerTypeSelectionDialog from '@/components/ManagerTypeSelectionDialog';
 import ManagerUseCaseSelectionDialog from '@/components/ManagerUseCaseSelectionDialog';
 import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegisterDialog';

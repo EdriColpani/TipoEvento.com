@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { WALLET_QR_REFRESH_MS, walletQrRefreshMs } from '@/constants/wallet-qr';
 
 export type WalletQrTokenData = {
@@ -11,14 +10,28 @@ export type WalletQrTokenData = {
 };
 
 async function fetchWalletQrToken(): Promise<WalletQrTokenData> {
-    const { data, error } = await supabase.functions.invoke('issue-wallet-qr-token', { body: {} });
-    if (error) {
-        throw new Error(await parseEdgeFunctionError(error, data));
-    }
+    const data = await invokeEdgeFunctionRest<WalletQrTokenData & { error?: string }>(
+        'issue-wallet-qr-token',
+        {},
+        { timeoutMs: 12_000 },
+    );
     if (!data?.token) {
-        throw new Error('Não foi possível gerar o QR da carteira.');
+        throw new Error(data?.error || 'Não foi possível gerar o QR da carteira.');
     }
-    return data as WalletQrTokenData;
+    return {
+        token: data.token,
+        expiresAt: data.expiresAt,
+        refreshInSeconds: data.refreshInSeconds,
+        ttlSeconds: data.ttlSeconds,
+    };
+}
+
+function isRetryableWalletQrError(error: unknown): boolean {
+    const msg = error instanceof Error ? error.message : String(error ?? '');
+    if (/não autorizado|sessão|carteira não está ativa|indisponível/i.test(msg)) {
+        return false;
+    }
+    return /tempo esgotado|aborterror|failed to fetch|networkerror|network/i.test(msg.toLowerCase());
 }
 
 export function useWalletQrToken(enabled: boolean) {
@@ -28,13 +41,15 @@ export function useWalletQrToken(enabled: boolean) {
         enabled,
         refetchInterval: (query) => {
             if (!enabled) return false;
+            if (query.state.error) return false;
             const ttl = query.state.data?.ttlSeconds;
             if (ttl) return walletQrRefreshMs(ttl);
             const refreshSec = query.state.data?.refreshInSeconds;
             if (refreshSec) return refreshSec * 1000;
             return WALLET_QR_REFRESH_MS;
         },
-        staleTime: 30_000,
-        retry: 2,
+        staleTime: 15_000,
+        retry: (failureCount, error) => failureCount < 1 && isRetryableWalletQrError(error),
+        refetchOnWindowFocus: false,
     });
 }

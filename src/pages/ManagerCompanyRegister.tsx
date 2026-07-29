@@ -144,10 +144,24 @@ const ManagerCompanyRegister: React.FC = () => {
             await finalizeManagerCompanyRegistration(userId, values, queryClient, companyKind);
             dismissToast(toastId);
             showSuccess('Registro de Gestor (Empresa) concluído com sucesso!');
+            queryClient.setQueryData(['profile', userId], (old: Record<string, unknown> | null | undefined) =>
+                old
+                    ? {
+                          ...old,
+                          tipo_usuario_id: 2,
+                          natureza_juridica_id: 2,
+                      }
+                    : old,
+            );
+            await queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+            await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
             if (companyKind === 'partner') {
-                navigate('/manager/settings/company-profile?tab=billing&plan=consumption_or_license');
+                navigate('/manager/settings/company-profile?tab=billing&plan=consumption_or_license', {
+                    replace: true,
+                });
             } else {
-                navigate('/manager/dashboard');
+                const { resolveManagerPostLoginPath } = await import('@/utils/manager-post-login-path');
+                navigate(await resolveManagerPostLoginPath(userId), { replace: true });
             }
         } catch (e: unknown) {
             dismissToast(toastId);

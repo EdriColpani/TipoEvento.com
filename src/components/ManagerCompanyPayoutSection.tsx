@@ -42,6 +42,26 @@ const emptyBank = {
   pixKeyType: '' as '' | PixKeyType,
 };
 
+const SELECT_CONTENT_CLASS = 'bg-black border border-yellow-500/30 text-white';
+const SELECT_ITEM_CLASS =
+  'focus:bg-yellow-500/10 focus:text-yellow-400 data-[highlighted]:bg-yellow-500/10 data-[highlighted]:text-yellow-400';
+
+/** Máscara CPF (11) ou CNPJ (14) conforme a quantidade de dígitos. */
+function formatCpfCnpj(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  if (digits.length <= 11) {
+    return digits
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
 const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = ({
   companyId,
   forceBankOnly = false,
@@ -71,7 +91,7 @@ const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = 
         accountDigit: b.account_digit ?? '',
         accountType: (b.account_type as 'checking' | 'savings' | '') || '',
         holderName: b.holder_name ?? '',
-        holderDocument: b.holder_document ?? '',
+        holderDocument: formatCpfCnpj(b.holder_document ?? ''),
         pixKey: b.pix_key ?? '',
         pixKeyType: (b.pix_key_type as PixKeyType | '') || '',
       });
@@ -91,7 +111,7 @@ const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = 
         accountDigit: bank.accountDigit,
         accountType: bank.accountType,
         holderName: bank.holderName,
-        holderDocument: bank.holderDocument,
+        holderDocument: bank.holderDocument.replace(/\D/g, ''),
         pixKey: bank.pixKey,
         pixKeyType: bank.pixKeyType,
       });
@@ -278,9 +298,13 @@ const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = 
                     <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="checking">Corrente</SelectItem>
-                      <SelectItem value="savings">Poupança</SelectItem>
+                    <SelectContent className={SELECT_CONTENT_CLASS}>
+                      <SelectItem value="checking" className={SELECT_ITEM_CLASS}>
+                        Corrente
+                      </SelectItem>
+                      <SelectItem value="savings" className={SELECT_ITEM_CLASS}>
+                        Poupança
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -296,7 +320,16 @@ const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = 
                   <Label className="text-gray-300">CPF/CNPJ do titular *</Label>
                   <Input
                     value={bank.holderDocument}
-                    onChange={(e) => setBank((s) => ({ ...s, holderDocument: e.target.value }))}
+                    onChange={(e) =>
+                      setBank((s) => ({
+                        ...s,
+                        holderDocument: formatCpfCnpj(e.target.value),
+                      }))
+                    }
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                    maxLength={18}
                     className="bg-black/60 border-yellow-500/30 text-white"
                   />
                 </div>
@@ -311,12 +344,22 @@ const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = 
                     <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cpf">CPF</SelectItem>
-                      <SelectItem value="cnpj">CNPJ</SelectItem>
-                      <SelectItem value="email">E-mail</SelectItem>
-                      <SelectItem value="phone">Telefone</SelectItem>
-                      <SelectItem value="random">Aleatória</SelectItem>
+                    <SelectContent className={SELECT_CONTENT_CLASS}>
+                      <SelectItem value="cpf" className={SELECT_ITEM_CLASS}>
+                        CPF
+                      </SelectItem>
+                      <SelectItem value="cnpj" className={SELECT_ITEM_CLASS}>
+                        CNPJ
+                      </SelectItem>
+                      <SelectItem value="email" className={SELECT_ITEM_CLASS}>
+                        E-mail
+                      </SelectItem>
+                      <SelectItem value="phone" className={SELECT_ITEM_CLASS}>
+                        Telefone
+                      </SelectItem>
+                      <SelectItem value="random" className={SELECT_ITEM_CLASS}>
+                        Aleatória
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

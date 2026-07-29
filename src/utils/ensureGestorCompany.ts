@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import { fetchManagerPrimaryCompanyIdRest } from '@/utils/manager-scope';
+import { restGet, restPost } from '@/utils/supabase-rest';
+import { supabaseAnonKey, supabaseUrl } from '@/integrations/supabase/client';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 
 const NATUREZA_PF = 1;
 const TIPO_GESTOR_PRO = 2;
@@ -31,16 +34,68 @@ export function buildSyntheticPfCompanyCnpj(cleanCpf11: string): string {
     return `9${cleanCpf11}00`;
 }
 
+async function insertCompanyReturningId(
+    payload: Record<string, unknown>,
+    timeoutMs = 12_000,
+): Promise<string> {
+    const token = readCachedAuthSession().accessToken;
+    if (!token) {
+        throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(`${supabaseUrl}/rest/v1/companies?select=id`, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                apikey: supabaseAnonKey,
+                Authorization: `Bearer ${token}`,
+                Prefer: 'return=representation',
+                Accept: 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = (await response.json().catch(() => null)) as
+            | { id?: string; message?: string; code?: string }[]
+            | { id?: string; message?: string; code?: string }
+            | null;
+
+        if (!response.ok) {
+            const row = Array.isArray(data) ? data[0] : data;
+            throw new Error(row?.message ?? 'Erro ao criar empresa do gestor.');
+        }
+
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row?.id) {
+            throw new Error('Empresa criada sem id retornado.');
+        }
+        return row.id;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Tempo esgotado ao criar empresa do gestor.');
+        }
+        throw error;
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
 /**
  * Garante que o gestor PRO PF tenha `companies` + `user_companies` (is_primary).
  * Idempotente: se já existir empresa principal, retorna o id.
+ * Usa REST+timeout (evita hang do supabase-js).
  */
 export async function ensureGestorCompanyLinked(
-    client: SupabaseClient,
+    _client: SupabaseClient,
     userId: string,
     source: GestorCompanySource,
 ): Promise<{ id: string } | null> {
-    const existingCompanyId = await fetchManagerPrimaryCompanyId(client, userId);
+    const existingCompanyId = await fetchManagerPrimaryCompanyIdRest(userId);
     if (existingCompanyId) {
         return { id: existingCompanyId };
     }
@@ -85,38 +140,41 @@ export async function ensureGestorCompanyLinked(
         complement: source.complemento || null,
     };
 
-    const { data: byCnpj } = await client.from('companies').select('id').eq('cnpj', syntheticCnpj).maybeSingle();
+    const byCnpj = await restGet<{ id: string }[]>(
+        `companies?cnpj=eq.${encodeURIComponent(syntheticCnpj)}&select=id&limit=1`,
+        10_000,
+    );
 
     let companyId: string;
-    if (byCnpj?.id) {
-        companyId = byCnpj.id;
+    if (byCnpj[0]?.id) {
+        companyId = byCnpj[0].id;
     } else {
-        const { data: inserted, error: insErr } = await client
-            .from('companies')
-            .insert([companyPayload])
-            .select('id')
-            .single();
-
-        if (insErr) {
+        try {
+            companyId = await insertCompanyReturningId(companyPayload);
+        } catch (insErr) {
             console.error('[ensureGestorCompanyLinked] companies insert', insErr);
-            throw new Error(insErr.message);
+            throw insErr instanceof Error ? insErr : new Error('Falha ao criar empresa.');
         }
-        companyId = inserted.id;
     }
 
-    const { error: ucErr } = await client.from('user_companies').insert({
-        user_id: userId,
-        company_id: companyId,
-        role: 'owner',
-        is_primary: true,
-    });
-
-    if (ucErr) {
-        if (ucErr.code === '23505') {
+    try {
+        await restPost(
+            'user_companies',
+            {
+                user_id: userId,
+                company_id: companyId,
+                role: 'owner',
+                is_primary: true,
+            },
+            12_000,
+        );
+    } catch (ucErr: unknown) {
+        const msg = ucErr instanceof Error ? ucErr.message : String(ucErr);
+        if (msg.includes('duplicate') || msg.includes('23505') || msg.toLowerCase().includes('unique')) {
             return { id: companyId };
         }
         console.error('[ensureGestorCompanyLinked] user_companies insert', ucErr);
-        throw new Error(ucErr.message);
+        throw ucErr instanceof Error ? ucErr : new Error(msg);
     }
 
     return { id: companyId };

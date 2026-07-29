@@ -36,6 +36,42 @@ export function looksLikeContractHtml(content: string): boolean {
     return /^</.test(content.trim());
 }
 
+/** Aditivos HTML (ex.: chargeback) anexados a contratos que ainda são texto puro. */
+const CONTRACT_HTML_BLOCK_RE =
+    /<(?:section|article|div)\b[^>]*>[\s\S]*?<\/(?:section|article|div)>/gi;
+
+function hasEmbeddedHtmlBlocks(content: string): boolean {
+    CONTRACT_HTML_BLOCK_RE.lastIndex = 0;
+    return CONTRACT_HTML_BLOCK_RE.test(content);
+}
+
+/**
+ * Texto puro + blocos HTML misturados: formata o texto e preserva os blocos
+ * (senão as tags aparecem literais na tela após escapeHtml).
+ */
+function convertMixedPlainAndHtml(content: string): string {
+    const parts: string[] = [];
+    let lastIndex = 0;
+    CONTRACT_HTML_BLOCK_RE.lastIndex = 0;
+
+    let match: RegExpExecArray | null;
+    while ((match = CONTRACT_HTML_BLOCK_RE.exec(content)) !== null) {
+        const plain = content.slice(lastIndex, match.index);
+        if (plain.trim()) {
+            parts.push(plainTextContractToHtml(plain));
+        }
+        parts.push(match[0]);
+        lastIndex = match.index + match[0].length;
+    }
+
+    const tail = content.slice(lastIndex);
+    if (tail.trim()) {
+        parts.push(plainTextContractToHtml(tail));
+    }
+
+    return parts.join('\n');
+}
+
 function escapeHtml(text: string): string {
     return text
         .replace(/&/g, '&amp;')
@@ -143,6 +179,7 @@ function plainTextContractToHtml(text: string): string {
 /**
  * Prepara conteúdo de contrato para exibição HTML.
  * - HTML existente (<h2>, <p>…): preserva e normaliza quebras escapadas.
+ * - Texto puro + aditivos HTML (section/div): formata o texto e mantém os blocos.
  * - Texto puro: converte em parágrafos, cláusulas e itens numerados legíveis.
  */
 export function prepareContractContentForHtmlDisplay(content: string): string {
@@ -151,6 +188,10 @@ export function prepareContractContentForHtmlDisplay(content: string): string {
 
     if (looksLikeContractHtml(normalized)) {
         return normalized;
+    }
+
+    if (hasEmbeddedHtmlBlocks(normalized)) {
+        return convertMixedPlainAndHtml(normalized);
     }
 
     return plainTextContractToHtml(normalized);
