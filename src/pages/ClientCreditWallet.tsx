@@ -259,9 +259,8 @@ const ClientCreditWallet: React.FC = () => {
                 <CardContent className="flex flex-wrap gap-2">
                     <Button
                         type="button"
-                        variant="outline"
                         size="sm"
-                        className="border-yellow-500/40 text-yellow-500"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                         onClick={() => refresh()}
                         disabled={isPolling}
                     >
@@ -271,9 +270,8 @@ const ClientCreditWallet: React.FC = () => {
                     {canTopup && accountStatus === 'active' && (
                         <Button
                             type="button"
-                            variant="outline"
                             size="sm"
-                            className="border-yellow-500/40 text-yellow-500"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                             onClick={() => setWalletQrOpen(true)}
                         >
                             <Wallet className="h-4 w-4 mr-1" />

@@ -290,7 +290,7 @@ const ManagerLayout: React.FC = () => {
 
     useEffect(() => {
         if (!userId || !profile || isLoadingProfile) return;
-        const userType = profile.tipo_usuario_id;
+        const userType = Number(profile.tipo_usuario_id);
         const isManager = userType === ADMIN_USER_TYPE_ID || userType === MANAGER_USER_TYPE_ID;
         if (!isManager && (location.pathname.startsWith('/manager') || location.pathname.startsWith('/admin'))) {
             navigate('/', { replace: true });
@@ -351,7 +351,7 @@ const ManagerLayout: React.FC = () => {
     }
     
     // Check if user is authorized (Admin or Manager)
-    const userType = profile?.tipo_usuario_id;
+    const userType = Number(profile?.tipo_usuario_id);
     const isManager = userType === ADMIN_USER_TYPE_ID || userType === MANAGER_USER_TYPE_ID;
 
     if (userId && profile && !isManager) {

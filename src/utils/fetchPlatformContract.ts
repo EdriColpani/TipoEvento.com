@@ -1,5 +1,5 @@
-import { supabase } from '@/integrations/supabase/client';
 import type { PlatformContractType } from '@/constants/event-contracts';
+import { restGetAuthOrPublic } from '@/utils/supabase-rest';
 
 export interface PlatformContractRow {
     id: string;
@@ -14,16 +14,10 @@ export interface PlatformContractRow {
 export async function fetchActivePlatformContract(
     contractType: PlatformContractType,
 ): Promise<PlatformContractRow | null> {
-    const { data, error } = await supabase
-        .from('event_contracts')
-        .select('id, version, title, content, contract_type, is_active')
-        .eq('contract_type', contractType)
-        .eq('is_active', true)
-        .maybeSingle();
+    const rows = await restGetAuthOrPublic<PlatformContractRow[]>(
+        `event_contracts?contract_type=eq.${encodeURIComponent(contractType)}&is_active=eq.true&select=id,version,title,content,contract_type,is_active&limit=1`,
+        12_000,
+    );
 
-    if (error && error.code !== 'PGRST116') {
-        throw new Error(error.message);
-    }
-
-    return (data as PlatformContractRow | null) ?? null;
+    return rows[0] ?? null;
 }

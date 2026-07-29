@@ -55,7 +55,7 @@ const WalletQrModal: React.FC<WalletQrModalProps> = ({ isOpen, onClose, balanceL
                 </AlertDialogHeader>
 
                 <div className="flex flex-col items-center gap-4 py-2">
-                    {isLoading && (
+                    {isLoading && !tokenData && (
                         <div className="flex items-center gap-2 text-gray-400 py-12">
                             <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
                             Gerando QR…
@@ -70,9 +70,8 @@ const WalletQrModal: React.FC<WalletQrModalProps> = ({ isOpen, onClose, balanceL
                             </p>
                             <Button
                                 type="button"
-                                variant="outline"
                                 size="sm"
-                                className="border-yellow-500/40 text-yellow-500"
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                 onClick={() => refetch()}
                             >
                                 <RefreshCw className="h-4 w-4 mr-1" />
@@ -94,6 +93,24 @@ const WalletQrModal: React.FC<WalletQrModalProps> = ({ isOpen, onClose, balanceL
                                 {isFetching ? ' · renovando…' : ''}
                             </p>
                         </>
+                    )}
+
+                    {!isLoading && !error && !qrValue && (
+                        <div className="text-center space-y-3 py-6">
+                            <ShieldAlert className="h-8 w-8 text-amber-400 mx-auto" />
+                            <p className="text-sm text-amber-200">
+                                O QR ainda não foi retornado pelo servidor. Tente novamente.
+                            </p>
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                onClick={() => refetch()}
+                            >
+                                <RefreshCw className="h-4 w-4 mr-1" />
+                                Gerar de novo
+                            </Button>
+                        </div>
                     )}
                 </div>
 
