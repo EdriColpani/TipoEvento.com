@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Download, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -23,6 +23,8 @@ import {
     useAdminCreditSettlementsGrouped,
     type AdminSettlementRow,
 } from '@/hooks/use-credit-reports';
+import { downloadSettlementPaymentProof } from '@/utils/settlement-payment-proof';
+import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number): string {
     return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -58,6 +60,7 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
 }) => {
     const [companyId, setCompanyId] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('paid');
+    const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
 
     const rpcStatus = statusFilter === 'all' ? null : statusFilter;
     const rpcCompanyId = companyId === 'all' ? null : companyId;
@@ -105,6 +108,18 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
         if (row.establishment_name) return row.establishment_name;
         if (row.group_label) return row.group_label;
         return '—';
+    };
+
+    const handleDownloadProof = async (path: string, fileName?: string | null) => {
+        setDownloadingPath(path);
+        try {
+            await downloadSettlementPaymentProof(path, fileName);
+            showSuccess('Comprovante aberto para download.');
+        } catch (e) {
+            showError(e instanceof Error ? e.message : 'Falha ao baixar comprovante.');
+        } finally {
+            setDownloadingPath(null);
+        }
     };
 
     const companiesLoading = companyCatalog.isLoading && listQuery.isLoading && companyOptions.length === 0;
@@ -252,7 +267,8 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
                                     <TableHead className="text-yellow-500">Status</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
                                     <TableHead className="text-yellow-500">Pago em</TableHead>
-                                    <TableHead className="text-yellow-500">Comprovante</TableHead>
+                                    <TableHead className="text-yellow-500">Ref.</TableHead>
+                                    <TableHead className="text-yellow-500">Arquivo</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -287,6 +303,32 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
                                             title={row.payment_reference ?? undefined}
                                         >
                                             {row.payment_reference ?? '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {row.payment_proof_path ? (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                                    disabled={downloadingPath === row.payment_proof_path}
+                                                    onClick={() =>
+                                                        void handleDownloadProof(
+                                                            row.payment_proof_path!,
+                                                            row.payment_proof_file_name,
+                                                        )
+                                                    }
+                                                >
+                                                    {downloadingPath === row.payment_proof_path ? (
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                                                    ) : (
+                                                        <Download className="h-3.5 w-3.5 mr-1" />
+                                                    )}
+                                                    PDF
+                                                </Button>
+                                            ) : (
+                                                <span className="text-gray-600 text-xs">—</span>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}

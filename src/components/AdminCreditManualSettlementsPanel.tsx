@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Download, Loader2, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Download, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +29,11 @@ import {
 } from '@/hooks/use-credit-reports';
 import { registerAdminCreditSettlementPayment } from '@/utils/credit-manager-payout';
 import { exportCreditSettlementsCsv } from '@/utils/export-credit-settlements-csv';
+import {
+    assertSettlementProofFile,
+    removeSettlementPaymentProof,
+    uploadSettlementPaymentProof,
+} from '@/utils/settlement-payment-proof';
 import { showError, showSuccess } from '@/utils/toast';
 import AdminCreditSettlementsHistoryPanel from '@/components/AdminCreditSettlementsHistoryPanel';
 
@@ -117,6 +122,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
     const [paymentMethod, setPaymentMethod] = useState<'pix' | 'ted' | 'other'>('pix');
     const [paymentReference, setPaymentReference] = useState('');
     const [paymentNotes, setPaymentNotes] = useState('');
+    const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [exporting, setExporting] = useState(false);
 
@@ -131,24 +137,43 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
             showError('Informe a referência do comprovante (PIX/TED).');
             return;
         }
+        if (!paymentProofFile) {
+            showError('Anexe a imagem ou PDF do comprovante de transferência.');
+            return;
+        }
+
         setSubmitting(true);
         setPayingCompanyId(company.company_id);
+        let uploadedPath: string | null = null;
         try {
+            assertSettlementProofFile(paymentProofFile);
+            const uploaded = await uploadSettlementPaymentProof(
+                company.company_id,
+                paymentProofFile,
+            );
+            uploadedPath = uploaded.path;
+
             const result = await registerAdminCreditSettlementPayment(company.company_id, {
                 paymentMethod,
                 paymentReference: paymentReference.trim(),
                 notes: paymentNotes.trim() || undefined,
+                paymentProofPath: uploaded.path,
+                paymentProofFileName: uploaded.fileName,
             });
             showSuccess(
                 `Pagamento registrado — ${money(result.totalAmount)} (${result.settlementCount} itens). Ref.: ${result.paymentReference}`,
             );
             setPaymentReference('');
             setPaymentNotes('');
+            setPaymentProofFile(null);
             await queryClient.invalidateQueries({ queryKey: ['adminCreditSettlementsGrouped'] });
             await queryClient.invalidateQueries({ queryKey: ['adminCreditSettlements'] });
             await queryClient.invalidateQueries({ queryKey: ['managerCreditSettlements'] });
             await queryClient.invalidateQueries({ queryKey: ['adminCreditAccounting'] });
         } catch (e: unknown) {
+            if (uploadedPath) {
+                await removeSettlementPaymentProof(uploadedPath);
+            }
             showError(e instanceof Error ? e.message : 'Erro ao registrar pagamento.');
         } finally {
             setSubmitting(false);
@@ -295,13 +320,50 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                             </Select>
                         </div>
                         <div className="md:col-span-2">
-                            <Label className="text-gray-300">Referência / comprovante *</Label>
+                            <Label className="text-gray-300">Referência / ID da transferência *</Label>
                             <Input
                                 value={paymentReference}
                                 onChange={(e) => setPaymentReference(e.target.value)}
                                 placeholder="ID da transação, E2E PIX, etc."
                                 className="mt-1 bg-black border-yellow-500/30 text-white"
                             />
+                        </div>
+                        <div className="md:col-span-3">
+                            <Label className="text-gray-300">Comprovante (imagem ou PDF) *</Label>
+                            <div className="mt-1 flex flex-col sm:flex-row sm:items-center gap-3">
+                                <Input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.gif"
+                                    className="bg-black border-yellow-500/30 text-white file:mr-3 file:rounded file:border-0 file:bg-yellow-500 file:px-3 file:py-1 file:text-sm file:font-medium file:text-black"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0] ?? null;
+                                        if (!file) {
+                                            setPaymentProofFile(null);
+                                            return;
+                                        }
+                                        try {
+                                            assertSettlementProofFile(file);
+                                            setPaymentProofFile(file);
+                                        } catch (err) {
+                                            setPaymentProofFile(null);
+                                            e.target.value = '';
+                                            showError(
+                                                err instanceof Error
+                                                    ? err.message
+                                                    : 'Arquivo de comprovante inválido.',
+                                            );
+                                        }
+                                    }}
+                                />
+                                {paymentProofFile ? (
+                                    <p className="text-xs text-yellow-400 flex items-center gap-1">
+                                        <Upload className="h-3.5 w-3.5" />
+                                        {paymentProofFile.name}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-gray-500">Obrigatório em cada baixa (máx. 10 MB).</p>
+                                )}
+                            </div>
                         </div>
                         <div className="md:col-span-3">
                             <Label className="text-gray-300">Observações (opcional)</Label>
@@ -341,8 +403,8 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                     {viewFilter === 'released' && (
                         <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-3">
                             <p className="text-gray-300 text-sm">
-                                1. Faça o PIX/TED no banco · 2. Preencha comprovante acima · 3. Clique em{' '}
-                                <strong className="text-yellow-500">Confirmar pagamento e baixar</strong>
+                                1. Faça o PIX/TED no banco · 2. Anexe o comprovante e a referência · 3. Clique em{' '}
+                                <strong className="text-yellow-500">Confirmar pagamento</strong>
                             </p>
                             <div className="flex flex-wrap gap-2">
                                 {releasedCompanies
@@ -351,7 +413,11 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                         <Button
                                             key={company.company_id}
                                             type="button"
-                                            disabled={submitting || !paymentReference.trim()}
+                                            disabled={
+                                                submitting ||
+                                                !paymentReference.trim() ||
+                                                !paymentProofFile
+                                            }
                                             className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
                                             onClick={() => void handlePayCompany(company)}
                                         >
@@ -368,8 +434,11 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                     <p className="text-gray-500 text-sm">Nenhum repasse liberado aguardando baixa no momento.</p>
                                 )}
                             </div>
-                            {!paymentReference.trim() && releasedCompanies.some((c) => Number(c.awaiting_payment_total ?? 0) > 0) && (
-                                <p className="text-amber-300/90 text-xs">Informe a referência / comprovante para habilitar a baixa.</p>
+                            {(!paymentReference.trim() || !paymentProofFile) &&
+                                releasedCompanies.some((c) => Number(c.awaiting_payment_total ?? 0) > 0) && (
+                                <p className="text-amber-300/90 text-xs">
+                                    Informe a referência e anexe o comprovante (imagem/PDF) para habilitar a baixa.
+                                </p>
                             )}
                         </div>
                     )}
@@ -439,7 +508,12 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                             {canRegisterPayment && (
                                 <Button
                                     type="button"
-                                    disabled={submitting || Number(company.awaiting_payment_total ?? 0) <= 0 || !paymentReference.trim()}
+                                    disabled={
+                                        submitting ||
+                                        Number(company.awaiting_payment_total ?? 0) <= 0 ||
+                                        !paymentReference.trim() ||
+                                        !paymentProofFile
+                                    }
                                     className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 shrink-0"
                                     onClick={() => void handlePayCompany(company)}
                                 >

@@ -15,6 +15,8 @@ export async function registerAdminCreditSettlementPayment(
         paymentMethod?: 'pix' | 'ted' | 'mp_transfer' | 'other';
         paymentReference?: string;
         notes?: string;
+        paymentProofPath?: string;
+        paymentProofFileName?: string;
     },
 ): Promise<RegisterManualSettlementResult> {
     const payload = await callRpcRest<{
@@ -33,6 +35,8 @@ export async function registerAdminCreditSettlementPayment(
             p_payment_method: options?.paymentMethod ?? 'pix',
             p_payment_reference: options?.paymentReference ?? null,
             p_notes: options?.notes ?? null,
+            p_payment_proof_path: options?.paymentProofPath ?? null,
+            p_payment_proof_file_name: options?.paymentProofFileName ?? null,
         },
         25_000,
     );

@@ -307,6 +307,8 @@ export type ManagerSettlementRow = {
     payment_reference?: string | null;
     mp_payout_reference?: string | null;
     payment_method?: string | null;
+    payment_proof_path?: string | null;
+    payment_proof_file_name?: string | null;
     spend_description: string | null;
     spend_at: string;
     channel?: string | null;

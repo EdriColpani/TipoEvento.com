@@ -41,7 +41,24 @@ export async function uploadStorageObjectRest(
         );
 
         if (!response.ok) {
-            const err = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+            const err = (await response.json().catch(() => null)) as {
+                message?: string;
+                error?: string;
+                statusCode?: string;
+            } | null;
+            const raw = `${err?.message ?? ''} ${err?.error ?? ''} ${err?.statusCode ?? ''}`.toLowerCase();
+            if (
+                response.status === 400 ||
+                response.status === 404 ||
+                raw.includes('bucket') ||
+                raw.includes('not found')
+            ) {
+                throw new Error(
+                    err?.message ??
+                        err?.error ??
+                        `Falha no upload (${response.status}). Verifique se o bucket existe e se a migration foi aplicada.`,
+                );
+            }
             throw new Error(err?.message ?? err?.error ?? 'Falha no upload da imagem.');
         }
     } finally {
