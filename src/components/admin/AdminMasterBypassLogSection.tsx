@@ -6,6 +6,11 @@ import { Loader2, Shield } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import {
+    billingAccentText,
+    billingPanelBorder,
+    billingSpinner,
+} from '@/constants/billing-ui';
 
 const BYPASS_ACTION_LABELS: Record<string, string> = {
     min_event_tickets_activate: 'Ativar evento (abaixo do mínimo)',

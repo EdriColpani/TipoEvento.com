@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Banknote, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Banknote, Download, Loader2, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import {
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCreditSettlements, useManagerTicketChargebackDebts } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
+import { downloadSettlementPaymentProof } from '@/utils/settlement-payment-proof';
+import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number): string {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -39,6 +41,7 @@ function dt(iso: string | null | undefined): string {
 const ManagerCreditSettlements: React.FC = () => {
     const navigate = useNavigate();
     const { userId } = usePageAuth();
+    const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
 
     const access = useCreditReportsAccess(userId);
     const { data, isLoading, isError, error, refetch } = useManagerCreditSettlements(access.company?.id);
@@ -46,6 +49,18 @@ const ManagerCreditSettlements: React.FC = () => {
 
     const summary = data?.summary;
     const retentionDays = data?.retention_days ?? 1;
+
+    const handleDownloadProof = async (path: string, fileName?: string | null) => {
+        setDownloadingPath(path);
+        try {
+            await downloadSettlementPaymentProof(path, fileName);
+            showSuccess('Comprovante aberto para download.');
+        } catch (e) {
+            showError(e instanceof Error ? e.message : 'Falha ao baixar comprovante.');
+        } finally {
+            setDownloadingPath(null);
+        }
+    };
 
     useEffect(() => {
         if (!access.isLoading && access.isAdminMaster) {
@@ -195,6 +210,7 @@ const ManagerCreditSettlements: React.FC = () => {
                                     <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
                                     <TableHead className="text-yellow-500">Liberação</TableHead>
                                     <TableHead className="text-yellow-500">Ref. pagamento</TableHead>
+                                    <TableHead className="text-yellow-500">Comprovante</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -220,6 +236,32 @@ const ManagerCreditSettlements: React.FC = () => {
                                         <TableCell className="text-gray-400 text-xs whitespace-nowrap">{dt(row.release_at)}</TableCell>
                                         <TableCell className="text-gray-500 text-xs font-mono truncate max-w-[8rem]" title={row.payment_reference ?? undefined}>
                                             {row.payment_reference ?? '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {row.payment_proof_path ? (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                                    disabled={downloadingPath === row.payment_proof_path}
+                                                    onClick={() =>
+                                                        void handleDownloadProof(
+                                                            row.payment_proof_path!,
+                                                            row.payment_proof_file_name,
+                                                        )
+                                                    }
+                                                >
+                                                    {downloadingPath === row.payment_proof_path ? (
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                                                    ) : (
+                                                        <Download className="h-3.5 w-3.5 mr-1" />
+                                                    )}
+                                                    Baixar
+                                                </Button>
+                                            ) : (
+                                                <span className="text-gray-600 text-xs">—</span>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}
