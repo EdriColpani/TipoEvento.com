@@ -1,6 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import { consolidateSplitsByTransaction, resolveReceivableFinancials } from '@/utils/resolve-receivable-financials';
-import { fetchFinancialSplitsRest, fetchReceivablesRest } from '@/utils/fetch-receivables-rest';
+import {
+  consolidateSplitsByTransaction,
+  extractCreditSpendOrderId,
+  resolveReceivableFinancials,
+  type ConsolidatedSplit,
+} from '@/utils/resolve-receivable-financials';
+import {
+  fetchCreditSplitsRest,
+  fetchFinancialSplitsRest,
+  fetchReceivablesRest,
+} from '@/utils/fetch-receivables-rest';
 
 export interface ManagerTransactionData {
   id: string;
@@ -16,8 +25,10 @@ export interface ManagerTransactionData {
   system_commission_percentage: number | null;
   system_commission_amount: number | null;
   organizer_net_amount: number | null;
-  /** true quando financial_splits foi gravado (comissão + líquido gestor). */
+  /** true quando o split foi gravado (comissão + líquido gestor). */
   split_recorded: boolean;
+  /** 'mp' = split Mercado Pago; 'credit' = pago com crédito EventFest. */
+  split_source: 'mp' | 'credit' | null;
   created_at: string;
   paid_at: string | null;
   events: {
@@ -45,8 +56,34 @@ const fetchManagerTransactions = async (
   });
 
   const transactionIds = data.map((row) => row.id);
-  const splits = await fetchFinancialSplitsRest(transactionIds);
+
+  // Compra paga com crédito EventFest não gera financial_splits: o split fica em
+  // credit_financial_splits, indexado pelo id da ordem de consumo.
+  const creditOrderByTransaction = new Map<string, string>();
+  for (const row of data) {
+    const orderId = extractCreditSpendOrderId(row.payment_gateway_id);
+    if (orderId) creditOrderByTransaction.set(row.id, orderId);
+  }
+
+  const [splits, creditSplits] = await Promise.all([
+    fetchFinancialSplitsRest(transactionIds),
+    fetchCreditSplitsRest([...new Set(creditOrderByTransaction.values())]),
+  ]);
+
   const splitByTransaction = consolidateSplitsByTransaction(splits);
+  const creditSplitByOrder = new Map<string, ConsolidatedSplit>(
+    creditSplits.map((row) => [
+      row.spend_order_id,
+      {
+        system_commission_amount: Number(row.platform_amount ?? 0),
+        organizer_net_amount: Number(row.manager_amount ?? 0),
+        system_commission_percentage:
+          row.applied_percentage !== null && row.applied_percentage !== undefined
+            ? Number(row.applied_percentage)
+            : null,
+      },
+    ]),
+  );
 
   return data.map((row) => {
     const gross = typeof row.gross_amount === 'number' ? row.gross_amount : Number(row.gross_amount ?? row.total_value ?? 0);
@@ -59,8 +96,11 @@ const fetchManagerTransactions = async (
       row.events?.applied_percentage !== null && row.events?.applied_percentage !== undefined
         ? Number(row.events.applied_percentage)
         : null;
-    const resolved = resolveReceivableFinancials(row, splitByTransaction.get(row.id), eventPct);
-    const split = splitByTransaction.get(row.id);
+    const creditOrderId = creditOrderByTransaction.get(row.id);
+    const split =
+      splitByTransaction.get(row.id) ??
+      (creditOrderId ? creditSplitByOrder.get(creditOrderId) : undefined);
+    const resolved = resolveReceivableFinancials(row, split, eventPct);
     const splitRecorded = Boolean(
       split &&
         (split.system_commission_amount > 0 || split.organizer_net_amount > 0),
@@ -75,6 +115,7 @@ const fetchManagerTransactions = async (
       system_commission_amount: resolved.systemCommission,
       organizer_net_amount: resolved.organizerNet,
       split_recorded: splitRecorded,
+      split_source: splitRecorded ? (creditOrderId ? 'credit' : 'mp') : null,
     };
   });
 };

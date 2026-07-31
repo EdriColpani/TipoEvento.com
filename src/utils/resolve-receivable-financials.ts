@@ -13,6 +13,15 @@ export type ConsolidatedSplit = {
   system_commission_percentage: number | null;
 };
 
+/** Prefixo gravado em receivables.payment_gateway_id nas compras pagas com crédito EventFest. */
+const CREDIT_GATEWAY_PREFIX = 'eventfest_credit:';
+
+/** Id da ordem de consumo quando a compra foi paga com crédito da carteira; senão null. */
+export function extractCreditSpendOrderId(paymentGatewayId: string | null | undefined): string | null {
+  if (!paymentGatewayId || !paymentGatewayId.startsWith(CREDIT_GATEWAY_PREFIX)) return null;
+  return paymentGatewayId.slice(CREDIT_GATEWAY_PREFIX.length) || null;
+}
+
 export function consolidateSplitsByTransaction(
   splits: FinancialSplitRow[],
 ): Map<string, ConsolidatedSplit> {

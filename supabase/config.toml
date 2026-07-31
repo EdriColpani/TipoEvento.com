@@ -94,3 +94,7 @@ verify_jwt = false
 
 [functions.run-ticket-chargeback-notify-job]
 verify_jwt = false
+
+# Cron + Vault: auth real e o header x-security-sentinel-secret (nao o JWT do gateway)
+[functions.security-sentinel-notify]
+verify_jwt = false

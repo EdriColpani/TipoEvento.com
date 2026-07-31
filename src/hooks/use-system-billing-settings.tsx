@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { DEFAULT_LISTING_MONTHLY_FEE, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/company-billing-rules';
-import { restGet } from '@/utils/supabase-rest';
+import { restGet, restPatch } from '@/utils/supabase-rest';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
 
@@ -128,17 +128,17 @@ export function useSystemBillingSettings(enabled: boolean) {
 async function upsertBillingSettings(patch: Record<string, unknown>): Promise<void> {
     const { userId } = readCachedAuthSession();
 
-    const { error } = await supabase.from('system_billing_settings').upsert(
+    // Prefer REST+timeout: supabase-js upsert pode ficar pendurado sem rejeitar
+    // (UI presa em "Salvando..." sem erro no console).
+    await restPatch(
+        'system_billing_settings?id=eq.1',
         {
-            id: 1,
             ...patch,
             updated_at: new Date().toISOString(),
             updated_by: userId ?? null,
         },
-        { onConflict: 'id' },
+        12_000,
     );
-
-    if (error) throw new Error(error.message);
 }
 
 export async function saveListingMonthlyDefaultFee(fee: number): Promise<void> {
@@ -195,5 +195,19 @@ export async function saveConsumptionLicensePlanSettings(values: {
         consumption_license_default_fee: values.licenseFee,
         consumption_plan_notes: values.notes,
         consumption_module_enabled: values.moduleEnabled,
+    });
+}
+
+export async function saveTicketInactivitySettings(values: {
+    enabled: boolean;
+    feeDefault: number;
+    autoDeactivateEnabled: boolean;
+    autoDeactivateDays: number;
+}): Promise<void> {
+    await upsertBillingSettings({
+        ticket_inactivity_enabled: values.enabled,
+        ticket_inactivity_fee_default: values.feeDefault,
+        ticket_inactivity_auto_deactivate_enabled: values.autoDeactivateEnabled,
+        ticket_inactivity_auto_deactivate_days: values.autoDeactivateDays,
     });
 }

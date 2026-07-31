@@ -1,12 +1,20 @@
 import { restGet } from '@/utils/supabase-rest';
 import type { FinancialSplitRow } from '@/utils/resolve-receivable-financials';
 
+export type CreditSplitRow = {
+    spend_order_id: string;
+    platform_amount: number | null;
+    manager_amount: number | null;
+    applied_percentage: number | null;
+};
+
 export type ReceivableRestRow = {
     id: string;
     status: string;
     payment_status: string | null;
     mp_status_detail: string | null;
     mp_payment_id: string | null;
+    payment_gateway_id: string | null;
     total_value: number;
     gross_amount: number | null;
     mp_fee_amount: number | null;
@@ -89,7 +97,7 @@ export async function fetchReceivablesRest(
     options: ListOptions = {},
 ): Promise<ReceivableRestRow[]> {
     const select =
-        'id,status,payment_status,mp_status_detail,mp_payment_id,total_value,gross_amount,mp_fee_amount,platform_fee_amount,net_amount_after_mp,created_at,paid_at,event_id,wristband_analytics_ids,settlement_channel,collector_type,events(id,title,date,applied_percentage)';
+        'id,status,payment_status,mp_status_detail,mp_payment_id,payment_gateway_id,total_value,gross_amount,mp_fee_amount,platform_fee_amount,net_amount_after_mp,created_at,paid_at,event_id,wristband_analytics_ids,settlement_channel,collector_type,events(id,title,date,applied_percentage)';
 
     const path = buildReceivablesPath(filters, userId, isAdminMaster, select, options);
     return restGet<ReceivableRestRow[]>(path, 15_000);
@@ -113,6 +121,17 @@ export async function fetchFinancialSplitsRest(transactionIds: string[]): Promis
     const inList = transactionIds.map((id) => encodeURIComponent(id)).join(',');
     return restGet<FinancialSplitRow[]>(
         `financial_splits?select=transaction_id,platform_amount,manager_amount,applied_percentage&transaction_id=in.(${inList})`,
+        12_000,
+    );
+}
+
+/** Splits de compras pagas com crédito EventFest (gravados em credit_financial_splits). */
+export async function fetchCreditSplitsRest(spendOrderIds: string[]): Promise<CreditSplitRow[]> {
+    if (spendOrderIds.length === 0) return [];
+
+    const inList = spendOrderIds.map((id) => encodeURIComponent(id)).join(',');
+    return restGet<CreditSplitRow[]>(
+        `credit_financial_splits?select=spend_order_id,platform_amount,manager_amount,applied_percentage&spend_order_id=in.(${inList})`,
         12_000,
     );
 }

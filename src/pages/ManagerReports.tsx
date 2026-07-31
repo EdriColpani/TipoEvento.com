@@ -14,6 +14,7 @@ import { isConsumptionOrLicensePlan, companyAllowsTicketSales } from '@/utils/co
 import { isPlanFeatureEnabled, type PlanFeatureKey } from '@/constants/plan-features';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
+import AdminCommissionChartCard from '@/components/admin/AdminCommissionChartCard';
 
 const ReportCard: React.FC<{ icon: React.ReactNode, title: string, description: string, onClick: () => void }> = ({ icon, title, description, onClick }) => (
     <Card 
@@ -108,7 +109,10 @@ const ManagerReports: React.FC = () => {
         isAdminMaster,
         enabled: isManagerPro && !isAdminMaster && !!company?.id,
     });
-    const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData(userId, isAdminMaster || false);
+    const { data: salesData, isLoading: isLoadingSalesData } = useSalesChartData(
+        isAdminMaster ? undefined : userId,
+        false,
+    );
     const creditAccess = useCreditReportsAccess(userId);
 
     const visibleReports = REPORT_CARDS.filter((card) =>
@@ -269,34 +273,38 @@ const ManagerReports: React.FC = () => {
                 </div>
             )}
             
-            <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6">
-                <CardHeader className="p-0 mb-4">
-                    <CardTitle className="text-white text-xl flex items-center">
-                        <BarChart3 className="h-5 w-5 mr-2 text-yellow-500" />
-                        Visualização Rápida
-                    </CardTitle>
-                    <CardDescription className="text-gray-400 text-sm">
-                        Gráfico de vendas dos últimos 30 dias (em desenvolvimento).
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="p-0 h-64 bg-black/40 rounded-xl flex items-center justify-center">
-                    {(isLoadingSalesData) ? (
-                        <div className="text-center">
-                            <BarChart3 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-2" />
-                            <p className="text-gray-400">Carregando dados do gráfico...</p>
-                        </div>
-                    ) : (salesData && salesData.length > 0) ? (
-                        <div className="relative w-full h-full p-4">
-                            <SalesLineChart data={salesData} datasetLabel="Faturamento diário" />
-                        </div>
-                    ) : (
-                        <div className="text-center">
-                            <BarChart3 className="h-8 w-8 text-gray-500 mx-auto mb-2" />
-                            <p className="text-gray-400">Nenhum dado de vendas encontrado para os últimos 30 dias.</p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+            {isAdminMaster ? (
+                <AdminCommissionChartCard enabled />
+            ) : (
+                <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6">
+                    <CardHeader className="p-0 mb-4">
+                        <CardTitle className="text-white text-xl flex items-center">
+                            <BarChart3 className="h-5 w-5 mr-2 text-yellow-500" />
+                            Visualização Rápida
+                        </CardTitle>
+                        <CardDescription className="text-gray-400 text-sm">
+                            Faturamento dos últimos 30 dias.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0 h-64 bg-black/40 rounded-xl flex items-center justify-center">
+                        {(isLoadingSalesData) ? (
+                            <div className="text-center">
+                                <BarChart3 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-2" />
+                                <p className="text-gray-400">Carregando dados do gráfico...</p>
+                            </div>
+                        ) : (salesData && salesData.length > 0) ? (
+                            <div className="relative w-full h-full p-4">
+                                <SalesLineChart data={salesData} datasetLabel="Faturamento diário" />
+                            </div>
+                        ) : (
+                            <div className="text-center">
+                                <BarChart3 className="h-8 w-8 text-gray-500 mx-auto mb-2" />
+                                <p className="text-gray-400">Nenhum dado de vendas encontrado para os últimos 30 dias.</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 };
