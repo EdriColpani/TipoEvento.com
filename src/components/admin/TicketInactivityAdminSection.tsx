@@ -9,7 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Mail, Play, Save } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useSystemBillingSettings } from '@/hooks/use-system-billing-settings';
+import {
+    saveTicketInactivitySettings,
+    useSystemBillingSettings,
+} from '@/hooks/use-system-billing-settings';
 import {
     adminRunTicketInactivityCheck,
     adminRunTicketInactivityAutoDeactivateJob,
@@ -26,7 +29,6 @@ import {
     billingSpinner,
     billingTableHead,
 } from '@/constants/billing-ui';
-import { supabase } from '@/integrations/supabase/client';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 
 interface AutoDeactivateLogRow {
@@ -94,18 +96,12 @@ const TicketInactivityAdminSection: React.FC<TicketInactivityAdminSectionProps> 
         setIsSaving(true);
         const toastId = showLoading('Salvando regras de inatividade...');
         try {
-            const { error } = await supabase.from('system_billing_settings').upsert(
-                {
-                    id: 1,
-                    ticket_inactivity_enabled: inactivityEnabled,
-                    ticket_inactivity_fee_default: fee,
-                    ticket_inactivity_auto_deactivate_enabled: autoDeactivateEnabled,
-                    ticket_inactivity_auto_deactivate_days: days,
-                    updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'id' },
-            );
-            if (error) throw error;
+            await saveTicketInactivitySettings({
+                enabled: inactivityEnabled,
+                feeDefault: fee,
+                autoDeactivateEnabled,
+                autoDeactivateDays: days,
+            });
             dismissToast(toastId);
             showSuccess('Regras de inatividade salvas.');
             invalidate();

@@ -17,6 +17,22 @@ const supabaseService = createClient(
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+// O job interno confia no payload recebido em vez de consultar o Mercado Pago,
+// então só pode ser aceito de quem possui a service role key (nunca exposta ao cliente).
+function isTrustedInternalCaller(req: Request): boolean {
+  const serviceKey = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '').trim();
+  if (!serviceKey) return false;
+
+  const bearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (bearer.length !== serviceKey.length) return false;
+
+  let diff = 0;
+  for (let i = 0; i < serviceKey.length; i += 1) {
+    diff |= bearer.charCodeAt(i) ^ serviceKey.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 async function logCheckoutOps(params: {
   eventId: string | null | undefined;
   correlationId: string;
@@ -96,12 +112,13 @@ serve(async (req) => {
       : rawNotificationType;
 
   const internalJobIdHeader = req.headers.get('X-Internal-Webhook-Job');
-  const workerTokenHeaderEarly = (req.headers.get('X-Webhook-Worker-Token') ?? '').trim();
-  const expectedWorkerTokenEarly = (Deno.env.get('WEBHOOK_WORKER_TOKEN') ?? 'internal').trim();
-  const isInternalJobRequest = body?._internalJob === true
-    && body?.payment
-    && internalJobIdHeader
-    && workerTokenHeaderEarly === expectedWorkerTokenEarly;
+  const claimsInternalJob = body?._internalJob === true && Boolean(body?.payment) && Boolean(internalJobIdHeader);
+  const isInternalJobRequest = claimsInternalJob && isTrustedInternalCaller(req);
+
+  if (claimsInternalJob && !isInternalJobRequest) {
+    console.error('[MP Webhook] Internal job rejected: caller is not authenticated as service role.');
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+  }
 
   if (!isInternalJobRequest) {
     if (!normalizedNotificationType) {
@@ -136,8 +153,6 @@ serve(async (req) => {
 
   try {
     const internalJobId = internalJobIdHeader;
-    const workerTokenHeader = workerTokenHeaderEarly;
-    const expectedWorkerToken = expectedWorkerTokenEarly;
     const isInternalJob = isInternalJobRequest;
 
     let mpPaymentData: Record<string, any>;
@@ -408,13 +423,11 @@ serve(async (req) => {
         });
 
         const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
-        const workerToken = (Deno.env.get('WEBHOOK_WORKER_TOKEN') ?? 'internal').trim();
         const triggerWorker = fetch(`${supabaseUrl}/functions/v1/process-payment-webhook-jobs`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
             'Content-Type': 'application/json',
-            'X-Webhook-Worker-Token': workerToken,
           },
           body: JSON.stringify({ limit: 5 }),
         });
@@ -929,7 +942,7 @@ serve(async (req) => {
                 manager_net_amount: managerAmount,
                 gross_sale_amount: grossSaleAmount,
                 mercadopago_fee_amount: feeAmount,
-                net_after_mp_amount: netAfterMpAmount,
+                net_after_mp_amount: netAmountAfterMp,
             };
             
             return {

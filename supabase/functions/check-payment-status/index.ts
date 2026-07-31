@@ -52,6 +52,36 @@ function isMpApproved(status: string | null): boolean {
   return status === "approved" || status === "authorized";
 }
 
+/**
+ * O split financeiro só é gravado pelo webhook. Quando o MP não reenvia a notificação
+ * de aprovado, o recebível fica pago sem financial_splits — aqui garantimos o registro.
+ */
+async function ensureFinancialSplit(transactionId: string): Promise<boolean> {
+  const { count, error } = await supabaseService
+    .from("financial_splits")
+    .select("id", { count: "exact", head: true })
+    .eq("transaction_id", transactionId);
+
+  if (error) {
+    console.error("[check-payment-status] Failed to check financial_splits:", error);
+    return false;
+  }
+
+  if ((count ?? 0) > 0) return true;
+
+  const { error: backfillError } = await supabaseService.rpc(
+    "admin_backfill_missing_financial_splits",
+    { p_receivable_id: transactionId },
+  );
+
+  if (backfillError) {
+    console.error("[check-payment-status] Failed to backfill financial_splits:", backfillError);
+    return false;
+  }
+
+  return true;
+}
+
 async function triggerWebhookReprocess(mpPaymentId: string): Promise<{
   triggered: boolean;
   httpStatus: number | null;
@@ -228,14 +258,19 @@ serve(async (req) => {
       mp_payment_id: mpPaymentId,
       mp_preference_id: mpPreferenceId,
       gross_amount: mpFinancials.grossAmount,
-      mp_fee_amount: mpFinancials.mpFeeAmount,
-      platform_fee_amount: mpFinancials.platformFeeAmount,
-      net_amount_after_mp: mpFinancials.collectorNetAmount,
     };
 
-    if (isMpApproved(paymentStatus) && receivable.status !== "paid") {
-      updatePayload.status = "paid";
-      updatePayload.paid_at = new Date().toISOString();
+    // Taxas só existem depois da liquidação. Gravá-las em pagamento não aprovado
+    // suja o receivable e contamina os relatórios de comissão.
+    if (isMpApproved(paymentStatus)) {
+      updatePayload.mp_fee_amount = mpFinancials.mpFeeAmount;
+      updatePayload.platform_fee_amount = mpFinancials.platformFeeAmount;
+      updatePayload.net_amount_after_mp = mpFinancials.collectorNetAmount;
+
+      if (receivable.status !== "paid") {
+        updatePayload.status = "paid";
+        updatePayload.paid_at = new Date().toISOString();
+      }
     }
 
     await supabaseService.from("receivables").update(updatePayload).eq("id", transactionId);
@@ -264,10 +299,13 @@ serve(async (req) => {
       processingResult = webhookRun.result;
     }
 
+    let splitRecorded = false;
+
     if (isMpApproved(paymentStatus)) {
       const emitResult = await emitReceivableTicketsForPaidPurchase(supabaseService, transactionId);
       ticketsEmitted = emitResult.updated;
       ticketsExpected = emitResult.expected;
+      splitRecorded = await ensureFinancialSplit(transactionId);
     }
 
     const assignment = await countAssignedTickets(
@@ -284,7 +322,9 @@ serve(async (req) => {
 
     const requiresAttention =
       isMpApproved(paymentStatus) &&
-      (assignment.assigned < assignment.expected || (refreshedReceivable?.status ?? receivable.status) !== "paid");
+      (assignment.assigned < assignment.expected ||
+        (refreshedReceivable?.status ?? receivable.status) !== "paid" ||
+        !splitRecorded);
 
     if (requiresAttention) {
       await logPaymentEvent({
@@ -303,6 +343,7 @@ serve(async (req) => {
           tickets_emitted: ticketsEmitted,
           tickets_expected: ticketsExpected,
           tickets_assigned: assignment.assigned,
+          split_recorded: splitRecorded,
         },
       });
     }
@@ -325,6 +366,7 @@ serve(async (req) => {
         ticketsEmitted,
         ticketsExpected,
         ticketsAssigned: assignment.assigned,
+        splitRecorded,
         requiresAttention,
       }),
       { status: 200, headers: corsHeaders },

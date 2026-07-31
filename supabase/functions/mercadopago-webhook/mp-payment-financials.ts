@@ -30,7 +30,11 @@ function isPlatformFeeType(type: string): boolean {
 export function extractMpPaymentFinancials(mpPaymentData: Record<string, unknown>): MpPaymentFinancials {
   const grossAmount = toAmount(mpPaymentData.transaction_amount);
   const transactionDetails = mpPaymentData.transaction_details as Record<string, unknown> | undefined;
-  const collectorNet = toAmount(transactionDetails?.net_received_amount);
+  const rawCollectorNet = toAmount(transactionDetails?.net_received_amount);
+  // net_received_amount = 0 significa "não liquidado" (pendente, cancelado, expirado),
+  // não "o recebedor ficou com zero". Derivar taxas desse zero fazia o residual
+  // (bruto - 0 - 0) virar comissão da plataforma, ou seja, o ingresso inteiro como fee.
+  const collectorNet = rawCollectorNet !== null && rawCollectorNet > 0 ? rawCollectorNet : null;
 
   let platformFee =
     toAmount(mpPaymentData.marketplace_fee) ??

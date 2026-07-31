@@ -378,6 +378,11 @@ const FinancialReports: React.FC = () => {
                             (TED/PIX). Veja também a coluna Canal (quando disponível).
                         </li>
                         <li>
+                            <strong className="text-white">Pagamento com crédito EventFest</strong>: coluna{' '}
+                            <strong className="text-white">Split</strong> = Crédito; não há split no Mercado Pago —
+                            comissão e líquido do gestor ficam na carteira e entram nos repasses de crédito.
+                        </li>
+                        <li>
                             <strong className="text-white">R$ Comissão Sistema</strong> = comissão EventFest.{' '}
                             <strong className="text-white">Recebido gestor</strong> = líquido (extrato MP no modo
                             split, ou a pagar/pago no D+1 no modo banco).
@@ -462,7 +467,14 @@ const FinancialReports: React.FC = () => {
                                         </TableCell>
                                         <TableCell>
                                             {(transaction.status === 'paid' || transaction.payment_status === 'approved') ? (
-                                                transaction.split_recorded ? (
+                                                transaction.split_source === 'credit' ? (
+                                                    <span
+                                                        className="text-xs px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                                                        title="Compra paga com crédito EventFest — split registrado na carteira, sem passar pelo Mercado Pago"
+                                                    >
+                                                        Crédito
+                                                    </span>
+                                                ) : transaction.split_recorded ? (
                                                     <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/40">
                                                         Registrado
                                                     </span>

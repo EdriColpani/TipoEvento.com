@@ -12,14 +12,33 @@ const supabaseService = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
 );
 
+function timingSafeEquals(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+// Fail-closed: sem service role key (ou token dedicado, quando configurado) ninguém
+// dispara o worker, que processa pagamentos confiando no payload da fila.
+function isAuthorized(req: Request): boolean {
+  const serviceKey = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '').trim();
+  const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (timingSafeEquals(bearer, serviceKey)) return true;
+
+  const workerToken = (Deno.env.get('WEBHOOK_WORKER_TOKEN') ?? '').trim();
+  const headerToken = (req.headers.get('x-webhook-worker-token') ?? '').trim();
+  return timingSafeEquals(headerToken, workerToken);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const workerToken = (Deno.env.get('WEBHOOK_WORKER_TOKEN') ?? '').trim();
-  const auth = (req.headers.get('x-webhook-worker-token') ?? '').trim();
-  if (workerToken && auth !== workerToken) {
+  if (!isAuthorized(req)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: corsHeaders,
@@ -49,7 +68,6 @@ serve(async (req) => {
             Authorization: `Bearer ${serviceKey}`,
             'Content-Type': 'application/json',
             'X-Internal-Webhook-Job': jobId,
-            'X-Webhook-Worker-Token': workerToken || 'internal',
           },
           body: JSON.stringify({
             _internalJob: true,
