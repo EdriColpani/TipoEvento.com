@@ -12,8 +12,7 @@ import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast
 import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
-import { supabase } from '@/integrations/supabase/client';
-import { FunctionsHttpError } from '@supabase/supabase-js';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import {
@@ -213,106 +212,71 @@ const EventDetails: React.FC = () => {
                 return;
             }
 
-            const response = await supabase.functions.invoke('create-payment-preference', {
-                body: {
+            // fetch + timeout: supabase.functions.invoke pode ficar pendurado no getSession
+            // e a UI nunca sai de "Processando...".
+            const edgeData = await invokeEdgeFunctionRest<{
+                checkoutUrl?: string;
+                error?: string;
+                hint?: string;
+                mpCode?: string;
+            }>(
+                'create-payment-preference',
+                {
                     eventId: id,
                     clientOrigin: typeof window !== 'undefined' ? window.location.origin : '',
                     idempotencyKey: checkoutIdempotencyKeyRef.current,
                     queueSessionToken: queue.sessionToken ?? undefined,
-                    purchaseItems: purchaseItems.map(item => ({
+                    purchaseItems: purchaseItems.map((item) => ({
                         ticketTypeId: item.ticketTypeId,
                         quantity: item.quantity,
                         price: item.price,
                         name: item.name,
                     })),
                 },
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    'x-idempotency-key': checkoutIdempotencyKeyRef.current,
-                }
-            });
-
-            let errorMessage = "Falha ao iniciar o pagamento. Tente novamente.";
-
-            if (response.error) {
-                console.error("Edge Function error:", response.error);
-
-                let payload = response.data as
-                    | { error?: string; hint?: string; mpCode?: string }
-                    | undefined;
-
-                // Em respostas non-2xx, o supabase-js pode não preencher `data`.
-                // Nesse caso, tentamos extrair o JSON diretamente do contexto do erro.
-                if (
-                    (!payload || typeof payload !== 'object') &&
-                    response.error instanceof FunctionsHttpError
-                ) {
-                    try {
-                        const contextPayload = await response.error.context.json();
-                        if (contextPayload && typeof contextPayload === 'object') {
-                            payload = contextPayload as { error?: string; hint?: string; mpCode?: string };
-                        }
-                    } catch (contextParseError) {
-                        console.warn('Não foi possível ler o corpo do erro da Edge Function:', contextParseError);
-                    }
-                }
-
-                if (payload && typeof payload === 'object' && typeof payload.error === 'string') {
-                    errorMessage = payload.error;
-                    if (payload.hint) {
-                        errorMessage = `${payload.error} — ${payload.hint}`;
-                    } else if (payload.mpCode === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES') {
-                        errorMessage =
-                            'Pagamento bloqueado pelo Mercado Pago (políticas). Verifique no painel MP as URLs permitidas e as credenciais de produção.';
-                    }
-                } else if (response.error.message) {
-                    // Verifica se a mensagem de erro contém informações úteis
-                    if (response.error.message.includes('404') || response.error.message.includes('not found')) {
-                        errorMessage = "Serviço de pagamento não encontrado. Por favor, tente novamente mais tarde ou contate o suporte.";
-                    } else if (response.error.message.includes('401') || response.error.message.includes('Unauthorized')) {
-                        errorMessage = "Sessão expirada. Por favor, faça login novamente.";
-                    } else if (response.error.message.includes('500') || response.error.message.includes('Internal')) {
-                        errorMessage = "Erro interno do servidor. Por favor, tente novamente mais tarde.";
-                    } else {
-                        errorMessage = response.error.message;
-                    }
-                } else {
-                    errorMessage = "Erro ao conectar com o serviço de pagamento. Verifique sua conexão e tente novamente.";
-                }
-                throw new Error(errorMessage);
-            }
-            
-            const edgeData = response.data;
+                {
+                    timeoutMs: 45_000,
+                    idempotencyKey: checkoutIdempotencyKeyRef.current,
+                },
+            );
 
             if (!edgeData) {
-                throw new Error("Resposta vazia do servidor de pagamento. Tente novamente.");
+                throw new Error('Resposta vazia do servidor de pagamento. Tente novamente.');
             }
 
             if (edgeData.error) {
-                // Este caso lida se a Edge Function retornar um status 2xx, mas com um erro no corpo
-                throw new Error(edgeData.error);
+                let errorMessage = edgeData.error;
+                if (edgeData.hint) {
+                    errorMessage = `${edgeData.error} — ${edgeData.hint}`;
+                } else if (edgeData.mpCode === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES') {
+                    errorMessage =
+                        'Pagamento bloqueado pelo Mercado Pago (políticas). Verifique no painel MP as URLs permitidas e as credenciais de produção.';
+                }
+                throw new Error(errorMessage);
             }
-            
+
             if (!edgeData.checkoutUrl) {
-                throw new Error("URL de pagamento não foi gerada. Por favor, tente novamente ou contate o suporte.");
+                throw new Error(
+                    'URL de pagamento não foi gerada. Por favor, tente novamente ou contate o suporte.',
+                );
             }
-            
-            const checkoutUrl = edgeData.checkoutUrl;
-            
+
             dismissToast(toastId);
-            showSuccess("Redirecionando para o Mercado Pago...");
+            showSuccess('Redirecionando para o Mercado Pago...');
             checkoutIdempotencyKeyRef.current = generateRandomUuid();
-
-            // 4. Redirecionar para a URL de checkout
-            window.location.href = checkoutUrl;
-
-        } catch (error: any) {
-            if (toastId) {
-                dismissToast(toastId);
+            window.location.href = edgeData.checkoutUrl;
+        } catch (error: unknown) {
+            dismissToast(toastId);
+            console.error('Erro ao criar preferência de pagamento:', error);
+            const message =
+                error instanceof Error ? error.message : 'Ocorreu um erro inesperado. Tente novamente.';
+            if (message.includes('Sessão expirada')) {
+                showError(message);
+                navigate('/login', {
+                    state: { from: `${location.pathname}${location.search}` },
+                });
+            } else {
+                showError(message);
             }
-            console.error("Erro ao criar preferência de pagamento:", error);
-            // Exibe a mensagem de erro detalhada (seja do Edge Function ou do Mercado Pago)
-            showError(error.message || "Ocorreu um erro inesperado. Tente novamente.");
         } finally {
             setIsProcessing(false);
         }

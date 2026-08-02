@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
+import { restGet } from '@/utils/supabase-rest';
 import { showError, showSuccess } from '@/utils/toast';
 
 interface EventForFilter {
@@ -20,7 +20,6 @@ interface RegistrationRow {
   id: string;
   event_id: string;
   event_title: string;
-  full_name: string;
   /** code_wristbands (ex.: BASE-001) — mesmo código do e-mail; fallback: UUID do QR (qr_code) */
   ingresso_code: string | null;
   cpf: string;
@@ -35,37 +34,48 @@ interface RegistrationRow {
   created_at: string;
 }
 
+type RegistrationApiRow = {
+  id: string;
+  event_id: string;
+  full_name: string;
+  cpf: string;
+  turma_id: string | null;
+  qr_code: string | null;
+  city: string;
+  state: string;
+  phone: string;
+  email: string;
+  confirmed: boolean | null;
+  confirmed_at: string | null;
+  created_at: string;
+  events: { title: string } | null;
+  event_turmas: { nome: string } | null;
+};
+
 const fetchEventsForFilter = async (): Promise<EventForFilter[]> => {
-  const { data, error } = await supabase
-    .from('events')
-    .select('id, title')
-    .order('title', { ascending: true });
-  if (error) throw error;
-  return data;
+  const data = await restGet<EventForFilter[]>(
+    'events?select=id,title&order=title.asc',
+    12_000,
+  );
+  return data || [];
 };
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const fetchRegistrations = async (eventId: string | null, search: string): Promise<RegistrationRow[]> => {
-  let query = supabase
-    .from('event_registrations')
-    .select(
-      'id, event_id, full_name, cpf, turma_id, qr_code, city, state, phone, email, confirmed, confirmed_at, created_at, events(title), event_turmas(nome)',
-    )
-    .order('created_at', { ascending: false });
+const fetchRegistrations = async (eventId: string | null): Promise<RegistrationRow[]> => {
+  const select =
+    'id,event_id,full_name,cpf,turma_id,qr_code,city,state,phone,email,confirmed,confirmed_at,created_at,events(title),event_turmas(nome)';
+  const eventFilter = eventId ? `&event_id=eq.${encodeURIComponent(eventId)}` : '';
+  const raw = await restGet<RegistrationApiRow[]>(
+    `event_registrations?select=${select}${eventFilter}&order=created_at.desc`,
+    15_000,
+  );
 
-  if (eventId) {
-    query = query.eq('event_id', eventId);
-  }
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  const raw = (data || []) as any[];
+  const rowsRaw = raw || [];
   const analyticsIds = [
     ...new Set(
-      raw
+      rowsRaw
         .map((row) => (typeof row.qr_code === 'string' ? row.qr_code.trim() : ''))
         .filter((id) => UUID_RE.test(id)),
     ),
@@ -73,23 +83,25 @@ const fetchRegistrations = async (eventId: string | null, search: string): Promi
 
   let codeByAnalyticsId = new Map<string, string>();
   if (analyticsIds.length > 0) {
-    const { data: waRows, error: waErr } = await supabase
-      .from('wristband_analytics')
-      .select('id, code_wristbands')
-      .in('id', analyticsIds);
-    if (!waErr && waRows) {
-      codeByAnalyticsId = new Map(
-        waRows.map((w: { id: string; code_wristbands: string | null }) => [
-          w.id,
-          (w.code_wristbands || '').trim(),
-        ]),
+    try {
+      const inList = analyticsIds.map((id) => encodeURIComponent(id)).join(',');
+      const waRows = await restGet<Array<{ id: string; code_wristbands: string | null }>>(
+        `wristband_analytics?select=id,code_wristbands&id=in.(${inList})`,
+        12_000,
       );
+      if (waRows) {
+        codeByAnalyticsId = new Map(
+          waRows.map((w) => [w.id, (w.code_wristbands || '').trim()]),
+        );
+      }
+    } catch {
+      // Código humano é opcional; se falhar, usa o qr_code bruto.
     }
   }
 
-  let rows = raw.map((row: any) => {
+  return rowsRaw.map((row) => {
     const qr = typeof row.qr_code === 'string' ? row.qr_code.trim() : '';
-    const human = qr && codeByAnalyticsId.get(qr);
+    const human = qr ? codeByAnalyticsId.get(qr) : undefined;
     const ingresso_code = human && human.length > 0 ? human : qr || null;
 
     return {
@@ -110,19 +122,6 @@ const fetchRegistrations = async (eventId: string | null, search: string): Promi
       created_at: row.created_at,
     } as RegistrationRow;
   });
-
-  if (search.trim()) {
-    const term = search.toLowerCase();
-    rows = rows.filter(
-      (r) =>
-        r.full_name.toLowerCase().includes(term) ||
-        r.cpf.toLowerCase().includes(term) ||
-        r.email.toLowerCase().includes(term) ||
-        (r.ingresso_code && r.ingresso_code.toLowerCase().includes(term)),
-    );
-  }
-
-  return rows;
 };
 
 const RegistrationsReports: React.FC = () => {
@@ -131,7 +130,44 @@ const RegistrationsReports: React.FC = () => {
   const [selectedEventId, setSelectedEventId] = useState<string | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  if (profile && profile.tipo_usuario_id !== 1 && profile.tipo_usuario_id !== 2) {
+  const canAccess =
+    !!profile && (profile.tipo_usuario_id === 1 || profile.tipo_usuario_id === 2);
+
+  const { data: events, isLoading: isLoadingEvents } = useQuery<EventForFilter[]>({
+    queryKey: ['registration_report_events'],
+    queryFn: fetchEventsForFilter,
+    enabled: canAccess,
+    retry: 1,
+  });
+
+  const {
+    data: registrations,
+    isLoading: isLoadingRegistrations,
+    isError: isRegistrationsError,
+    error: registrationsError,
+    refetch: refetchRegistrations,
+  } = useQuery<RegistrationRow[]>({
+    // Busca por texto é filtro local; não entra na queryKey para não refetch a cada tecla.
+    queryKey: ['registration_reports', selectedEventId],
+    queryFn: () => fetchRegistrations(selectedEventId === 'all' ? null : selectedEventId),
+    enabled: canAccess,
+    retry: 1,
+  });
+
+  const visibleRegistrations = React.useMemo(() => {
+    const rows = registrations || [];
+    if (!searchTerm.trim()) return rows;
+    const term = searchTerm.toLowerCase();
+    return rows.filter(
+      (r) =>
+        r.full_name.toLowerCase().includes(term) ||
+        r.cpf.toLowerCase().includes(term) ||
+        r.email.toLowerCase().includes(term) ||
+        (r.ingresso_code && r.ingresso_code.toLowerCase().includes(term)),
+    );
+  }, [registrations, searchTerm]);
+
+  if (profile && !canAccess) {
     return (
       <div className="max-w-7xl mx-auto text-center py-20">
         <h1 className="text-3xl font-serif text-red-500 mb-4">Acesso Negado</h1>
@@ -146,18 +182,8 @@ const RegistrationsReports: React.FC = () => {
     );
   }
 
-  const { data: events, isLoading: isLoadingEvents } = useQuery<EventForFilter[]>({
-    queryKey: ['registration_report_events'],
-    queryFn: fetchEventsForFilter,
-  });
-
-  const { data: registrations, isLoading: isLoadingRegistrations } = useQuery<RegistrationRow[]>({
-    queryKey: ['registration_reports', selectedEventId, searchTerm],
-    queryFn: () => fetchRegistrations(selectedEventId === 'all' ? null : selectedEventId, searchTerm),
-  });
-
   const handleExportCsv = () => {
-    if (!registrations || registrations.length === 0) {
+    if (!visibleRegistrations || visibleRegistrations.length === 0) {
       showError('Nenhum dado para exportar.');
       return;
     }
@@ -177,7 +203,7 @@ const RegistrationsReports: React.FC = () => {
       'Data/Hora Confirmação',
     ];
 
-    const rows = registrations.map((r) => [
+    const rows = visibleRegistrations.map((r) => [
       `"${r.event_title.replace(/"/g, '""')}"`,
       `"${r.full_name.replace(/"/g, '""')}"`,
       `"${(r.ingresso_code || '-').replace(/"/g, '""')}"`,
@@ -205,7 +231,7 @@ const RegistrationsReports: React.FC = () => {
   };
 
   const handleExportPdf = async () => {
-    if (!registrations || registrations.length === 0) {
+    if (!visibleRegistrations || visibleRegistrations.length === 0) {
       showError('Nenhum dado para exportar.');
       return;
     }
@@ -240,7 +266,7 @@ const RegistrationsReports: React.FC = () => {
           'Data/hora confirmacao',
         ],
       ];
-      const body = registrations.map((r) => [
+      const body = visibleRegistrations.map((r) => [
         r.event_title.slice(0, 28),
         r.full_name.slice(0, 32),
         (r.ingresso_code || '-').slice(0, 22),
@@ -272,6 +298,10 @@ const RegistrationsReports: React.FC = () => {
   };
 
   const filteredEvents = events || [];
+  const errorMessage =
+    registrationsError instanceof Error
+      ? registrationsError.message
+      : 'Não foi possível carregar as inscrições.';
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -340,7 +370,7 @@ const RegistrationsReports: React.FC = () => {
           <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
-              className="border-yellow-500/40 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/15 text-sm"
+              className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 text-sm"
               onClick={handleExportCsv}
             >
               <Download className="h-4 w-4 mr-2" />
@@ -348,7 +378,7 @@ const RegistrationsReports: React.FC = () => {
             </Button>
             <Button
               variant="outline"
-              className="border-yellow-500/40 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/15 text-sm"
+              className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 text-sm"
               onClick={handleExportPdf}
             >
               <FileText className="h-4 w-4 mr-2" />
@@ -384,14 +414,26 @@ const RegistrationsReports: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoadingRegistrations ? (
+                {!canAccess || isLoadingRegistrations ? (
                   <TableRow>
                     <TableCell colSpan={11} className="text-center py-6 text-gray-400">
                       Carregando inscrições...
                     </TableCell>
                   </TableRow>
-                ) : registrations && registrations.length > 0 ? (
-                  registrations.map((r) => (
+                ) : isRegistrationsError ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center py-6 space-y-3">
+                      <p className="text-red-400">{errorMessage}</p>
+                      <Button
+                        onClick={() => refetchRegistrations()}
+                        className="bg-yellow-500 text-black hover:bg-yellow-600"
+                      >
+                        Tentar novamente
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ) : visibleRegistrations && visibleRegistrations.length > 0 ? (
+                  visibleRegistrations.map((r) => (
                     <TableRow key={r.id} className="hover:bg-yellow-500/5">
                       <TableCell className="text-white">{r.event_title}</TableCell>
                       <TableCell className="text-white">{r.full_name}</TableCell>
@@ -441,4 +483,3 @@ const RegistrationsReports: React.FC = () => {
 };
 
 export default RegistrationsReports;
-

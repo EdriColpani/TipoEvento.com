@@ -51,7 +51,7 @@ export async function invokeEdgeFunctionRest<T>(
         return data as T;
     } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
-            throw new Error('Tempo esgotado ao gerar o QR. Verifique a conexão e tente novamente.');
+            throw new Error('Tempo esgotado ao falar com o servidor. Verifique a conexão e tente novamente.');
         }
         throw error;
     } finally {
