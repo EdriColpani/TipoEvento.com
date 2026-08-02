@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { getAuthAccessToken, readCachedAuthSession } from '@/utils/auth-session-cache';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { RpcTimeoutError } from '@/utils/supabase-rpc';
 
 export type CheckoutQueueStatus = 'idle' | 'joining' | 'waiting' | 'admitted' | 'error';
 
@@ -33,23 +34,20 @@ async function invokeCheckoutQueueFunction(
     const token = getAuthAccessToken();
     if (!token) throw new Error('Faça login para entrar na fila.');
 
-    const response = await supabase.functions.invoke('event-checkout-queue', {
-        body: {
+    const payload = await invokeEdgeFunctionRest<Record<string, unknown>>(
+        'event-checkout-queue',
+        {
             eventId,
             action,
             sessionToken,
         },
-        headers: { Authorization: `Bearer ${token}` },
-    });
+        { timeoutMs: 15_000 },
+    );
 
-    if (response.error) {
-        throw new Error(await parseEdgeFunctionError(response.error, response.data));
-    }
-
-    const payloadError = rpcPayloadError(response.data);
+    const payloadError = rpcPayloadError(payload);
     if (payloadError) throw new Error(payloadError);
 
-    return (response.data ?? {}) as Record<string, unknown>;
+    return payload ?? {};
 }
 
 export function useEventCheckoutQueue(eventId: string | undefined, enabled: boolean) {
@@ -62,6 +60,7 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
         error: null,
     });
     const pollRef = useRef<number | null>(null);
+    const joinInFlightRef = useRef(false);
 
     const storageKey = eventId ? `${STORAGE_KEY_PREFIX}${eventId}` : null;
 
@@ -114,6 +113,8 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
             return;
         }
 
+        if (joinInFlightRef.current) return;
+        joinInFlightRef.current = true;
         setState((prev) => ({ ...prev, status: 'joining', error: null }));
 
         try {
@@ -123,20 +124,23 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
             let payload: Record<string, unknown> | null = null;
             let lastError: Error | null = null;
 
-            const { data, error } = await supabase.rpc('join_event_checkout_queue', {
-                p_event_id: eventId,
-                p_client_user_id: userId,
-            });
-
-            if (error) {
-                lastError = new Error(error.message);
-            } else {
+            try {
+                const data = await callRpcRest<Record<string, unknown>>(
+                    'join_event_checkout_queue',
+                    {
+                        p_event_id: eventId,
+                        p_client_user_id: userId,
+                    },
+                    15_000,
+                );
                 const payloadError = rpcPayloadError(data);
                 if (payloadError) {
                     lastError = new Error(payloadError);
                 } else {
-                    payload = data as Record<string, unknown>;
+                    payload = data;
                 }
+            } catch (rpcErr) {
+                lastError = rpcErr instanceof Error ? rpcErr : new Error(String(rpcErr));
             }
 
             if (!payload) {
@@ -150,11 +154,14 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
             applyPayload(payload);
         } catch (err) {
             let message = err instanceof Error ? err.message : 'Erro ao entrar na fila.';
+            if (err instanceof RpcTimeoutError || message.includes('demorou demais')) {
+                message = 'A fila virtual demorou demais para responder. Recarregue a página.';
+            }
             if (message.includes('non-2xx')) {
                 message =
                     'Fila virtual indisponível. Verifique se a migration da fila foi aplicada no Supabase (db push).';
             }
-            if (message.includes('Could not find the function')) {
+            if (message.includes('Could not find the function') || message.includes('404')) {
                 message =
                     'Função da fila não encontrada no banco. Execute supabase db push no projeto Supabase.';
             }
@@ -167,6 +174,8 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
                 queueEnabled: true,
                 error: message,
             });
+        } finally {
+            joinInFlightRef.current = false;
         }
     }, [applyPayload, enabled, eventId]);
 
@@ -176,16 +185,17 @@ export function useEventCheckoutQueue(eventId: string | undefined, enabled: bool
         try {
             let payload: Record<string, unknown> | null = null;
 
-            const { data, error } = await supabase.rpc('poll_event_checkout_queue', {
-                p_session_token: state.sessionToken,
-            });
-
-            if (error) {
-                payload = await invokeCheckoutQueueFunction(eventId, 'poll', state.sessionToken);
-            } else {
+            try {
+                const data = await callRpcRest<Record<string, unknown>>(
+                    'poll_event_checkout_queue',
+                    { p_session_token: state.sessionToken },
+                    12_000,
+                );
                 const payloadError = rpcPayloadError(data);
                 if (payloadError) throw new Error(payloadError);
-                payload = data as Record<string, unknown>;
+                payload = data;
+            } catch {
+                payload = await invokeCheckoutQueueFunction(eventId, 'poll', state.sessionToken);
             }
 
             applyPayload(payload);
