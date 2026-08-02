@@ -95,8 +95,8 @@ async function fetchAccessByUf(params: {
     periodDays?: number;
 }): Promise<ManagerDashboardAccessMapData> {
     const periodDays = params.periodDays ?? 45;
-    const start = `${format(subDays(new Date(), periodDays - 1), 'yyyy-MM-dd')}T00:00:00Z`;
-    const end = `${format(new Date(), 'yyyy-MM-dd')}T23:59:59Z`;
+    const start = `${format(subDays(new Date(), periodDays - 1), 'yyyy-MM-dd')}T00:00:00-03:00`;
+    const end = `${format(new Date(), 'yyyy-MM-dd')}T23:59:59.999-03:00`;
 
     const sales = await fetchPaidSalesWithClients(
         start,

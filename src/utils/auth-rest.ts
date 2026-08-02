@@ -59,6 +59,66 @@ export async function fetchAuthUserViaRest(
     }
 }
 
+/**
+ * Renova access_token com refresh_token via Auth REST.
+ * Essencial no retorno do Mercado Pago: a página remonta e o JWT pode ter
+ * expirado; limpar sem refresh desloga o comprador no mesmo domínio.
+ */
+export async function refreshSessionViaRest(timeoutMs = 8_000): Promise<User | null> {
+    const cached = readCachedAuthSession();
+    if (!cached.refreshToken) return null;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+                apikey: supabaseAnonKey,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ refresh_token: cached.refreshToken }),
+        });
+
+        const data = (await response.json().catch(() => null)) as {
+            access_token?: string;
+            refresh_token?: string;
+            expires_in?: number;
+            expires_at?: number;
+            user?: User;
+        } | null;
+
+        if (!response.ok || !data?.access_token || !data.refresh_token || !data.user) {
+            return null;
+        }
+
+        persistAuthSession({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+            expires_in: data.expires_in ?? 3600,
+            expires_at: data.expires_at,
+            user: data.user,
+        });
+
+        void withTimeout(
+            supabase.auth.setSession({
+                access_token: data.access_token,
+                refresh_token: data.refresh_token,
+            }),
+            4_000,
+            { data: { session: null, user: null }, error: null },
+        );
+
+        return data.user;
+    } catch {
+        return null;
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
 type UpdateUserRestResult = {
     user?: { id?: string } | null;
     error?: { message?: string } | null;

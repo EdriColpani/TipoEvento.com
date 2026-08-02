@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserRole } from '@/hooks/use-user-role';
 import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT, isAccessTokenTimeValid, isAuthApiRejectedStatus } from '@/utils/auth-session-cache';
-import { fetchAuthUserViaRest } from '@/utils/auth-rest';
+import { fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
 import { clearAuthSessionIfCurrentToken, clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import {
@@ -58,12 +58,21 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         const boot = async () => {
             const stored = readCachedAuthSession();
 
-            if (!stored.accessToken) {
+            if (!stored.accessToken && !stored.refreshToken) {
                 clearSession();
                 return;
             }
 
-            if (!isAccessTokenTimeValid(stored.accessToken)) {
+            // Access token vencido: tenta refresh antes de deslogar.
+            // Sem isso, o retorno do Mercado Pago (full reload) apaga a sessão
+            // mesmo com refresh_token válido no mesmo domínio.
+            if (!stored.accessToken || !isAccessTokenTimeValid(stored.accessToken)) {
+                const refreshed = await refreshSessionViaRest(8_000);
+                if (cancelled) return;
+                if (refreshed?.id) {
+                    applyUser(refreshed.id, refreshed.email ?? undefined);
+                    return;
+                }
                 clearAuthSessionStorage();
                 clearSession();
                 return;
@@ -77,8 +86,14 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
                 return;
             }
 
-            // 401/403 no /auth/v1/user = sessão rejeitada (comum no cold boot com JWT morto).
+            // 401/403: tenta refresh uma vez antes de limpar (JWT rejeitado mas refresh ok).
             if (isAuthApiRejectedStatus(result.error?.status)) {
+                const refreshed = await refreshSessionViaRest(8_000);
+                if (cancelled) return;
+                if (refreshed?.id) {
+                    applyUser(refreshed.id, refreshed.email ?? undefined);
+                    return;
+                }
                 if (clearAuthSessionIfCurrentToken(stored.accessToken)) {
                     clearSession();
                 } else {

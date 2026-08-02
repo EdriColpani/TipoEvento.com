@@ -45,6 +45,14 @@ const EMPTY_DASHBOARD: DashboardData = {
 const PAID_OR =
     'or=(status.eq.paid,payment_status.eq.approved,payment_status.eq.authorized)';
 
+/** Janela em America/Sao_Paulo com offset explícito (evita exclusão de vendas noturnas). */
+function spDayWindow(daysAgoStart: number, daysAgoEnd: number): { start: string; end: string } {
+    return {
+        start: `${format(subDays(new Date(), daysAgoStart), 'yyyy-MM-dd')}T00:00:00-03:00`,
+        end: `${format(subDays(new Date(), daysAgoEnd), 'yyyy-MM-dd')}T23:59:59.999-03:00`,
+    };
+}
+
 type SaleRow = {
     total_value?: number;
     wristband_analytics_ids?: unknown;
@@ -92,15 +100,15 @@ const fetchDashboardData = async (
     userId?: string,
     isAdminMaster: boolean = false,
 ): Promise<DashboardData> => {
-    const today = new Date();
-    const currentWindowStart = format(subDays(today, 30), 'yyyy-MM-dd HH:mm:ss');
-    const currentWindowEnd = format(today, 'yyyy-MM-dd HH:mm:ss');
-    const previousWindowStart = format(subDays(today, 60), 'yyyy-MM-dd HH:mm:ss');
-    const previousWindowEnd = format(subDays(today, 31), 'yyyy-MM-dd HH:mm:ss');
+    // Últimos 30 dias civis (SP) vs 30 dias anteriores — ISO com -03:00.
+    // Antes usava `yyyy-MM-dd HH:mm:ss` sem fuso; o PostgREST tratava como UTC e
+    // vendas à noite no Brasil (ex.: 20h = 23h UTC) ficavam fora do "até agora".
+    const current = spDayWindow(29, 0);
+    const previous = spDayWindow(59, 30);
 
     const [currentMonthSalesData, previousMonthSalesData] = await Promise.all([
-        fetchPaidSales(currentWindowStart, currentWindowEnd, userId, isAdminMaster),
-        fetchPaidSales(previousWindowStart, previousWindowEnd, userId, isAdminMaster),
+        fetchPaidSales(current.start, current.end, userId, isAdminMaster),
+        fetchPaidSales(previous.start, previous.end, userId, isAdminMaster),
     ]);
 
     const currentMonthTotalSales = sumSales(currentMonthSalesData ?? []);
@@ -211,7 +219,7 @@ export const useDashboardData = (userId?: string, isAdminMaster: boolean = false
             }
         },
         enabled: !!userId || isAdminMaster,
-        staleTime: 1000 * 60 * 5,
+        staleTime: 60_000,
         retry: 1,
         placeholderData: EMPTY_DASHBOARD,
     });

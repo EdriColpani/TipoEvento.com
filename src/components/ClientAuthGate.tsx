@@ -93,8 +93,21 @@ const ClientAuthGate: React.FC = () => {
     }
 
     if (!isAuthenticated) {
+        const fullFrom = `${location.pathname}${location.search}`;
+        const isClientPrivatePath =
+            location.pathname === '/tickets' ||
+            location.pathname === '/profile' ||
+            location.pathname === '/wallet' ||
+            location.pathname.startsWith('/wallet/');
+
+        // Retorno do Mercado Pago / área logada: manda para login com returnTo,
+        // não para /informacoes (parecia "deslogou e perdeu a compra").
+        if (isClientPrivatePath) {
+            return <Navigate to="/login" replace state={{ from: fullFrom }} />;
+        }
+
         if (location.pathname === '/' || !isGuestAllowedPath(location.pathname)) {
-            return <Navigate to="/informacoes" replace state={{ from: location.pathname }} />;
+            return <Navigate to="/informacoes" replace state={{ from: fullFrom }} />;
         }
     }
 

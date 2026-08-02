@@ -47,8 +47,8 @@ async function fetchMonthlyRevenueData(
 
     const salesData = await restGet<SaleRow[]>(
         `receivables?select=created_at,total_value&${PAID_OR}${scope}` +
-            `&created_at=gte.${encodeURIComponent(format(startDate, 'yyyy-MM-dd HH:mm:ss'))}` +
-            `&created_at=lte.${encodeURIComponent(format(today, 'yyyy-MM-dd HH:mm:ss'))}` +
+            `&created_at=gte.${encodeURIComponent(`${format(startDate, 'yyyy-MM-dd')}T00:00:00-03:00`)}` +
+            `&created_at=lte.${encodeURIComponent(`${format(today, 'yyyy-MM-dd')}T23:59:59.999-03:00`)}` +
             `&order=created_at.asc&limit=5000`,
         15_000,
     );
