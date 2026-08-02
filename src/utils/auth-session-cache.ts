@@ -7,6 +7,7 @@ export type CachedAuthSession = {
     userId?: string;
     userEmail?: string;
     accessToken?: string;
+    refreshToken?: string;
 };
 
 export function getAuthStorageKey(): string {
@@ -26,12 +27,14 @@ export function readCachedAuthSession(): CachedAuthSession {
         if (!raw) return {};
         const parsed = JSON.parse(raw) as {
             access_token?: string;
+            refresh_token?: string;
             user?: { id?: string; email?: string | null };
         };
         return {
             userId: parsed.user?.id,
             userEmail: parsed.user?.email ?? undefined,
             accessToken: parsed.access_token,
+            refreshToken: parsed.refresh_token,
         };
     } catch {
         return {};

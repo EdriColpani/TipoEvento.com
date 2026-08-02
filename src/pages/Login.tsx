@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
-import { signInWithPasswordResilient, fetchAuthUserViaRest } from '@/utils/auth-rest';
+import { signInWithPasswordResilient, fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
 import { signOutSession, clearAuthSessionStorage, clearAuthSessionIfCurrentToken } from '@/utils/sign-out-session';
 import {
     readCachedAuthSession,
@@ -26,11 +26,19 @@ import {
 } from '@/utils/partner-password-setup';
 import type { User } from '@supabase/supabase-js';
 
-/** JWT no localStorage já passou do exp — limpa antes do login. */
-function clearExpiredCachedJwt(): void {
-    const token = readCachedAuthSession().accessToken;
-    if (!token) return;
-    if (!isAccessTokenTimeValid(token)) {
+/** JWT vencido: tenta refresh antes de limpar (evita perder sessão no retorno do MP). */
+async function ensureFreshCachedSession(): Promise<void> {
+    const cached = readCachedAuthSession();
+    if (!cached.accessToken) {
+        if (cached.refreshToken) {
+            await refreshSessionViaRest(8_000);
+        }
+        return;
+    }
+    if (isAccessTokenTimeValid(cached.accessToken)) return;
+
+    const refreshed = await refreshSessionViaRest(8_000);
+    if (!refreshed) {
         clearAuthSessionStorage();
     }
 }
@@ -40,7 +48,7 @@ function clearExpiredCachedJwt(): void {
  * Nunca inventa sessão a partir de 401/403 — isso gerava loop Avatar ↔ Login.
  */
 async function resolveExistingSessionUser(): Promise<User | null> {
-    clearExpiredCachedJwt();
+    await ensureFreshCachedSession();
     const cached = readCachedAuthSession();
 
     if (cached.accessToken) {
@@ -48,6 +56,8 @@ async function resolveExistingSessionUser(): Promise<User | null> {
         if (rest.user) return rest.user;
 
         if (isAuthApiRejectedStatus(rest.error?.status)) {
+            const refreshed = await refreshSessionViaRest(8_000);
+            if (refreshed) return refreshed;
             clearAuthSessionIfCurrentToken(cached.accessToken);
             return null;
         }
