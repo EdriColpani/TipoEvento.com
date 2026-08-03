@@ -1,0 +1,22 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.eventfest.rush"],
+        "components": [
+          {
+            "/": "/app-return",
+            "comment": "Retorno Mercado Pago → EventFest Rush"
+          },
+          {
+            "/": "/app-return/*"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.com.eventfest.rush"]
+  }
+}

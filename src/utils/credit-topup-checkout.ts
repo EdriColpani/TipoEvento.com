@@ -1,6 +1,5 @@
-import { supabase } from '@/integrations/supabase/client';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 
 export interface CreditTopupCheckoutResult {
     checkoutUrl: string;
@@ -18,32 +17,31 @@ export async function startCreditTopupCheckout(
         throw new Error('Faça login para recarregar créditos.');
     }
 
-    const { data, error } = await supabase.functions.invoke('create-credit-checkout', {
-        body: {
-            amount,
-            originCompanyId: options?.originCompanyId,
-            originEventId: options?.originEventId,
-            clientOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
-        },
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (error) {
-        throw new Error(await parseEdgeFunctionError(error, data));
-    }
-
-    const payload = data as {
+    // fetch + timeout: evita deadlock do supabase.functions.invoke / getSession
+    const payload = await invokeEdgeFunctionRest<{
         checkoutUrl?: string;
         orderId?: string;
         grossPaidAmount?: number;
         creditGrantedAmount?: number;
         error?: string;
-    };
+    }>(
+        'create-credit-checkout',
+        {
+            amount,
+            originCompanyId: options?.originCompanyId,
+            originEventId: options?.originEventId,
+            clientOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        },
+        { timeoutMs: 45_000 },
+    );
 
-    if (payload?.error) {
+    if (!payload) {
+        throw new Error('Resposta vazia do servidor de recarga.');
+    }
+    if (payload.error) {
         throw new Error(payload.error);
     }
-    if (!payload?.checkoutUrl || !payload?.orderId) {
+    if (!payload.checkoutUrl || !payload.orderId) {
         throw new Error('Resposta de pagamento inválida.');
     }
 

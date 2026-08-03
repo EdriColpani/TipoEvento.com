@@ -327,6 +327,16 @@ serve(async (req) => {
       ticketsEmitted = emitResult.updated;
       ticketsExpected = emitResult.expected;
       splitRecorded = await ensureFinancialSplit(transactionId);
+
+      const { data: ensurePayload, error: ensureErr } = await supabaseService.rpc(
+        "ensure_ticket_d1_settlement_for_receivable",
+        { p_receivable_id: transactionId },
+      );
+      if (ensureErr) {
+        console.error("[check-payment-status] ensure_ticket_d1_settlement_for_receivable:", ensureErr);
+      } else {
+        console.log("[check-payment-status] D+1 ensure:", JSON.stringify(ensurePayload));
+      }
     }
 
     const assignment = await countAssignedTickets(

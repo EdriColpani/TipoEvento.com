@@ -1,7 +1,6 @@
 import { getAuthAccessToken, readCachedAuthSession } from '@/utils/auth-session-cache';
-import { callRpcRest, callRpcPublicRest } from '@/utils/supabase-rest-rpc';
-import { supabase } from '@/integrations/supabase/client';
-import { parseEdgeFunctionError } from '@/utils/edge-function-error';
+import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
+import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import {
     detectCreditSpendChannel,
     ensureWalletBiometricForSpend,
@@ -58,24 +57,9 @@ export async function startCreditSpendCheckout(
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
     const channel = options?.channel ?? detectCreditSpendChannel(isMobile);
 
-    const { data, error } = await supabase.functions.invoke('credit-spend', {
-        body: {
-            eventId,
-            purchaseItems,
-            idempotencyKey: key,
-            channel,
-        },
-        headers: {
-            Authorization: `Bearer ${token}`,
-            'x-idempotency-key': key,
-        },
-    });
-
-    if (error) {
-        throw new Error(await parseEdgeFunctionError(error, data));
-    }
-
-    const payload = data as {
+    // fetch + timeout: supabase.functions.invoke pode ficar pendurado no getSession
+    // e a UI nunca sai de "Processando...".
+    const payload = await invokeEdgeFunctionRest<{
         ok?: boolean;
         spendOrderId?: string;
         balance?: number;
@@ -86,12 +70,28 @@ export async function startCreditSpendCheckout(
         duplicate?: boolean;
         publicDescription?: string;
         error?: string;
-    };
+    }>(
+        'credit-spend',
+        {
+            eventId,
+            purchaseItems,
+            idempotencyKey: key,
+            channel,
+        },
+        {
+            timeoutMs: 45_000,
+            idempotencyKey: key,
+        },
+    );
 
-    if (payload?.error) {
+    if (!payload) {
+        throw new Error('Resposta vazia do pagamento com crédito.');
+    }
+
+    if (payload.error) {
         throw new Error(payload.error);
     }
-    if (!payload?.ok || !payload?.spendOrderId) {
+    if (!payload.ok || !payload.spendOrderId) {
         throw new Error('Resposta de pagamento com crédito inválida.');
     }
 

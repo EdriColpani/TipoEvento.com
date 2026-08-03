@@ -570,7 +570,7 @@ serve(async (req) => {
     }
 
     // 9. Update receivables with payment gateway ID (MP preference ID) + canal de liquidação
-    await supabaseService
+    const { error: receivableChannelErr } = await supabaseService
         .from('receivables')
         .update({
             payment_gateway_id: mpResponse.id,
@@ -580,6 +580,42 @@ serve(async (req) => {
             collector_type: collectorType,
         })
         .eq('id', transactionId);
+
+    if (receivableChannelErr) {
+        console.error('[create-payment-preference] Failed to stamp settlement channel:', receivableChannelErr);
+        await releaseCheckoutReservation(transactionId, 'settlement_channel_update_failed');
+        return new Response(
+            JSON.stringify({
+                error: 'Não foi possível gravar o canal de liquidação da venda. Tente novamente.',
+            }),
+            { status: 500, headers: corsHeaders },
+        );
+    }
+
+    if (settlementChannel === 'manual_d1') {
+        const { data: channelRow, error: channelCheckErr } = await supabaseService
+            .from('receivables')
+            .select('settlement_channel, collector_type')
+            .eq('id', transactionId)
+            .maybeSingle();
+        if (
+            channelCheckErr
+            || channelRow?.settlement_channel !== 'manual_d1'
+            || channelRow?.collector_type !== 'platform'
+        ) {
+            console.error('[create-payment-preference] Channel verify failed:', {
+                channelCheckErr,
+                channelRow,
+            });
+            await releaseCheckoutReservation(transactionId, 'settlement_channel_verify_failed');
+            return new Response(
+                JSON.stringify({
+                    error: 'Canal D+1 não confirmado no recebível. Tente novamente.',
+                }),
+                { status: 500, headers: corsHeaders },
+            );
+        }
+    }
 
     // 11. Return checkout URL
     return new Response(JSON.stringify({ 
