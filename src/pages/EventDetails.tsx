@@ -322,8 +322,16 @@ const EventDetails: React.FC = () => {
             navigate(`/tickets?status=success&credit_spend_id=${result.spendOrderId}`);
         } catch (error: unknown) {
             dismissToast(toastId);
+            console.error('Erro ao pagar com crédito EventFest:', error);
             const message = error instanceof Error ? error.message : 'Erro ao pagar com crédito.';
-            showError(message);
+            if (message.includes('Faça login') || message.includes('Sessão expirada')) {
+                showError(message);
+                navigate('/login', {
+                    state: { from: `${location.pathname}${location.search}` },
+                });
+            } else {
+                showError(message);
+            }
         } finally {
             setIsCreditProcessing(false);
         }

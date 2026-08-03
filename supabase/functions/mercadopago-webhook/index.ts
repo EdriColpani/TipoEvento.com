@@ -495,6 +495,17 @@ serve(async (req) => {
                 const isFinancialSplitComplete = (splitCount ?? 0) >= 1;
 
                 if (isAssignmentsComplete && isFinancialSplitComplete) {
+                    // Safety net: vendas bank_transfer sem canal gravado podem ter splits
+                    // mas faltar o ledger D+1 — repara sem reprocessar ingresso.
+                    const { data: ensurePayload, error: ensureErr } = await supabaseService.rpc(
+                      'ensure_ticket_d1_settlement_for_receivable',
+                      { p_receivable_id: receivableAnyStatus.id },
+                    );
+                    if (ensureErr) {
+                      console.error('[MP Webhook] ensure_ticket_d1_settlement_for_receivable failed:', ensureErr);
+                    } else {
+                      console.log('[MP Webhook] D+1 ensure on already-paid:', JSON.stringify(ensurePayload));
+                    }
                     console.log(`[MP Webhook] Receivable already fully processed. Ignoring notification.`);
                     return new Response(JSON.stringify({ message: 'Receivable already processed.' }), { status: 200, headers: corsHeaders });
                 }
@@ -769,9 +780,25 @@ serve(async (req) => {
         }
 
         // 6. Split alinhado ao extrato MP (gestor) OU comissão calculada (cobrança plataforma / D+1)
-        const isManualD1 =
+        // Fallback: se canal não foi gravado na preferência, resolve pelo modo atual da empresa.
+        let isManualD1 =
           receivable.settlement_channel === 'manual_d1'
           || receivable.collector_type === 'platform';
+
+        if (!isManualD1 && companyId) {
+          const { data: checkoutMode, error: modeErr } = await supabaseService.rpc(
+            'get_company_ticket_checkout_mode',
+            { p_company_id: companyId },
+          );
+          if (modeErr) {
+            console.warn('[MP Webhook] get_company_ticket_checkout_mode:', modeErr.message);
+          } else if (checkoutMode === 'bank_transfer') {
+            isManualD1 = true;
+            console.warn(
+              `[MP Webhook] Receivable ${finalTransactionId} sem canal; empresa em bank_transfer → forçando manual_d1`,
+            );
+          }
+        }
 
         let split = resolveSplitAmounts({
           grossFallback: Number(totalValue),
@@ -810,7 +837,7 @@ serve(async (req) => {
         console.log(`  - Company ID: ${companyId}`);
 
         if (isManualD1) {
-          await supabaseService
+          const { error: channelUpdateErr } = await supabaseService
             .from('receivables')
             .update({
               platform_fee_amount: platformAmount,
@@ -818,6 +845,10 @@ serve(async (req) => {
               collector_type: 'platform',
             })
             .eq('id', finalTransactionId);
+          if (channelUpdateErr) {
+            console.error('[MP Webhook] Failed to stamp manual_d1 channel:', channelUpdateErr);
+            throw new Error(`Failed to stamp settlement channel: ${channelUpdateErr.message}`);
+          }
         }
 
         // 7. Registrar a divisão financeira na tabela financial_splits
@@ -890,24 +921,21 @@ serve(async (req) => {
             console.log(`  - Platform Commission Record: R$ ${platformAmount.toFixed(2)}`);
         }
 
-        if (isManualD1 && companyId && managerAmount > 0) {
-          const { data: settlementId, error: settlementErr } = await supabaseService.rpc(
-            'create_ticket_settlement_from_receivable',
-            {
-              p_receivable_id: finalTransactionId,
-              p_company_id: companyId,
-              p_event_id: eventId,
-              p_gross_amount: grossSaleAmount,
-              p_platform_fee: platformAmount,
-              p_mp_fee_amount: feeAmount,
-              p_manager_amount: managerAmount,
-            },
+        // Sempre passa pelo ensure: decide bank_transfer vs skip e é idempotente.
+        {
+          const { data: ensurePayload, error: settlementErr } = await supabaseService.rpc(
+            'ensure_ticket_d1_settlement_for_receivable',
+            { p_receivable_id: finalTransactionId },
           );
           if (settlementErr) {
-            console.error('[MP Webhook] Failed to create ticket D+1 settlement:', settlementErr);
+            console.error('[MP Webhook] Failed to ensure ticket D+1 settlement:', settlementErr);
             throw new Error(`Failed to create ticket settlement ledger: ${settlementErr.message}`);
           }
-          console.log(`[MP Webhook] Ticket D+1 settlement created: ${settlementId}`);
+          console.log(`[MP Webhook] Ticket D+1 ensure: ${JSON.stringify(ensurePayload)}`);
+          const ensureAction = (ensurePayload as { action?: string } | null)?.action;
+          if (isManualD1 && ensureAction === 'failed') {
+            throw new Error('Failed to create ticket settlement ledger: ensure returned failed');
+          }
         }
 
         // 7. Atualizar wristband analytics: associar cliente e marcar como 'used'/'purchase'
