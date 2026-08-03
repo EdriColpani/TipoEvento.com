@@ -2,6 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { restGet } from '@/utils/supabase-rest';
 import { subDays, format } from 'date-fns';
+import {
+    consolidateSplitsByTransaction,
+    managerLiquidRevenue,
+    type FinancialSplitRow,
+} from '@/utils/resolve-receivable-financials';
 
 interface SalesMetrics {
     currentMonthTotalSales: number;
@@ -54,7 +59,12 @@ function spDayWindow(daysAgoStart: number, daysAgoEnd: number): { start: string;
 }
 
 type SaleRow = {
-    total_value?: number;
+    id?: string;
+    total_value?: number | null;
+    gross_amount?: number | null;
+    platform_fee_amount?: number | null;
+    mp_fee_amount?: number | null;
+    net_amount_after_mp?: number | null;
     wristband_analytics_ids?: unknown;
     event_id?: string;
 };
@@ -76,7 +86,7 @@ async function fetchPaidSales(
             ? `&manager_user_id=eq.${encodeURIComponent(userId)}`
             : '';
     return restGet<SaleRow[]>(
-        `receivables?select=total_value,wristband_analytics_ids,event_id&${PAID_OR}${scope}` +
+        `receivables?select=id,total_value,gross_amount,platform_fee_amount,mp_fee_amount,net_amount_after_mp,wristband_analytics_ids,event_id&${PAID_OR}${scope}` +
             `&created_at=gte.${encodeURIComponent(start)}` +
             `&created_at=lte.${encodeURIComponent(end)}` +
             `&limit=5000`,
@@ -84,8 +94,28 @@ async function fetchPaidSales(
     );
 }
 
-function sumSales(rows: SaleRow[]): number {
-    return rows.reduce((sum, r) => sum + Number(r.total_value ?? 0), 0);
+async function fetchSplitsForSales(sales: SaleRow[]) {
+    const ids = sales.map((s) => s.id).filter((id): id is string => Boolean(id));
+    if (ids.length === 0) return consolidateSplitsByTransaction([]);
+
+    const inList = ids.map(encodeURIComponent).join(',');
+    const rows = await restGet<FinancialSplitRow[]>(
+        `financial_splits?select=transaction_id,platform_amount,manager_amount,applied_percentage&transaction_id=in.(${inList})&limit=10000`,
+        12_000,
+    ).catch(() => [] as FinancialSplitRow[]);
+
+    return consolidateSplitsByTransaction(rows ?? []);
+}
+
+/** Líquido do gestor: bruto − comissão da plataforma (não o total_value bruto). */
+function sumManagerNetRevenue(
+    rows: SaleRow[],
+    splitsByTx: ReturnType<typeof consolidateSplitsByTransaction>,
+): number {
+    return rows.reduce((sum, row) => {
+        if (!row.id) return sum;
+        return sum + managerLiquidRevenue(row, splitsByTx.get(row.id));
+    }, 0);
 }
 
 function sumTickets(rows: SaleRow[]): number {
@@ -101,8 +131,6 @@ const fetchDashboardData = async (
     isAdminMaster: boolean = false,
 ): Promise<DashboardData> => {
     // Últimos 30 dias civis (SP) vs 30 dias anteriores — ISO com -03:00.
-    // Antes usava `yyyy-MM-dd HH:mm:ss` sem fuso; o PostgREST tratava como UTC e
-    // vendas à noite no Brasil (ex.: 20h = 23h UTC) ficavam fora do "até agora".
     const current = spDayWindow(29, 0);
     const previous = spDayWindow(59, 30);
 
@@ -111,10 +139,18 @@ const fetchDashboardData = async (
         fetchPaidSales(previous.start, previous.end, userId, isAdminMaster),
     ]);
 
-    const currentMonthTotalSales = sumSales(currentMonthSalesData ?? []);
-    const currentMonthTicketsSold = sumTickets(currentMonthSalesData ?? []);
-    const previousMonthTotalSales = sumSales(previousMonthSalesData ?? []);
-    const previousMonthTicketsSold = sumTickets(previousMonthSalesData ?? []);
+    const currentRows = currentMonthSalesData ?? [];
+    const previousRows = previousMonthSalesData ?? [];
+
+    const [currentSplits, previousSplits] = await Promise.all([
+        fetchSplitsForSales(currentRows),
+        fetchSplitsForSales(previousRows),
+    ]);
+
+    const currentMonthTotalSales = sumManagerNetRevenue(currentRows, currentSplits);
+    const currentMonthTicketsSold = sumTickets(currentRows);
+    const previousMonthTotalSales = sumManagerNetRevenue(previousRows, previousSplits);
+    const previousMonthTicketsSold = sumTickets(previousRows);
 
     const salesPercentageChange =
         previousMonthTotalSales === 0

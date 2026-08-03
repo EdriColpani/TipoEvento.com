@@ -43,12 +43,12 @@ const ManagerDashboardKpiRow: React.FC<Props> = ({
                 tone={dashIconTone.tickets}
             />
             <ManagerDashboardKpiCard
-                title="Receita total"
+                title="Receita líquida"
                 value={data.sales.currentMonthTotalSales.toLocaleString('pt-BR', {
                     style: 'currency',
                     currency: 'BRL',
                 })}
-                subtitle="vs 30 dias anteriores"
+                subtitle="após comissão · vs 30 dias anteriores"
                 deltaLabel={salesDelta.label}
                 deltaPositive={salesDelta.positive}
                 icon={DollarSign}

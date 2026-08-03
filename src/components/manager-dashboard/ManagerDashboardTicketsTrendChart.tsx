@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -35,9 +35,29 @@ type Props = {
     data: DashboardTicketsTrendPoint[];
 };
 
+/** Sempre inclui o primeiro e o último dia (autoSkip do Chart.js escondia o hoje). */
+function pickVisibleTickIndices(total: number, maxTicks: number): Set<number> {
+    if (total <= 0) return new Set();
+    if (total <= maxTicks) {
+        return new Set(Array.from({ length: total }, (_, i) => i));
+    }
+    const visible = new Set<number>([0, total - 1]);
+    const inner = maxTicks - 2;
+    for (let i = 1; i <= inner; i += 1) {
+        visible.add(Math.round((i * (total - 1)) / (maxTicks - 1)));
+    }
+    return visible;
+}
+
 const ManagerDashboardTicketsTrendChart: React.FC<Props> = ({ data }) => {
+    const labels = useMemo(
+        () => data.map((point) => formatEventDateForDisplay(point.date) || point.date),
+        [data],
+    );
+    const visibleTicks = useMemo(() => pickVisibleTickIndices(labels.length, 8), [labels.length]);
+
     const chartData = {
-        labels: data.map((point) => formatEventDateForDisplay(point.date) || point.date),
+        labels,
         datasets: [
             {
                 label: 'Ingressos',
@@ -62,6 +82,10 @@ const ManagerDashboardTicketsTrendChart: React.FC<Props> = ({ data }) => {
             legend: { display: false },
             tooltip: {
                 callbacks: {
+                    title(items) {
+                        const idx = items[0]?.dataIndex ?? 0;
+                        return labels[idx] ?? '';
+                    },
                     label(ctx) {
                         const v = Number(ctx.parsed.y ?? 0);
                         return `${v.toLocaleString('pt-BR')} ingresso${v === 1 ? '' : 's'}`;
@@ -75,8 +99,10 @@ const ManagerDashboardTicketsTrendChart: React.FC<Props> = ({ data }) => {
                 ticks: {
                     color: TICK_COLOR,
                     maxRotation: 45,
-                    autoSkip: true,
-                    maxTicksLimit: 8,
+                    autoSkip: false,
+                    callback(_value, index) {
+                        return visibleTicks.has(index) ? labels[index] : '';
+                    },
                 },
             },
             y: {

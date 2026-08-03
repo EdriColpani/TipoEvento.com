@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { restGet } from '@/utils/supabase-rest';
 import { getSaoPauloDayBounds } from '@/utils/sao-paulo-day-bounds';
+import {
+    consolidateSplitsByTransaction,
+    managerLiquidRevenue,
+    type FinancialSplitRow,
+} from '@/utils/resolve-receivable-financials';
 
 export type ManagerDashboardTodayData = {
     dayKey: string;
@@ -22,7 +27,12 @@ const EMPTY: ManagerDashboardTodayData = {
 };
 
 type SaleRow = {
-    total_value?: number;
+    id: string;
+    total_value?: number | null;
+    gross_amount?: number | null;
+    platform_fee_amount?: number | null;
+    mp_fee_amount?: number | null;
+    net_amount_after_mp?: number | null;
     wristband_analytics_ids?: unknown;
 };
 
@@ -90,12 +100,23 @@ async function fetchPaidSalesToday(
             ? `&manager_user_id=eq.${encodeURIComponent(userId)}`
             : '';
     return restGet<SaleRow[]>(
-        `receivables?select=total_value,wristband_analytics_ids&${PAID_OR}${scope}` +
+        `receivables?select=id,total_value,gross_amount,platform_fee_amount,mp_fee_amount,net_amount_after_mp,wristband_analytics_ids&${PAID_OR}${scope}` +
             `&created_at=gte.${encodeURIComponent(startIso)}` +
             `&created_at=lte.${encodeURIComponent(endIso)}` +
             `&limit=5000`,
         12_000,
     );
+}
+
+async function fetchSplitsForSales(sales: SaleRow[]) {
+    const ids = sales.map((s) => s.id).filter(Boolean);
+    if (ids.length === 0) return consolidateSplitsByTransaction([]);
+    const inList = ids.map(encodeURIComponent).join(',');
+    const rows = await restGet<FinancialSplitRow[]>(
+        `financial_splits?select=transaction_id,platform_amount,manager_amount,applied_percentage&transaction_id=in.(${inList})&limit=10000`,
+        12_000,
+    ).catch(() => [] as FinancialSplitRow[]);
+    return consolidateSplitsByTransaction(rows ?? []);
 }
 
 async function fetchCreditSpendsToday(
@@ -135,15 +156,19 @@ async function fetchManagerDashboardToday(params: {
     ]);
 
     const participants = await fetchParticipantsToday(eventIds, startIso, endIso).catch(() => 0);
+    const splitsByTx = await fetchSplitsForSales(sales ?? []);
 
-    const ticketRevenue = (sales ?? []).reduce((sum, r) => sum + Number(r.total_value ?? 0), 0);
+    const ticketRevenue = (sales ?? []).reduce(
+        (sum, r) => sum + managerLiquidRevenue(r, splitsByTx.get(r.id)),
+        0,
+    );
     const creditRevenue = creditSpends.reduce((sum, r) => sum + Number(r.gross_amount ?? 0), 0);
     const consumption = ticketRevenue + creditRevenue;
     const ticketsSold = (sales ?? []).reduce(
         (sum, r) => sum + countTickets(r.wristband_analytics_ids),
         0,
     );
-    const avgTicket = ticketsSold > 0 ? consumption / ticketsSold : 0;
+    const avgTicket = ticketsSold > 0 ? ticketRevenue / ticketsSold : 0;
 
     return {
         dayKey,

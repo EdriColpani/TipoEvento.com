@@ -95,3 +95,25 @@ export function resolveReceivableFinancials(
 
   return { gross, organizerNet, systemCommission, appliedPercentage };
 }
+
+/**
+ * Receita líquida do gestor para o dashboard: bruto − comissão da plataforma.
+ * Quando a comissão existe, força a subtração (alguns splits antigos gravavam
+ * manager_amount = bruto).
+ */
+export function managerLiquidRevenue(
+  receivable: {
+    gross_amount?: number | null;
+    total_value?: number | null;
+    mp_fee_amount?: number | null;
+    net_amount_after_mp?: number | null;
+    platform_fee_amount?: number | null;
+  },
+  split: ConsolidatedSplit | undefined,
+): number {
+  const resolved = resolveReceivableFinancials(receivable, split, null);
+  if (resolved.systemCommission > 0) {
+    return Math.max(0, resolved.gross - resolved.systemCommission);
+  }
+  return resolved.organizerNet > 0 ? resolved.organizerNet : resolved.gross;
+}

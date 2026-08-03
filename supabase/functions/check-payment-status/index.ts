@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { resolveTicketPaymentQueryToken } from "./mp-ticket-payment.ts";
+import { resolveTicketPaymentQueryTokens } from "./mp-ticket-payment.ts";
 import { extractMpPaymentFinancials } from "./mp-payment-financials.ts";
 import {
   countAssignedTickets,
@@ -161,7 +161,7 @@ serve(async (req) => {
     const { data: receivable, error: receivableError } = await supabaseService
       .from("receivables")
       .select(
-        "id, status, payment_status, mp_status_detail, mp_payment_id, mp_preference_id, client_user_id, manager_user_id",
+        "id, status, payment_status, mp_status_detail, mp_payment_id, mp_preference_id, client_user_id, manager_user_id, collector_type, settlement_channel",
       )
       .eq("id", transactionId)
       .maybeSingle();
@@ -182,11 +182,16 @@ serve(async (req) => {
       });
     }
 
-    let mpAccessToken: string;
+    let mpAccessTokens: string[];
     try {
-      mpAccessToken = await resolveTicketPaymentQueryToken(
+      mpAccessTokens = await resolveTicketPaymentQueryTokens(
         supabaseService,
         receivable.manager_user_id as string,
+        {
+          collectorType: (receivable as { collector_type?: string | null }).collector_type ?? null,
+          settlementChannel:
+            (receivable as { settlement_channel?: string | null }).settlement_channel ?? null,
+        },
       );
     } catch (credErr) {
       const msg = credErr instanceof Error ? credErr.message : "Credencial MP indisponível.";
@@ -194,42 +199,55 @@ serve(async (req) => {
     }
 
     let paymentPayload: Record<string, unknown> | null = null;
-    if (receivable.mp_payment_id) {
-      const byIdResp = await fetch(`https://api.mercadopago.com/v1/payments/${receivable.mp_payment_id}`, {
+    let mpAccessToken = mpAccessTokens[0];
+
+    const fetchPaymentById = async (token: string, paymentId: string) => {
+      const byIdResp = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${mpAccessToken}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
-      if (byIdResp.ok) {
-        paymentPayload = await byIdResp.json();
-      }
-    }
+      if (!byIdResp.ok) return null;
+      return (await byIdResp.json()) as Record<string, unknown>;
+    };
 
-    if (!paymentPayload) {
+    const searchPaymentByExternalRef = async (token: string) => {
       const searchResp = await fetch(
         `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(transactionId)}&sort=date_created&criteria=desc&limit=1`,
         {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${mpAccessToken}`,
+            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
         },
       );
-
-      if (!searchResp.ok) {
-        const searchText = await searchResp.text();
-        return new Response(
-          JSON.stringify({ error: "Falha ao consultar status no Mercado Pago.", details: searchText.slice(0, 500) }),
-          { status: 502, headers: corsHeaders },
-        );
-      }
-
+      if (!searchResp.ok) return null;
       const searchJson = await searchResp.json();
       const results = Array.isArray(searchJson.results) ? searchJson.results : [];
-      paymentPayload = results.length > 0 ? results[0] : null;
+      return results.length > 0 ? (results[0] as Record<string, unknown>) : null;
+    };
+
+    if (receivable.mp_payment_id) {
+      for (const token of mpAccessTokens) {
+        paymentPayload = await fetchPaymentById(token, String(receivable.mp_payment_id));
+        if (paymentPayload) {
+          mpAccessToken = token;
+          break;
+        }
+      }
+    }
+
+    if (!paymentPayload) {
+      for (const token of mpAccessTokens) {
+        paymentPayload = await searchPaymentByExternalRef(token);
+        if (paymentPayload) {
+          mpAccessToken = token;
+          break;
+        }
+      }
     }
 
     if (!paymentPayload) {
@@ -242,6 +260,9 @@ serve(async (req) => {
         { status: 200, headers: corsHeaders },
       );
     }
+
+    // Keep token in scope for any later use (webhook uses service role).
+    void mpAccessToken;
 
     const paymentStatus = paymentPayload.status ? String(paymentPayload.status) : null;
     const paymentStatusDetail = paymentPayload.status_detail ? String(paymentPayload.status_detail) : null;
