@@ -445,9 +445,17 @@ serve(async (req) => {
       );
     }
 
-    const successUrl = `${base}/tickets?status=success&transaction_id=${transactionId}`;
-    const pendingUrl = `${base}/tickets?status=pending&transaction_id=${transactionId}`;
-    const failureUrl = `${base}/tickets?status=failure&transaction_id=${transactionId}`;
+    const fromApp = body.fromApp === true || body.from_app === true;
+    // from_app: página leve /app-return (fora do login) abre eventfest:// — /tickets exige sessão e falhava no Chrome do MP.
+    const successUrl = fromApp
+      ? `${base}/app-return?status=success&transaction_id=${transactionId}`
+      : `${base}/tickets?status=success&transaction_id=${transactionId}`;
+    const pendingUrl = fromApp
+      ? `${base}/app-return?status=pending&transaction_id=${transactionId}`
+      : `${base}/tickets?status=pending&transaction_id=${transactionId}`;
+    const failureUrl = fromApp
+      ? `${base}/app-return?status=failure&transaction_id=${transactionId}`
+      : `${base}/tickets?status=failure&transaction_id=${transactionId}`;
 
     console.log(`[DEBUG] Notification URL: ${notificationUrl}`);
     console.log(`[DEBUG] Success URL: ${successUrl}`);

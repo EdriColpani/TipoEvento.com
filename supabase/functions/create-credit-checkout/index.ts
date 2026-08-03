@@ -120,9 +120,16 @@ serve(async (req) => {
     const grossAmount = Number((created as { gross_paid_amount?: number }).gross_paid_amount ?? amount);
     const externalReference = `${CREDIT_TOPUP_PREFIX}${orderId}`;
     const notificationUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/mercadopago-webhook`;
-    const successUrl = `${base}/wallet?status=success&topup_id=${orderId}`;
-    const pendingUrl = `${base}/wallet?status=pending&topup_id=${orderId}`;
-    const failureUrl = `${base}/wallet?status=failure&topup_id=${orderId}`;
+    const fromApp = body.fromApp === true || body.from_app === true;
+    const successUrl = fromApp
+      ? `${base}/app-return?status=success&topup_id=${orderId}`
+      : `${base}/wallet?status=success&topup_id=${orderId}`;
+    const pendingUrl = fromApp
+      ? `${base}/app-return?status=pending&topup_id=${orderId}`
+      : `${base}/wallet?status=pending&topup_id=${orderId}`;
+    const failureUrl = fromApp
+      ? `${base}/app-return?status=failure&topup_id=${orderId}`
+      : `${base}/wallet?status=failure&topup_id=${orderId}`;
 
     const preferenceData = {
       items: [

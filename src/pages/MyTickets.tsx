@@ -175,8 +175,23 @@ const MyTickets: React.FC = () => {
     useEffect(() => {
         const status = searchParams.get('status');
         const transactionId = searchParams.get('transaction_id');
+        const fromApp = searchParams.get('from_app') === '1';
 
-        if (!(status && transactionId) || !userId) return;
+        if (!(status && transactionId)) return;
+
+        // Retorno originado do app: devolve para o EventFest Rush via deep link.
+        if (fromApp) {
+            const returnStatus =
+                status === 'success' || status === 'pending' || status === 'failure' ? status : 'pending';
+            const deepLink =
+                `eventfest://checkout/return?transactionId=${encodeURIComponent(transactionId)}` +
+                `&returnStatus=${encodeURIComponent(returnStatus)}`;
+            // Tenta abrir o app; se o SO não abrir, a página do site permanece como fallback.
+            window.location.href = deepLink;
+            return;
+        }
+
+        if (!userId) return;
 
         let cancelled = false;
         const run = async () => {
@@ -207,6 +222,7 @@ const MyTickets: React.FC = () => {
                     queryClient.invalidateQueries({ queryKey: ['myPurchases', userId] });
                     searchParams.delete('status');
                     searchParams.delete('transaction_id');
+                    searchParams.delete('from_app');
                     setSearchParams(searchParams, { replace: true });
                 }
             }
@@ -375,6 +391,30 @@ const MyTickets: React.FC = () => {
     return (
         <ClientAccountPageShell title="Meus Ingressos" showBackToProfile>
                 <div className="space-y-8 sm:space-y-10">
+                    {searchParams.get('from_app') === '1' && searchParams.get('transaction_id') ? (
+                        <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4 space-y-3">
+                            <p className="text-yellow-200 text-sm sm:text-base">
+                                Pagamento iniciado no aplicativo. Toque abaixo para voltar ao EventFest Rush.
+                            </p>
+                            <Button
+                                className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                onClick={() => {
+                                    const status = searchParams.get('status') ?? 'pending';
+                                    const transactionId = searchParams.get('transaction_id')!;
+                                    const returnStatus =
+                                        status === 'success' || status === 'pending' || status === 'failure'
+                                            ? status
+                                            : 'pending';
+                                    window.location.href =
+                                        `eventfest://checkout/return?transactionId=${encodeURIComponent(transactionId)}` +
+                                        `&returnStatus=${encodeURIComponent(returnStatus)}`;
+                                }}
+                            >
+                                Abrir no EventFest Rush
+                            </Button>
+                        </div>
+                    ) : null}
+
                     {/* Ingressos Ativos — primeiro, com scroll próprio */}
                     <section>
                         <h2 className={CLIENT_ACCOUNT_SECTION_TITLE_CLASS}>

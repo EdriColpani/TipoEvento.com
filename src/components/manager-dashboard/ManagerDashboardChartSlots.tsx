@@ -2,6 +2,7 @@ import React from 'react';
 import { AreaChart, Loader2, Map, PieChart } from 'lucide-react';
 import type { ManagerDashboardChartsData } from '@/hooks/use-manager-dashboard-charts';
 import type { ManagerDashboardAccessMapData } from '@/hooks/use-manager-dashboard-access-map';
+import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { dashMuted, dashPanel, dashSpinner, dashTitle } from '@/constants/manager-dashboard-ui';
 import ManagerDashboardTicketsTrendChart from './ManagerDashboardTicketsTrendChart';
 import ManagerDashboardChannelDonut from './ManagerDashboardChannelDonut';
@@ -16,9 +17,14 @@ type Props = {
     isErrorAccessMap?: boolean;
 };
 
-const PanelShell: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+const PanelShell: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({
+    title,
+    subtitle,
+    children,
+}) => (
     <div className={`${dashPanel} min-h-[280px] flex flex-col`}>
-        <h3 className={`${dashTitle} mb-4`}>{title}</h3>
+        <h3 className={`${dashTitle} mb-1`}>{title}</h3>
+        {subtitle ? <p className={`${dashMuted} text-xs mb-3`}>{subtitle}</p> : <div className="mb-4" />}
         <div className="flex-1 min-h-[200px]">{children}</div>
     </div>
 );
@@ -54,10 +60,16 @@ const ManagerDashboardChartSlots: React.FC<Props> = ({
     const hasChannels = channelSlices.some((s) => s.amount > 0);
     const periodDays = charts?.periodDays ?? 45;
     const hasMapData = (accessMap?.knownTickets ?? 0) > 0 || (accessMap?.unknownTickets ?? 0) > 0;
+    const trendStart = ticketsTrend[0]?.date;
+    const trendEnd = ticketsTrend[ticketsTrend.length - 1]?.date;
+    const trendPeriodLabel =
+        trendStart && trendEnd
+            ? `${formatEventDateForDisplay(trendStart)} → ${formatEventDateForDisplay(trendEnd)}`
+            : `Últimos ${periodDays} dias`;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
-            <PanelShell title="Ingressos no tempo">
+            <PanelShell title="Ingressos no tempo" subtitle={trendPeriodLabel}>
                 {isLoading ? (
                     <LoadingState />
                 ) : isError ? (

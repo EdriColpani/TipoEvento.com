@@ -92,6 +92,7 @@ import ComplimentaryBundlePage from "./pages/ComplimentaryBundlePage";
 import ComplimentarySeatRedeemPage from "./pages/ComplimentarySeatRedeemPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
+import AppCheckoutReturnPage from "./pages/AppCheckoutReturnPage";
 import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
 import { usePasswordSetupGate } from "./hooks/use-password-setup-gate";
 import { PublicLaunchModeProvider } from "./contexts/PublicLaunchModeContext";
@@ -135,6 +136,9 @@ function AppRoutes() {
 
           {/* Reset fora do ClientLayout: evita header “já logado” na sessão de recovery */}
           <Route path="/reset-password" element={<ResetPassword />} />
+
+          {/* Retorno do Mercado Pago → app (sem auth/layout: Chrome do MP não carrega a sessão do app) */}
+          <Route path="/app-return" element={<AppCheckoutReturnPage />} />
 
           {/* Public Validator Route - Não requer autenticação */}
           <Route path="/validator" element={<TicketValidator />} />

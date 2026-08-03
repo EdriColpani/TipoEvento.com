@@ -1,6 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import { format, subDays } from 'date-fns';
 import { restGet } from '@/utils/supabase-rest';
+import {
+    consolidateSplitsByTransaction,
+    managerLiquidRevenue,
+    type FinancialSplitRow,
+} from '@/utils/resolve-receivable-financials';
+import {
+    buildSaoPauloDateKeys,
+    getSaoPauloDayBounds,
+    saoPauloDayKey,
+} from '@/utils/sao-paulo-day-bounds';
 
 export type DashboardTicketsTrendPoint = {
     date: string;
@@ -32,8 +41,13 @@ const CHANNEL_LABELS: Record<DashboardChannelKey, string> = {
 };
 
 type SaleRow = {
+    id: string;
     created_at: string;
-    total_value?: number;
+    total_value?: number | null;
+    gross_amount?: number | null;
+    platform_fee_amount?: number | null;
+    mp_fee_amount?: number | null;
+    net_amount_after_mp?: number | null;
     wristband_analytics_ids?: unknown;
 };
 
@@ -55,14 +69,6 @@ const EMPTY: ManagerDashboardChartsData = {
     ],
     periodDays: 45,
 };
-
-function buildDateKeys(days: number): string[] {
-    const keys: string[] = [];
-    for (let i = days - 1; i >= 0; i -= 1) {
-        keys.push(format(subDays(new Date(), i), 'yyyy-MM-dd'));
-    }
-    return keys;
-}
 
 function countTickets(ids: unknown): number {
     return Array.isArray(ids) ? ids.length : 0;
@@ -92,12 +98,23 @@ async function fetchPaidSalesWindow(
             ? `&manager_user_id=eq.${encodeURIComponent(userId)}`
             : '';
     return restGet<SaleRow[]>(
-        `receivables?select=created_at,total_value,wristband_analytics_ids&${PAID_OR}${scope}` +
+        `receivables?select=id,created_at,total_value,gross_amount,platform_fee_amount,mp_fee_amount,net_amount_after_mp,wristband_analytics_ids&${PAID_OR}${scope}` +
             `&created_at=gte.${encodeURIComponent(startIso)}` +
             `&created_at=lte.${encodeURIComponent(endIso)}` +
             `&order=created_at.asc&limit=5000`,
         12_000,
     );
+}
+
+async function fetchSplitsForSales(sales: SaleRow[]) {
+    const ids = sales.map((s) => s.id).filter(Boolean);
+    if (ids.length === 0) return consolidateSplitsByTransaction([]);
+    const inList = ids.map(encodeURIComponent).join(',');
+    const rows = await restGet<FinancialSplitRow[]>(
+        `financial_splits?select=transaction_id,platform_amount,manager_amount,applied_percentage&transaction_id=in.(${inList})&limit=10000`,
+        12_000,
+    ).catch(() => [] as FinancialSplitRow[]);
+    return consolidateSplitsByTransaction(rows ?? []);
 }
 
 async function fetchCreditSpendsWindow(
@@ -131,8 +148,9 @@ async function fetchManagerDashboardCharts(params: {
     periodDays?: number;
 }): Promise<ManagerDashboardChartsData> {
     const periodDays = params.periodDays ?? 45;
-    const start = `${format(subDays(new Date(), periodDays - 1), 'yyyy-MM-dd')}T00:00:00-03:00`;
-    const end = `${format(new Date(), 'yyyy-MM-dd')}T23:59:59.999-03:00`;
+    const dateKeys = buildSaoPauloDateKeys(periodDays);
+    const start = `${dateKeys[0]}T00:00:00-03:00`;
+    const end = getSaoPauloDayBounds().endIso;
 
     const [sales, creditSpends] = await Promise.all([
         fetchPaidSalesWindow(start, end, params.userId, params.isAdminMaster),
@@ -141,16 +159,16 @@ async function fetchManagerDashboardCharts(params: {
             : Promise.resolve([] as CreditSpendRow[]),
     ]);
 
-    const dateKeys = buildDateKeys(periodDays);
+    const splitsByTx = await fetchSplitsForSales(sales ?? []);
     const ticketsMap = new Map(dateKeys.map((d) => [d, 0]));
 
     let online = 0;
     for (const sale of sales ?? []) {
-        const day = format(new Date(sale.created_at), 'yyyy-MM-dd');
+        const day = saoPauloDayKey(sale.created_at);
         if (ticketsMap.has(day)) {
             ticketsMap.set(day, (ticketsMap.get(day) || 0) + countTickets(sale.wristband_analytics_ids));
         }
-        online += Number(sale.total_value ?? 0);
+        online += managerLiquidRevenue(sale, splitsByTx.get(sale.id));
     }
 
     let pos = 0;

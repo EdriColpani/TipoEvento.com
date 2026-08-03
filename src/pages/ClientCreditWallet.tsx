@@ -64,11 +64,23 @@ const ClientCreditWallet: React.FC = () => {
 
     const returnStatus = searchParams.get('status');
     const topupId = searchParams.get('topup_id');
-    const shouldPoll = returnStatus === 'success' && !!topupId;
+    const fromApp = searchParams.get('from_app') === '1';
+    const shouldPoll = returnStatus === 'success' && !!topupId && !fromApp;
 
     const clearReturnParams = useCallback(() => {
         setSearchParams({}, { replace: true });
     }, [setSearchParams]);
+
+    useEffect(() => {
+        if (!fromApp || !returnStatus || !topupId) return;
+        const status =
+            returnStatus === 'success' || returnStatus === 'pending' || returnStatus === 'failure'
+                ? returnStatus
+                : 'pending';
+        window.location.href =
+            `eventfest://wallet?topupId=${encodeURIComponent(topupId)}` +
+            `&returnStatus=${encodeURIComponent(status)}`;
+    }, [fromApp, returnStatus, topupId]);
 
     const handlePollSettled = useCallback(() => {
         refresh();
