@@ -7,9 +7,9 @@ import { Plus, Loader2, Image, Edit, Trash2, ArrowLeft, CalendarDays, ListOrdere
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useProfile } from '@/hooks/use-profile';
-import { supabase } from '@/integrations/supabase/client';
+import { restDelete, restGet } from '@/utils/supabase-rest';
 
 interface PromotionalBanner {
     id: string;
@@ -24,19 +24,11 @@ interface PromotionalBanner {
 }
 
 const fetchPromotionalBanners = async (): Promise<PromotionalBanner[]> => {
-    // Admin Master tem RLS total, então buscamos todos os banners
-    const { data, error } = await supabase
-        .from('promotional_banners')
-        .select('*')
-        .order('display_order', { ascending: true })
-        .order('start_date', { ascending: false });
-
-    if (error) {
-        console.error("Error fetching promotional banners:", error);
-        throw new Error(error.message);
-    }
-    
-    return data as PromotionalBanner[];
+    const rows = await restGet<PromotionalBanner[]>(
+        'promotional_banners?select=*&order=display_order.asc,start_date.desc',
+        15_000,
+    );
+    return Array.isArray(rows) ? rows : [];
 };
 
 const usePromotionalBanners = () => {
@@ -44,11 +36,9 @@ const usePromotionalBanners = () => {
     const query = useQuery({
         queryKey: ['promotionalBanners'],
         queryFn: fetchPromotionalBanners,
-        staleTime: 1000 * 60 * 1, // 1 minute
-        onError: (error) => {
-            console.error("Query Error: Failed to load promotional banners.", error);
-            showError("Erro ao carregar a lista de banners promocionais.");
-        }
+        staleTime: 1000 * 60 * 1,
+        retry: 1,
+        refetchOnWindowFocus: false,
     });
 
     return {
@@ -60,43 +50,47 @@ const usePromotionalBanners = () => {
 
 const DeleteBannerDialog: React.FC<{ banner: PromotionalBanner, onDeleteSuccess: () => void }> = ({ banner, onDeleteSuccess }) => {
     const [isDeleting, setIsDeleting] = useState(false);
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
 
     const handleDelete = async () => {
         setIsDeleting(true);
         const toastId = showLoading(`Excluindo banner "${banner.headline}"...`);
 
         try {
-            const { error } = await supabase
-                .from('promotional_banners')
-                .delete()
-                .eq('id', banner.id);
-
-            if (error) {
-                throw error;
-            }
+            await restDelete(
+                `promotional_banners?id=eq.${encodeURIComponent(banner.id)}`,
+                15_000,
+            );
 
             dismissToast(toastId);
             showSuccess(`Banner excluído com sucesso.`);
             onDeleteSuccess();
-            setIsDialogOpen(false);
-
-        } catch (error: any) {
+        } catch (error: unknown) {
             dismissToast(toastId);
             console.error("Erro ao deletar banner:", error);
-            showError(`Falha ao excluir banner: ${error.message || 'Erro desconhecido'}`);
+            showError(
+                `Falha ao excluir banner: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+            );
         } finally {
             setIsDeleting(false);
         }
     };
 
     return (
-        <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <AlertDialog>
+            <AlertDialogTrigger asChild>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-black/60 border border-red-500/40 text-red-400 hover:bg-red-500/10"
+                >
+                    <Trash2 className="h-4 w-4" />
+                </Button>
+            </AlertDialogTrigger>
             <AlertDialogContent className="bg-black/90 border border-red-500/30 text-white">
                 <AlertDialogHeader>
                     <AlertDialogTitle className="text-red-400">Tem certeza absoluta?</AlertDialogTitle>
                     <AlertDialogDescription className="text-gray-400">
-                        Esta ação não pode ser desfeita. Isso excluirá permanentemente o banner 
+                        Esta ação não pode ser desfeita. Isso excluirá permanentemente o banner
                         <span className="font-semibold text-white"> "{banner.headline}" </span>.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -104,8 +98,11 @@ const DeleteBannerDialog: React.FC<{ banner: PromotionalBanner, onDeleteSuccess:
                     <AlertDialogCancel className="bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10">
                         Cancelar
                     </AlertDialogCancel>
-                    <AlertDialogAction 
-                        onClick={handleDelete} 
+                    <AlertDialogAction
+                        onClick={(e) => {
+                            e.preventDefault();
+                            void handleDelete();
+                        }}
                         className="bg-red-600 text-white hover:bg-red-700"
                         disabled={isDeleting}
                     >
@@ -122,15 +119,15 @@ const ADMIN_MASTER_USER_TYPE_ID = 1;
 const AdminPromotionalBannersList: React.FC = () => {
     const navigate = useNavigate();
     const { userId, authPending } = usePageAuth();
-    
+
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const { banners, isLoading, isError, invalidateBanners } = usePromotionalBanners();
+    const { banners, isLoading, isError, error, invalidateBanners } = usePromotionalBanners();
 
     const handleEditClick = (bannerId: string) => {
         navigate(`/admin/banners/edit/${bannerId}`);
     };
 
-    if (authPending || (userId && isLoadingProfile)) {
+    if (authPending || (userId && isLoadingProfile && !profile)) {
         return (
             <div className="max-w-7xl mx-auto text-center py-20">
                 <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -138,13 +135,22 @@ const AdminPromotionalBannersList: React.FC = () => {
             </div>
         );
     }
-    
-    if (Number(profile?.tipo_usuario_id) !== ADMIN_MASTER_USER_TYPE_ID) {
-        showError("Acesso negado. Você não tem permissão de Administrador Master.");
-        navigate('/manager/dashboard');
-        return null;
-    }
 
+    if (Number(profile?.tipo_usuario_id) !== ADMIN_MASTER_USER_TYPE_ID) {
+        return (
+            <div className="max-w-7xl mx-auto text-center py-20">
+                <p className="text-gray-400 mb-4">Acesso negado. Apenas Admin Master.</p>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                    onClick={() => navigate('/manager/dashboard')}
+                >
+                    Voltar ao Dashboard
+                </Button>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (
@@ -156,7 +162,21 @@ const AdminPromotionalBannersList: React.FC = () => {
     }
 
     if (isError) {
-        return <div className="text-red-400 text-center py-10">Erro ao carregar banners. Tente recarregar a página.</div>;
+        return (
+            <div className="max-w-7xl mx-auto text-center py-10 space-y-3">
+                <p className="text-red-400">
+                    Erro ao carregar banners
+                    {error instanceof Error ? `: ${error.message}` : '. Tente recarregar a página.'}
+                </p>
+                <Button
+                    type="button"
+                    className="bg-yellow-500 text-black hover:bg-yellow-600"
+                    onClick={() => void invalidateBanners()}
+                >
+                    Tentar novamente
+                </Button>
+            </div>
+        );
     }
 
     return (
@@ -206,19 +226,22 @@ const AdminPromotionalBannersList: React.FC = () => {
                             </TableHeader>
                             <TableBody>
                                 {banners.map((banner) => {
-                                    const startDate = new Date(banner.start_date);
-                                    const endDate = new Date(banner.end_date);
-                                    const today = new Date();
-                                    
+                                    const todayIso = new Date().toISOString().slice(0, 10);
+                                    const startIso = String(banner.start_date).slice(0, 10);
+                                    const endIso = String(banner.end_date).slice(0, 10);
+
                                     let statusText = 'Inativo';
                                     let statusClasses = 'bg-gray-500/20 text-gray-400';
 
-                                    if (startDate <= today && endDate >= today) {
-                                        statusText = 'Ativo';
-                                        statusClasses = 'bg-green-500/20 text-green-400';
-                                    } else if (startDate > today) {
+                                    if (endIso < todayIso) {
+                                        statusText = 'Inativo';
+                                        statusClasses = 'bg-gray-500/20 text-gray-400';
+                                    } else if (startIso > todayIso) {
                                         statusText = 'Agendado';
                                         statusClasses = 'bg-yellow-500/20 text-yellow-400';
+                                    } else {
+                                        statusText = 'Ativo';
+                                        statusClasses = 'bg-green-500/20 text-green-400';
                                     }
 
                                     return (
@@ -239,7 +262,7 @@ const AdminPromotionalBannersList: React.FC = () => {
                                             <TableCell className="text-center py-4">
                                                 <div className="text-gray-300 text-xs flex items-center justify-center">
                                                     <CalendarDays className="h-4 w-4 mr-1 text-yellow-500" />
-                                                    {startDate.toLocaleDateString('pt-BR')} - {endDate.toLocaleDateString('pt-BR')}
+                                                    {new Date(`${startIso}T12:00:00`).toLocaleDateString('pt-BR')} - {new Date(`${endIso}T12:00:00`).toLocaleDateString('pt-BR')}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-center py-4">

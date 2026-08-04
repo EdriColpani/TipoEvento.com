@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2, SlidersHorizontal, Clock, Maximize, MapPin, ListOrdered, CalendarDays } from 'lucide-react';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
+import { restGet, restPatch, restPost } from '@/utils/supabase-rest';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { useQueryClient } from '@tanstack/react-query';
@@ -14,7 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 const MAX_BANNERS_CAP = 30;
 
 interface CarouselSettingsState {
-    id?: string; // Adicionando ID opcional para rastrear o registro existente
+    id?: string;
     rotation_time_seconds: number;
     max_banners_display: number;
     regional_distance_km: number;
@@ -29,6 +29,15 @@ const FALLBACK_STRATEGIES = [
     { value: 'random', label: 'Aleatório' },
 ];
 
+const DEFAULT_SETTINGS: CarouselSettingsState = {
+    rotation_time_seconds: 5,
+    max_banners_display: 5,
+    regional_distance_km: 100,
+    min_regional_banners: 3,
+    fallback_strategy: 'latest_events',
+    days_until_event_threshold: 30,
+};
+
 function sanitizeCarouselSettings(raw: CarouselSettingsState): CarouselSettingsState {
     const maxBanners = Math.min(MAX_BANNERS_CAP, Math.max(1, Number(raw.max_banners_display) || 1));
     const minRegional = Math.min(maxBanners, Math.max(0, Number(raw.min_regional_banners) || 0));
@@ -42,12 +51,16 @@ function sanitizeCarouselSettings(raw: CarouselSettingsState): CarouselSettingsS
     };
 }
 
+type CarouselSettingsRow = CarouselSettingsState & {
+    id: string;
+};
+
 const AdminCarouselSettings: React.FC = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const [settings, setSettings] = useState<CarouselSettingsState | null>(null);
+    const [settings, setSettings] = useState<CarouselSettingsState>(DEFAULT_SETTINGS);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -58,29 +71,21 @@ const AdminCarouselSettings: React.FC = () => {
             navigate('/login');
             return;
         }
+        if (!userId) return;
+
+        let cancelled = false;
 
         const fetchSettings = async () => {
             try {
-                const { data, error } = await supabase
-                    .from('carousel_settings')
-                    .select('*')
-                    .limit(1)
-                    .maybeSingle();
+                const rows = await restGet<CarouselSettingsRow[]>(
+                    'carousel_settings?select=*&limit=1',
+                    12_000,
+                );
+                const data = Array.isArray(rows) ? rows[0] : null;
 
-                const defaultSettings: CarouselSettingsState = {
-                    rotation_time_seconds: 5,
-                    max_banners_display: 5,
-                    regional_distance_km: 100,
-                    min_regional_banners: 3,
-                    fallback_strategy: 'latest_events',
-                    days_until_event_threshold: 30,
-                };
+                if (cancelled) return;
 
-                if (error) {
-                    console.warn('carousel_settings:', error.message);
-                    showError("Erro ao carregar configurações do carrossel.");
-                    setSettings(defaultSettings);
-                } else if (data) {
+                if (data) {
                     setSettings({
                         id: data.id,
                         rotation_time_seconds: data.rotation_time_seconds,
@@ -91,23 +96,27 @@ const AdminCarouselSettings: React.FC = () => {
                         days_until_event_threshold: data.days_until_event_threshold,
                     });
                 } else {
-                    setSettings(defaultSettings);
+                    setSettings(DEFAULT_SETTINGS);
                 }
             } catch (e) {
                 console.warn('carousel_settings load failed', e);
-                setSettings({
-                    rotation_time_seconds: 5,
-                    max_banners_display: 5,
-                    regional_distance_km: 100,
-                    min_regional_banners: 3,
-                    fallback_strategy: 'latest_events',
-                    days_until_event_threshold: 30,
-                });
+                if (!cancelled) {
+                    showError(
+                        e instanceof Error
+                            ? e.message
+                            : 'Erro ao carregar configurações do carrossel.',
+                    );
+                    setSettings(DEFAULT_SETTINGS);
+                }
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         };
+
         void fetchSettings();
+        return () => {
+            cancelled = true;
+        };
     }, [authPending, userId, sessionReady, bootExpired, navigate]);
 
     const handleInputChange = (key: keyof CarouselSettingsState, value: string | number) => {
@@ -124,7 +133,6 @@ const AdminCarouselSettings: React.FC = () => {
         }
 
         setSettings((prev) => {
-            if (!prev) return null;
             const next = { ...prev, [key]: numericValue };
             if (
                 key === 'max_banners_display' &&
@@ -137,7 +145,7 @@ const AdminCarouselSettings: React.FC = () => {
     };
 
     const handleSelectChange = (key: keyof CarouselSettingsState, value: string) => {
-        setSettings(prev => prev ? { ...prev, [key]: value } : null);
+        setSettings((prev) => ({ ...prev, [key]: value }));
     };
 
     const handleSave = async () => {
@@ -151,41 +159,33 @@ const AdminCarouselSettings: React.FC = () => {
 
         try {
             const sanitized = sanitizeCarouselSettings(settings);
-            const dataToSave = {
-                ...sanitized,
+            const dataToSave: Record<string, unknown> = {
+                rotation_time_seconds: sanitized.rotation_time_seconds,
+                max_banners_display: sanitized.max_banners_display,
+                regional_distance_km: sanitized.regional_distance_km,
+                min_regional_banners: sanitized.min_regional_banners,
+                fallback_strategy: sanitized.fallback_strategy,
+                days_until_event_threshold: sanitized.days_until_event_threshold,
                 updated_by: userId,
                 updated_at: new Date().toISOString(),
             };
-            
-            let error;
 
             if (settings.id) {
-                // Se o ID existe, fazemos um UPDATE normal (ou upsert com onConflict: 'id')
-                const result = await supabase
-                    .from('carousel_settings')
-                    .update(dataToSave)
-                    .eq('id', settings.id);
-                error = result.error;
+                await restPatch(
+                    `carousel_settings?id=eq.${encodeURIComponent(settings.id)}`,
+                    dataToSave,
+                    15_000,
+                );
             } else {
-                // Se o ID não existe (primeira vez), fazemos um INSERT
-                // Remove o ID undefined para o insert
-                delete dataToSave.id; 
-                const result = await supabase
-                    .from('carousel_settings')
-                    .insert([dataToSave])
-                    .select('id')
-                    .single();
-                
-                error = result.error;
-                
-                // Se o insert for bem-sucedido, atualiza o ID no estado local
-                if (result.data) {
-                    setSettings(prev => prev ? { ...prev, id: result.data.id } : null);
+                await restPost('carousel_settings', dataToSave, 15_000);
+                const rows = await restGet<CarouselSettingsRow[]>(
+                    'carousel_settings?select=id&limit=1',
+                    10_000,
+                );
+                const created = Array.isArray(rows) ? rows[0] : null;
+                if (created?.id) {
+                    sanitized.id = created.id;
                 }
-            }
-
-            if (error) {
-                throw error;
             }
 
             dismissToast(toastId);
@@ -193,18 +193,21 @@ const AdminCarouselSettings: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['carouselBanners'] });
             queryClient.invalidateQueries({ queryKey: ['carouselSettings'] });
             showSuccess("Configurações do carrossel salvas com sucesso!");
-            navigate('/admin/dashboard'); 
+            navigate('/admin/dashboard');
 
-        } catch (e: any) {
+        } catch (e: unknown) {
             dismissToast(toastId);
             console.error("Erro ao salvar configurações do carrossel:", e);
-            showError(`Falha ao salvar configurações: ${e.message || 'Erro desconhecido'}`);
+            showError(
+                `Falha ao salvar configurações: ${e instanceof Error ? e.message : 'Erro desconhecido'}`,
+            );
         } finally {
             setIsSaving(false);
         }
     };
 
-    if (authPending || isLoading || (userId && isLoadingProfile && !profile)) {
+    // Não esperar perfil para sempre: settings já vem por REST com timeout.
+    if (authPending || isLoading) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -213,10 +216,29 @@ const AdminCarouselSettings: React.FC = () => {
         );
     }
 
+    if (userId && isLoadingProfile && !profile) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Validando permissão de administrador...</p>
+            </div>
+        );
+    }
+
     if (Number(profile?.tipo_usuario_id) !== 1) {
-        showError("Acesso negado. Você não tem permissão de Administrador Master para esta página.");
-        navigate('/manager/dashboard');
-        return null;
+        return (
+            <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
+                <p className="text-gray-400 mb-4">Acesso negado. Apenas Admin Master.</p>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                    onClick={() => navigate('/manager/dashboard')}
+                >
+                    Voltar ao Dashboard
+                </Button>
+            </div>
+        );
     }
 
     return (

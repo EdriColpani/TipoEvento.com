@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
+import { restPost } from '@/utils/supabase-rest';
 import { Loader2, ImageOff, CalendarDays, ListOrdered, Heading, Subtitles, ArrowLeft, Save } from 'lucide-react';
 import { format } from 'date-fns';
 import { DatePicker } from '@/components/DatePicker';
@@ -71,41 +71,38 @@ const AdminCreatePromotionalBanner: React.FC = () => {
         const isoEndDate = values.end_date ? format(values.end_date, 'yyyy-MM-dd') : null;
 
         try {
-            const { error } = await supabase
-                .from('promotional_banners')
-                .insert([
-                    {
-                        image_url: values.image_url,
-                        headline: values.headline,
-                        subheadline: values.subheadline,
-                        display_order: Number(values.display_order),
-                        start_date: isoStartDate,
-                        end_date: isoEndDate,
-                        link_url: values.link_url || null,
-                        created_by: userId,
-                    },
-                ]);
-
-            if (error) {
-                throw error;
-            }
+            await restPost(
+                'promotional_banners',
+                {
+                    image_url: values.image_url,
+                    headline: values.headline,
+                    subheadline: values.subheadline,
+                    display_order: Number(values.display_order),
+                    start_date: isoStartDate,
+                    end_date: isoEndDate,
+                    link_url: values.link_url || null,
+                    created_by: userId,
+                },
+                15_000,
+            );
 
             dismissToast(toastId);
             showSuccess(`Banner promocional "${values.headline}" criado com sucesso!`);
-            form.reset(); // Clear form
-            navigate('/admin/banners'); // Redirect to banner list
+            form.reset();
+            navigate('/admin/banners');
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             dismissToast(toastId);
             console.error("Erro ao criar banner promocional:", error);
-            showError(`Falha ao criar banner: ${error.message || 'Erro desconhecido'}`);
+            showError(
+                `Falha ao criar banner: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+            );
         } finally {
             setIsSaving(false);
         }
     };
     
-    // Aguardar userId (definido de forma assíncrona) e carregamento do perfil antes de checar permissão
-    if (authPending || (userId && isLoadingProfile)) {
+    if (authPending || (userId && isLoadingProfile && !profile)) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -116,9 +113,19 @@ const AdminCreatePromotionalBanner: React.FC = () => {
 
     const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
     if (!isAdminMaster) {
-        showError("Acesso negado. Você não tem permissão de Administrador Master.");
-        navigate('/manager/dashboard');
-        return null;
+        return (
+            <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
+                <p className="text-gray-400 mb-4">Acesso negado. Apenas Admin Master.</p>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                    onClick={() => navigate('/manager/dashboard')}
+                >
+                    Voltar ao Dashboard
+                </Button>
+            </div>
+        );
     }
 
 

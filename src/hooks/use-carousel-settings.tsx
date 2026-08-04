@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { restGetAuthOrPublic } from '@/utils/supabase-rest';
 
 export interface CarouselSettings {
     rotation_time_seconds: number;
@@ -19,18 +19,15 @@ const DEFAULT_SETTINGS: CarouselSettings = {
     days_until_event_threshold: 30,
 };
 
+type CarouselSettingsRow = Partial<CarouselSettings> & { id?: string };
+
 const fetchCarouselSettings = async (): Promise<CarouselSettings> => {
     try {
-        const { data, error } = await supabase
-            .from('carousel_settings')
-            .select('*')
-            .limit(1)
-            .maybeSingle();
-
-        if (error) {
-            console.warn('carousel_settings:', error.message);
-            return DEFAULT_SETTINGS;
-        }
+        const rows = await restGetAuthOrPublic<CarouselSettingsRow[]>(
+            'carousel_settings?select=*&limit=1',
+            10_000,
+        );
+        const data = Array.isArray(rows) ? rows[0] : null;
 
         if (data) {
             return {

@@ -86,7 +86,15 @@ const Carousel3D: React.FC = () => {
     // Define quantos itens renderizar (Aumentado para 9, mas limitado a 7 em telas pequenas)
     const maxRendered = containerWidth < 640 ? 7 : 9; 
 
-    if (isLoading || isError || totalItems === 0) {
+    if (isLoading) {
+        return (
+            <div className="w-full flex items-center justify-center bg-black py-16">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-yellow-500 border-t-transparent" />
+            </div>
+        );
+    }
+
+    if (isError || totalItems === 0) {
         return null;
     }
     
