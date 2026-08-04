@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useCarouselSettings, CarouselSettings } from './use-carousel-settings';
+import { restGetAuthOrPublic } from '@/utils/supabase-rest';
+import { useCarouselSettings, type CarouselSettings } from './use-carousel-settings';
 import { isBefore, differenceInDays, format } from 'date-fns';
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { isCarouselBannerDisplayActive } from '@/utils/event-carousel-banner-rules';
@@ -29,11 +29,17 @@ type BannerRow = {
     end_date: string;
     event_id?: string | null;
     link_url?: string | null;
-    events?: { date: string | null } | null;
+    events?: { date: string | null } | { date: string | null }[] | null;
 };
 
 function todayIso(): string {
     return format(new Date(), 'yyyy-MM-dd');
+}
+
+function eventDateFromRow(row: BannerRow): Date | undefined {
+    const raw = row.events;
+    const dateStr = Array.isArray(raw) ? raw[0]?.date : raw?.date;
+    return dateStr ? parseEventLocalDay(dateStr) ?? undefined : undefined;
 }
 
 function mapRowToCarouselBanner(row: BannerRow, type: 'event' | 'promotional'): CarouselBanner | null {
@@ -57,40 +63,39 @@ function mapRowToCarouselBanner(row: BannerRow, type: 'event' | 'promotional'): 
         type,
         start_date: row.start_date,
         end_date: row.end_date,
-        event_date:
-            type === 'event' && row.events?.date
-                ? parseEventLocalDay(row.events.date) ?? undefined
-                : undefined,
+        event_date: type === 'event' ? eventDateFromRow(row) : undefined,
         is_regional: type === 'event',
     };
 }
 
-const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
-    try {
-        const refDay = todayIso();
-        const { data, error } = await supabase
-            .from('event_carousel_banners')
-            .select(`
-            id,
-            image_url,
-            headline,
-            subheadline,
-            display_order,
-            start_date,
-            end_date,
-            event_id,
-            events (date)
-        `)
-            .lte('start_date', refDay)
-            .gte('end_date', refDay)
-            .order('display_order', { ascending: true });
+async function fetchBannerRows(path: string): Promise<BannerRow[]> {
+    const rows = await restGetAuthOrPublic<BannerRow[]>(path, 12_000);
+    return Array.isArray(rows) ? rows : [];
+}
 
-        if (error) {
-            console.warn('event_carousel_banners:', error.message);
-            return [];
+const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
+    const refDay = todayIso();
+    const baseFilter =
+        `&start_date=lte.${encodeURIComponent(refDay)}` +
+        `&end_date=gte.${encodeURIComponent(refDay)}` +
+        '&order=display_order.asc';
+
+    try {
+        let rows: BannerRow[] = [];
+        try {
+            rows = await fetchBannerRows(
+                'event_carousel_banners?select=id,image_url,headline,subheadline,display_order,start_date,end_date,event_id,events(date)' +
+                    baseFilter,
+            );
+        } catch (embedErr) {
+            console.warn('event_carousel_banners embed failed, retrying without events:', embedErr);
+            rows = await fetchBannerRows(
+                'event_carousel_banners?select=id,image_url,headline,subheadline,display_order,start_date,end_date,event_id' +
+                    baseFilter,
+            );
         }
 
-        return (data as BannerRow[])
+        return rows
             .map((row) => mapRowToCarouselBanner(row, 'event'))
             .filter((b): b is CarouselBanner => b !== null);
     } catch (e) {
@@ -100,122 +105,138 @@ const fetchEventBanners = async (): Promise<CarouselBanner[]> => {
 };
 
 const fetchPromotionalBanners = async (): Promise<CarouselBanner[]> => {
+    const refDay = todayIso();
     try {
-        const refDay = todayIso();
-        const { data, error } = await supabase
-            .from('promotional_banners')
-            .select(`
-            id,
-            image_url,
-            headline,
-            subheadline,
-            display_order,
-            start_date,
-            end_date,
-            link_url
-        `)
-            .lte('start_date', refDay)
-            .gte('end_date', refDay)
-            .order('display_order', { ascending: true });
+        const rows = await fetchBannerRows(
+            'promotional_banners?select=id,image_url,headline,subheadline,display_order,start_date,end_date,link_url' +
+                `&start_date=lte.${encodeURIComponent(refDay)}` +
+                `&end_date=gte.${encodeURIComponent(refDay)}` +
+                '&order=display_order.asc',
+        );
 
-        if (error) {
-            console.warn('promotional_banners:', error.message);
-            return [];
-        }
-
-        return (data as BannerRow[])
+        return rows
             .map((row) => mapRowToCarouselBanner(row, 'promotional'))
             .filter((b): b is CarouselBanner => b !== null);
     } catch (e) {
         console.warn('promotional_banners failed', e);
-        return [];
+        // Fallback: busca sem filtro de data e filtra no cliente
+        try {
+            const rows = await fetchBannerRows(
+                'promotional_banners?select=id,image_url,headline,subheadline,display_order,start_date,end_date,link_url&order=display_order.asc',
+            );
+            return rows
+                .map((row) => mapRowToCarouselBanner(row, 'promotional'))
+                .filter((b): b is CarouselBanner => b !== null);
+        } catch (e2) {
+            console.warn('promotional_banners fallback failed', e2);
+            return [];
+        }
     }
 };
 
 const fetchAndProcessBanners = async (settings: CarouselSettings): Promise<CarouselBanner[]> => {
-    try {
-        const [eventBanners, promotionalBanners] = await Promise.all([
-            fetchEventBanners(),
-            fetchPromotionalBanners(),
-        ]);
+    const [eventBanners, promotionalBanners] = await Promise.all([
+        fetchEventBanners(),
+        fetchPromotionalBanners(),
+    ]);
 
-        let combinedBanners: Array<CarouselBanner & { isUpcomingPriority?: boolean }> = [
-            ...eventBanners,
-            ...promotionalBanners,
-        ];
-        const today = new Date();
+    let combinedBanners: Array<CarouselBanner & { isUpcomingPriority?: boolean }> = [
+        ...eventBanners,
+        ...promotionalBanners,
+    ];
+    const today = new Date();
 
-        combinedBanners = combinedBanners.map((banner) => {
-            if (banner.type === 'event' && banner.event_date) {
-                const daysUntil = differenceInDays(banner.event_date, today);
-                const isUpcomingPriority =
-                    daysUntil >= 0 && daysUntil <= settings.days_until_event_threshold;
-                return { ...banner, isUpcomingPriority };
-            }
-            return banner;
-        });
+    combinedBanners = combinedBanners.map((banner) => {
+        if (banner.type === 'event' && banner.event_date) {
+            const daysUntil = differenceInDays(banner.event_date, today);
+            const isUpcomingPriority =
+                daysUntil >= 0 && daysUntil <= settings.days_until_event_threshold;
+            return { ...banner, isUpcomingPriority };
+        }
+        return banner;
+    });
 
-        const compareBanners = (
-            a: CarouselBanner & { isUpcomingPriority?: boolean },
-            b: CarouselBanner & { isUpcomingPriority?: boolean },
-        ) => {
-            if (a.display_order !== b.display_order) {
-                return a.display_order - b.display_order;
-            }
-            if (a.type === 'promotional' && b.type === 'event') return -1;
-            if (a.type === 'event' && b.type === 'promotional') return 1;
+    const compareBanners = (
+        a: CarouselBanner & { isUpcomingPriority?: boolean },
+        b: CarouselBanner & { isUpcomingPriority?: boolean },
+    ) => {
+        if (a.display_order !== b.display_order) {
+            return a.display_order - b.display_order;
+        }
+        if (a.type === 'promotional' && b.type === 'event') return -1;
+        if (a.type === 'event' && b.type === 'promotional') return 1;
 
-            const aIsPriority = a.type === 'event' && a.isUpcomingPriority;
-            const bIsPriority = b.type === 'event' && b.isUpcomingPriority;
-            if (aIsPriority && !bIsPriority) return -1;
-            if (!aIsPriority && bIsPriority) return 1;
+        const aIsPriority = a.type === 'event' && a.isUpcomingPriority;
+        const bIsPriority = b.type === 'event' && b.isUpcomingPriority;
+        if (aIsPriority && !bIsPriority) return -1;
+        if (!aIsPriority && bIsPriority) return 1;
 
-            if (a.type === 'event' && b.type === 'event' && a.event_date && b.event_date) {
-                return isBefore(a.event_date, b.event_date) ? -1 : 1;
-            }
-            return 0;
-        };
+        if (a.type === 'event' && b.type === 'event' && a.event_date && b.event_date) {
+            return isBefore(a.event_date, b.event_date) ? -1 : 1;
+        }
+        return 0;
+    };
 
-        const eventBannersSorted = combinedBanners.filter((b) => b.type === 'event').sort(compareBanners);
-        const promotionalSorted = combinedBanners
-            .filter((b) => b.type === 'promotional')
-            .sort(compareBanners);
+    const eventBannersSorted = combinedBanners.filter((b) => b.type === 'event').sort(compareBanners);
+    const promotionalSorted = combinedBanners
+        .filter((b) => b.type === 'promotional')
+        .sort(compareBanners);
 
-        const maxDisplay = Math.max(1, settings.max_banners_display);
-        const minEventSlots = Math.min(
-            settings.min_regional_banners,
-            eventBannersSorted.length,
-            maxDisplay,
-        );
-        const promoSlots = Math.max(0, maxDisplay - minEventSlots);
+    const maxDisplay = Math.max(1, Number(settings.max_banners_display) || 5);
 
-        const selected = [
-            ...eventBannersSorted.slice(0, minEventSlots),
-            ...promotionalSorted.slice(0, promoSlots),
-        ];
+    // Reserva slots para eventos regionais só quando existem banners de evento.
+    // Sem eventos ativos, o carrossel fica 100% com banners promocionais.
+    const minEventSlots =
+        eventBannersSorted.length === 0
+            ? 0
+            : Math.min(
+                  Math.max(0, Number(settings.min_regional_banners) || 0),
+                  eventBannersSorted.length,
+                  maxDisplay,
+              );
+    const promoSlots = Math.max(0, maxDisplay - minEventSlots);
 
-        return selected.sort(compareBanners);
-    } catch (e) {
-        console.warn('fetchAndProcessBanners failed', e);
-        return [];
+    const selected = [
+        ...eventBannersSorted.slice(0, minEventSlots),
+        ...promotionalSorted.slice(0, promoSlots),
+    ];
+
+    // Se ainda sobrar espaço (ex.: poucos eventos), completa com mais promocionais
+    if (selected.length < maxDisplay) {
+        const used = new Set(selected.map((b) => b.id));
+        for (const promo of promotionalSorted) {
+            if (selected.length >= maxDisplay) break;
+            if (used.has(promo.id)) continue;
+            selected.push(promo);
+            used.add(promo.id);
+        }
     }
+
+    return selected.sort(compareBanners);
 };
 
 export const useCarouselBanners = () => {
     const { settings } = useCarouselSettings();
 
+    const settingsKey = [
+        settings.rotation_time_seconds,
+        settings.max_banners_display,
+        settings.min_regional_banners,
+        settings.days_until_event_threshold,
+        settings.fallback_strategy,
+    ].join('|');
+
     const query = useQuery({
-        queryKey: ['carouselBanners', settings],
+        queryKey: ['carouselBanners', settingsKey],
         queryFn: () => fetchAndProcessBanners(settings),
         staleTime: 60_000,
         retry: 1,
         refetchOnWindowFocus: true,
-        placeholderData: [],
     });
 
     return {
         ...query,
         banners: query.data ?? [],
-        isLoading: query.isLoading && query.data === undefined,
+        isLoading: query.isPending,
     };
 };

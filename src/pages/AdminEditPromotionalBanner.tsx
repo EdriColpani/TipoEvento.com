@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
+import { restGet, restPatch } from '@/utils/supabase-rest';
 import { Loader2, Image, CalendarDays, ListOrdered, Heading, Subtitles, ArrowLeft, Save } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { DatePicker } from '@/components/DatePicker';
@@ -20,7 +20,6 @@ import { usePageAuth } from '@/hooks/use-page-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/use-profile';
 
-// Zod schema for promotional banner validation
 const promotionalBannerSchema = z.object({
     image_url: z.string().url("URL da Imagem/Banner é obrigatória e deve ser uma URL válida."),
     headline: z.string().min(1, "Título é obrigatório."),
@@ -32,6 +31,17 @@ const promotionalBannerSchema = z.object({
 });
 
 type PromotionalBannerFormData = z.infer<typeof promotionalBannerSchema>;
+
+type PromotionalBannerRow = {
+    id: string;
+    image_url: string | null;
+    headline: string | null;
+    subheadline: string | null;
+    display_order: number | null;
+    start_date: string | null;
+    end_date: string | null;
+    link_url: string | null;
+};
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -59,38 +69,54 @@ const AdminEditPromotionalBanner: React.FC = () => {
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
 
     useEffect(() => {
+        if (!id) {
+            showError("ID do banner não fornecido.");
+            navigate('/admin/banners');
+            return;
+        }
+
+        let cancelled = false;
+
         const fetchBanner = async () => {
-            if (!id) {
-                showError("ID do banner não fornecido.");
-                navigate('/admin/banners');
-                return;
-            }
+            try {
+                const rows = await restGet<PromotionalBannerRow[]>(
+                    `promotional_banners?id=eq.${encodeURIComponent(id)}&select=*&limit=1`,
+                    12_000,
+                );
+                const data = Array.isArray(rows) ? rows[0] : null;
 
-            const { data, error } = await supabase
-                .from('promotional_banners')
-                .select('*')
-                .eq('id', id)
-                .single();
+                if (!data) {
+                    showError("Banner promocional não encontrado.");
+                    navigate('/admin/banners');
+                    return;
+                }
 
-            if (error || !data) {
+                if (cancelled) return;
+
+                form.reset({
+                    image_url: data.image_url || '',
+                    headline: data.headline || '',
+                    subheadline: data.subheadline || '',
+                    display_order: data.display_order || 0,
+                    start_date: data.start_date ? parseISO(data.start_date) : undefined,
+                    end_date: data.end_date ? parseISO(data.end_date) : undefined,
+                    link_url: data.link_url || '',
+                });
+            } catch (error: unknown) {
                 console.error("Erro ao buscar banner:", error);
-                showError("Banner promocional não encontrado.");
+                showError(
+                    error instanceof Error ? error.message : "Banner promocional não encontrado.",
+                );
                 navigate('/admin/banners');
-                return;
+            } finally {
+                if (!cancelled) setIsFetching(false);
             }
-
-            form.reset({
-                image_url: data.image_url || '',
-                headline: data.headline || '',
-                subheadline: data.subheadline || '',
-                display_order: data.display_order || 0,
-                start_date: data.start_date ? parseISO(data.start_date) : undefined,
-                end_date: data.end_date ? parseISO(data.end_date) : undefined,
-                link_url: data.link_url || '',
-            });
-            setIsFetching(false);
         };
-        fetchBanner();
+
+        void fetchBanner();
+        return () => {
+            cancelled = true;
+        };
     }, [id, navigate, form]);
 
     const handleImageUpload = (url: string) => {
@@ -102,6 +128,10 @@ const AdminEditPromotionalBanner: React.FC = () => {
             showError("Acesso negado. Apenas Administradores Master podem editar banners.");
             return;
         }
+        if (!id) {
+            showError("ID do banner inválido.");
+            return;
+        }
 
         setIsSaving(true);
         const toastId = showLoading("Atualizando banner promocional...");
@@ -110,26 +140,21 @@ const AdminEditPromotionalBanner: React.FC = () => {
         const isoEndDate = values.end_date ? format(values.end_date, 'yyyy-MM-dd') : null;
 
         try {
-            const { error } = await supabase
-                .from('promotional_banners')
-                .update(
-                    {
-                        image_url: values.image_url,
-                        headline: values.headline,
-                        subheadline: values.subheadline,
-                        display_order: Number(values.display_order),
-                        start_date: isoStartDate,
-                        end_date: isoEndDate,
-                        link_url: values.link_url || null,
-                        updated_by: userId,
-                        updated_at: new Date().toISOString(),
-                    }
-                )
-                .eq('id', id);
-
-            if (error) {
-                throw error;
-            }
+            await restPatch(
+                `promotional_banners?id=eq.${encodeURIComponent(id)}`,
+                {
+                    image_url: values.image_url,
+                    headline: values.headline,
+                    subheadline: values.subheadline,
+                    display_order: Number(values.display_order),
+                    start_date: isoStartDate,
+                    end_date: isoEndDate,
+                    link_url: values.link_url || null,
+                    updated_by: userId,
+                    updated_at: new Date().toISOString(),
+                },
+                15_000,
+            );
 
             dismissToast(toastId);
             showSuccess(`Banner promocional "${values.headline}" atualizado com sucesso!`);
@@ -137,17 +162,18 @@ const AdminEditPromotionalBanner: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['carouselBanners'] });
             navigate('/admin/banners'); 
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             dismissToast(toastId);
             console.error("Erro ao atualizar banner promocional:", error);
-            showError(`Falha ao atualizar banner: ${error.message || 'Erro desconhecido'}`);
+            showError(
+                `Falha ao atualizar banner: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+            );
         } finally {
             setIsSaving(false);
         }
     };
 
-    // Aguardar userId e perfil (userId é definido dentro do useEffect de fetchBanner)
-    if (authPending || isFetching || (userId && isLoadingProfile)) {
+    if (authPending || isFetching) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -156,11 +182,30 @@ const AdminEditPromotionalBanner: React.FC = () => {
         );
     }
 
+    if (userId && isLoadingProfile && !profile) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
+                <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-400">Validando permissão de administrador...</p>
+            </div>
+        );
+    }
+
     const isAdminMaster = Number(profile?.tipo_usuario_id) === ADMIN_MASTER_USER_TYPE_ID;
     if (!isAdminMaster) {
-        showError("Acesso negado. Você não tem permissão de Administrador Master.");
-        navigate('/manager/dashboard');
-        return null;
+        return (
+            <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
+                <p className="text-gray-400 mb-4">Acesso negado. Apenas Admin Master.</p>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                    onClick={() => navigate('/manager/dashboard')}
+                >
+                    Voltar ao Dashboard
+                </Button>
+            </div>
+        );
     }
 
     return (

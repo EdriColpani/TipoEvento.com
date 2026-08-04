@@ -89,8 +89,9 @@ const Index: React.FC = () => {
     const { isMobile, isTablet } = useDevice();
     
     const { events: allEvents, isLoading: isLoadingEvents, isError: isErrorEvents } = usePublicEvents();
-    const { banners: carouselBanners } = useCarouselBanners();
-    const showCarousel = carouselBanners.length > 0;
+    const { banners: carouselBanners, isLoading: isLoadingCarousel } = useCarouselBanners();
+    // Enquanto carrega, mantém a seção (evita “pular” o carrossel e nunca montar).
+    const showCarousel = isLoadingCarousel || carouselBanners.length > 0;
 
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
