@@ -112,8 +112,9 @@ const AdminPricingAndCommissions: React.FC = () => {
                     <ListingMonthlyDefaultFeeSection enabled={isAdminMaster} />
                 </TabsContent>
 
-                <TabsContent value="hybrid" className="mt-0">
+                <TabsContent value="hybrid" className="mt-0 space-y-6">
                     <FuturePlanSettingsSection kind="hybrid" enabled={isAdminMaster} />
+                    <CommissionTiersPanel userId={userId} isAdminMaster={isAdminMaster} />
                 </TabsContent>
 
                 <TabsContent value="consumption" className="mt-0">

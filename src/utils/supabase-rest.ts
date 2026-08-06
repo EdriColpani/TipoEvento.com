@@ -120,6 +120,7 @@ export async function restPost<T>(
     path: string,
     body: Record<string, unknown> | Record<string, unknown>[],
     timeoutMs = 10_000,
+    options?: { returnRepresentation?: boolean },
 ): Promise<T> {
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -132,7 +133,7 @@ export async function restPost<T>(
             headers: {
                 ...authHeaders(token),
                 Accept: 'application/json',
-                Prefer: 'return=minimal',
+                Prefer: options?.returnRepresentation ? 'return=representation' : 'return=minimal',
             },
             body: JSON.stringify(body),
         });
@@ -147,6 +148,11 @@ export async function restPost<T>(
         }
 
         return (await response.json().catch(() => ({}))) as T;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Tempo esgotado ao criar dados.');
+        }
+        throw error;
     } finally {
         window.clearTimeout(timer);
     }
