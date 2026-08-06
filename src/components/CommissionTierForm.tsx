@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Loader2, Save, Hash, Percent } from 'lucide-react';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { supabase } from '@/integrations/supabase/client';
+import { restPatch, restPost } from '@/utils/supabase-rest';
 
 // Zod schema para validação
 const commissionTierSchema = z.object({
@@ -121,57 +121,33 @@ const CommissionTierForm: React.FC<CommissionTierFormProps> = ({ initialData, on
         };
 
         try {
-            let error;
             if (initialData) {
-                // Update - primeiro salva no histórico
-                const { data: currentRange } = await supabase
-                    .from('commission_ranges')
-                    .select('*')
-                    .eq('id', initialData.id)
-                    .single();
+                // Guarda o valor anterior no histórico antes de sobrescrever.
+                await restPost('commission_ranges_history', {
+                    commission_range_id: initialData.id,
+                    min_tickets: initialData.min_tickets,
+                    max_tickets: initialData.max_tickets,
+                    percentage: initialData.percentage,
+                }, 15_000);
 
-                if (currentRange) {
-                    // Salva no histórico
-                    await supabase
-                        .from('commission_ranges_history')
-                        .insert({
-                            commission_range_id: currentRange.id,
-                            min_tickets: currentRange.min_tickets,
-                            max_tickets: currentRange.max_tickets,
-                            percentage: currentRange.percentage,
-                        });
-                }
-
-                // Atualiza a faixa
-                const result = await supabase
-                    .from('commission_ranges')
-                    .update(dataToSave)
-                    .eq('id', initialData.id);
-                error = result.error;
+                await restPatch(`commission_ranges?id=eq.${initialData.id}`, dataToSave, 15_000);
             } else {
-                // Insert
-                const result = await supabase
-                    .from('commission_ranges')
-                    .insert([dataToSave])
-                    .select()
-                    .single();
-                
-                if (result.data && result.error === null) {
-                    // Salva no histórico
-                    await supabase
-                        .from('commission_ranges_history')
-                        .insert({
-                            commission_range_id: result.data.id,
-                            min_tickets: result.data.min_tickets,
-                            max_tickets: result.data.max_tickets,
-                            percentage: result.data.percentage,
-                        });
-                }
-                error = result.error;
-            }
+                const created = await restPost<Array<{ id: string }>>(
+                    'commission_ranges',
+                    dataToSave,
+                    15_000,
+                    { returnRepresentation: true },
+                );
 
-            if (error) {
-                throw error;
+                const createdId = created?.[0]?.id;
+                if (createdId) {
+                    await restPost('commission_ranges_history', {
+                        commission_range_id: createdId,
+                        min_tickets: minTickets,
+                        max_tickets: maxTickets,
+                        percentage: percentageNumeric,
+                    }, 15_000);
+                }
             }
 
             dismissToast(toastId);

@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Plus, Loader2, Edit, AlertTriangle, Power, History } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { restPatch, restPost } from '@/utils/supabase-rest';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import {
     AlertDialog,
@@ -55,20 +55,19 @@ const ToggleActiveDialog: React.FC<{ range: CommissionRange; onToggleSuccess: ()
 
         try {
             if (range.active) {
-                await supabase.from('commission_ranges_history').insert({
+                await restPost('commission_ranges_history', {
                     commission_range_id: range.id,
                     min_tickets: range.min_tickets,
                     max_tickets: range.max_tickets,
                     percentage: range.percentage,
-                });
+                }, 15_000);
             }
 
-            const { error } = await supabase
-                .from('commission_ranges')
-                .update({ active: !range.active })
-                .eq('id', range.id);
-
-            if (error) throw error;
+            await restPatch(
+                `commission_ranges?id=eq.${range.id}`,
+                { active: !range.active },
+                15_000,
+            );
 
             dismissToast(toastId);
             showSuccess(`Faixa ${range.active ? 'desativada' : 'ativada'} com sucesso.`);
@@ -142,7 +141,7 @@ const ToggleActiveDialog: React.FC<{ range: CommissionRange; onToggleSuccess: ()
 };
 
 const CommissionTiersPanel: React.FC<CommissionTiersPanelProps> = ({ userId, isAdminMaster }) => {
-    const { ranges, isLoading, isError, invalidateRanges } = useCommissionRanges(isAdminMaster);
+    const { ranges, isLoading, isError, error, invalidateRanges } = useCommissionRanges(isAdminMaster);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRange, setEditingRange] = useState<CommissionRange | undefined>();
     const [showHistory, setShowHistory] = useState(false);
@@ -179,6 +178,17 @@ const CommissionTiersPanel: React.FC<CommissionTiersPanelProps> = ({ userId, isA
             <div className="text-red-400 text-center py-10">
                 <AlertTriangle className="h-12 w-12 mx-auto mb-4" />
                 <p>Erro ao carregar faixas de comissão.</p>
+                <p className="text-gray-400 text-sm mt-2">
+                    {error instanceof Error ? error.message : 'Erro desconhecido'}
+                </p>
+                <Button
+                    type="button"
+                    size="sm"
+                    className={`${billingBtnSolid} mt-4`}
+                    onClick={invalidateRanges}
+                >
+                    Tentar novamente
+                </Button>
             </div>
         );
     }

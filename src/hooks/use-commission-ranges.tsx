@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { showError } from '@/utils/toast';
+import { restGet } from '@/utils/supabase-rest';
 
 export interface CommissionRange {
     id: string;
@@ -21,30 +20,31 @@ export interface CommissionRangeHistory {
     changed_at: string;
 }
 
+/** Tabela ainda não criada no ambiente (migração pendente) — trata como lista vazia. */
+function isMissingTableError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    return message.includes('does not exist') || message.includes('42p01');
+}
+
 export async function fetchCommissionRanges(): Promise<CommissionRange[]> {
-    const { data, error } = await supabase
-        .from('commission_ranges')
-        .select('*')
-        .order('min_tickets', { ascending: true });
-
-    if (error) {
-        if (error.code === '42P01' || error.message?.includes('does not exist')) {
-            return [];
-        }
-        throw new Error(error.message);
+    try {
+        const rows = await restGet<CommissionRange[]>(
+            'commission_ranges?select=*&order=min_tickets.asc',
+            15_000,
+        );
+        return rows ?? [];
+    } catch (error) {
+        if (isMissingTableError(error)) return [];
+        throw error;
     }
-
-    return (data || []) as CommissionRange[];
 }
 
 export async function fetchCommissionRangesHistory(): Promise<CommissionRangeHistory[]> {
-    const { data, error } = await supabase
-        .from('commission_ranges_history')
-        .select('*')
-        .order('changed_at', { ascending: false });
-
-    if (error) throw new Error(error.message);
-    return data as CommissionRangeHistory[];
+    const rows = await restGet<CommissionRangeHistory[]>(
+        'commission_ranges_history?select=*&order=changed_at.desc',
+        15_000,
+    );
+    return rows ?? [];
 }
 
 export function useCommissionRanges(enabled: boolean) {
@@ -55,15 +55,14 @@ export function useCommissionRanges(enabled: boolean) {
         queryFn: fetchCommissionRanges,
         enabled,
         staleTime: 1000 * 60 * 5,
-        onError: () => {
-            showError('Erro ao carregar as faixas de comissão.');
-        },
+        retry: 1,
     });
 
     return {
         ranges: query.data || [],
         isLoading: query.isLoading,
         isError: query.isError,
+        error: query.error,
         invalidateRanges: () => queryClient.invalidateQueries({ queryKey: ['commissionRanges'] }),
     };
 }
