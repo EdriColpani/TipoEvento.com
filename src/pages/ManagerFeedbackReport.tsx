@@ -126,25 +126,26 @@ const ManagerFeedbackReport: React.FC = () => {
 
     return (
         <div className="max-w-7xl mx-auto space-y-6 p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center gap-2">
-                        <MessageSquareHeart className="h-7 w-7" />
-                        Feedback dos clientes
-                    </h1>
-                    <p className="text-gray-400 text-sm mt-1">
-                        Avaliações dos seus eventos (nota, temas e opiniões). Exclusivo do gestor.
-                    </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                     <Button
                         variant="outline"
                         className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                         onClick={() => navigate('/manager/reports')}
                     >
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Relatórios
+                        <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                     </Button>
+                    <div>
+                        <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center gap-2">
+                            <MessageSquareHeart className="h-7 w-7" />
+                            Feedback dos clientes
+                        </h1>
+                        <p className="text-gray-400 text-sm mt-1">
+                            Avaliações dos seus eventos (nota, temas e opiniões). Exclusivo do gestor.
+                        </p>
+                    </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
                     <Button
                         variant="outline"
                         className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"

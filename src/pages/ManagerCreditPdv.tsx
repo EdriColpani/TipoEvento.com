@@ -406,13 +406,26 @@ const ManagerCreditPdv: React.FC = () => {
 
     return (
         <div className="max-w-3xl mx-auto">
-            <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2 mb-2">
-                <ShoppingBag className="h-7 w-7" />
-                PDV — Crédito EventFest
-            </h1>
-            <p className="text-gray-400 text-sm mb-6">
-                Escaneie o QR da carteira do cliente com a câmera ou leitor USB — a identificação é automática.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div>
+                    <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
+                        <ShoppingBag className="h-7 w-7" />
+                        PDV — Crédito EventFest
+                    </h1>
+                    <p className="text-gray-400 text-sm mt-1">
+                        Escaneie o QR da carteira do cliente com a câmera ou leitor USB — a identificação é automática.
+                    </p>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/settings')}
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Voltar
+                </Button>
+            </div>
 
             <Card className="bg-black border-yellow-500/30 mb-4">
                 <CardHeader>
@@ -444,7 +457,7 @@ const ManagerCreditPdv: React.FC = () => {
                             <Button
                                 type="button"
                                 variant="outline"
-                                className="border-yellow-500/40 text-yellow-500"
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                                 onClick={openMenuQr}
                                 disabled={menuQrLoading}
                             >
@@ -664,7 +677,12 @@ const ManagerCreditPdv: React.FC = () => {
                 Cobrar com crédito EventFest
             </Button>
 
-            <Button variant="ghost" className="mt-4 text-gray-400" onClick={() => navigate('/manager/credit/establishments')}>
+            <Button
+                type="button"
+                variant="outline"
+                className="mt-4 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                onClick={() => navigate('/manager/credit/establishments')}
+            >
                 <ArrowLeft className="h-4 w-4 mr-1" /> Estabelecimentos
             </Button>
 

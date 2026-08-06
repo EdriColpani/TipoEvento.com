@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { restGet } from '@/utils/supabase-rest';
 
 export type ConsumptionLicenseChargeStatus = 'pending' | 'paid' | 'cancelled';
 
@@ -17,31 +17,36 @@ export interface ConsumptionLicenseChargeRow {
     company_cnpj?: string | null;
 }
 
+interface ChargeRawRow {
+    id: string;
+    company_id: string;
+    reference_month: string;
+    amount: number | string;
+    status: string;
+    notes: string | null;
+    paid_at: string | null;
+    created_at: string;
+    updated_at: string;
+    companies?:
+        | { corporate_name: string | null; trade_name: string | null; cnpj: string | null }
+        | Array<{ corporate_name: string | null; trade_name: string | null; cnpj: string | null }>
+        | null;
+}
+
 async function fetchConsumptionLicenseCharges(
     companyId?: string,
 ): Promise<ConsumptionLicenseChargeRow[]> {
-    let query = supabase
-        .from('company_consumption_license_charges')
-        .select(
-            `
-            id, company_id, reference_month, amount, status, notes, paid_at, created_at, updated_at,
-            companies ( corporate_name, trade_name, cnpj )
-        `,
-        )
-        .order('reference_month', { ascending: false });
+    const select =
+        'select=id,company_id,reference_month,amount,status,notes,paid_at,created_at,updated_at,companies(corporate_name,trade_name,cnpj)';
+    const filter = companyId ? `&company_id=eq.${companyId}` : '';
 
-    if (companyId) {
-        query = query.eq('company_id', companyId);
-    }
-
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
+    const data = await restGet<ChargeRawRow[]>(
+        `company_consumption_license_charges?${select}${filter}&order=reference_month.desc`,
+        15_000,
+    );
 
     return (data ?? []).map((row) => {
-        const companies = row.companies as
-            | { corporate_name: string | null; trade_name: string | null; cnpj: string | null }
-            | null
-            | undefined;
+        const companies = Array.isArray(row.companies) ? row.companies[0] : row.companies;
         return {
             id: row.id,
             company_id: row.company_id,
@@ -66,6 +71,7 @@ export function useConsumptionLicenseCharges(enabled: boolean, companyId?: strin
         queryFn: () => fetchConsumptionLicenseCharges(companyId),
         enabled,
         staleTime: 1000 * 60,
+        retry: 1,
     });
 
     return {

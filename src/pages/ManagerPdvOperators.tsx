@@ -75,7 +75,12 @@ const ManagerPdvOperators: React.FC = () => {
         return (
             <div className="max-w-3xl mx-auto text-center py-20 text-gray-400">
                 <p>Apenas o proprietário da empresa pode gerenciar operadores PDV.</p>
-                <Button variant="ghost" className="mt-4 text-yellow-500" onClick={() => navigate('/manager/settings')}>
+                <Button
+                    variant="outline"
+                    className="mt-4 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/settings')}
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar
                 </Button>
             </div>
@@ -84,23 +89,35 @@ const ManagerPdvOperators: React.FC = () => {
 
     return (
         <div className="max-w-4xl mx-auto">
-            <Button
-                variant="ghost"
-                className="mb-6 text-gray-400 hover:text-yellow-500"
-                onClick={() => navigate('/manager/settings')}
-            >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Configurações
-            </Button>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div>
+                    <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
+                        <Users className="h-7 w-7" />
+                        Operadores PDV
+                    </h1>
+                    <p className="text-gray-400 text-sm mt-1">
+                        Funcionários do balcão com acesso ao PDV e ao catálogo de produtos (sem configurações da empresa).
+                    </p>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/settings')}
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Voltar
+                </Button>
+            </div>
 
             <Card className="bg-black border border-yellow-500/30 mb-6">
                 <CardHeader>
-                    <CardTitle className="text-yellow-500 flex items-center gap-2">
-                        <Users className="h-5 w-5" />
-                        Operadores PDV
+                    <CardTitle className="text-white text-lg flex items-center gap-2">
+                        <Mail className="h-5 w-5 text-yellow-500" />
+                        Convidar operador
                     </CardTitle>
                     <CardDescription className="text-gray-400">
-                        Funcionários do balcão com acesso ao PDV e ao catálogo de produtos (sem configurações da empresa).
+                        Informe o e-mail do funcionário para liberar o acesso ao PDV.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -120,7 +137,7 @@ const ManagerPdvOperators: React.FC = () => {
                             <Button
                                 onClick={handleInvite}
                                 disabled={saving}
-                                className="bg-yellow-500 text-black hover:bg-yellow-600 shrink-0"
+                                className="bg-yellow-500 text-black hover:bg-yellow-600 shrink-0 disabled:opacity-50"
                             >
                                 {saving ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />

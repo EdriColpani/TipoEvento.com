@@ -162,22 +162,30 @@ const ManagerNotifications: React.FC = () => {
                     <Bell className="h-7 w-7 mr-3" />
                     Notificações e Alertas
                 </h1>
-                <div className="flex space-x-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <Button
+                        type="button"
                         onClick={handleSave}
                         disabled={isSaving}
                         className="bg-yellow-500 text-black hover:bg-yellow-600 text-sm h-9 px-4 disabled:opacity-50"
                     >
                         {isSaving ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Salvando...
+                            </>
                         ) : (
-                            <Save className="w-4 h-4" />
+                            <>
+                                <Save className="w-4 h-4" />
+                                Salvar
+                            </>
                         )}
                     </Button>
                     <Button
+                        type="button"
                         onClick={() => navigate('/manager/settings')}
                         variant="outline"
-                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm h-9 px-4"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 text-sm h-9 px-4"
                     >
                         <ArrowLeft className="mr-2 h-4 w-4" />
                         Voltar

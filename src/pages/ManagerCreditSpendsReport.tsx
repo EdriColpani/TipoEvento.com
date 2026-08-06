@@ -69,7 +69,11 @@ const ManagerCreditSpendsReport: React.FC = () => {
         <div className="max-w-5xl mx-auto">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports')}>
+                    <Button
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        onClick={() => navigate('/manager/reports')}
+                    >
                         <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                     </Button>
                     <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
@@ -79,7 +83,7 @@ const ManagerCreditSpendsReport: React.FC = () => {
                 </div>
                 <Button
                     variant="outline"
-                    className="border-yellow-500/40 text-yellow-500"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                     onClick={() => navigate('/manager/credit/settlements')}
                 >
                     <Banknote className="h-4 w-4 mr-2" /> Repasses
