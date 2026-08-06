@@ -25,6 +25,8 @@ export type PublicSiteContextValue = {
     tipoUsuarioId: number | undefined;
     roleLoading: boolean;
     mode: PublicLaunchMode;
+    /** true depois da 1ª resposta real do get_public_launch_mode (não placeholder). */
+    modeReady: boolean;
     isPreview: boolean;
     canBypassPreview: boolean;
     isError: boolean;
@@ -181,6 +183,7 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
             tipoUsuarioId: tipo,
             roleLoading,
             mode,
+            modeReady: query.isFetched && !query.isPlaceholderData,
             isPreview,
             canBypassPreview,
             isError: query.isError,
@@ -188,6 +191,8 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
     }, [
         query.data,
         query.isError,
+        query.isFetched,
+        query.isPlaceholderData,
         profile,
         profileLoading,
         roleTipo,
@@ -218,7 +223,32 @@ export function usePublicLaunchModeContext(): PublicSiteContextValue {
 }
 
 export function usePublicSiteAuth() {
-    const { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId, roleLoading } =
-        usePublicSiteContext();
-    return { userId, userEmail, profile, sessionReady, profileLoading, isAuthenticated, tipoUsuarioId, roleLoading };
+    const {
+        userId,
+        userEmail,
+        profile,
+        sessionReady,
+        profileLoading,
+        isAuthenticated,
+        tipoUsuarioId,
+        roleLoading,
+        mode,
+        modeReady,
+        isPreview,
+        canBypassPreview,
+    } = usePublicSiteContext();
+    return {
+        userId,
+        userEmail,
+        profile,
+        sessionReady,
+        profileLoading,
+        isAuthenticated,
+        tipoUsuarioId,
+        roleLoading,
+        mode,
+        modeReady,
+        isPreview,
+        canBypassPreview,
+    };
 }

@@ -18,7 +18,9 @@ const ClientAuthGate: React.FC = () => {
         userId,
         tipoUsuarioId,
         roleLoading,
-        mode,
+        isPreview,
+        modeReady,
+        canBypassPreview,
     } = usePublicSiteAuth();
 
     const resolvedTipo =
@@ -63,14 +65,16 @@ const ClientAuthGate: React.FC = () => {
             return;
         }
 
-        // Cliente na landing institucional → vitrine de eventos
+        // Em pré-lançamento, cliente também permanece em /informacoes (não força a vitrine).
+        if (isPreview) return;
+
+        // Cliente na landing institucional → vitrine de eventos (somente site ao vivo)
         if (location.pathname === '/informacoes' && resolvedTipo === 3) {
             navigate('/', { replace: true });
         }
-
-        // Admin/gestor podem ficar em `/` (logo → página principal de eventos).
     }, [
         isAuthenticated,
+        isPreview,
         location.pathname,
         navigate,
         roleLoading,
@@ -81,10 +85,10 @@ const ClientAuthGate: React.FC = () => {
     const waitingForRole =
         isAuthenticated &&
         resolvedTipo == null &&
-        location.pathname === '/informacoes' &&
+        PUBLIC_HOME_PATHS.has(location.pathname) &&
         (roleLoading || !fallbackDone);
 
-    if (!sessionReady || waitingForRole) {
+    if (!sessionReady || waitingForRole || !modeReady) {
         return (
             <div className="flex min-h-[50vh] flex-col items-center justify-center bg-black px-4">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
@@ -93,26 +97,32 @@ const ClientAuthGate: React.FC = () => {
         );
     }
 
-    if (!isAuthenticated) {
-        const fullFrom = `${location.pathname}${location.search}`;
-        const isClientPrivatePath =
-            location.pathname === '/tickets' ||
-            location.pathname === '/profile' ||
-            location.pathname === '/wallet' ||
-            location.pathname.startsWith('/wallet/');
+    const fullFrom = `${location.pathname}${location.search}`;
+    const isClientPrivatePath =
+        location.pathname === '/tickets' ||
+        location.pathname === '/profile' ||
+        location.pathname === '/wallet' ||
+        location.pathname.startsWith('/wallet/');
 
+    if (!isAuthenticated) {
         // Retorno do Mercado Pago / área logada: manda para login com returnTo,
         // não para /informacoes (parecia "deslogou e perdeu a compra").
         if (isClientPrivatePath) {
             return <Navigate to="/login" replace state={{ from: fullFrom }} />;
         }
 
-        const isPreviewMode = mode === 'preview';
-
-        // Só força a página institucional quando o pré-lançamento está ativo.
-        if (isPreviewMode && (location.pathname === '/' || !isGuestAllowedPath(location.pathname))) {
+        // Pré-lançamento marcado: URL obrigatória /informacoes
+        if (isPreview && (location.pathname === '/' || !isGuestAllowedPath(location.pathname))) {
             return <Navigate to="/informacoes" replace state={{ from: fullFrom }} />;
         }
+
+        // Site ao vivo: visitante pode ficar em /
+        if (!isPreview && !isGuestAllowedPath(location.pathname) && location.pathname !== '/') {
+            return <Navigate to="/login" replace state={{ from: fullFrom }} />;
+        }
+    } else if (isPreview && !canBypassPreview && location.pathname === '/') {
+        // Cliente logado em pré-lançamento também cai em /informacoes
+        return <Navigate to="/informacoes" replace />;
     }
 
     return <Outlet />;
