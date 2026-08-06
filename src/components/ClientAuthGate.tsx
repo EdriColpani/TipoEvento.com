@@ -18,6 +18,7 @@ const ClientAuthGate: React.FC = () => {
         userId,
         tipoUsuarioId,
         roleLoading,
+        mode,
     } = usePublicSiteAuth();
 
     const resolvedTipo =
@@ -106,7 +107,10 @@ const ClientAuthGate: React.FC = () => {
             return <Navigate to="/login" replace state={{ from: fullFrom }} />;
         }
 
-        if (location.pathname === '/' || !isGuestAllowedPath(location.pathname)) {
+        const isPreviewMode = mode === 'preview';
+
+        // Só força a página institucional quando o pré-lançamento está ativo.
+        if (isPreviewMode && (location.pathname === '/' || !isGuestAllowedPath(location.pathname))) {
             return <Navigate to="/informacoes" replace state={{ from: fullFrom }} />;
         }
     }
