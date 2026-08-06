@@ -49,8 +49,8 @@ const ManagerCreditAccountingReport: React.FC = () => {
             <div className="max-w-6xl mx-auto">
                 <div className="flex flex-wrap items-center gap-4 mb-6">
                     <Button
-                        variant="ghost"
-                        className="text-gray-400"
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                         onClick={() => navigate('/admin/settings/credit-reports')}
                     >
                         <ArrowLeft className="h-4 w-4 mr-1" /> Créditos Admin
@@ -81,7 +81,11 @@ const ManagerCreditAccountingReport: React.FC = () => {
                 <p className="text-gray-500 text-sm mb-4">
                     Peça ao Admin Master para habilitar o módulo de consumo/créditos ou migrar o plano para híbrido ou consumo.
                 </p>
-                <Button variant="outline" className="mt-2" onClick={() => navigate('/manager/reports')}>
+                <Button
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/reports')}
+                >
                     Voltar
                 </Button>
             </div>
@@ -91,7 +95,11 @@ const ManagerCreditAccountingReport: React.FC = () => {
     return (
         <div className="max-w-6xl mx-auto">
             <div className="flex flex-wrap items-center gap-4 mb-6">
-                <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports')}>
+                <Button
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/reports')}
+                >
                     <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                 </Button>
                 <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">

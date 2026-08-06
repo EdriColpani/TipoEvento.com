@@ -93,20 +93,26 @@ const ManagerCreditSettlements: React.FC = () => {
 
     return (
         <div className="max-w-6xl mx-auto">
-            <div className="flex items-center gap-4 mb-6">
-                <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports')}>
-                    <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div>
+                    <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
+                        <Banknote className="h-6 w-6" />
+                        Repasses D+1 — Crédito e ingressos (banco)
+                    </h1>
+                    <p className="text-gray-400 text-sm mt-1">
+                        Crédito EventFest e vendas de ingresso no modo conta bancária geram repasse com retenção de{' '}
+                        {retentionDays} dia(s) (D+1). Após a liberação, a EventFest liquida via TED/PIX.
+                    </p>
+                </div>
+                <Button
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/reports')}
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Voltar
                 </Button>
-                <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
-                    <Banknote className="h-6 w-6" />
-                    Repasses D+1 — Crédito e ingressos (banco)
-                </h1>
             </div>
-
-            <p className="text-gray-400 text-sm mb-4">
-                Crédito EventFest e vendas de ingresso no modo conta bancária geram repasse com retenção de{' '}
-                {retentionDays} dia(s) (D+1). Após a liberação, a EventFest liquida via TED/PIX.
-            </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                 <SummaryCard label="Em retenção D+1" value={money(Number(summary?.pending_retention ?? summary?.pending ?? 0))} />

@@ -134,7 +134,11 @@ const ManagerTicketChargebacks: React.FC = () => {
     return (
         <div className="max-w-6xl mx-auto">
             <div className="flex items-center gap-4 mb-6">
-                <Button variant="ghost" className="text-gray-400" onClick={() => navigate('/manager/reports')}>
+                <Button
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/reports')}
+                >
                     <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                 </Button>
                 <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">

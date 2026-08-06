@@ -54,7 +54,7 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
     const isLicensePlan = isConsumptionOrLicensePlan(billing?.billing_plan);
 
-    const { charges, isLoading, isError, invalidate } = useConsumptionLicenseCharges(
+    const { charges, isLoading, isError, error, invalidate } = useConsumptionLicenseCharges(
         !!company?.id && isLicensePlan,
         company?.id,
     );
@@ -158,7 +158,9 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
                 <CardHeader className="pb-2">
                     <CardDescription className="text-gray-400">Em aberto</CardDescription>
                     <CardTitle className="text-amber-400 text-xl">
-                        {summary.pendingCount} fatura(s) · {formatMoney(summary.pendingAmount)}
+                        {loadingBilling || isLoading
+                            ? 'Carregando...'
+                            : `${summary.pendingCount} fatura(s) · ${formatMoney(summary.pendingAmount)}`}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -200,7 +202,21 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
                             <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
                         </div>
                     ) : isError ? (
-                        <p className="text-red-400 text-center py-8">Erro ao carregar cobranças.</p>
+                        <div className="text-center py-8">
+                            <p className="text-red-400">Erro ao carregar cobranças.</p>
+                            <p className="text-gray-500 text-sm mt-2">
+                                {error instanceof Error ? error.message : 'Erro desconhecido'}
+                            </p>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={invalidate}
+                                className="mt-4 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                            >
+                                Tentar novamente
+                            </Button>
+                        </div>
                     ) : charges.length === 0 ? (
                         <p className="text-gray-400 text-center py-8">
                             Nenhuma cobrança registrada ainda para sua empresa.

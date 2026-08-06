@@ -237,7 +237,11 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
                 <p className="text-gray-400 text-sm mb-6">
                     Este relatório é exclusivo do gestor. Admin Master não possui acesso a esta tela.
                 </p>
-                <Button variant="outline" onClick={() => navigate('/manager/reports')}>
+                <Button
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/reports')}
+                >
                     Voltar aos relatórios
                 </Button>
             </div>
@@ -248,34 +252,33 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
 
     return (
         <div className="max-w-7xl mx-auto space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center gap-2">
-                        <Gift className="h-7 w-7" />
-                        Pacotes cortesia
-                    </h1>
-                    <p className="text-gray-400 text-sm mt-1">
-                        Acompanhamento de pacotes enviados, resgates por ingresso e destinatários.
-                    </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                     <Button
                         variant="outline"
-                        className="border-yellow-500/30 text-yellow-500"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                         onClick={() => navigate('/manager/reports')}
                     >
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Relatórios
+                        <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                     </Button>
-                    <Button
-                        className="bg-yellow-500 text-black hover:bg-yellow-600"
-                        onClick={handleExportCsv}
-                        disabled={flatExportRows.length === 0}
-                    >
-                        <Download className="h-4 w-4 mr-2" />
-                        Exportar CSV
-                    </Button>
+                    <div>
+                        <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center gap-2">
+                            <Gift className="h-7 w-7" />
+                            Pacotes cortesia
+                        </h1>
+                        <p className="text-gray-400 text-sm mt-1">
+                            Acompanhamento de pacotes enviados, resgates por ingresso e destinatários.
+                        </p>
+                    </div>
                 </div>
+                <Button
+                    className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                    onClick={handleExportCsv}
+                    disabled={flatExportRows.length === 0}
+                >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar CSV
+                </Button>
             </div>
 
             {summary && (

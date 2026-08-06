@@ -241,7 +241,12 @@ const ManagerCreditEstablishments: React.FC = () => {
                 <p className="text-gray-400 mb-4">
                     Seu plano comercial não inclui consumo por crédito EventFest.
                 </p>
-                <Button variant="outline" onClick={() => navigate('/manager/settings')}>
+                <Button
+                    variant="outline"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                    onClick={() => navigate('/manager/settings')}
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar
                 </Button>
             </div>
@@ -250,7 +255,7 @@ const ManagerCreditEstablishments: React.FC = () => {
 
     return (
         <div className="max-w-4xl mx-auto">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                 <div>
                     <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
                         <Store className="h-7 w-7" />
@@ -260,9 +265,23 @@ const ManagerCreditEstablishments: React.FC = () => {
                         Bares, lojas e pontos de venda que aceitam crédito EventFest.
                     </p>
                 </div>
-                <Button variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={() => navigate('/manager/credit/pdv')}>
-                    Abrir PDV
-                </Button>
+                <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        onClick={() => navigate('/manager/credit/pdv')}
+                    >
+                        Abrir PDV
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        onClick={() => navigate('/manager/settings')}
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Voltar
+                    </Button>
+                </div>
             </div>
 
             <Card className="bg-black border-yellow-500/30 mb-6">
