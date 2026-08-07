@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Loader2, Minus, Plus, Store, Wallet } from 'lucide-react';
+import { AlertTriangle, Loader2, Minus, Plus, QrCode, Store, Wallet } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useCreditMenu } from '@/hooks/use-credit-menu';
 import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { showError, showSuccess } from '@/utils/toast';
-import { checkoutCreditConsumptionFromMenu } from '@/utils/credit-consumption-intent';
+import { checkoutCreditConsumption } from '@/utils/credit-consumption-intent';
+import { useQueryClient } from '@tanstack/react-query';
 
 function formatMoney(value: number): string {
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -17,9 +19,11 @@ const ClientCreditMenu: React.FC = () => {
     const [searchParams] = useSearchParams();
     const menuToken = searchParams.get('m');
     const { userId } = useAuthUserId();
-    const { data, isLoading, isError, error } = useCreditMenu(menuToken);
+    const queryClient = useQueryClient();
+    const { data, isLoading, isError, error, refetch } = useCreditMenu(menuToken);
     const [quantities, setQuantities] = React.useState<Record<string, number>>({});
     const [paying, setPaying] = React.useState(false);
+    const [deliveryToken, setDeliveryToken] = React.useState<string | null>(null);
 
     const title = useMemo(() => {
         if (!data) return 'Cardápio digital';
@@ -58,7 +62,7 @@ const ClientCreditMenu: React.FC = () => {
         }
         setPaying(true);
         try {
-            const result = await checkoutCreditConsumptionFromMenu({
+            const result = await checkoutCreditConsumption({
                 userId,
                 menuToken,
                 items: cartItems.map((row) => ({
@@ -66,16 +70,69 @@ const ClientCreditMenu: React.FC = () => {
                     quantity: row.quantity,
                 })),
             });
+            setDeliveryToken(result.deliveryToken ?? null);
+            setQuantities({});
             showSuccess(
-                `Pedido enviado ao balcão: ${formatMoney(Number(result.gross_amount ?? cartTotal))}. Aguarde o atendimento para cobrança final.`,
+                `Pagamento confirmado: ${formatMoney(Number(result.grossAmount ?? cartTotal))}. Mostre o QR na retirada.`,
             );
-            navigate('/wallet');
+            void refetch();
+            void queryClient.invalidateQueries({ queryKey: ['clientCreditOrders'] });
+            void queryClient.invalidateQueries({ queryKey: ['client-credit-balance'] });
+            void queryClient.invalidateQueries({ queryKey: ['client-credit-ledger'] });
         } catch (e: unknown) {
             showError(e instanceof Error ? e.message : 'Não foi possível concluir o pagamento.');
         } finally {
             setPaying(false);
         }
     };
+
+    if (deliveryToken) {
+        return (
+            <div className="min-h-[calc(100vh-4.75rem)] md:min-h-[calc(100vh-6rem)] bg-black text-white px-4 pt-4 pb-8 max-w-2xl mx-auto">
+                <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-yellow-500 flex items-center gap-2">
+                        <QrCode className="h-7 w-7" />
+                        Pedido pago — retire no balcão
+                    </h1>
+                    <p className="text-gray-400 text-sm mt-1">
+                        Apresente este QR ao estabelecimento para receber os produtos.
+                    </p>
+                </div>
+                <Card className="bg-black border-yellow-500/30">
+                    <CardContent className="py-6 flex flex-col items-center gap-4">
+                        <div className="bg-white p-4 rounded-lg">
+                            <QRCode value={deliveryToken} size={220} />
+                        </div>
+                        <p className="text-xs text-gray-500 break-all text-center font-mono">{deliveryToken}</p>
+                        <Button
+                            type="button"
+                            className="w-full bg-yellow-500 text-black hover:bg-yellow-600"
+                            onClick={() => setDeliveryToken(null)}
+                        >
+                            Fazer outro pedido
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            onClick={() => navigate('/wallet/pedidos')}
+                        >
+                            Ver meus pedidos
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            onClick={() => navigate('/wallet')}
+                        >
+                            <Wallet className="h-4 w-4 mr-1" />
+                            Ir para carteira
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-[calc(100vh-4.75rem)] md:min-h-[calc(100vh-6rem)] bg-black text-white px-4 pt-4 pb-8 max-w-2xl mx-auto">
@@ -84,7 +141,9 @@ const ClientCreditMenu: React.FC = () => {
                     <Store className="h-7 w-7" />
                     {title}
                 </h1>
-                <p className="text-gray-400 text-sm mt-1">Visualização de cardápio via QR do balcão.</p>
+                <p className="text-gray-400 text-sm mt-1">
+                    Cardápio via QR do balcão. O crédito é debitado na compra.
+                </p>
             </div>
 
             {!menuToken && (
@@ -141,11 +200,25 @@ const ClientCreditMenu: React.FC = () => {
                                             key={item.id}
                                             className="rounded-lg border border-yellow-500/20 p-3 flex items-start justify-between gap-3"
                                         >
-                                            <div>
-                                                <p className="text-white font-medium">{item.name}</p>
-                                                {item.description ? (
-                                                    <p className="text-xs text-gray-500 mt-1">{item.description}</p>
+                                            <div className="flex items-start gap-3 min-w-0">
+                                                {item.imageUrl ? (
+                                                    <img
+                                                        src={item.imageUrl}
+                                                        alt={item.name}
+                                                        className="h-12 w-12 rounded-lg object-cover border border-yellow-500/20 shrink-0"
+                                                    />
                                                 ) : null}
+                                                <div className="min-w-0">
+                                                    <p className="text-white font-medium">{item.name}</p>
+                                                    {item.description ? (
+                                                        <p className="text-xs text-gray-500 mt-1">{item.description}</p>
+                                                    ) : null}
+                                                    {item.packagingType === 'box' && item.unitsPerBox ? (
+                                                        <p className="text-xs text-yellow-500/80 mt-1">
+                                                            Caixa com {item.unitsPerBox} unidades
+                                                        </p>
+                                                    ) : null}
+                                                </div>
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-yellow-500 font-semibold">{formatMoney(item.unitPrice)}</p>
@@ -154,7 +227,7 @@ const ClientCreditMenu: React.FC = () => {
                                                         type="button"
                                                         size="sm"
                                                         variant="outline"
-                                                        className="h-7 w-7 p-0 border-yellow-500/40 text-yellow-500"
+                                                        className="h-7 w-7 p-0 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
                                                         onClick={() => setQty(item.id, (quantities[item.id] ?? 0) - 1)}
                                                     >
                                                         <Minus className="h-3 w-3" />
@@ -166,7 +239,7 @@ const ClientCreditMenu: React.FC = () => {
                                                         type="button"
                                                         size="sm"
                                                         variant="outline"
-                                                        className="h-7 w-7 p-0 border-yellow-500/40 text-yellow-500"
+                                                        className="h-7 w-7 p-0 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
                                                         onClick={() => setQty(item.id, (quantities[item.id] ?? 0) + 1)}
                                                     >
                                                         <Plus className="h-3 w-3" />
@@ -206,7 +279,7 @@ const ClientCreditMenu: React.FC = () => {
                             </div>
                             <Button
                                 type="button"
-                                className="w-full bg-yellow-500 text-black hover:bg-yellow-600"
+                                className="w-full bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
                                 onClick={handleCheckout}
                                 disabled={paying || cartItems.length === 0}
                             >
@@ -218,7 +291,8 @@ const ClientCreditMenu: React.FC = () => {
 
                     <Button
                         type="button"
-                        className="w-full mt-4 bg-yellow-500 text-black hover:bg-yellow-600"
+                        variant="outline"
+                        className="w-full mt-4 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
                         onClick={() => navigate('/wallet')}
                     >
                         <Wallet className="h-4 w-4 mr-1" />

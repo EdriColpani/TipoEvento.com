@@ -26,6 +26,7 @@ import ManagerPaymentSettings from "./pages/ManagerPaymentSettings";
 import ManagerCreditEstablishments from "./pages/ManagerCreditEstablishments";
 import ManagerCreditPdv from "./pages/ManagerCreditPdv";
 import ManagerCreditSpendsReport from "./pages/ManagerCreditSpendsReport";
+import ManagerCreditProductInventoryReport from "./pages/ManagerCreditProductInventoryReport";
 import ManagerCreditAccountingReport from "./pages/ManagerCreditAccountingReport";
 import ManagerCreditSettlements from "./pages/ManagerCreditSettlements";
 import ManagerTicketChargebacks from "./pages/ManagerTicketChargebacks";
@@ -85,6 +86,8 @@ import TicketValidator from "./pages/TicketValidator"; // NOVO
 import RegistrationsReports from "./pages/RegistrationsReports";
 import ClientCreditWallet from "./pages/ClientCreditWallet";
 import ClientCreditMenu from "./pages/ClientCreditMenu";
+import ClientCreditCatalog from "./pages/ClientCreditCatalog";
+import ClientCreditOrders from "./pages/ClientCreditOrders";
 import ManagerComplimentaryBundles from "./pages/ManagerComplimentaryBundles";
 import ManagerComplimentaryBundlesReport from "./pages/ManagerComplimentaryBundlesReport";
 import ManagerFeedbackReport from "./pages/ManagerFeedbackReport";
@@ -128,7 +131,10 @@ function AppRoutes() {
             <Route path="profile" element={<Profile />} />
             <Route path="tickets" element={<MyTickets />} />
             <Route path="wallet" element={<ClientCreditWallet />} />
+            <Route path="wallet/pedidos" element={<ClientCreditOrders />} />
             <Route path="wallet/consumo" element={<ClientCreditMenu />} />
+            <Route path="wallet/consumo/evento/:eventId" element={<ClientCreditCatalog />} />
+            <Route path="wallet/consumo/estabelecimento/:establishmentId" element={<ClientCreditCatalog />} />
             <Route path="cortesia/pacote" element={<ComplimentaryBundlePage />} />
             <Route path="cortesia/resgatar" element={<ComplimentarySeatRedeemPage />} />
             </Route>
@@ -180,6 +186,7 @@ function AppRoutes() {
             <Route path="/manager/reports/listing-monthly" element={<ManagerListingMonthlyBilling />} />
             <Route path="/manager/reports/consumption-license" element={<ManagerConsumptionLicenseBilling />} />
             <Route path="/manager/reports/credit-spends" element={<ManagerCreditSpendsReport />} />
+            <Route path="/manager/reports/credit-product-inventory" element={<ManagerCreditProductInventoryReport />} />
             <Route path="/manager/reports/credit-accounting" element={<ManagerCreditAccountingReport />} />
             <Route path="/manager/reports/ticket-chargebacks" element={<ManagerTicketChargebacks />} />
             <Route path="/manager/reports/admin-ticket-inventory" element={<AdminCompaniesTicketInventoryReport />} />

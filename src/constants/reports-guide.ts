@@ -154,6 +154,28 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
             'Comissão e líquidos devem alinhar com os lançamentos de crédito em Repasses e, no Admin, com a aba Comissões / Contábil no mesmo recorte.',
     },
     {
+        id: 'credit-product-inventory',
+        audience: 'gestor',
+        title: 'Estoque e vendas de produtos',
+        summary:
+            'Catálogo de consumo: quantidade em estoque e quantidade já vendida (crédito EventFest), em colunas separadas.',
+        purpose:
+            'Acompanhar o saldo físico/cadastral dos produtos do estabelecimento frente ao que já foi vendido no PDV e no cardápio do cliente.',
+        howItWorks: [
+            'Lista cada produto do catálogo com estabelecimento, preço e embalagem.',
+            'Coluna Em estoque: quantity atual do cadastro.',
+            'Coluna Vendidos: soma das vendas concluídas em credit_spend_line_items (PDV + app).',
+            'Receita vendida: soma dos line_total das mesmas vendas.',
+            'Filtro opcional por estabelecimento.',
+        ],
+        tips: [
+            'Itens vendidos no PDV sem product_id (digitados à mão) não entram nesta grade — só o catálogo cadastrado.',
+            'Estoque 0 e vendas > 0 é esperado após esgotar o produto.',
+        ],
+        matchesWith:
+            'Vendidos devem acompanhar os consumos do relatório Consumos via crédito no mesmo período operacional.',
+    },
+    {
         id: 'credit-settlements',
         audience: 'gestor',
         title: 'Repasses D+1 — Crédito e ingressos (banco)',

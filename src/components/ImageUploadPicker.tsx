@@ -20,6 +20,9 @@ interface ImageUploadPickerProps {
     maxFileSizeMB?: number;
     isInvalid?: boolean;
     uploadButtonLabel?: string;
+    /** Preview com largura fixa (não estica 100% da linha). Ideal para foto de produto. */
+    compact?: boolean;
+    objectFit?: 'cover' | 'contain';
 }
 
 const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
@@ -35,6 +38,8 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
     maxFileSizeMB = 5,
     isInvalid = false,
     uploadButtonLabel = 'Escolher imagem',
+    compact = false,
+    objectFit = 'cover',
 }) => {
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -77,21 +82,28 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
     };
 
     return (
-        <div className="space-y-4">
+        <div className={cn('space-y-3', compact && 'max-w-full')} style={compact ? { width: Math.min(width, 200) } : undefined}>
             <div 
                 className={cn(
-                    "w-full bg-black/60 border rounded-xl overflow-hidden flex items-center justify-center relative",
+                    "bg-black/60 border rounded-xl overflow-hidden flex items-center justify-center relative",
                     "group cursor-pointer hover:border-yellow-500/60 transition-all duration-300",
-                    isInvalid ? "border-red-500" : "border-yellow-500/30" // Aplica borda vermelha se inválido
+                    compact ? 'w-full' : 'w-full',
+                    isInvalid ? "border-red-500" : "border-yellow-500/30"
                 )}
-                style={{ height: `${height}px` }}
+                style={{
+                    height: `${compact ? Math.min(height, 160) : height}px`,
+                    maxWidth: compact ? `${Math.min(width, 200)}px` : undefined,
+                }}
                 onClick={handleButtonClick}
             >
                 {currentImageUrl ? (
                     <img 
                         src={currentImageUrl} 
-                        alt="Preview do Banner" 
-                        className="w-full h-full object-cover object-center"
+                        alt="Preview" 
+                        className={cn(
+                            'w-full h-full object-center',
+                            objectFit === 'contain' ? 'object-contain bg-black/40' : 'object-cover',
+                        )}
                         onError={(e) => {
                             e.currentTarget.onerror = null; 
                             e.currentTarget.src = 'placeholder.svg'; 
@@ -99,19 +111,19 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
                         }}
                     />
                 ) : (
-                    <div className="text-center text-gray-500 p-4">
-                        <ImageOff className="h-8 w-8 mx-auto mb-2" />
-                        <p className="text-sm">{placeholderText}</p>
-                        <p className="text-xs mt-1">({width}px de largura por {height}px de altura)</p>
+                    <div className="text-center text-gray-500 p-3">
+                        <ImageOff className="h-6 w-6 mx-auto mb-1" />
+                        <p className="text-xs">{placeholderText}</p>
+                        <p className="text-[10px] mt-1 opacity-70">({width}×{height})</p>
                     </div>
                 )}
                 
                 {(uploading || !currentImageUrl) && (
                     <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         {uploading ? (
-                            <Loader2 className="h-8 w-8 animate-spin text-yellow-500" />
+                            <Loader2 className="h-6 w-6 animate-spin text-yellow-500" />
                         ) : (
-                            <UploadCloud className="h-10 w-10 text-yellow-500" />
+                            <UploadCloud className="h-7 w-7 text-yellow-500" />
                         )}
                     </div>
                 )}
@@ -128,9 +140,12 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
             <Button 
                 onClick={handleButtonClick}
                 variant="outline" 
-                className="w-full bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm h-10"
+                className={cn(
+                    'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 text-sm h-9',
+                    compact ? 'w-full max-w-[200px]' : 'w-full h-10',
+                )}
                 disabled={disabled || uploading}
-                type="button" // Adicionado explicitamente para evitar submissão de formulário
+                type="button"
             >
                 {uploading ? (
                     <div className="flex items-center justify-center">
@@ -144,7 +159,10 @@ const ImageUploadPicker: React.FC<ImageUploadPickerProps> = ({
                     </>
                 )}
             </Button>
-            <p className="text-gray-500 text-xs mt-1">JPG, PNG ou GIF (máx. {maxFileSizeMB}MB). Dimensões recomendadas: {width}x{height}px.</p>
+            <p className="text-gray-500 text-xs">
+                JPG, PNG ou GIF (máx. {maxFileSizeMB}MB)
+                {compact ? '.' : `. Dimensões recomendadas: ${width}x${height}px.`}
+            </p>
         </div>
     );
 };

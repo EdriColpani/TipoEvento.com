@@ -6,7 +6,7 @@ import { useMyTickets, TicketData } from '@/hooks/use-my-tickets';
 import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { useMyPurchases } from '@/hooks/use-my-purchases';
 import { useAuthUserId } from '@/hooks/use-auth-user-id';
-import { Loader2, Calendar, MapPin, QrCode, History } from 'lucide-react';
+import { Loader2, Calendar, MapPin, QrCode, History, Store } from 'lucide-react';
 import EventLocationLinks from '@/components/EventLocationLinks';
 import { showSuccess, showError } from '@/utils/toast'; // Importando showSuccess/showError
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
@@ -125,6 +125,17 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                     </Button>
                 ) : !eventStillOn ? (
                     <p className="text-xs text-gray-500 mt-2 md:mt-0">Evento encerrado</p>
+                ) : null}
+                {eventDetails?.id && (ticket.status === 'active' || canShowQrButton) ? (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-2 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 px-4 sm:px-6 text-sm sm:text-base"
+                        onClick={() => navigate(`/wallet/consumo/evento/${eventDetails.id}`)}
+                    >
+                        <Store className="mr-2 h-4 w-4" />
+                        Consumo no evento
+                    </Button>
                 ) : null}
             </div>
             <QrCodeModal

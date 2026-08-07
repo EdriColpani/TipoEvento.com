@@ -32,21 +32,32 @@ serve(async (req) => {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const menuToken = typeof body.menuToken === 'string' ? body.menuToken.trim() : '';
+    const establishmentId =
+      typeof body.establishmentId === 'string' ? body.establishmentId.trim() : '';
+    const eventId = typeof body.eventId === 'string' ? body.eventId.trim() : '';
     const items = Array.isArray(body.items) ? body.items : [];
 
-    if (!menuToken) {
-      return new Response(JSON.stringify({ error: 'QR do balcão inválido.' }), { status: 400, headers: corsHeaders });
+    if (!menuToken && !establishmentId) {
+      return new Response(
+        JSON.stringify({ error: 'Informe o estabelecimento ou o QR do balcão.' }),
+        { status: 400, headers: corsHeaders },
+      );
     }
     if (!Array.isArray(items) || items.length === 0) {
       return new Response(JSON.stringify({ error: 'Adicione ao menos um item.' }), { status: 400, headers: corsHeaders });
     }
 
-    const verified = await verifyCreditMenuToken(menuToken);
-    if (!verified.ok) {
-      return new Response(JSON.stringify({ error: verified.message, errorCode: verified.error_code }), {
-        status: verified.error_code === 'menu_qr_expired' ? 409 : 400,
-        headers: corsHeaders,
-      });
+    let resolvedEstablishmentId = establishmentId;
+
+    if (menuToken) {
+      const verified = await verifyCreditMenuToken(menuToken);
+      if (!verified.ok) {
+        return new Response(JSON.stringify({ error: verified.message, errorCode: verified.error_code }), {
+          status: verified.error_code === 'menu_qr_expired' ? 409 : 400,
+          headers: corsHeaders,
+        });
+      }
+      resolvedEstablishmentId = verified.establishmentId;
     }
 
     const normalizedItems = items
@@ -63,9 +74,10 @@ serve(async (req) => {
     }
 
     const { data, error } = await supabaseAnon.rpc('create_credit_consumption_intent', {
-      p_establishment_id: verified.establishmentId,
+      p_establishment_id: resolvedEstablishmentId,
       p_items: normalizedItems,
       p_channel: 'customer_app',
+      p_event_id: eventId || null,
     });
     if (error) throw error;
 

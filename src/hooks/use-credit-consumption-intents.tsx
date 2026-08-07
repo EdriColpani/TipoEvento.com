@@ -15,13 +15,20 @@ export type CreditConsumptionIntentStatus =
 export type ManagerCreditConsumptionIntent = {
     id: string;
     client_user_id: string;
+    client_label?: string | null;
+    client_public_id?: string | null;
     establishment_id: string;
     establishment_name: string;
+    event_id?: string | null;
+    event_title?: string | null;
     status: CreditConsumptionIntentStatus;
     gross_amount: number;
     biometric_required: boolean;
     biometric_confirmed: boolean;
     spend_order_id: string | null;
+    paid_at: string | null;
+    delivered_at?: string | null;
+    delivery_token: string | null;
     created_at: string;
     updated_at: string;
     status_history: Array<{
@@ -119,5 +126,36 @@ export async function confirmManagerCreditConsumptionIntent(input: {
         'confirm-credit-consumption-intent-manager',
         { intentId: input.intentId, idempotencyKey: key },
         { idempotencyKey: key, timeoutMs: 25_000 },
+    );
+}
+
+export async function completeManagerCreditConsumptionDelivery(input: {
+    companyId: string;
+    intentId?: string;
+    deliveryToken?: string;
+}) {
+    return callRpcRest<{
+        ok: boolean;
+        duplicate?: boolean;
+        intent_id: string;
+        status: string;
+        client_label?: string | null;
+        client_public_id?: string | null;
+        event_title?: string | null;
+        items?: Array<{
+            product_id: string;
+            product_name: string;
+            quantity: number;
+            unit_price: number;
+            line_total: number;
+        }>;
+    }>(
+        'complete_credit_consumption_delivery',
+        {
+            p_company_id: input.companyId,
+            p_intent_id: input.intentId ?? null,
+            p_delivery_token: input.deliveryToken ?? null,
+        },
+        12_000,
     );
 }

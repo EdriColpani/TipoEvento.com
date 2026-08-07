@@ -279,6 +279,16 @@ const ClientCreditWallet: React.FC = () => {
                         <RefreshCw className={`h-4 w-4 mr-1 ${isPolling ? 'animate-spin' : ''}`} />
                         Atualizar
                     </Button>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        onClick={() => navigate('/wallet/pedidos')}
+                    >
+                        <Store className="h-4 w-4 mr-1" />
+                        Meus pedidos
+                    </Button>
                     {canTopup && accountStatus === 'active' && (
                         <Button
                             type="button"
@@ -390,6 +400,18 @@ const ClientCreditWallet: React.FC = () => {
                                                         )}
                                                         <span className="sr-only">Como chegar</span>
                                                     </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 shrink-0"
+                                                        onClick={() =>
+                                                            navigate(`/wallet/consumo/evento/${ev.event_id}`)
+                                                        }
+                                                    >
+                                                        <Store className="h-4 w-4 mr-1" />
+                                                        Consumo
+                                                    </Button>
                                                 </div>
                                             </li>
                                         ))}
@@ -441,6 +463,20 @@ const ClientCreditWallet: React.FC = () => {
                                                                 Mapa
                                                             </>
                                                         )}
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 shrink-0"
+                                                        onClick={() =>
+                                                            navigate(
+                                                                `/wallet/consumo/estabelecimento/${est.establishment_id}`,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Store className="h-4 w-4 mr-1" />
+                                                        Cardápio
                                                     </Button>
                                                 </div>
                                             </li>
