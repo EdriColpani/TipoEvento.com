@@ -52,12 +52,13 @@ serve(async (req) => {
     if (intentErr) throw intentErr;
     const intent = intentData as {
       id: string;
-      status: 'pending' | 'completed' | 'cancelled' | 'expired';
+      status: string;
       establishment_id: string;
       company_id: string;
       gross_amount: number;
       biometric_required: boolean;
       spend_order_id?: string | null;
+      delivery_token?: string | null;
       items: Array<{ product_id: string; product_name: string; quantity: number; unit_price: number }>;
     };
 
@@ -68,24 +69,24 @@ serve(async (req) => {
       });
     }
 
-    if (intent.status === 'completed' && intent.spend_order_id) {
-      const { data: existing } = await supabaseService
-        .from('credit_spend_orders')
-        .select('id, gross_amount')
-        .eq('id', intent.spend_order_id)
-        .maybeSingle();
+    if (
+      (intent.status === 'ready_for_pickup' || intent.status === 'completed') &&
+      intent.spend_order_id
+    ) {
       return new Response(
         JSON.stringify({
           ok: true,
           duplicate: true,
           spendOrderId: intent.spend_order_id,
-          grossAmount: Number(existing?.gross_amount ?? intent.gross_amount),
+          grossAmount: Number(intent.gross_amount),
+          deliveryToken: intent.delivery_token ?? null,
+          status: intent.status,
         }),
         { status: 200, headers: corsHeaders },
       );
     }
 
-    if (intent.status !== 'pending') {
+    if (!['new', 'in_preparation'].includes(intent.status)) {
       return new Response(JSON.stringify({ error: 'Esta intenção não pode mais ser finalizada.' }), {
         status: 409,
         headers: corsHeaders,
@@ -154,42 +155,54 @@ serve(async (req) => {
       idempotencyKey,
     );
 
-    const previousStatus = String(intent.status);
-
-    await supabaseService
-      .from('credit_consumption_intents')
-      .update({
-        status: 'completed',
-        idempotency_key: idempotencyKey,
-        spend_order_id: finalized.spend_order_id ?? spend.spend_order_id ?? null,
-        biometric_confirmed_at: biometricConfirmed ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', intent.id)
-      .eq('client_user_id', user.id);
-
-    await supabaseService
-      .from('credit_consumption_intent_status_history')
-      .insert({
-        intent_id: intent.id,
-        from_status: previousStatus,
-        to_status: 'completed',
-        changed_by_user_id: user.id,
-        source: 'customer_app',
-        notes: 'Cobrança concluída por confirmação direta do cliente',
+    const spendOrderId = finalized.spend_order_id ?? spend.spend_order_id;
+    if (!spendOrderId) {
+      return new Response(JSON.stringify({ error: 'Falha ao obter ordem de consumo.' }), {
+        status: 500,
+        headers: corsHeaders,
       });
+    }
+
+    if (biometricConfirmed) {
+      await supabaseService
+        .from('credit_consumption_intents')
+        .update({
+          biometric_confirmed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', intent.id)
+        .eq('client_user_id', user.id);
+    }
+
+    const { data: paymentMeta, error: paymentErr } = await supabaseService.rpc(
+      'finalize_client_credit_consumption_payment',
+      {
+        p_intent_id: intent.id,
+        p_spend_order_id: spendOrderId,
+        p_idempotency_key: idempotencyKey,
+      },
+    );
+    if (paymentErr) throw paymentErr;
+
+    const meta = paymentMeta as {
+      delivery_token?: string;
+      status?: string;
+      duplicate?: boolean;
+    };
 
     return new Response(
       JSON.stringify({
         ok: true,
-        spendOrderId: finalized.spend_order_id,
+        spendOrderId,
         balance: finalized.balance,
         grossAmount: finalized.gross_amount,
         platformAmount: finalized.platform_amount,
         managerAmount: finalized.manager_amount,
         settlementQueued: finalized.settlementQueued === true,
-        duplicate: spend.duplicate === true,
+        duplicate: spend.duplicate === true || meta?.duplicate === true,
         publicDescription: spend.public_description,
+        deliveryToken: meta?.delivery_token ?? null,
+        status: meta?.status ?? 'ready_for_pickup',
       }),
       { status: 200, headers: corsHeaders },
     );

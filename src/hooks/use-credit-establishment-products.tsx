@@ -2,6 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { withTimeout } from '@/utils/promise-timeout';
 
+export type CreditProductPackagingType = 'unit' | 'box';
+
 export type CreditEstablishmentProduct = {
     id: string;
     establishment_id: string;
@@ -10,6 +12,11 @@ export type CreditEstablishmentProduct = {
     description: string | null;
     unit_price: number;
     active: boolean;
+    image_url: string | null;
+    packaging_type: CreditProductPackagingType;
+    units_per_box: number | null;
+    quantity: number;
+    total_units?: number;
     created_at: string;
     updated_at: string;
 };
@@ -39,7 +46,23 @@ async function fetchEstablishmentProducts(
         { p_company_id: companyId, p_establishment_id: establishmentId },
         10_000,
     );
-    return { ...fallback, ...data, items: data?.items ?? [] };
+    return {
+        ...fallback,
+        ...data,
+        items: (data?.items ?? []).map((item) => ({
+            ...item,
+            packaging_type: item.packaging_type === 'box' ? 'box' : 'unit',
+            units_per_box: item.units_per_box == null ? null : Number(item.units_per_box),
+            quantity: Number(item.quantity ?? 0),
+            total_units: Number(
+                item.total_units ??
+                    (item.packaging_type === 'box'
+                        ? Number(item.units_per_box ?? 0) * Number(item.quantity ?? 0)
+                        : Number(item.quantity ?? 0)),
+            ),
+            image_url: item.image_url ?? null,
+        })),
+    };
 }
 
 export function useCreditEstablishmentProducts(
@@ -79,8 +102,12 @@ export async function saveCreditEstablishmentProduct(input: {
     description?: string | null;
     productId?: string | null;
     active?: boolean;
+    imageUrl?: string | null;
+    packagingType?: CreditProductPackagingType;
+    unitsPerBox?: number | null;
+    quantity?: number;
 }) {
-    return callRpcRest<{ ok: boolean; product_id: string }>(
+    return callRpcRest<{ ok: boolean; product_id: string; total_units: number }>(
         'save_credit_establishment_product',
         {
             p_company_id: input.companyId,
@@ -90,6 +117,10 @@ export async function saveCreditEstablishmentProduct(input: {
             p_description: input.description ?? null,
             p_product_id: input.productId ?? null,
             p_active: input.active ?? true,
+            p_image_url: input.imageUrl ?? null,
+            p_packaging_type: input.packagingType ?? 'unit',
+            p_units_per_box: input.packagingType === 'box' ? (input.unitsPerBox ?? null) : null,
+            p_quantity: input.quantity ?? 0,
         },
         15_000,
     );

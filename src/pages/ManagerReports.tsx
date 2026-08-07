@@ -21,6 +21,7 @@ import {
     AlertTriangle,
     MessageSquareHeart,
     CircleHelp,
+    Boxes,
 } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
@@ -374,6 +375,17 @@ const ManagerReports: React.FC = () => {
                                 guideId="credit-spends"
                                 onHelp={openGuide}
                                 onClick={() => navigate('/manager/reports/credit-spends')}
+                            />
+                            <ReportCard
+                                icon={<Boxes className="h-6 w-6 text-yellow-500" />}
+                                title="Estoque e vendas de produtos"
+                                description={
+                                    getReportsGuideEntry('credit-product-inventory')?.summary ??
+                                    'Estoque atual e quantidade vendida do catálogo, em colunas separadas.'
+                                }
+                                guideId="credit-product-inventory"
+                                onHelp={openGuide}
+                                onClick={() => navigate('/manager/reports/credit-product-inventory')}
                             />
                             <ReportCard
                                 icon={<Banknote className="h-6 w-6 text-yellow-500" />}

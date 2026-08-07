@@ -86,9 +86,10 @@ serve(async (req) => {
 
     const { data: products, error: productsErr } = await supabaseService
       .from('credit_establishment_products')
-      .select('id, name, description, unit_price, active')
+      .select('id, name, description, unit_price, active, image_url, packaging_type, units_per_box, quantity')
       .eq('establishment_id', est.id)
       .eq('active', true)
+      .gt('quantity', 0)
       .order('name', { ascending: true });
     if (productsErr) throw productsErr;
 
@@ -106,6 +107,10 @@ serve(async (req) => {
           name: p.name,
           description: p.description,
           unitPrice: Number(p.unit_price ?? 0),
+          imageUrl: p.image_url ?? null,
+          packagingType: p.packaging_type === 'box' ? 'box' : 'unit',
+          unitsPerBox: p.units_per_box == null ? null : Number(p.units_per_box),
+          stockQuantity: Number(p.quantity ?? 0),
         })),
       }),
       { status: 200, headers: corsHeaders },

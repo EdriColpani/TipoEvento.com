@@ -82,6 +82,30 @@ serve(async (req) => {
       );
     }
 
+    // Já pago pelo cliente (débito na compra): só conclui a entrega.
+    if (intent.spend_order_id && ['ready_for_pickup', 'in_preparation', 'new'].includes(intent.status)) {
+      const { data: delivery, error: deliveryErr } = await supabaseAnon.rpc(
+        'complete_credit_consumption_delivery',
+        {
+          p_company_id: intent.company_id,
+          p_intent_id: intent.id,
+          p_delivery_token: null,
+        },
+      );
+      if (deliveryErr) throw deliveryErr;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          duplicate: false,
+          delivered: true,
+          spendOrderId: intent.spend_order_id,
+          grossAmount: Number(intent.gross_amount ?? 0),
+          delivery,
+        }),
+        { status: 200, headers: corsHeaders },
+      );
+    }
+
     if (!['new', 'in_preparation', 'ready_for_pickup'].includes(intent.status)) {
       return new Response(JSON.stringify({ error: 'Status do pedido não permite cobrança.' }), {
         status: 409,

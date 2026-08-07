@@ -33,14 +33,17 @@ import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { showError, showSuccess } from '@/utils/toast';
 import { issueCreditMenuToken } from '@/hooks/use-credit-menu';
 import QRCode from 'react-qr-code';
+import { parseDeliveryQrToken } from '@/utils/credit-delivery-qr';
 import {
     confirmManagerCreditConsumptionIntent,
     updateManagerCreditConsumptionIntentStatus,
+    completeManagerCreditConsumptionDelivery,
     useManagerCreditConsumptionIntents,
     type CreditConsumptionIntentStatus,
 } from '@/hooks/use-credit-consumption-intents';
 
 const PDV_WALLET_QR_READER_ID = 'pdv-wallet-qr-reader';
+const PDV_DELIVERY_QR_READER_ID = 'pdv-delivery-qr-reader';
 
 type CartLine = {
     id: string;
@@ -80,6 +83,8 @@ const ManagerCreditPdv: React.FC = () => {
     const [expandedHistoryByIntent, setExpandedHistoryByIntent] = useState<Record<string, boolean>>({});
     const [historyPeriodFilter, setHistoryPeriodFilter] = useState<'all' | 'today' | '7d' | '30d'>('7d');
     const [historyOperatorFilter, setHistoryOperatorFilter] = useState<string>('all');
+    const [deliveryTokenInput, setDeliveryTokenInput] = useState('');
+    const [deliveringToken, setDeliveringToken] = useState(false);
 
     const { company, isLoading: loadingCompany } = useManagerCompany(userId);
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
@@ -92,6 +97,11 @@ const ManagerCreditPdv: React.FC = () => {
         useManagerCreditConsumptionIntents(company?.id, intentsStatusFilter);
 
     const { isScanning, startScanning, stopScanning } = useHtml5QrScanner(PDV_WALLET_QR_READER_ID);
+    const {
+        isScanning: isDeliveryScanning,
+        startScanning: startDeliveryScanning,
+        stopScanning: stopDeliveryScanning,
+    } = useHtml5QrScanner(PDV_DELIVERY_QR_READER_ID);
 
     const supportsCredit =
         isHybridPlan(billing?.billing_plan) || isConsumptionOrLicensePlan(billing?.billing_plan);
@@ -376,6 +386,67 @@ const ManagerCreditPdv: React.FC = () => {
         } finally {
             setUpdatingIntentId(null);
         }
+    };
+
+    const confirmIntentDelivery = async (intentId: string) => {
+        if (!company?.id) return;
+        setUpdatingIntentId(intentId);
+        try {
+            const result = await completeManagerCreditConsumptionDelivery({
+                companyId: company.id,
+                intentId,
+            });
+            showSuccess(
+                result.client_label
+                    ? `Entrega confirmada para ${result.client_label}. QR invalidado.`
+                    : 'Entrega confirmada. QR invalidado.',
+            );
+            invalidateIntents();
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Erro ao confirmar entrega.');
+        } finally {
+            setUpdatingIntentId(null);
+        }
+    };
+
+    const deliverByToken = async (rawToken?: string) => {
+        if (!company?.id) return;
+        const token = (rawToken ?? deliveryTokenInput).trim();
+        if (!token) {
+            showError('Informe ou escaneie o QR do pedido.');
+            return;
+        }
+        const normalized = parseDeliveryQrToken(token);
+        if (!normalized) {
+            showError('QR de pedido inválido. Use o código EFDEL do cliente.');
+            return;
+        }
+        setDeliveringToken(true);
+        try {
+            const result = await completeManagerCreditConsumptionDelivery({
+                companyId: company.id,
+                deliveryToken: normalized,
+            });
+            showSuccess(
+                result.client_label
+                    ? `Entrega confirmada para ${result.client_label}. QR invalidado.`
+                    : 'Entrega confirmada. QR invalidado.',
+            );
+            setDeliveryTokenInput('');
+            invalidateIntents();
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Erro ao confirmar entrega.');
+        } finally {
+            setDeliveringToken(false);
+        }
+    };
+
+    const handleStartDeliveryScan = async () => {
+        if (isScanning) await stopScanning();
+        await startDeliveryScanning(async (text) => {
+            setDeliveryTokenInput(text);
+            await deliverByToken(text);
+        });
     };
 
     if (planStillLoading) {
@@ -690,10 +761,65 @@ const ManagerCreditPdv: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white text-lg">Painel de atendimento</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Pedidos criados no cardápio do cliente. A cobrança é a etapa terminal.
+                        Pedidos do cardápio. Se o cliente já pagou, confirme a entrega e invalide o QR.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                    <div className="rounded-lg border border-yellow-500/20 p-3 space-y-2">
+                        <Label className="text-gray-300">QR do pedido (entrega)</Label>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                                value={deliveryTokenInput}
+                                onChange={(e) => setDeliveryTokenInput(e.target.value)}
+                                placeholder="EFDEL...."
+                                className="bg-black/60 border-yellow-500/30 text-white font-mono text-sm"
+                            />
+                            <Button
+                                type="button"
+                                className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 shrink-0"
+                                onClick={() => void deliverByToken()}
+                                disabled={deliveringToken || !deliveryTokenInput.trim()}
+                            >
+                                {deliveringToken ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                                Confirmar entrega
+                            </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {!isDeliveryScanning ? (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                                    onClick={() => void handleStartDeliveryScan()}
+                                    disabled={deliveringToken}
+                                >
+                                    <ScanLine className="h-4 w-4 mr-1" />
+                                    Escanear QR do pedido
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                                    onClick={() => void stopDeliveryScanning()}
+                                >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Parar câmera
+                                </Button>
+                            )}
+                        </div>
+                        <div className={isDeliveryScanning ? '' : 'sr-only'} aria-hidden={!isDeliveryScanning}>
+                            <div
+                                id={PDV_DELIVERY_QR_READER_ID}
+                                className="overflow-hidden rounded-lg border border-yellow-500/30 min-h-[200px]"
+                            />
+                            {isDeliveryScanning ? (
+                                <p className="text-xs text-gray-500 mt-2">Aponte a câmera para o QR EFDEL do cliente.</p>
+                            ) : null}
+                        </div>
+                    </div>
                     <div className="max-w-xs">
                         <Select value={intentsStatusFilter} onValueChange={(v) => setIntentsStatusFilter(v as 'all' | CreditConsumptionIntentStatus)}>
                             <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
@@ -750,8 +876,21 @@ const ManagerCreditPdv: React.FC = () => {
                                         </p>
                                         <span className="text-xs text-yellow-500">{formatIntentStatus(intent.status)}</span>
                                     </div>
+                                    <p className="text-xs text-gray-400">
+                                        Cliente:{' '}
+                                        {intent.client_label || '—'}
+                                        {intent.client_public_id ? ` · #${intent.client_public_id}` : ''}
+                                        {intent.event_title ? ` · ${intent.event_title}` : ''}
+                                    </p>
                                     <p className="text-xs text-gray-500">
-                                        {new Date(intent.created_at).toLocaleString('pt-BR')} · biometria{' '}
+                                        {new Date(intent.created_at).toLocaleString('pt-BR')}
+                                        {intent.paid_at
+                                            ? ` · pago ${new Date(intent.paid_at).toLocaleString('pt-BR')}`
+                                            : ''}
+                                        {intent.delivered_at
+                                            ? ` · entregue ${new Date(intent.delivered_at).toLocaleString('pt-BR')}`
+                                            : ''}
+                                        {' · biometria '}
                                         {intent.biometric_required
                                             ? intent.biometric_confirmed ? 'confirmada' : 'pendente'
                                             : 'não exigida'}
@@ -841,17 +980,28 @@ const ManagerCreditPdv: React.FC = () => {
                                             >
                                                 Cancelar
                                             </Button>
-                                            <Button
-                                                size="sm"
-                                                className="bg-yellow-500 text-black hover:bg-yellow-600"
-                                                onClick={() => confirmIntentPayment(intent.id)}
-                                                disabled={
-                                                    updatingIntentId === intent.id
-                                                    || (intent.biometric_required && !intent.biometric_confirmed)
-                                                }
-                                            >
-                                                Cobrar agora
-                                            </Button>
+                                            {intent.spend_order_id ? (
+                                                <Button
+                                                    size="sm"
+                                                    className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                                                    onClick={() => void confirmIntentDelivery(intent.id)}
+                                                    disabled={updatingIntentId === intent.id}
+                                                >
+                                                    Confirmar entrega
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    size="sm"
+                                                    className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                                                    onClick={() => void confirmIntentPayment(intent.id)}
+                                                    disabled={
+                                                        updatingIntentId === intent.id
+                                                        || (intent.biometric_required && !intent.biometric_confirmed)
+                                                    }
+                                                >
+                                                    Cobrar agora
+                                                </Button>
+                                            )}
                                         </div>
                                     )}
                                 </li>

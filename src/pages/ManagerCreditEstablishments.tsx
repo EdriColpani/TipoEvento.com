@@ -28,11 +28,13 @@ import {
     saveCreditEstablishmentProduct,
     setCreditEstablishmentProductActive,
     type CreditEstablishmentProduct,
+    type CreditProductPackagingType,
 } from '@/hooks/use-credit-establishment-products';
 import { isHybridPlan, isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { showError, showSuccess } from '@/utils/toast';
 import { resolveEventGeoOnSave } from '@/utils/google-maps';
+import ImageUploadPicker from '@/components/ImageUploadPicker';
 
 type EventOption = { id: string; title: string };
 
@@ -51,6 +53,11 @@ const ManagerCreditEstablishments: React.FC = () => {
     const [productName, setProductName] = useState('');
     const [productPrice, setProductPrice] = useState('');
     const [productDescription, setProductDescription] = useState('');
+    const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
+    const [productPackagingType, setProductPackagingType] =
+        useState<CreditProductPackagingType>('unit');
+    const [productUnitsPerBox, setProductUnitsPerBox] = useState('');
+    const [productQuantity, setProductQuantity] = useState('');
     const [savingProduct, setSavingProduct] = useState(false);
 
     const { company } = useManagerCompany(userId);
@@ -98,7 +105,22 @@ const ManagerCreditEstablishments: React.FC = () => {
         setProductName('');
         setProductPrice('');
         setProductDescription('');
+        setProductImageUrl(null);
+        setProductPackagingType('unit');
+        setProductUnitsPerBox('');
+        setProductQuantity('');
     };
+
+    const productTotalUnits = (() => {
+        const qty = Number(productQuantity);
+        if (!Number.isFinite(qty) || qty < 0) return 0;
+        if (productPackagingType === 'box') {
+            const perBox = Number(productUnitsPerBox);
+            if (!Number.isFinite(perBox) || perBox <= 0) return 0;
+            return perBox * qty;
+        }
+        return qty;
+    })();
 
     const startEdit = (item: CreditEstablishment) => {
         setEditing(item);
@@ -174,6 +196,8 @@ const ManagerCreditEstablishments: React.FC = () => {
             return;
         }
         const parsedPrice = Number(productPrice.replace(',', '.'));
+        const parsedQty = Number(productQuantity);
+        const parsedUnitsPerBox = Number(productUnitsPerBox);
         if (!productName.trim()) {
             showError('Informe o nome do produto.');
             return;
@@ -181,6 +205,20 @@ const ManagerCreditEstablishments: React.FC = () => {
         if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
             showError('Informe um preço unitário válido.');
             return;
+        }
+        if (!Number.isFinite(parsedQty) || parsedQty < 0 || !Number.isInteger(parsedQty)) {
+            showError(
+                productPackagingType === 'box'
+                    ? 'Informe a quantidade de caixas (número inteiro).'
+                    : 'Informe a quantidade em unidades (número inteiro).',
+            );
+            return;
+        }
+        if (productPackagingType === 'box') {
+            if (!Number.isFinite(parsedUnitsPerBox) || parsedUnitsPerBox <= 0 || !Number.isInteger(parsedUnitsPerBox)) {
+                showError('Informe quantas unidades vão em cada caixa.');
+                return;
+            }
         }
         setSavingProduct(true);
         try {
@@ -192,6 +230,10 @@ const ManagerCreditEstablishments: React.FC = () => {
                 description: productDescription.trim() || null,
                 productId: editingProduct?.id,
                 active: true,
+                imageUrl: productImageUrl,
+                packagingType: productPackagingType,
+                unitsPerBox: productPackagingType === 'box' ? parsedUnitsPerBox : null,
+                quantity: parsedQty,
             });
             showSuccess(editingProduct ? 'Produto atualizado.' : 'Produto criado.');
             resetProductForm();
@@ -208,6 +250,10 @@ const ManagerCreditEstablishments: React.FC = () => {
         setProductName(item.name);
         setProductPrice(String(item.unit_price));
         setProductDescription(item.description ?? '');
+        setProductImageUrl(item.image_url ?? null);
+        setProductPackagingType(item.packaging_type === 'box' ? 'box' : 'unit');
+        setProductUnitsPerBox(item.units_per_box != null ? String(item.units_per_box) : '');
+        setProductQuantity(String(item.quantity ?? 0));
     };
 
     const toggleProductActive = async (item: CreditEstablishmentProduct) => {
@@ -272,6 +318,13 @@ const ManagerCreditEstablishments: React.FC = () => {
                         onClick={() => navigate('/manager/credit/pdv')}
                     >
                         Abrir PDV
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        onClick={() => navigate('/manager/reports/credit-product-inventory')}
+                    >
+                        Estoque e vendas
                     </Button>
                     <Button
                         variant="outline"
@@ -463,20 +516,128 @@ const ManagerCreditEstablishments: React.FC = () => {
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <Label className="text-gray-300">Descrição (opcional)</Label>
-                                <Input
-                                    value={productDescription}
-                                    onChange={(e) => setProductDescription(e.target.value)}
-                                    placeholder="Observações do item"
-                                    className="bg-black/60 border-yellow-500/30 text-white mt-1"
-                                />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-4 items-start">
+                                <div>
+                                    <Label className="text-gray-300">Foto (opcional)</Label>
+                                    {userId ? (
+                                        <div className="mt-2">
+                                            <ImageUploadPicker
+                                                userId={userId}
+                                                currentImageUrl={productImageUrl}
+                                                onImageUpload={(url) => setProductImageUrl(url)}
+                                                width={160}
+                                                height={160}
+                                                placeholderText="Foto"
+                                                bucketName="credit-product-images"
+                                                folderPath={company?.id ? `${company.id}/products` : 'products'}
+                                                maxFileSizeMB={5}
+                                                uploadButtonLabel="Enviar foto"
+                                                disabled={savingProduct}
+                                                compact
+                                                objectFit="contain"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-gray-500 mt-1">Faça login para enviar foto.</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3 min-w-0">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                            <Label className="text-gray-300">Embalagem</Label>
+                                            <Select
+                                                value={productPackagingType}
+                                                onValueChange={(v) => {
+                                                    const next = v === 'box' ? 'box' : 'unit';
+                                                    setProductPackagingType(next);
+                                                    if (next === 'unit') setProductUnitsPerBox('');
+                                                }}
+                                            >
+                                                <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white mt-1">
+                                                    <SelectValue placeholder="Selecione" />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-black border-yellow-500/30 text-white">
+                                                    <SelectItem value="unit">Unidade</SelectItem>
+                                                    <SelectItem value="box">Caixa</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        {productPackagingType === 'box' ? (
+                                            <div>
+                                                <Label className="text-gray-300">Unidades por caixa</Label>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    step={1}
+                                                    value={productUnitsPerBox}
+                                                    onChange={(e) => setProductUnitsPerBox(e.target.value)}
+                                                    placeholder="Ex.: 12"
+                                                    className="bg-black/60 border-yellow-500/30 text-white mt-1"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <Label className="text-gray-300">Quantidade (unidades)</Label>
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    step={1}
+                                                    value={productQuantity}
+                                                    onChange={(e) => setProductQuantity(e.target.value)}
+                                                    placeholder="Ex.: 50"
+                                                    className="bg-black/60 border-yellow-500/30 text-white mt-1"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {productPackagingType === 'box' && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <div>
+                                                <Label className="text-gray-300">Quantidade de caixas</Label>
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    step={1}
+                                                    value={productQuantity}
+                                                    onChange={(e) => setProductQuantity(e.target.value)}
+                                                    placeholder="Ex.: 10"
+                                                    className="bg-black/60 border-yellow-500/30 text-white mt-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label className="text-gray-300">Total (unidades)</Label>
+                                                <Input
+                                                    value={String(productTotalUnits)}
+                                                    readOnly
+                                                    className="bg-black/40 border-yellow-500/20 text-yellow-500 mt-1"
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Unidades por caixa × caixas.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <Label className="text-gray-300">Descrição (opcional)</Label>
+                                        <Input
+                                            value={productDescription}
+                                            onChange={(e) => setProductDescription(e.target.value)}
+                                            placeholder="Observações do item"
+                                            className="bg-black/60 border-yellow-500/30 text-white mt-1"
+                                        />
+                                    </div>
+                                </div>
                             </div>
+
                             <div className="flex gap-2">
                                 <Button
                                     onClick={handleSaveProduct}
                                     disabled={savingProduct}
-                                    className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                    className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
                                 >
                                     {savingProduct ? (
                                         <Loader2 className="h-4 w-4 animate-spin mr-1" />
@@ -489,7 +650,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                     <Button
                                         variant="outline"
                                         onClick={resetProductForm}
-                                        className="border-yellow-500/40 text-yellow-500"
+                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                     >
                                         Cancelar
                                     </Button>
@@ -508,21 +669,38 @@ const ManagerCreditEstablishments: React.FC = () => {
                                                 key={item.id}
                                                 className="flex flex-wrap items-center justify-between gap-3 border border-yellow-500/20 rounded-xl p-3"
                                             >
-                                                <div>
-                                                    <p className="text-white font-medium">{item.name}</p>
-                                                    <p className="text-xs text-gray-500">
-                                                        {Number(item.unit_price).toLocaleString('pt-BR', {
-                                                            style: 'currency',
-                                                            currency: 'BRL',
-                                                        })}{' '}
-                                                        · {item.active ? 'Ativo' : 'Inativo'}
-                                                    </p>
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    {item.image_url ? (
+                                                        <img
+                                                            src={item.image_url}
+                                                            alt={item.name}
+                                                            className="h-12 w-12 rounded-lg object-cover border border-yellow-500/20 shrink-0"
+                                                        />
+                                                    ) : (
+                                                        <div className="h-12 w-12 rounded-lg bg-black/60 border border-yellow-500/20 flex items-center justify-center shrink-0">
+                                                            <Package className="h-5 w-5 text-gray-600" />
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <p className="text-white font-medium truncate">{item.name}</p>
+                                                        <p className="text-xs text-gray-500">
+                                                            {Number(item.unit_price).toLocaleString('pt-BR', {
+                                                                style: 'currency',
+                                                                currency: 'BRL',
+                                                            })}{' '}
+                                                            ·{' '}
+                                                            {item.packaging_type === 'box'
+                                                                ? `Caixa (${item.units_per_box} und) · ${item.quantity} cx · total ${item.total_units ?? item.quantity * (item.units_per_box ?? 0)} und`
+                                                                : `Unidade · ${item.quantity} und`}{' '}
+                                                            · {item.active ? 'Ativo' : 'Inativo'}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        className="border-yellow-500/40 text-yellow-500"
+                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                                         onClick={() => startEditProduct(item)}
                                                     >
                                                         <Pencil className="h-4 w-4" />
@@ -530,7 +708,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        className="border-yellow-500/40 text-yellow-500"
+                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                                         onClick={() => toggleProductActive(item)}
                                                     >
                                                         <Power className="h-4 w-4" />
@@ -546,7 +724,12 @@ const ManagerCreditEstablishments: React.FC = () => {
                 </CardContent>
             </Card>
 
-            <Button variant="ghost" className="mt-6 text-gray-400" onClick={() => navigate('/manager/settings')}>
+            <Button
+                type="button"
+                variant="outline"
+                className="mt-6 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                onClick={() => navigate('/manager/settings')}
+            >
                 <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
             </Button>
         </div>
