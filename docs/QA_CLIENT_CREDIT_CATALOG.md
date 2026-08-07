@@ -7,13 +7,14 @@ Checklist manual (dev → test → prod). Migrations / RPCs já no remoto EventF
 - `finalize_client_credit_consumption_payment` + baixa de estoque
 - `complete_credit_consumption_delivery`
 - `list_client_credit_consumption_orders`
+- `list_manager_credit_product_inventory_report`
 
 Edges (redeploy se necessário):
 
 - `create-credit-consumption-intent`
 - `confirm-credit-consumption-intent`
 - `confirm-credit-consumption-intent-manager`
-
+- `resolve-credit-menu-token` (filtra estoque > 0 + foto)
 ## 1. Entrada do cliente
 
 - [ ] Meus Ingressos → **Consumo no evento** abre `/wallet/consumo/evento/:eventId`
@@ -51,8 +52,16 @@ Edges (redeploy se necessário):
 - [ ] Botão **Ver QR** some
 - [ ] Com a tela aberta, toast “foi entregue” após o gestor confirmar (polling ~30s)
 
-## 6. Regressões
+## 6. Relatório estoque × vendidos
+
+- [ ] Central de Relatórios → card **Estoque e vendas de produtos**
+- [ ] Colunas **Em estoque** e **Vendidos** preenchidas
+- [ ] Filtro por estabelecimento funciona
+- [ ] Após uma venda com `product_id`, coluna Vendidos sobe; estoque cai no cadastro
+
+## 7. Regressões
 
 - [ ] PDV cobrança clássica (QR carteira + carrinho) continua ok
 - [ ] Pedido antigo só criado (não pago) ainda pode **Cobrar agora**
 - [ ] Botões seguem padrão amarelo/escuro EventFest
+- [ ] Menu mobile / Perfil: atalho **Meus pedidos**

@@ -10,6 +10,7 @@ export type CreditMenuProduct = {
     imageUrl?: string | null;
     packagingType?: 'unit' | 'box';
     unitsPerBox?: number | null;
+    stockQuantity?: number;
 };
 
 export type CreditMenuPayload = {

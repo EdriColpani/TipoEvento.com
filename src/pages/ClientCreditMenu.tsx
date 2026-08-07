@@ -42,10 +42,10 @@ const ClientCreditMenu: React.FC = () => {
         [cartItems],
     );
 
-    const setQty = (productId: string, next: number) => {
+    const setQty = (productId: string, next: number, maxStock = 99) => {
         setQuantities((prev) => ({
             ...prev,
-            [productId]: Math.max(0, Math.min(99, next)),
+            [productId]: Math.max(0, Math.min(maxStock, Math.min(99, next))),
         }));
     };
 
@@ -218,6 +218,11 @@ const ClientCreditMenu: React.FC = () => {
                                                             Caixa com {item.unitsPerBox} unidades
                                                         </p>
                                                     ) : null}
+                                                    {typeof item.stockQuantity === 'number' ? (
+                                                        <p className="text-xs text-gray-500 mt-1">
+                                                            Estoque: {item.stockQuantity}
+                                                        </p>
+                                                    ) : null}
                                                 </div>
                                             </div>
                                             <div className="text-right">
@@ -228,7 +233,13 @@ const ClientCreditMenu: React.FC = () => {
                                                         size="sm"
                                                         variant="outline"
                                                         className="h-7 w-7 p-0 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
-                                                        onClick={() => setQty(item.id, (quantities[item.id] ?? 0) - 1)}
+                                                        onClick={() =>
+                                                            setQty(
+                                                                item.id,
+                                                                (quantities[item.id] ?? 0) - 1,
+                                                                item.stockQuantity ?? 99,
+                                                            )
+                                                        }
                                                     >
                                                         <Minus className="h-3 w-3" />
                                                     </Button>
@@ -240,7 +251,13 @@ const ClientCreditMenu: React.FC = () => {
                                                         size="sm"
                                                         variant="outline"
                                                         className="h-7 w-7 p-0 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
-                                                        onClick={() => setQty(item.id, (quantities[item.id] ?? 0) + 1)}
+                                                        onClick={() =>
+                                                            setQty(
+                                                                item.id,
+                                                                (quantities[item.id] ?? 0) + 1,
+                                                                item.stockQuantity ?? 99,
+                                                            )
+                                                        }
                                                     >
                                                         <Plus className="h-3 w-3" />
                                                     </Button>

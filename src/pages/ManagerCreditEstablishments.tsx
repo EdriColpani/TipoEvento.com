@@ -322,6 +322,13 @@ const ManagerCreditEstablishments: React.FC = () => {
                     <Button
                         variant="outline"
                         className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        onClick={() => navigate('/manager/reports/credit-product-inventory')}
+                    >
+                        Estoque e vendas
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                         onClick={() => navigate('/manager/settings')}
                     >
                         <ArrowLeft className="mr-2 h-4 w-4" />
