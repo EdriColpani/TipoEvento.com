@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Select,
     SelectContent,
@@ -85,6 +86,13 @@ const ManagerCreditPdv: React.FC = () => {
     const [historyOperatorFilter, setHistoryOperatorFilter] = useState<string>('all');
     const [deliveryTokenInput, setDeliveryTokenInput] = useState('');
     const [deliveringToken, setDeliveringToken] = useState(false);
+    const [cancelDialogIntent, setCancelDialogIntent] = useState<{
+        id: string;
+        paid: boolean;
+        label: string;
+    } | null>(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [cancellingIntent, setCancellingIntent] = useState(false);
 
     const { company, isLoading: loadingCompany } = useManagerCompany(userId);
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
@@ -357,21 +365,49 @@ const ManagerCreditPdv: React.FC = () => {
         });
     };
 
-    const setIntentStatus = async (intentId: string, status: 'in_preparation' | 'ready_for_pickup' | 'cancelled') => {
+    const setIntentStatus = async (
+        intentId: string,
+        status: 'in_preparation' | 'ready_for_pickup' | 'cancelled',
+        notes?: string,
+    ) => {
         if (!company?.id) return;
         setUpdatingIntentId(intentId);
         try {
-            await updateManagerCreditConsumptionIntentStatus({
+            const result = await updateManagerCreditConsumptionIntentStatus({
                 companyId: company.id,
                 intentId,
                 status,
+                notes: notes ?? null,
             });
-            showSuccess('Status do pedido atualizado.');
+            if (status === 'cancelled' && result.refunded) {
+                showSuccess('Pedido cancelado e crédito estornado ao cliente.');
+            } else if (status === 'cancelled') {
+                showSuccess('Pedido cancelado.');
+            } else {
+                showSuccess('Status do pedido atualizado.');
+            }
             invalidateIntents();
         } catch (e: unknown) {
             showError(e instanceof Error ? e.message : 'Erro ao atualizar pedido.');
         } finally {
             setUpdatingIntentId(null);
+        }
+    };
+
+    const confirmCancelIntent = async () => {
+        if (!cancelDialogIntent) return;
+        const reason = cancelReason.trim();
+        if (!reason) {
+            showError('Informe o motivo do cancelamento.');
+            return;
+        }
+        setCancellingIntent(true);
+        try {
+            await setIntentStatus(cancelDialogIntent.id, 'cancelled', reason);
+            setCancelDialogIntent(null);
+            setCancelReason('');
+        } finally {
+            setCancellingIntent(false);
         }
     };
 
@@ -956,7 +992,7 @@ const ManagerCreditPdv: React.FC = () => {
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-yellow-500/40 text-yellow-500"
+                                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                                                 onClick={() => setIntentStatus(intent.id, 'in_preparation')}
                                                 disabled={updatingIntentId === intent.id}
                                             >
@@ -965,7 +1001,7 @@ const ManagerCreditPdv: React.FC = () => {
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-yellow-500/40 text-yellow-500"
+                                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                                                 onClick={() => setIntentStatus(intent.id, 'ready_for_pickup')}
                                                 disabled={updatingIntentId === intent.id}
                                             >
@@ -974,8 +1010,15 @@ const ManagerCreditPdv: React.FC = () => {
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-red-500/40 text-red-400"
-                                                onClick={() => setIntentStatus(intent.id, 'cancelled')}
+                                                className="bg-black/60 border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                                                onClick={() => {
+                                                    setCancelReason('');
+                                                    setCancelDialogIntent({
+                                                        id: intent.id,
+                                                        paid: Boolean(intent.spend_order_id || intent.paid_at),
+                                                        label: `${intent.establishment_name ?? 'Pedido'} · ${formatMoney(Number(intent.gross_amount ?? 0))}`,
+                                                    });
+                                                }}
                                                 disabled={updatingIntentId === intent.id}
                                             >
                                                 Cancelar
@@ -1010,6 +1053,60 @@ const ManagerCreditPdv: React.FC = () => {
                     )}
                 </CardContent>
             </Card>
+
+            <AlertDialog
+                open={Boolean(cancelDialogIntent)}
+                onOpenChange={(open) => {
+                    if (!open && !cancellingIntent) {
+                        setCancelDialogIntent(null);
+                        setCancelReason('');
+                    }
+                }}
+            >
+                <AlertDialogContent className="bg-black border border-yellow-500/40 text-white max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-yellow-500">Cancelar pedido</AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-400">
+                            {cancelDialogIntent?.paid
+                                ? 'Pedido já pago: o crédito será estornado ao cliente e o estoque devolvido. Informe o motivo (obrigatório — fica na auditoria).'
+                                : 'Informe o motivo do cancelamento (obrigatório — fica na auditoria).'}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    {cancelDialogIntent ? (
+                        <p className="text-sm text-gray-300">{cancelDialogIntent.label}</p>
+                    ) : null}
+                    <div className="space-y-2">
+                        <Label htmlFor="cancel-reason" className="text-gray-300">
+                            Motivo
+                        </Label>
+                        <Textarea
+                            id="cancel-reason"
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            placeholder="Ex.: cliente desistiu / produto indisponível / erro de digitação"
+                            className="bg-black/60 border-yellow-500/30 text-white min-h-[90px]"
+                            disabled={cancellingIntent}
+                        />
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel
+                            disabled={cancellingIntent}
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        >
+                            Voltar
+                        </AlertDialogCancel>
+                        <Button
+                            type="button"
+                            className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                            disabled={cancellingIntent || !cancelReason.trim()}
+                            onClick={() => void confirmCancelIntent()}
+                        >
+                            {cancellingIntent ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                            Confirmar cancelamento
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog open={menuQrOpen} onOpenChange={setMenuQrOpen}>
                 <AlertDialogContent className="bg-black border border-yellow-500/40 text-white max-w-sm">

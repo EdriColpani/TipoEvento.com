@@ -144,7 +144,8 @@ serve(async (req) => {
       p_items: itemsPayload,
       p_idempotency_key: idempotencyKey,
       p_actor_user_id: user.id,
-      p_channel: 'customer_app',
+      // credit_spend_orders.channel CHECK: web | app | pos (não customer_app)
+      p_channel: 'app',
     });
     if (spendErr) {
       const msg = spendErr.message || 'Falha ao registrar consumo.';

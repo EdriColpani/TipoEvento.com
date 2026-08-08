@@ -1,7 +1,5 @@
--- Fase 5: event_id opcional no checkout (auditoria do pedido vinculado ao ingresso/evento).
--- gross_amount é calculado antes do INSERT (CHECK exige > 0).
-
-DROP FUNCTION IF EXISTS public.create_credit_consumption_intent(UUID, JSONB, TEXT);
+-- Fix: create_credit_consumption_intent não pode INSERT com gross_amount=0
+-- (CHECK credit_consumption_intents_gross_amount_check exige > 0).
 
 CREATE OR REPLACE FUNCTION public.create_credit_consumption_intent(
   p_establishment_id UUID,
@@ -85,6 +83,7 @@ BEGIN
 
   v_threshold := public.get_credit_spend_biometric_threshold();
 
+  -- 1ª passagem: valida estoque/preço e monta o total (evita INSERT com gross=0).
   FOR v_i IN 0 .. jsonb_array_length(p_items) - 1 LOOP
     v_elem := p_items->v_i;
     v_product_id := NULLIF(trim(COALESCE(v_elem->>'productId', '')), '')::uuid;
