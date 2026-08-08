@@ -100,13 +100,15 @@ export async function updateManagerCreditConsumptionIntentStatus(input: {
     companyId: string;
     intentId: string;
     status: Exclude<CreditConsumptionIntentStatus, 'completed' | 'expired'>;
+    notes?: string | null;
 }) {
-    return callRpcRest<{ ok: boolean; status: string }>(
+    return callRpcRest<{ ok: boolean; status: string; refunded?: boolean }>(
         'update_manager_credit_consumption_intent_status',
         {
             p_company_id: input.companyId,
             p_intent_id: input.intentId,
             p_status: input.status,
+            p_notes: input.notes ?? null,
         },
         12_000,
     );
