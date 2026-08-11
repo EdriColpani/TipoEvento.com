@@ -131,6 +131,44 @@ export async function confirmManagerCreditConsumptionIntent(input: {
     );
 }
 
+export async function previewManagerCreditConsumptionDelivery(input: {
+    companyId: string;
+    deliveryToken: string;
+}) {
+    return callRpcRest<{
+        ok: boolean;
+        intent_id: string;
+        status: string;
+        gross_amount: number;
+        paid_at: string | null;
+        delivery_token_expires_at: string | null;
+        client_label?: string | null;
+        client_public_id?: string | null;
+        establishment_name?: string | null;
+        event_title?: string | null;
+        can_confirm: boolean;
+        block_reason?: string | null;
+        items: Array<{
+            product_id: string;
+            product_name: string;
+            quantity: number;
+            unit_price: number;
+            line_total: number;
+            description?: string | null;
+            image_url?: string | null;
+            packaging_type?: string | null;
+            units_per_box?: number | null;
+        }>;
+    }>(
+        'preview_credit_consumption_delivery',
+        {
+            p_company_id: input.companyId,
+            p_delivery_token: input.deliveryToken,
+        },
+        12_000,
+    );
+}
+
 export async function completeManagerCreditConsumptionDelivery(input: {
     companyId: string;
     intentId?: string;

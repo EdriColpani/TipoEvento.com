@@ -401,6 +401,26 @@ const ManagerLayout: React.FC = () => {
                 !item.path.startsWith('/manager/credit/establishments') &&
                 !item.path.startsWith('/manager/credit/pdv'),
         );
+    } else if (
+        !isAdminMaster &&
+        !filteredManagerNav.some((item) => item.path === '/manager/validation-keys')
+    ) {
+        // Plano de consumo sem feature validation_keys ainda precisa cadastrar chave de balcão.
+        const validationNav = MANAGER_NAV_ITEMS.find((item) => item.path === '/manager/validation-keys');
+        if (validationNav) {
+            const creditIdx = filteredManagerNav.findIndex((item) =>
+                item.path.startsWith('/manager/credit/'),
+            );
+            if (creditIdx >= 0) {
+                filteredManagerNav = [
+                    ...filteredManagerNav.slice(0, creditIdx),
+                    validationNav,
+                    ...filteredManagerNav.slice(creditIdx),
+                ];
+            } else {
+                filteredManagerNav = [...filteredManagerNav, validationNav];
+            }
+        }
     }
 
     if (companyContext?.isPdvOperator && !isAdminMaster) {

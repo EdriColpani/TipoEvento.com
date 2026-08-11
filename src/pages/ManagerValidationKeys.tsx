@@ -18,6 +18,13 @@ import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { restDelete, restGet, restPatch } from '@/utils/supabase-rest';
 import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
+import { useManagerCompany } from '@/hooks/use-manager-company';
+import { useCompanyBilling } from '@/hooks/use-company-billing';
+import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
+import { isPlanFeatureEnabled } from '@/constants/plan-features';
+import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
+
+export type ValidationKeyPurpose = 'entry_exit' | 'consumption_delivery';
 
 interface ValidationApiKey {
     id: string;
@@ -29,6 +36,7 @@ interface ValidationApiKey {
     expires_at: string | null;
     last_used_at: string | null;
     created_at: string;
+    key_purpose?: ValidationKeyPurpose;
 }
 
 interface ValidationLog {
@@ -50,6 +58,7 @@ type ValidationKeyRow = {
     expires_at: string | null;
     last_used_at: string | null;
     created_at: string;
+    key_purpose?: ValidationKeyPurpose | null;
     events?: { title?: string } | null;
 };
 
@@ -68,7 +77,7 @@ type ValidationLogRow = {
 const fetchValidationKeys = async (_userId: string, _isAdminMaster: boolean): Promise<ValidationApiKey[]> => {
     // RLS no banco filtra por empresa / admin
     const data = await restGet<ValidationKeyRow[]>(
-        'validation_api_keys?select=id,name,event_id,is_active,expires_at,last_used_at,created_at,events!event_id(title)&order=created_at.desc&limit=500',
+        'validation_api_keys?select=id,name,event_id,is_active,expires_at,last_used_at,created_at,key_purpose,events!event_id(title)&order=created_at.desc&limit=500',
         15_000,
     );
 
@@ -80,6 +89,7 @@ const fetchValidationKeys = async (_userId: string, _isAdminMaster: boolean): Pr
         expires_at: key.expires_at,
         last_used_at: key.last_used_at,
         created_at: key.created_at,
+        key_purpose: key.key_purpose === 'consumption_delivery' ? 'consumption_delivery' : 'entry_exit',
         event_title: key.events?.title || undefined,
     }));
 };
@@ -120,6 +130,7 @@ const ManagerValidationKeys: React.FC = () => {
     const [newKeyName, setNewKeyName] = useState('');
     const [newKeyEventId, setNewKeyEventId] = useState<string>('');
     const [newKeyExpiresAt, setNewKeyExpiresAt] = useState('');
+    const [newKeyPurpose, setNewKeyPurpose] = useState<ValidationKeyPurpose>('entry_exit');
     const [editKeyName, setEditKeyName] = useState('');
     const [editKeyEventId, setEditKeyEventId] = useState<string>('');
     const [editKeyExpiresAt, setEditKeyExpiresAt] = useState('');
@@ -128,6 +139,17 @@ const ManagerValidationKeys: React.FC = () => {
 
     const { profile } = useProfile(userId);
     const isAdminMaster = profile?.tipo_usuario_id === 1;
+    const { company } = useManagerCompany(userId);
+    const { billing } = useCompanyBilling(company?.id);
+    const { features: planFeatures } = useCompanyPlanFeatures(company?.id, {
+        isAdminMaster,
+        enabled: !!company?.id,
+    });
+
+    const canCreateEntryExitKeys =
+        isAdminMaster || isPlanFeatureEnabled(planFeatures, 'validation_keys', false);
+    const canCreateConsumptionKeys =
+        isAdminMaster || companyAllowsCreditConsumption(billing?.billing_plan ?? null);
 
     const { data: keys, isLoading: isLoadingKeys, isError: isKeysError, refetch: refetchKeys } = useQuery({
         queryKey: ['validationApiKeys', userId, isAdminMaster],
@@ -161,8 +183,13 @@ const ManagerValidationKeys: React.FC = () => {
     useEffect(() => {
         if (showCreateDialog && userId) {
             void refetchEventsForKeys();
+            if (canCreateEntryExitKeys) {
+                setNewKeyPurpose('entry_exit');
+            } else if (canCreateConsumptionKeys) {
+                setNewKeyPurpose('consumption_delivery');
+            }
         }
-    }, [showCreateDialog, userId, refetchEventsForKeys]);
+    }, [showCreateDialog, userId, refetchEventsForKeys, canCreateEntryExitKeys, canCreateConsumptionKeys]);
 
     // Função para calcular data de expiração baseada no evento
     // - Data YYYY-MM-DD é interpretada no calendário local (evita deslocar um dia por UTC).
@@ -260,6 +287,15 @@ const ManagerValidationKeys: React.FC = () => {
             return;
         }
 
+        if (newKeyPurpose === 'entry_exit' && !canCreateEntryExitKeys) {
+            showError('Seu plano não permite chave de entrada/saída do evento.');
+            return;
+        }
+        if (newKeyPurpose === 'consumption_delivery' && !canCreateConsumptionKeys) {
+            showError('Chave de consumo no balcão só é permitida em planos com módulo de consumo.');
+            return;
+        }
+
         const toastId = showLoading('Criando chave de acesso...');
 
         try {
@@ -273,7 +309,7 @@ const ManagerValidationKeys: React.FC = () => {
                 success?: boolean;
                 error?: string;
                 hint?: string;
-                key?: { id: string; api_key?: string };
+                key?: { id: string; api_key?: string; key_purpose?: ValidationKeyPurpose };
             };
 
             const edgeData = await invokeEdgeFunctionRest<CreateKeyResult>(
@@ -283,6 +319,7 @@ const ManagerValidationKeys: React.FC = () => {
                     event_id: newKeyEventId,
                     expires_at: newKeyExpiresAt,
                     created_by: userId,
+                    key_purpose: newKeyPurpose,
                 },
                 { timeoutMs: 25_000 },
             );
@@ -315,6 +352,7 @@ const ManagerValidationKeys: React.FC = () => {
             setNewKeyName('');
             setNewKeyEventId('');
             setNewKeyExpiresAt('');
+            setNewKeyPurpose(canCreateEntryExitKeys ? 'entry_exit' : 'consumption_delivery');
             
             try {
                 await refetchKeys();
@@ -511,12 +549,19 @@ const ManagerValidationKeys: React.FC = () => {
                     <div>
                         <CardTitle className="text-white text-xl mb-2">Suas Chaves de Acesso</CardTitle>
                         <CardDescription className="text-gray-400">
-                            Gerencie as chaves de acesso para o aplicativo de validação de ingressos.
+                            Portaria (entrada/saída) ou consumo no balcão (QR de entrega). Cada chave tem um tipo definido no cadastro.
                         </CardDescription>
                     </div>
                     <Button
-                        onClick={() => setShowCreateDialog(true)}
-                        className="bg-yellow-500 text-black hover:bg-yellow-600"
+                        onClick={() => {
+                            if (!canCreateEntryExitKeys && !canCreateConsumptionKeys) {
+                                showError('Seu plano não permite criar chaves de validação.');
+                                return;
+                            }
+                            setShowCreateDialog(true);
+                        }}
+                        className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                        disabled={!canCreateEntryExitKeys && !canCreateConsumptionKeys}
                     >
                         <Plus className="mr-2 h-4 w-4" />
                         Nova Chave
@@ -558,6 +603,19 @@ const ManagerValidationKeys: React.FC = () => {
                                         <TableRow key={key.id} className="border-b border-yellow-500/10 hover:bg-black/40 text-sm">
                                             <TableCell className="py-4">
                                                 <div className="text-white font-medium">{key.name}</div>
+                                                <div className="mt-1">
+                                                    <span
+                                                        className={
+                                                            key.key_purpose === 'consumption_delivery'
+                                                                ? 'inline-flex rounded-full border border-emerald-400/50 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-300'
+                                                                : 'inline-flex rounded-full border border-sky-400/50 bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-300'
+                                                        }
+                                                    >
+                                                        {key.key_purpose === 'consumption_delivery'
+                                                            ? 'Consumo no balcão'
+                                                            : 'Entrada/saída'}
+                                                    </span>
+                                                </div>
                                                 
                                                 {/* Chave de acesso (só aparece quando revelada) */}
                                                 {apiKeyToShow && isRevealed && (
@@ -782,10 +840,49 @@ const ManagerValidationKeys: React.FC = () => {
                     <DialogHeader>
                         <DialogTitle className="text-yellow-500">Nova Chave de Acesso</DialogTitle>
                         <DialogDescription className="text-gray-400">
-                            Crie uma chave de acesso para liberar o uso do aplicativo de validação de ingressos.
+                            Escolha se a chave libera o app validador na portaria (entrada/saída) ou no balcão de consumo (QR EFDEL).
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Tipo de uso da chave *
+                            </label>
+                            <Select
+                                value={newKeyPurpose}
+                                onValueChange={(v) =>
+                                    setNewKeyPurpose(
+                                        v === 'consumption_delivery' ? 'consumption_delivery' : 'entry_exit',
+                                    )
+                                }
+                            >
+                                <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
+                                    <SelectValue placeholder="Selecione o tipo" />
+                                </SelectTrigger>
+                                <SelectContent className="z-[200] bg-black border-yellow-500/30 text-white">
+                                    {canCreateEntryExitKeys ? (
+                                        <SelectItem value="entry_exit">
+                                            Entrada e saída do evento (portaria)
+                                        </SelectItem>
+                                    ) : null}
+                                    {canCreateConsumptionKeys ? (
+                                        <SelectItem value="consumption_delivery">
+                                            Consumo no balcão (entrega de produto)
+                                        </SelectItem>
+                                    ) : null}
+                                </SelectContent>
+                            </Select>
+                            {!canCreateConsumptionKeys ? (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Chave de consumo só fica disponível em planos híbrido ou consumo/licença.
+                                </p>
+                            ) : null}
+                            {!canCreateEntryExitKeys && canCreateConsumptionKeys ? (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Neste plano só é possível criar chave de consumo no balcão.
+                                </p>
+                            ) : null}
+                        </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-2">
                                 Nome do Colaborador/Operador *

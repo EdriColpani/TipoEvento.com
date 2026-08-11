@@ -35,8 +35,26 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { showError, showSuccess } from '@/utils/toast';
 import { resolveEventGeoOnSave } from '@/utils/google-maps';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
+import {
+    formatCurrencyBrInput,
+    parseCurrencyBr,
+    sanitizeCurrencyBrInput,
+} from '@/utils/currency-input';
 
 type EventOption = { id: string; title: string };
+
+function formatProductUnitPriceDisplay(value: number): string {
+    return `R$ ${formatCurrencyBrInput(value)}`;
+}
+
+function parseProductUnitPriceInput(raw: string): number {
+    return parseCurrencyBr(raw.replace(/^R\$\s*/i, '').trim());
+}
+
+function sanitizeProductUnitPriceInput(raw: string): string {
+    const digits = sanitizeCurrencyBrInput(raw.replace(/^R\$\s*/i, '').trim());
+    return digits ? `R$ ${digits}` : '';
+}
 
 const ManagerCreditEstablishments: React.FC = () => {
     const navigate = useNavigate();
@@ -195,7 +213,7 @@ const ManagerCreditEstablishments: React.FC = () => {
             showError('Selecione um estabelecimento para o catálogo.');
             return;
         }
-        const parsedPrice = Number(productPrice.replace(',', '.'));
+        const parsedPrice = parseProductUnitPriceInput(productPrice);
         const parsedQty = Number(productQuantity);
         const parsedUnitsPerBox = Number(productUnitsPerBox);
         if (!productName.trim()) {
@@ -248,7 +266,7 @@ const ManagerCreditEstablishments: React.FC = () => {
     const startEditProduct = (item: CreditEstablishmentProduct) => {
         setEditingProduct(item);
         setProductName(item.name);
-        setProductPrice(String(item.unit_price));
+        setProductPrice(formatProductUnitPriceDisplay(Number(item.unit_price)));
         setProductDescription(item.description ?? '');
         setProductImageUrl(item.image_url ?? null);
         setProductPackagingType(item.packaging_type === 'box' ? 'box' : 'unit');
@@ -509,9 +527,17 @@ const ManagerCreditEstablishments: React.FC = () => {
                                 <div>
                                     <Label className="text-gray-300">Preço unitário</Label>
                                     <Input
+                                        type="text"
+                                        inputMode="decimal"
                                         value={productPrice}
-                                        onChange={(e) => setProductPrice(e.target.value)}
-                                        placeholder="12,00"
+                                        onChange={(e) => setProductPrice(sanitizeProductUnitPriceInput(e.target.value))}
+                                        onBlur={() => {
+                                            const parsed = parseProductUnitPriceInput(productPrice);
+                                            if (!Number.isNaN(parsed) && parsed > 0) {
+                                                setProductPrice(formatProductUnitPriceDisplay(parsed));
+                                            }
+                                        }}
+                                        placeholder="R$ 0,00"
                                         className="bg-black/60 border-yellow-500/30 text-white mt-1"
                                     />
                                 </div>
