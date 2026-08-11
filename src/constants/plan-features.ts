@@ -37,7 +37,7 @@ export const PLAN_FEATURE_DEFINITIONS: PlanFeatureDefinition[] = [
     { key: 'events_create', label: 'Criar evento', description: 'Novo evento (vitrine ou ingressos)', group: 'Eventos' },
     { key: 'events_banners', label: 'Banners de evento', description: 'Criar banner promocional', group: 'Eventos' },
     { key: 'wristbands', label: 'Ingressos', description: 'Pulseiras / lotes de ingressos', group: 'Ingressos' },
-    { key: 'validation_keys', label: 'Chaves de validação', description: 'Validação na portaria', group: 'Ingressos' },
+    { key: 'validation_keys', label: 'Chaves de validação', description: 'Portaria e/ou consumo no balcão', group: 'Ingressos' },
     { key: 'reports', label: 'Central de relatórios', description: 'Hub de relatórios', group: 'Relatórios' },
     { key: 'reports_financial', label: 'Relatório financeiro', description: 'Comissões e líquido', group: 'Relatórios' },
     { key: 'reports_sales', label: 'Relatório de vendas', description: 'Performance de vendas', group: 'Relatórios' },
@@ -84,7 +84,6 @@ export const MANAGER_NAV_ITEMS: ManagerNavItemConfig[] = [
 export const PARTNER_BLOCKED_NAV_PREFIXES = [
     '/manager/events',
     '/manager/wristbands',
-    '/manager/validation-keys',
 ] as const;
 
 export function isPartnerCompanyBlockedPath(pathname: string): boolean {

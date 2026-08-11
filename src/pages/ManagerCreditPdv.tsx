@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, QrCode, ScanLine, ShoppingBag, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,7 @@ import {
     confirmManagerCreditConsumptionIntent,
     updateManagerCreditConsumptionIntentStatus,
     completeManagerCreditConsumptionDelivery,
+    previewManagerCreditConsumptionDelivery,
     useManagerCreditConsumptionIntents,
     type CreditConsumptionIntentStatus,
 } from '@/hooks/use-credit-consumption-intents';
@@ -57,6 +58,31 @@ type ResolvedClient = {
     clientUserId: string;
     balance: number;
     clientLabel: string;
+};
+
+type DeliveryPreviewState = {
+    token: string;
+    intent_id: string;
+    status: string;
+    gross_amount: number;
+    paid_at: string | null;
+    client_label?: string | null;
+    client_public_id?: string | null;
+    establishment_name?: string | null;
+    event_title?: string | null;
+    can_confirm: boolean;
+    block_reason?: string | null;
+    items: Array<{
+        product_id: string;
+        product_name: string;
+        quantity: number;
+        unit_price: number;
+        line_total: number;
+        description?: string | null;
+        image_url?: string | null;
+        packaging_type?: string | null;
+        units_per_box?: number | null;
+    }>;
 };
 
 function formatMoney(value: number): string {
@@ -86,6 +112,8 @@ const ManagerCreditPdv: React.FC = () => {
     const [historyOperatorFilter, setHistoryOperatorFilter] = useState<string>('all');
     const [deliveryTokenInput, setDeliveryTokenInput] = useState('');
     const [deliveringToken, setDeliveringToken] = useState(false);
+    const [loadingDeliveryPreview, setLoadingDeliveryPreview] = useState(false);
+    const [deliveryPreview, setDeliveryPreview] = useState<DeliveryPreviewState | null>(null);
     const [cancelDialogIntent, setCancelDialogIntent] = useState<{
         id: string;
         paid: boolean;
@@ -93,6 +121,7 @@ const ManagerCreditPdv: React.FC = () => {
     } | null>(null);
     const [cancelReason, setCancelReason] = useState('');
     const [cancellingIntent, setCancellingIntent] = useState(false);
+    const deliveryQrSectionRef = useRef<HTMLDivElement | null>(null);
 
     const { company, isLoading: loadingCompany } = useManagerCompany(userId);
     const { billing, isLoading: loadingBilling } = useCompanyBilling(company?.id);
@@ -304,13 +333,38 @@ const ManagerCreditPdv: React.FC = () => {
         }
     };
 
-    const formatIntentStatus = (status: CreditConsumptionIntentStatus) => {
+    const formatIntentStatus = (status: CreditConsumptionIntentStatus | string) => {
         if (status === 'new') return 'Novo';
         if (status === 'in_preparation') return 'Em preparo';
-        if (status === 'ready_for_pickup') return 'Pronto';
-        if (status === 'completed') return 'Concluído';
+        if (status === 'ready_for_pickup') return 'Pronto p/ retirada';
+        if (status === 'completed') return 'Entregue';
         if (status === 'cancelled') return 'Cancelado';
         return 'Expirado';
+    };
+
+    const intentStatusBadgeClass = (status: CreditConsumptionIntentStatus | string) => {
+        switch (status) {
+            case 'ready_for_pickup':
+                return 'bg-sky-500/15 border-sky-400/50 text-sky-300';
+            case 'in_preparation':
+                return 'bg-amber-500/15 border-amber-400/50 text-amber-300';
+            case 'completed':
+                return 'bg-emerald-500/20 border-emerald-400/60 text-emerald-300';
+            case 'cancelled':
+                return 'bg-red-500/15 border-red-400/50 text-red-300';
+            case 'new':
+                return 'bg-yellow-500/10 border-yellow-500/40 text-yellow-400';
+            default:
+                return 'bg-gray-500/15 border-gray-500/40 text-gray-400';
+        }
+    };
+
+    const intentCardBorderClass = (status: CreditConsumptionIntentStatus | string) => {
+        if (status === 'completed') return 'border-emerald-500/40 bg-emerald-950/20';
+        if (status === 'ready_for_pickup') return 'border-sky-500/35 bg-sky-950/15';
+        if (status === 'cancelled') return 'border-red-500/30 bg-red-950/10';
+        if (status === 'in_preparation') return 'border-amber-500/30 bg-amber-950/10';
+        return 'border-yellow-500/20';
     };
 
     const formatHistorySource = (source: string) => {
@@ -424,28 +478,7 @@ const ManagerCreditPdv: React.FC = () => {
         }
     };
 
-    const confirmIntentDelivery = async (intentId: string) => {
-        if (!company?.id) return;
-        setUpdatingIntentId(intentId);
-        try {
-            const result = await completeManagerCreditConsumptionDelivery({
-                companyId: company.id,
-                intentId,
-            });
-            showSuccess(
-                result.client_label
-                    ? `Entrega confirmada para ${result.client_label}. QR invalidado.`
-                    : 'Entrega confirmada. QR invalidado.',
-            );
-            invalidateIntents();
-        } catch (e: unknown) {
-            showError(e instanceof Error ? e.message : 'Erro ao confirmar entrega.');
-        } finally {
-            setUpdatingIntentId(null);
-        }
-    };
-
-    const deliverByToken = async (rawToken?: string) => {
+    const loadDeliveryPreview = async (rawToken?: string) => {
         if (!company?.id) return;
         const token = (rawToken ?? deliveryTokenInput).trim();
         if (!token) {
@@ -457,17 +490,57 @@ const ManagerCreditPdv: React.FC = () => {
             showError('QR de pedido inválido. Use o código EFDEL do cliente.');
             return;
         }
+        setLoadingDeliveryPreview(true);
+        try {
+            const preview = await previewManagerCreditConsumptionDelivery({
+                companyId: company.id,
+                deliveryToken: normalized,
+            });
+            setDeliveryPreview({
+                token: normalized,
+                intent_id: preview.intent_id,
+                status: preview.status,
+                gross_amount: Number(preview.gross_amount ?? 0),
+                paid_at: preview.paid_at,
+                client_label: preview.client_label,
+                client_public_id: preview.client_public_id,
+                establishment_name: preview.establishment_name,
+                event_title: preview.event_title,
+                can_confirm: preview.can_confirm === true,
+                block_reason: preview.block_reason,
+                items: preview.items ?? [],
+            });
+            setDeliveryTokenInput(normalized);
+            if (!preview.can_confirm && preview.block_reason) {
+                showError(preview.block_reason);
+            }
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Erro ao ler QR do pedido.');
+            setDeliveryPreview(null);
+        } finally {
+            setLoadingDeliveryPreview(false);
+        }
+    };
+
+    const confirmDeliveryFromPreview = async () => {
+        if (!company?.id || !deliveryPreview) return;
+        if (!deliveryPreview.can_confirm) {
+            showError(deliveryPreview.block_reason ?? 'Este pedido não pode ser entregue.');
+            return;
+        }
         setDeliveringToken(true);
         try {
             const result = await completeManagerCreditConsumptionDelivery({
                 companyId: company.id,
-                deliveryToken: normalized,
+                deliveryToken: deliveryPreview.token,
+                intentId: deliveryPreview.intent_id,
             });
             showSuccess(
                 result.client_label
                     ? `Entrega confirmada para ${result.client_label}. QR invalidado.`
                     : 'Entrega confirmada. QR invalidado.',
             );
+            setDeliveryPreview(null);
             setDeliveryTokenInput('');
             invalidateIntents();
         } catch (e: unknown) {
@@ -481,8 +554,16 @@ const ManagerCreditPdv: React.FC = () => {
         if (isScanning) await stopScanning();
         await startDeliveryScanning(async (text) => {
             setDeliveryTokenInput(text);
-            await deliverByToken(text);
+            await loadDeliveryPreview(text);
         });
+    };
+
+    const focusDeliveryQrCapture = async () => {
+        deliveryQrSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        showSuccess('Leia o QR EFDEL do cliente para ver o pedido antes de confirmar.');
+        if (!isDeliveryScanning) {
+            await handleStartDeliveryScan();
+        }
     };
 
     if (planStillLoading) {
@@ -797,12 +878,15 @@ const ManagerCreditPdv: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white text-lg">Painel de atendimento</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Pedidos do cardápio. Se o cliente já pagou, confirme a entrega e invalide o QR.
+                        Pedidos do cardápio. Toda entrega exige leitura do QR EFDEL do cliente.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    <div className="rounded-lg border border-yellow-500/20 p-3 space-y-2">
-                        <Label className="text-gray-300">QR do pedido (entrega)</Label>
+                    <div
+                        ref={deliveryQrSectionRef}
+                        className="rounded-lg border border-yellow-500/20 p-3 space-y-2"
+                    >
+                        <Label className="text-gray-300">QR do pedido (obrigatório para entrega)</Label>
                         <div className="flex flex-col sm:flex-row gap-2">
                             <Input
                                 value={deliveryTokenInput}
@@ -812,12 +896,13 @@ const ManagerCreditPdv: React.FC = () => {
                             />
                             <Button
                                 type="button"
-                                className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 shrink-0"
-                                onClick={() => void deliverByToken()}
-                                disabled={deliveringToken || !deliveryTokenInput.trim()}
+                                variant="outline"
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50 shrink-0"
+                                onClick={() => void loadDeliveryPreview()}
+                                disabled={loadingDeliveryPreview || !deliveryTokenInput.trim()}
                             >
-                                {deliveringToken ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                                Confirmar entrega
+                                {loadingDeliveryPreview ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                                Ver pedido
                             </Button>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -828,7 +913,7 @@ const ManagerCreditPdv: React.FC = () => {
                                     size="sm"
                                     className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
                                     onClick={() => void handleStartDeliveryScan()}
-                                    disabled={deliveringToken}
+                                    disabled={deliveringToken || loadingDeliveryPreview}
                                 >
                                     <ScanLine className="h-4 w-4 mr-1" />
                                     Escanear QR do pedido
@@ -865,8 +950,8 @@ const ManagerCreditPdv: React.FC = () => {
                                 <SelectItem value="all">Todos</SelectItem>
                                 <SelectItem value="new">Novo</SelectItem>
                                 <SelectItem value="in_preparation">Em preparo</SelectItem>
-                                <SelectItem value="ready_for_pickup">Pronto</SelectItem>
-                                <SelectItem value="completed">Concluído</SelectItem>
+                                <SelectItem value="ready_for_pickup">Pronto p/ retirada</SelectItem>
+                                <SelectItem value="completed">Entregue</SelectItem>
                                 <SelectItem value="cancelled">Cancelado</SelectItem>
                             </SelectContent>
                         </Select>
@@ -905,12 +990,19 @@ const ManagerCreditPdv: React.FC = () => {
                     ) : (
                         <ul className="space-y-3">
                             {intentsData!.items.map((intent) => (
-                                <li key={intent.id} className="border border-yellow-500/20 rounded-xl p-3 space-y-2">
+                                <li
+                                    key={intent.id}
+                                    className={`rounded-xl p-3 space-y-2 border ${intentCardBorderClass(intent.status)}`}
+                                >
                                     <div className="flex items-center justify-between gap-2">
                                         <p className="text-white text-sm">
                                             {intent.establishment_name} · {formatMoney(Number(intent.gross_amount))}
                                         </p>
-                                        <span className="text-xs text-yellow-500">{formatIntentStatus(intent.status)}</span>
+                                        <span
+                                            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${intentStatusBadgeClass(intent.status)}`}
+                                        >
+                                            {formatIntentStatus(intent.status)}
+                                        </span>
                                     </div>
                                     <p className="text-xs text-gray-400">
                                         Cliente:{' '}
@@ -923,9 +1015,11 @@ const ManagerCreditPdv: React.FC = () => {
                                         {intent.paid_at
                                             ? ` · pago ${new Date(intent.paid_at).toLocaleString('pt-BR')}`
                                             : ''}
-                                        {intent.delivered_at
-                                            ? ` · entregue ${new Date(intent.delivered_at).toLocaleString('pt-BR')}`
-                                            : ''}
+                                        {intent.delivered_at ? (
+                                            <span className="text-emerald-400 font-medium">
+                                                {` · entregue ${new Date(intent.delivered_at).toLocaleString('pt-BR')}`}
+                                            </span>
+                                        ) : null}
                                         {' · biometria '}
                                         {intent.biometric_required
                                             ? intent.biometric_confirmed ? 'confirmada' : 'pendente'
@@ -960,7 +1054,17 @@ const ManagerCreditPdv: React.FC = () => {
                                                             className="border-l-2 border-yellow-500/30 pl-3 py-1 text-xs"
                                                         >
                                                             <p className="text-gray-200">
-                                                                <span className="text-yellow-500">
+                                                                <span
+                                                                    className={
+                                                                        step.to_status === 'completed'
+                                                                            ? 'text-emerald-400 font-medium'
+                                                                            : step.to_status === 'ready_for_pickup'
+                                                                              ? 'text-sky-300 font-medium'
+                                                                              : step.to_status === 'cancelled'
+                                                                                ? 'text-red-300 font-medium'
+                                                                                : 'text-yellow-500'
+                                                                    }
+                                                                >
                                                                     {step.from_status
                                                                         ? `${formatIntentStatus(step.from_status as CreditConsumptionIntentStatus)} -> `
                                                                         : ''}
@@ -1027,10 +1131,11 @@ const ManagerCreditPdv: React.FC = () => {
                                                 <Button
                                                     size="sm"
                                                     className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
-                                                    onClick={() => void confirmIntentDelivery(intent.id)}
-                                                    disabled={updatingIntentId === intent.id}
+                                                    onClick={() => void focusDeliveryQrCapture()}
+                                                    disabled={updatingIntentId === intent.id || deliveringToken}
                                                 >
-                                                    Confirmar entrega
+                                                    <ScanLine className="h-4 w-4 mr-1" />
+                                                    Ler QR para entregar
                                                 </Button>
                                             ) : (
                                                 <Button
@@ -1053,6 +1158,117 @@ const ManagerCreditPdv: React.FC = () => {
                     )}
                 </CardContent>
             </Card>
+
+            <AlertDialog
+                open={Boolean(deliveryPreview)}
+                onOpenChange={(open) => {
+                    if (!open && !deliveringToken) {
+                        setDeliveryPreview(null);
+                    }
+                }}
+            >
+                <AlertDialogContent className="bg-black border border-yellow-500/40 text-white max-w-lg">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-yellow-500">Conferir entrega</AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-400">
+                            Confira o cliente e os produtos antes de confirmar a entrega.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    {deliveryPreview ? (
+                        <div className="space-y-4 text-sm">
+                            <div className="rounded-lg border border-yellow-500/20 bg-black/40 p-3 space-y-1">
+                                <p className="text-white font-medium">
+                                    {deliveryPreview.client_label ?? 'Cliente'}
+                                    {deliveryPreview.client_public_id
+                                        ? ` · #${deliveryPreview.client_public_id}`
+                                        : ''}
+                                </p>
+                                <p className="text-gray-400">
+                                    {deliveryPreview.establishment_name ?? 'Estabelecimento'}
+                                    {deliveryPreview.event_title ? ` · ${deliveryPreview.event_title}` : ''}
+                                </p>
+                                <p className="text-gray-500">
+                                    Status: {formatIntentStatus(deliveryPreview.status as CreditConsumptionIntentStatus)}
+                                    {deliveryPreview.paid_at
+                                        ? ` · pago ${new Date(deliveryPreview.paid_at).toLocaleString('pt-BR')}`
+                                        : ''}
+                                </p>
+                                <p className="text-yellow-500 font-semibold">
+                                    Total: {formatMoney(deliveryPreview.gross_amount)}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-gray-300 font-medium mb-2">Produtos</p>
+                                <ul className="space-y-2">
+                                    {deliveryPreview.items.map((item) => (
+                                        <li
+                                            key={`${deliveryPreview.intent_id}-${item.product_id}`}
+                                            className="flex gap-3 rounded-lg border border-yellow-500/20 p-2"
+                                        >
+                                            {item.image_url ? (
+                                                <img
+                                                    src={item.image_url}
+                                                    alt={item.product_name}
+                                                    className="h-14 w-14 rounded object-cover shrink-0"
+                                                />
+                                            ) : (
+                                                <div className="h-14 w-14 rounded bg-yellow-500/10 border border-yellow-500/20 shrink-0 flex items-center justify-center text-yellow-500 text-xs">
+                                                    Sem foto
+                                                </div>
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-white font-medium">{item.product_name}</p>
+                                                <p className="text-gray-500 text-xs mt-0.5">
+                                                    {item.quantity}x · {formatMoney(Number(item.unit_price))} cada
+                                                    {item.packaging_type === 'box' && item.units_per_box
+                                                        ? ` · caixa (${item.units_per_box} un.)`
+                                                        : ''}
+                                                </p>
+                                                {item.description ? (
+                                                    <p className="text-gray-500 text-xs mt-1 line-clamp-2">
+                                                        {item.description}
+                                                    </p>
+                                                ) : null}
+                                                <p className="text-yellow-500 text-xs mt-1">
+                                                    Linha: {formatMoney(Number(item.line_total))}
+                                                </p>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                                Crédito e estoque já foram baixados na compra do cliente. Ao confirmar, o sistema
+                                registra a entrega e invalida o QR.
+                            </p>
+                            {deliveryPreview.block_reason && !deliveryPreview.can_confirm ? (
+                                <p className="text-sm text-red-300">{deliveryPreview.block_reason}</p>
+                            ) : null}
+                        </div>
+                    ) : null}
+                    <AlertDialogFooter>
+                        <AlertDialogCancel
+                            disabled={deliveringToken}
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                        >
+                            Voltar
+                        </AlertDialogCancel>
+                        <Button
+                            type="button"
+                            className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                            disabled={
+                                deliveringToken
+                                || !deliveryPreview?.can_confirm
+                                || (deliveryPreview?.items?.length ?? 0) === 0
+                            }
+                            onClick={() => void confirmDeliveryFromPreview()}
+                        >
+                            {deliveringToken ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                            Confirmar entrega
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog
                 open={Boolean(cancelDialogIntent)}

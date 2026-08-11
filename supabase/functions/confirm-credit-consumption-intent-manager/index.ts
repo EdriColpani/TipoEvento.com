@@ -82,27 +82,13 @@ serve(async (req) => {
       );
     }
 
-    // Já pago pelo cliente (débito na compra): só conclui a entrega.
+    // Já pago pelo cliente: entrega só via QR EFDEL (complete_credit_consumption_delivery exige token).
     if (intent.spend_order_id && ['ready_for_pickup', 'in_preparation', 'new'].includes(intent.status)) {
-      const { data: delivery, error: deliveryErr } = await supabaseAnon.rpc(
-        'complete_credit_consumption_delivery',
-        {
-          p_company_id: intent.company_id,
-          p_intent_id: intent.id,
-          p_delivery_token: null,
-        },
-      );
-      if (deliveryErr) throw deliveryErr;
       return new Response(
         JSON.stringify({
-          ok: true,
-          duplicate: false,
-          delivered: true,
-          spendOrderId: intent.spend_order_id,
-          grossAmount: Number(intent.gross_amount ?? 0),
-          delivery,
+          error: 'Pedido já pago. Leia o QR EFDEL do cliente no painel de atendimento para confirmar a entrega.',
         }),
-        { status: 200, headers: corsHeaders },
+        { status: 409, headers: corsHeaders },
       );
     }
 

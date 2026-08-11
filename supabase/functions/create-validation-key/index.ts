@@ -84,6 +84,9 @@ serve(async (req) => {
     const event_id = body.event_id as string;
     const expires_at = body.expires_at as string;
     const created_by = body.created_by as string;
+    const rawPurpose = String(body.key_purpose ?? body.keyPurpose ?? "entry_exit").trim();
+    const key_purpose =
+      rawPurpose === "consumption_delivery" ? "consumption_delivery" : "entry_exit";
 
     if (!name) {
       return json200({ success: false, error: "Nome do colaborador é obrigatório." });
@@ -114,26 +117,50 @@ serve(async (req) => {
       return json200({ success: false, error: "Evento não encontrado." });
     }
 
-    const { data: featureOk, error: featureErr } = await supabaseService.rpc(
-      "company_plan_feature_enabled",
-      {
-        p_company_id: eventData.company_id,
-        p_feature_key: "validation_keys",
-      },
-    );
-    if (featureErr) {
-      console.error("[create-validation-key] company_plan_feature_enabled:", featureErr);
-      return json200({
-        success: false,
-        error: "Não foi possível validar o plano comercial da empresa.",
-      });
-    }
-    if (featureOk !== true) {
-      return json200({
-        success: false,
-        error:
-          'O recurso "Chaves de validação" não está disponível no plano comercial da sua empresa. Entre em contato com a EventFest.',
-      });
+    if (key_purpose === "consumption_delivery") {
+      const { data: allowsConsumption, error: consumptionErr } = await supabaseService.rpc(
+        "company_allows_consumption_validation_keys",
+        { p_company_id: eventData.company_id },
+      );
+      if (consumptionErr) {
+        console.error(
+          "[create-validation-key] company_allows_consumption_validation_keys:",
+          consumptionErr,
+        );
+        return json200({
+          success: false,
+          error: "Não foi possível validar o plano de consumo da empresa.",
+        });
+      }
+      if (allowsConsumption !== true) {
+        return json200({
+          success: false,
+          error:
+            "Chave de consumo no balcão só pode ser criada em planos com módulo de consumo (híbrido ou consumo/licença).",
+        });
+      }
+    } else {
+      const { data: featureOk, error: featureErr } = await supabaseService.rpc(
+        "company_plan_feature_enabled",
+        {
+          p_company_id: eventData.company_id,
+          p_feature_key: "validation_keys",
+        },
+      );
+      if (featureErr) {
+        console.error("[create-validation-key] company_plan_feature_enabled:", featureErr);
+        return json200({
+          success: false,
+          error: "Não foi possível validar o plano comercial da empresa.",
+        });
+      }
+      if (featureOk !== true) {
+        return json200({
+          success: false,
+          error:
+            'O recurso "Chaves de validação" (entrada/saída) não está disponível no plano comercial da sua empresa. Entre em contato com a EventFest.',
+        });
+      }
     }
 
     const listingBlock = await companyListingSubscriptionBlocks(
@@ -203,15 +230,16 @@ serve(async (req) => {
         is_active: true,
         expires_at: expires_at,
         created_by: created_by,
+        key_purpose,
       })
-      .select("id, name, event_id, is_active, expires_at, created_at")
+      .select("id, name, event_id, is_active, expires_at, created_at, key_purpose")
       .single();
 
     if (insertError || !insertedKey) {
       console.error("[create-validation-key] insert:", insertError);
       return json200({
         success: false,
-        error: "Erro ao criar chave de acesso. Tente novamente.",
+        error: insertError?.message || "Erro ao criar chave de acesso. Tente novamente.",
       });
     }
 
@@ -225,6 +253,7 @@ serve(async (req) => {
         is_active: insertedKey.is_active,
         expires_at: insertedKey.expires_at,
         created_at: insertedKey.created_at,
+        key_purpose: insertedKey.key_purpose ?? key_purpose,
       },
     });
   } catch (e) {

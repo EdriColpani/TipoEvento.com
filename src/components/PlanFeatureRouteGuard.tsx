@@ -14,6 +14,7 @@ import {
 } from '@/constants/plan-features';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { MANAGER_BILLING_SETUP_PATH } from '@/constants/manager-billing-gate';
+import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
 
 const ADMIN_MASTER = 1;
 const MANAGER_PRO = 2;
@@ -100,7 +101,14 @@ const PlanFeatureRouteGuard: React.FC<PlanFeatureRouteGuardProps> = ({ children 
         );
     }
 
-    if (isRouteBlockedByPlan(location.pathname, features, false, billingReady)) {
+    const allowsConsumptionKeys =
+        companyAllowsCreditConsumption(billing?.billing_plan ?? null) &&
+        location.pathname.startsWith('/manager/validation-keys');
+
+    if (
+        isRouteBlockedByPlan(location.pathname, features, false, billingReady) &&
+        !allowsConsumptionKeys
+    ) {
         return (
             <div className="max-w-lg mx-auto py-16 px-4 text-center">
                 <Lock className="h-12 w-12 text-amber-400 mx-auto mb-4" />
@@ -111,7 +119,7 @@ const PlanFeatureRouteGuard: React.FC<PlanFeatureRouteGuardProps> = ({ children 
                 </p>
                 <Button
                     type="button"
-                    className="bg-cyan-500 text-black hover:bg-cyan-400"
+                    className="bg-yellow-500 text-black hover:bg-yellow-600"
                     onClick={() => navigate(MANAGER_BILLING_SETUP_PATH)}
                 >
                     Ir para Plano e cobrança
