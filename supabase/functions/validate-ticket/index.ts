@@ -309,7 +309,7 @@ serve(async (req) => {
     const apiKeyHash = await hashApiKey(apiKey);
     const { data: apiKeyData, error: apiKeyError } = await supabaseService
       .from('validation_api_keys')
-      .select('id, name, event_id, is_active, expires_at')
+      .select('id, name, event_id, is_active, expires_at, key_purpose')
       .eq('api_key_hash', apiKeyHash)
       .single();
 
@@ -322,6 +322,11 @@ serve(async (req) => {
         headers: corsHeaders 
       });
     }
+
+    const keyPurpose =
+      (apiKeyData as { key_purpose?: string }).key_purpose === 'consumption_delivery'
+        ? 'consumption_delivery'
+        : 'entry_exit';
 
     // 3. Verificar se a chave está ativa
     if (!apiKeyData.is_active) {
@@ -375,7 +380,7 @@ serve(async (req) => {
     const wristband_code = body.wristband_code as string | undefined;
     const validation_type = (body.validation_type === 'exit' ? 'exit' : 'entry') as 'entry' | 'exit';
 
-    // 5a. Somente validar chave (validador: liberar UI antes de ler ingressos)
+    // 5a. Somente validar chave (validador: liberar UI antes de ler ingressos / consumo)
     if (verify_key_only) {
       let event_title: string | null = null;
       if (apiKeyData.event_id) {
@@ -389,13 +394,28 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
-          message: 'Chave de acesso válida.',
+          message:
+            keyPurpose === 'consumption_delivery'
+              ? 'Chave de consumo válida. Escaneie o QR EFDEL do pedido.'
+              : 'Chave de acesso válida.',
           validated_by: apiKeyData.name,
           event_title,
           event_id: apiKeyData.event_id,
+          key_purpose: keyPurpose,
         }),
         { status: 200, headers: corsHeaders },
       );
+    }
+
+    if (keyPurpose === 'consumption_delivery') {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Esta chave é de consumo no balcão e não valida entrada/saída do evento.',
+        error_code: 'wrong_key_purpose',
+      }), {
+        status: 403,
+        headers: corsHeaders,
+      });
     }
 
     if (!wristband_code || String(wristband_code).trim() === '') {
