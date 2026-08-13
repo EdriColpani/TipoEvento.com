@@ -72,9 +72,7 @@ const ManagerDashboardChartSlots: React.FC<Props> = ({
             <PanelShell title="Ingressos no tempo" subtitle={trendPeriodLabel}>
                 {isLoading ? (
                     <LoadingState />
-                ) : isError ? (
-                    <EmptyState icon={AreaChart} message="Erro ao carregar a série de ingressos." />
-                ) : hasTickets ? (
+                ) : hasTickets && !isError ? (
                     <div className="h-[200px] w-full">
                         <ManagerDashboardTicketsTrendChart data={ticketsTrend} />
                     </div>
@@ -89,9 +87,7 @@ const ManagerDashboardChartSlots: React.FC<Props> = ({
             <PanelShell title="Vendas por canal">
                 {isLoading ? (
                     <LoadingState />
-                ) : isError ? (
-                    <EmptyState icon={PieChart} message="Erro ao carregar vendas por canal." />
-                ) : hasChannels ? (
+                ) : hasChannels && !isError ? (
                     <div className="h-[200px] w-full">
                         <ManagerDashboardChannelDonut data={channelSlices} />
                     </div>
@@ -106,9 +102,7 @@ const ManagerDashboardChartSlots: React.FC<Props> = ({
             <PanelShell title="Acessos por região">
                 {isLoadingAccessMap ? (
                     <LoadingState />
-                ) : isErrorAccessMap ? (
-                    <EmptyState icon={Map} message="Erro ao carregar o mapa de acessos." />
-                ) : accessMap && hasMapData ? (
+                ) : accessMap && hasMapData && !isErrorAccessMap ? (
                     <ManagerDashboardAccessMap data={accessMap} />
                 ) : (
                     <EmptyState

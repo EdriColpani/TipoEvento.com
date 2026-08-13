@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { User, Building, Mail, Phone, MapPin, Calendar, Plus, CreditCard, Wallet } from 'lucide-react';
 import CompanyBillingPlanSection from '@/components/CompanyBillingPlanSection';
+import CompanyContractAcceptancesHistory from '@/components/CompanyContractAcceptancesHistory';
 import ManagerCompanyPayoutSection from '@/components/ManagerCompanyPayoutSection';
 import { ProfileData } from '@/hooks/use-profile';
 import { CompanyFormData } from './CompanyForm'; // Reutilizando o tipo de dados da empresa
@@ -95,8 +96,9 @@ const ManagerCompanyTabs: React.FC<ManagerCompanyTabsProps> = ({
                 {formComponent}
             </TabsContent>
 
-            <TabsContent value="billing" className="mt-6">
+            <TabsContent value="billing" className="mt-6 space-y-0">
                 <CompanyBillingPlanSection companyId={companyId} isAdminMaster={isAdminMaster} />
+                <CompanyContractAcceptancesHistory companyId={companyId} />
             </TabsContent>
 
             {showPaymentsTab && (

@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { CheckCircle2, Inbox, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCircle2, Inbox, Mail, RefreshCw, ShieldCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { showError, showSuccess } from '@/utils/toast';
 import { resendSignupConfirmationEmail } from '@/utils/resend-signup-confirmation';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
+import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -24,8 +27,14 @@ export type EmailConfirmationScreenProps = {
     subtitle?: string;
     steps?: Array<{ title: string; description: string }>;
     showDraftSaved?: boolean;
+    /** Destino do login quando ainda não há sessão (padrão: /login). */
     loginTo?: string;
     loginState?: Record<string, unknown>;
+    /**
+     * Após e-mail confirmado com sessão válida, navega para este caminho
+     * (ex.: /manager/register/company). Se omitido, usa loginTo.
+     */
+    continuePath?: string;
     resendEnabled?: boolean;
     resendRedirectPath?: string;
     onBack?: () => void;
@@ -44,7 +53,7 @@ const PRO_STEPS: EmailConfirmationScreenProps['steps'] = [
     {
         title: 'Cadastre sua empresa',
         description:
-            'Após confirmar, você verá o formulário de dados da empresa (etapa 2). Preencha uma única vez para concluir o cadastro de gestor.',
+            'Após confirmar, faça login (se pedir) e preencha os dados da empresa uma única vez para concluir o cadastro de gestor.',
     },
 ];
 
@@ -72,13 +81,14 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
     showDraftSaved = false,
     loginTo = '/login',
     loginState,
+    continuePath,
     resendEnabled = true,
     resendRedirectPath,
     onBack,
     backLabel = 'Voltar',
 }) => {
+    const navigate = useNavigate();
     const isPro = variant === 'pro';
-    const accent = isPro ? 'yellow' : 'cyan';
     const resolvedTitle = title ?? (isPro ? 'Quase lá! Confirme seu e-mail' : 'Cadastro realizado!');
     const resolvedSubtitle =
         subtitle ??
@@ -89,6 +99,7 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
 
     const [cooldown, setCooldown] = useState(0);
     const [isResending, setIsResending] = useState(false);
+    const [isContinuing, setIsContinuing] = useState(false);
 
     useEffect(() => {
         if (cooldown <= 0) return;
@@ -117,6 +128,52 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
             setIsResending(false);
         }
     }, [cooldown, email, isResending, resendEnabled, resendRedirectPath]);
+
+    const goToLogin = useCallback(() => {
+        const state =
+            loginState ??
+            (continuePath
+                ? { from: continuePath }
+                : undefined);
+        navigate(loginTo, { state, replace: true });
+    }, [continuePath, loginState, loginTo, navigate]);
+
+    const handleAlreadyConfirmed = useCallback(async () => {
+        if (isContinuing) return;
+        setIsContinuing(true);
+        try {
+            await refreshSessionViaRest(8_000);
+            const cached = readCachedAuthSession();
+            if (cached.accessToken) {
+                const { user } = await fetchAuthUserViaRest(cached.accessToken, 5_000);
+                if (user && isAuthEmailConfirmed(user)) {
+                    const destination = continuePath || loginTo;
+                    showSuccess('E-mail confirmado! Continuando o cadastro…');
+                    navigate(destination, {
+                        replace: true,
+                        state: continuePath ? { fromPromoterCta: true } : loginState,
+                    });
+                    return;
+                }
+                if (user && !isAuthEmailConfirmed(user)) {
+                    showError(
+                        'Ainda não detectamos a confirmação. Abra o link do e-mail e clique de novo em “Já confirmei”.',
+                    );
+                    return;
+                }
+            }
+
+            // Sem sessão (fluxo típico após signup via Resend): ir ao login e seguir o cadastro.
+            showSuccess('Faça login com o e-mail confirmado para continuar.');
+            goToLogin();
+        } catch (error) {
+            console.error('Erro ao continuar após confirmação:', error);
+            showError('Não foi possível validar a sessão. Faça login para continuar.');
+            goToLogin();
+        } finally {
+            setIsContinuing(false);
+        }
+    }, [continuePath, goToLogin, isContinuing, loginState, loginTo, navigate]);
 
     const accentBorder = isPro ? 'border-yellow-500/30' : 'border-cyan-500/30';
     const accentShadow = isPro ? 'shadow-yellow-500/10' : 'shadow-cyan-500/15';
@@ -225,27 +282,31 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
 
                         <div className="flex flex-col gap-3 pt-1">
                             <Button
-                                asChild
+                                type="button"
                                 variant="outline"
+                                disabled={isContinuing}
+                                onClick={() => void handleAlreadyConfirmed()}
                                 className={cn(
-                                    'w-full rounded-xl py-3 text-base font-semibold',
+                                    'w-full rounded-xl py-3 text-base font-semibold disabled:opacity-50',
                                     primaryBtnClass,
                                 )}
                             >
-                                <Link to={loginTo} state={loginState}>
+                                {isContinuing ? (
+                                    <Loader2 className="h-5 w-5 animate-spin shrink-0" />
+                                ) : (
                                     <CheckCircle2 className="h-5 w-5 shrink-0" />
-                                    Já confirmei — continuar cadastro
-                                </Link>
+                                )}
+                                {isContinuing ? 'Verificando…' : 'Já confirmei — continuar cadastro'}
                             </Button>
 
                             {resendEnabled && (
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    disabled={cooldown > 0 || isResending}
+                                    disabled={cooldown > 0 || isResending || isContinuing}
                                     onClick={() => void handleResend()}
                                     className={cn(
-                                        'w-full rounded-xl py-3 text-base font-semibold',
+                                        'w-full rounded-xl py-3 text-base font-semibold disabled:opacity-50',
                                         outlineBtnClass,
                                     )}
                                 >
@@ -263,8 +324,9 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                                     type="button"
                                     variant="outline"
                                     onClick={onBack}
+                                    disabled={isContinuing}
                                     className={cn(
-                                        'w-full rounded-xl py-3 text-base font-medium',
+                                        'w-full rounded-xl py-3 text-base font-medium disabled:opacity-50',
                                         ghostBtnClass,
                                     )}
                                 >

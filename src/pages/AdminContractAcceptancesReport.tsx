@@ -26,7 +26,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, FileText, Loader2, Search } from 'lucide-react';
+import { ArrowLeft, Download, FileText, Loader2, Search } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import {
@@ -35,8 +35,10 @@ import {
     type AdminContractAcceptanceRow,
 } from '@/hooks/use-admin-contract-acceptances-report';
 import { getContractTypeLabel } from '@/constants/event-contracts';
-import { showError } from '@/utils/toast';
+import { getBillingPlanLabel } from '@/constants/billing-plans';
+import { showError, showSuccess } from '@/utils/toast';
 import ContractHtmlBody from '@/components/ContractHtmlBody';
+import { downloadContractAcceptancePdf } from '@/utils/contract-acceptance-pdf';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -179,7 +181,9 @@ const AdminContractAcceptancesReport: React.FC = () => {
                                             className="text-white focus:bg-yellow-500/10 focus:text-yellow-400"
                                         >
                                             {companyOption.company_name}
-                                            {companyOption.billing_plan ? ` · ${companyOption.billing_plan}` : ''}
+                                            {companyOption.billing_plan
+                                                ? ` · ${getBillingPlanLabel(companyOption.billing_plan)}`
+                                                : ''}
                                         </SelectItem>
                                     ))
                                 )}
@@ -194,7 +198,7 @@ const AdminContractAcceptancesReport: React.FC = () => {
                     <CardHeader>
                         <CardTitle className="text-white">{selectedCompanyLabel || 'Empresa selecionada'}</CardTitle>
                         <CardDescription className="text-gray-400">
-                            Plano: {company?.billing_plan ?? '—'} · Aceite do plano:{' '}
+                            Plano: {getBillingPlanLabel(company?.billing_plan)} · Aceite do plano:{' '}
                             {dt(company?.billing_plan_accepted_at)} · Reaceite pendente:{' '}
                             {company?.requires_billing_reacceptance ? 'Sim' : 'Não'}
                         </CardDescription>
@@ -230,6 +234,7 @@ const AdminContractAcceptancesReport: React.FC = () => {
                                     <TableHead className="text-yellow-500">Origem</TableHead>
                                     <TableHead className="text-yellow-500">Scroll</TableHead>
                                     <TableHead className="text-yellow-500">Hash</TableHead>
+                                    <TableHead className="text-yellow-500">PDF</TableHead>
                                     <TableHead className="text-yellow-500" />
                                 </TableRow>
                             </TableHeader>
@@ -255,15 +260,46 @@ const AdminContractAcceptancesReport: React.FC = () => {
                                         </TableCell>
                                         <TableCell className="text-gray-300 text-xs">
                                             {row.acceptance_source || '—'}
+                                            {row.verification_method
+                                                ? ` · ${row.verification_method}`
+                                                : ''}
                                         </TableCell>
                                         <TableCell className="text-gray-300 text-xs">
                                             {boolLabel(row.scrolled_to_end)}
                                         </TableCell>
                                         <TableCell
                                             className="text-gray-500 text-xs font-mono truncate max-w-[8rem]"
-                                            title={row.content_hash ?? ''}
+                                            title={row.document_hash || row.content_hash || ''}
                                         >
-                                            {row.content_hash ? `${row.content_hash.slice(0, 12)}…` : '—'}
+                                            {(row.document_hash || row.content_hash)
+                                                ? `${(row.document_hash || row.content_hash)!.slice(0, 12)}…`
+                                                : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className={BTN_OUTLINE}
+                                                disabled={!row.pdf_storage_path}
+                                                onClick={() => {
+                                                    if (!row.pdf_storage_path) return;
+                                                    void downloadContractAcceptancePdf(
+                                                        row.pdf_storage_path,
+                                                        `contrato-aceite-${row.id.slice(0, 8)}.pdf`,
+                                                    )
+                                                        .then(() => showSuccess('PDF aberto.'))
+                                                        .catch((e: unknown) =>
+                                                            showError(
+                                                                e instanceof Error
+                                                                    ? e.message
+                                                                    : 'Falha ao baixar PDF.',
+                                                            ),
+                                                        );
+                                                }}
+                                            >
+                                                <Download className="h-3.5 w-3.5" />
+                                            </Button>
                                         </TableCell>
                                         <TableCell>
                                             <Button
@@ -304,16 +340,43 @@ const AdminContractAcceptancesReport: React.FC = () => {
                                 <div><span className="text-gray-500">Usuário:</span> {detailRow.user_email || detailRow.user_id}</div>
                                 <div><span className="text-gray-500">Empresa ID:</span> {detailRow.company_id || '—'}</div>
                                 <div><span className="text-gray-500">Origem:</span> {detailRow.acceptance_source || '—'}</div>
+                                <div><span className="text-gray-500">Método:</span> {detailRow.verification_method || '—'}</div>
+                                <div><span className="text-gray-500">Canal:</span> {detailRow.verification_channel || '—'}</div>
+                                <div><span className="text-gray-500">Verificado em:</span> {dt(detailRow.verified_at)}</div>
                                 <div><span className="text-gray-500">Scroll até o fim:</span> {boolLabel(detailRow.scrolled_to_end)}</div>
                                 <div><span className="text-gray-500">IP:</span> {detailRow.accepted_ip || '—'}</div>
                                 <div><span className="text-gray-500">Contrato ativo hoje:</span> {boolLabel(detailRow.current_contract_is_active)}</div>
+                                <div><span className="text-gray-500">PDF:</span> {detailRow.pdf_storage_path || '—'}</div>
                                 <div className="md:col-span-2"><span className="text-gray-500">User-Agent:</span> <span className="text-xs break-all">{detailRow.user_agent || '—'}</span></div>
-                                <div className="md:col-span-2"><span className="text-gray-500">Hash SHA-256:</span> <span className="font-mono text-xs break-all">{detailRow.content_hash || '—'}</span></div>
+                                <div className="md:col-span-2"><span className="text-gray-500">Hash documento:</span> <span className="font-mono text-xs break-all">{detailRow.document_hash || detailRow.content_hash || '—'}</span></div>
                             </div>
+
+                            {detailRow.pdf_storage_path ? (
+                                <div className="mt-4">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className={BTN_OUTLINE}
+                                        onClick={() => {
+                                            void downloadContractAcceptancePdf(
+                                                detailRow.pdf_storage_path!,
+                                                `contrato-aceite-${detailRow.id.slice(0, 8)}.pdf`,
+                                            ).catch((e: unknown) =>
+                                                showError(
+                                                    e instanceof Error ? e.message : 'Falha ao baixar PDF.',
+                                                ),
+                                            );
+                                        }}
+                                    >
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Baixar PDF do aceite
+                                    </Button>
+                                </div>
+                            ) : null}
 
                             {detailRow.content_snapshot && (
                                 <div className="mt-4 border border-yellow-500/20 rounded-xl p-4 bg-black/40 max-h-[24rem] overflow-y-auto">
-                                    <ContractHtmlBody html={detailRow.content_snapshot} />
+                                    <ContractHtmlBody content={detailRow.content_snapshot} />
                                 </div>
                             )}
                         </>

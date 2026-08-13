@@ -23,6 +23,8 @@ interface MultiLineEditorProps {
     /** Quando definido, ignora a tabela terms_and_conditions e exibe este conteúdo (ex.: contrato ativo em event_contracts). */
     externalContent?: string;
     externalTitle?: string;
+    /** Texto do checkbox de aceite (padrão: termos gerais). */
+    agreementLabel?: string;
 }
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
@@ -43,6 +45,8 @@ const fetchTermsAndConditions = async (type: 'general' | 'manager_registration')
     return data;
 };
 
+const DEFAULT_AGREEMENT_LABEL = 'Eu li e concordo com os Termos e Condições.';
+
 const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
     onAgree,
     initialAgreedState = false,
@@ -50,6 +54,7 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
     termsType = 'general',
     externalContent,
     externalTitle,
+    agreementLabel = DEFAULT_AGREEMENT_LABEL,
 }) => {
     const useExternal = externalContent !== undefined;
     const queryClient = useQueryClient();
@@ -282,9 +287,9 @@ const MultiLineEditor: React.FC<MultiLineEditorProps> = ({
                         />
                         <label
                             htmlFor="agreeTerms"
-                            className="text-sm font-medium text-white leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            className="text-sm font-medium text-white leading-snug peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                         >
-                            Eu li e concordo com os Termos e Condições.
+                            {agreementLabel}
                         </label>
                     </div>
                 </>

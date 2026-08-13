@@ -20,15 +20,25 @@ export type AdminContractAcceptanceRow = {
     accepted_at: string;
     contract_title_snapshot: string | null;
     content_hash: string | null;
+    document_hash: string | null;
     acceptance_source: string | null;
     accepted_ip: string | null;
     user_agent: string | null;
     scrolled_to_end: boolean | null;
     metadata: Record<string, unknown> | null;
+    party_snapshot: Record<string, unknown> | null;
+    commercial_terms_snapshot: Record<string, unknown> | null;
+    verification_method: string | null;
+    verification_channel: string | null;
+    verified_at: string | null;
+    pdf_storage_path: string | null;
+    pdf_generated_at: string | null;
+    idempotency_key: string | null;
     current_contract_version: string | null;
     current_contract_is_active: boolean | null;
     content_snapshot_length: number | null;
     content_snapshot: string | null;
+    presented_document_length: number | null;
 };
 
 export type AdminCompanyContractAcceptancesReport = {

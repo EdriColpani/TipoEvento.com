@@ -1,7 +1,7 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useDashboardData } from '@/hooks/use-dashboard-data';
+import { EMPTY_DASHBOARD, useDashboardData } from '@/hooks/use-dashboard-data';
 import { useManagerDashboardCharts } from '@/hooks/use-manager-dashboard-charts';
 import { useManagerDashboardToday } from '@/hooks/use-manager-dashboard-today';
 import { useManagerDashboardAccessMap } from '@/hooks/use-manager-dashboard-access-map';
@@ -25,7 +25,7 @@ const ManagerDashboard: React.FC = () => {
         company?.id,
     );
     const isAdminMaster = profile?.tipo_usuario_id === 1;
-    const { data: dashboardData, isLoading, isError } = useDashboardData(
+    const { data: dashboardData, isLoading } = useDashboardData(
         userId,
         isAdminMaster || false,
     );
@@ -74,6 +74,7 @@ const ManagerDashboard: React.FC = () => {
 
     const dashboardBootPending = authPending && !userId;
     const statsBootPending = dashboardBootPending || (isLoading && !dashboardData);
+    const safeDashboard = dashboardData ?? EMPTY_DASHBOARD;
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -93,18 +94,10 @@ const ManagerDashboard: React.FC = () => {
                 </div>
             )}
 
-            {isError && !dashboardData && (
-                <div className="text-center py-20">
-                    <p className="text-red-500">
-                        Erro ao carregar os dados do dashboard. Tente novamente mais tarde.
-                    </p>
-                </div>
-            )}
-
-            {!statsBootPending && dashboardData && (
+            {!statsBootPending && (
                 <>
                     <ManagerDashboardKpiRow
-                        data={dashboardData}
+                        data={safeDashboard}
                         extra={extraKpis}
                         showCreditsKpi={showCreditReportCards}
                         extraLoading={isLoadingExtraKpis}

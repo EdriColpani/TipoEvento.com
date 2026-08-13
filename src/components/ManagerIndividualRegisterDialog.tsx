@@ -24,7 +24,7 @@ import { ProfileData } from '@/hooks/use-profile';
 import { useQueryClient } from '@tanstack/react-query';
 import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
 import { restPatch } from '@/utils/supabase-rest';
-import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
+import { MANAGER_TERMS_REGISTER_PATH } from '@/utils/promoter-registration-flow';
 
 interface ManagerIndividualRegisterDialogProps {
     isOpen: boolean;
@@ -318,7 +318,7 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
             }
 
             dismissToast(toastId);
-            showSuccess('Cadastro como gestor PF realizado com sucesso! Redirecionando…');
+            showSuccess('Cadastro como gestor PF realizado com sucesso! Agora assine o contrato.');
 
             // Evita race: ManagerLayout ainda via perfil antigo (cliente) e expulsava para "/".
             queryClient.setQueryData(['profile', userId], (old: ProfileData | null | undefined) =>
@@ -333,11 +333,10 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
             );
             await queryClient.invalidateQueries({ queryKey: ['profile', userId] });
             await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
+            await queryClient.invalidateQueries({ queryKey: ['managerPrimaryCompany', userId] });
 
-            // Sem plano aceito → aba Plano e cobrança; com plano → dashboard.
-            const nextPath = await resolveManagerPostLoginPath(userId);
             onClose();
-            navigate(nextPath, { replace: true });
+            navigate(MANAGER_TERMS_REGISTER_PATH, { replace: true });
 
         } catch (e: any) {
             dismissToast(toastId);

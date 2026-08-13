@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import MultiLineEditor from '@/components/MultiLineEditor';
+import ContractOtpAcceptanceDialog from '@/components/ContractOtpAcceptanceDialog';
 import { Loader2 } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { usePageAuth } from '@/hooks/use-page-auth';
@@ -14,15 +15,19 @@ import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegis
 import { useQuery } from '@tanstack/react-query';
 import { fetchActivePlatformContract } from '@/utils/fetchPlatformContract';
 import {
-    buildContractAcceptanceAuditMeta,
-    recordContractAcceptance,
-} from '@/utils/contract-acceptance-audit';
-import {
     saveManagerRegistrationUseCase,
     type ManagerRegistrationUseCase,
 } from '@/constants/company-kind';
+import { supabase } from '@/integrations/supabase/client';
+import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
+import { MANAGER_ACCOUNT_REGISTER_PATH } from '@/utils/promoter-registration-flow';
+import { useManagerCompanyContractAcceptances } from '@/hooks/use-manager-contract-acceptances';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
+
+const MANAGER_CONTRACT_AGREEMENT_LABEL =
+    'Declaro que li, compreendi e concordo integralmente com este Contrato de Prestação de Serviços EventFest e, quando aplicável, declaro possuir poderes para representar a empresa CONTRATANTE.';
 
 const ManagerRegister: React.FC = () => {
     const navigate = useNavigate();
@@ -30,6 +35,7 @@ const ManagerRegister: React.FC = () => {
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     const [termsScrolledToEnd, setTermsScrolledToEnd] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [otpDialogOpen, setOtpDialogOpen] = useState(false);
     const [showTypeSelectionModal, setShowTypeSelectionModal] = useState(false);
     const [showUseCaseModal, setShowUseCaseModal] = useState(false);
     const [registrationUseCase, setRegistrationUseCase] = useState<ManagerRegistrationUseCase>('organizer');
@@ -42,6 +48,31 @@ const ManagerRegister: React.FC = () => {
     const isAdminMaster = profile?.tipo_usuario_id === ADMIN_MASTER_USER_TYPE_ID;
 
     const {
+        data: companyId,
+        isLoading: isLoadingCompany,
+    } = useQuery({
+        queryKey: ['managerPrimaryCompany', userId],
+        queryFn: () => fetchManagerPrimaryCompanyId(supabase, userId!),
+        enabled: Boolean(userId) && !isAdminRegisterRoute,
+        staleTime: 15_000,
+    });
+
+    const { data: acceptancesData, isLoading: isLoadingAcceptances } =
+        useManagerCompanyContractAcceptances(companyId);
+
+    const hasSignedCompanyRegistration = Boolean(
+        acceptancesData?.items?.some(
+            (row) =>
+                row.contract_type === 'company_registration' ||
+                row.acceptance_source === 'manager_register',
+        ),
+    );
+
+    const needsCompanyFirst = !isAdminRegisterRoute && !companyId;
+    const showContractStep =
+        isAdminRegisterRoute || (Boolean(companyId) && !hasSignedCompanyRegistration);
+
+    const {
         data: platformContract,
         isLoading: isLoadingContract,
         isError: isErrorContract,
@@ -49,46 +80,76 @@ const ManagerRegister: React.FC = () => {
         queryKey: ['platformContract', 'company_registration'],
         queryFn: () => fetchActivePlatformContract('company_registration'),
         staleTime: 1000 * 60 * 60,
+        enabled: showContractStep || isAdminRegisterRoute,
     });
 
     const shouldShowAgreementCheckbox = !isAdminRegisterRoute;
+
+    useEffect(() => {
+        if (isAdminRegisterRoute || !userId || isLoadingCompany || isLoadingAcceptances) return;
+        if (!companyId || !hasSignedCompanyRegistration) return;
+
+        let cancelled = false;
+        void (async () => {
+            const path = await resolveManagerPostLoginPath(userId);
+            if (!cancelled) {
+                navigate(path, { replace: true });
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        isAdminRegisterRoute,
+        userId,
+        companyId,
+        hasSignedCompanyRegistration,
+        isLoadingCompany,
+        isLoadingAcceptances,
+        navigate,
+    ]);
 
     const handleAgreeToTerms = (agreed: boolean, context?: { scrolledToEnd: boolean }) => {
         setAgreedToTerms(agreed);
         setTermsScrolledToEnd(context?.scrolledToEnd ?? false);
     };
 
-    const handleContinue = async () => {
+    const handleStartRegistration = () => {
+        setShowUseCaseModal(true);
+    };
+
+    const handleContinueToSign = () => {
         if (!platformContract) {
             showError('Contrato de adesão indisponível.');
             return;
         }
         if (!agreedToTerms) {
-            showError('Aceite o contrato para continuar.');
+            showError('Marque a declaração de aceite para continuar.');
             return;
         }
-
+        if (!termsScrolledToEnd) {
+            showError('Role o contrato até o final antes de continuar.');
+            return;
+        }
         if (!userId) {
             showError('Sessão inválida. Faça login novamente.');
             return;
         }
-
-        try {
-            await recordContractAcceptance({
-                contractId: platformContract.id,
-                contractType: platformContract.contract_type,
-                userId,
-                audit: buildContractAcceptanceAuditMeta('manager_register', {
-                    scrolledToEnd: termsScrolledToEnd,
-                }),
-            });
-        } catch (err) {
-            console.error('Erro ao registrar aceite do contrato de adesão:', err);
-            showError('Não foi possível registrar o aceite do contrato. Tente novamente.');
+        if (!companyId) {
+            showError('Cadastre a empresa antes de assinar o contrato.');
             return;
         }
+        setOtpDialogOpen(true);
+    };
 
-        setShowUseCaseModal(true);
+    const handleContractAccepted = async () => {
+        showSuccess('Contrato assinado com sucesso.');
+        if (!userId) {
+            navigate('/');
+            return;
+        }
+        const path = await resolveManagerPostLoginPath(userId);
+        navigate(path, { replace: true });
     };
 
     const handleSelectUseCase = (useCase: ManagerRegistrationUseCase) => {
@@ -110,46 +171,100 @@ const ManagerRegister: React.FC = () => {
         }
 
         if (type === 'individual') {
-            // Abre o modal de registro individual
+            if (!userId) {
+                showError('Crie sua conta e confirme o e-mail antes do cadastro de Pessoa Física.');
+                setIsSubmitting(false);
+                navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
+                    state: { from: '/manager/register', fromPromoterCta: true },
+                });
+                return;
+            }
             setShowIndividualRegisterModal(true);
             setIsSubmitting(false);
-        } else {
-            // Navega para o registro de empresa
-            showSuccess(`Você selecionou o cadastro como Pessoa Jurídica.`);
-            setTimeout(() => {
-                setIsSubmitting(false);
-                navigate('/manager/register/company');
-            }, 500);
+            return;
         }
+
+        showSuccess('Você selecionou o cadastro como Pessoa Jurídica.');
+        setTimeout(() => {
+            setIsSubmitting(false);
+            if (!userId) {
+                navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
+                    state: { fromPromoterCta: true, from: '/informacoes' },
+                });
+                return;
+            }
+            navigate('/manager/register/company');
+        }, 500);
     };
+
+    const bootLoading =
+        isLoadingProfile ||
+        (!isAdminRegisterRoute && Boolean(userId) && (isLoadingCompany || isLoadingAcceptances));
 
     return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-4 sm:px-6 py-12">
             <div className="absolute inset-0 opacity-10">
-                <div className="absolute inset-0" style={{
-                    backgroundImage: 'radial-gradient(circle at 25% 25%, #fbbf24 0%, transparent 50%), radial-gradient(circle at 75% 75%, #fbbf24 0%, transparent 50%)',
-                    backgroundSize: '400px 400px'
-                }}></div>
+                <div
+                    className="absolute inset-0"
+                    style={{
+                        backgroundImage:
+                            'radial-gradient(circle at 25% 25%, #fbbf24 0%, transparent 50%), radial-gradient(circle at 75% 75%, #fbbf24 0%, transparent 50%)',
+                        backgroundSize: '400px 400px',
+                    }}
+                />
             </div>
             <div className="relative z-10 w-full max-w-sm sm:max-w-[800px] space-y-6">
                 <div className="text-center mb-6 sm:mb-8">
-                    <div 
+                    <div
                         className="text-3xl font-serif text-yellow-500 font-bold mb-2 cursor-pointer"
-                        onClick={() => navigate('/')} 
+                        onClick={() => navigate('/')}
                     >
                         EventFest
                     </div>
                     <h1 className="text-xl sm:text-2xl font-semibold text-white mb-2">
-                        {isAdminRegisterRoute && isAdminMaster ? "Editar Termos de Registro de Gestor" : "Cadastro de Gestor"}
+                        {isAdminRegisterRoute && isAdminMaster
+                            ? 'Editar Termos de Registro de Gestor'
+                            : showContractStep
+                              ? 'Assinatura do contrato'
+                              : 'Cadastro de Gestor'}
                     </h1>
                     <p className="text-gray-400 text-sm sm:text-base">
                         {isAdminRegisterRoute && isAdminMaster
                             ? 'Edite o contrato em Admin → Contratos (Cadastro da empresa).'
-                            : 'Leia e aceite o contrato de adesão à plataforma para continuar'}
+                            : showContractStep
+                              ? 'Empresa cadastrada. Leia o contrato, confirme por e-mail e assine para concluir.'
+                              : 'Primeiro cadastre sua conta e empresa. A assinatura do contrato vem depois.'}
                     </p>
                 </div>
 
-                {isLoadingContract ? (
+                {bootLoading ? (
+                    <div className="text-center py-10">
+                        <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
+                        <p className="text-gray-400">Carregando…</p>
+                    </div>
+                ) : needsCompanyFirst ? (
+                    <div className="bg-black border border-yellow-500/30 rounded-2xl p-6 sm:p-8 space-y-4">
+                        <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
+                            <li>Escolha o tipo de operação e o perfil (PF ou PJ).</li>
+                            <li>Crie a conta (e confirme o e-mail) e cadastre a empresa.</li>
+                            <li>Assine o contrato com código enviado ao seu e-mail.</li>
+                        </ol>
+                        <Button
+                            onClick={handleStartRegistration}
+                            disabled={isSubmitting}
+                            className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
+                        >
+                            Começar cadastro
+                        </Button>
+                        <Button
+                            onClick={() => navigate('/')}
+                            variant="outline"
+                            className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
+                        >
+                            Voltar para a Home
+                        </Button>
+                    </div>
+                ) : isLoadingContract ? (
                     <div className="text-center py-10">
                         <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
                         <p className="text-gray-400">Carregando contrato de adesão...</p>
@@ -169,35 +284,42 @@ const ManagerRegister: React.FC = () => {
                         showAgreementCheckbox={shouldShowAgreementCheckbox}
                         externalContent={platformContract.content}
                         externalTitle={platformContract.title}
+                        agreementLabel={MANAGER_CONTRACT_AGREEMENT_LABEL}
                     />
                 )}
 
-                {!isAdminRegisterRoute && (
+                {!isAdminRegisterRoute && showContractStep && platformContract && (
                     <div className="space-y-4">
                         <Button
-                            onClick={handleContinue}
+                            onClick={handleContinueToSign}
                             disabled={!agreedToTerms || isSubmitting || !platformContract}
                             className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                         >
-                            {isSubmitting ? (
-                                <div className="flex items-center justify-center">
-                                    <Loader2 className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin mr-2"></Loader2>
-                                    <span>Carregando...</span>
-                                </div>
-                            ) : (
-                                'Continuar'
-                            )}
+                            Continuar para confirmação
                         </Button>
                         <Button
                             onClick={() => navigate('/')}
                             variant="outline"
-                            className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
+                            className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
                         >
                             Voltar para a Home
                         </Button>
                     </div>
                 )}
             </div>
+
+            {platformContract && companyId && (
+                <ContractOtpAcceptanceDialog
+                    open={otpDialogOpen}
+                    onOpenChange={setOtpDialogOpen}
+                    contractId={platformContract.id}
+                    contractType={platformContract.contract_type}
+                    companyId={companyId}
+                    acceptanceSource="manager_register"
+                    scrolledToEnd={termsScrolledToEnd}
+                    onAccepted={handleContractAccepted}
+                />
+            )}
 
             <ManagerUseCaseSelectionDialog
                 isOpen={showUseCaseModal}
@@ -212,8 +334,7 @@ const ManagerRegister: React.FC = () => {
                 onSelectType={handleSelectManagerType}
                 isSubmitting={isSubmitting}
             />
-            
-            {/* NOVO: Modal de Registro Individual (PF) */}
+
             <ManagerIndividualRegisterDialog
                 isOpen={showIndividualRegisterModal}
                 onClose={() => setShowIndividualRegisterModal(false)}

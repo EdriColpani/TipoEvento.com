@@ -73,10 +73,12 @@ export type PromoterCtaProfile = {
 /**
  * Destino do CTA "Seja um Promotor" / "Começar Agora" na landing.
  *
- * Fluxo "Seja um Promotor" / "Começar Agora":
- * 1. Visitante → /manager/register/account (conta + e-mail de confirmação)
- * 2. Após confirmar e-mail → /manager/register/company (dados da empresa, uma vez)
- * 3. Perfil vira Gestor PRO + empresa criada
+ * Fluxo de adesão:
+ * 1. Visitante → /manager/register (escolhe tipo; sem assinar contrato ainda)
+ *    ou → /manager/register/account (conta + e-mail)
+ * 2. Após confirmar e-mail → /manager/register/company (dados da empresa)
+ * 3. Assina o contrato em /manager/register (com company_id)
+ * 4. Perfil gestor + destino pós-login (plano/dashboard)
  */
 async function resolveUserType(
     userId: string,
