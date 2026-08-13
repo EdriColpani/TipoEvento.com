@@ -34,7 +34,7 @@ export interface DashboardData {
     occupancy: OccupancyMetrics;
 }
 
-const EMPTY_DASHBOARD: DashboardData = {
+export const EMPTY_DASHBOARD: DashboardData = {
     sales: {
         currentMonthTotalSales: 0,
         previousMonthTotalSales: 0,

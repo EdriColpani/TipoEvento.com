@@ -14,6 +14,7 @@ import {
     finalizeManagerCompanyRegistration,
     MANAGER_ACCOUNT_REGISTER_PATH,
     MANAGER_COMPANY_REGISTER_PATH,
+    MANAGER_TERMS_REGISTER_PATH,
 } from '@/utils/promoter-registration-flow';
 import {
     companyKindFromUseCase,
@@ -143,7 +144,7 @@ const ManagerCompanyRegister: React.FC = () => {
             const companyKind = companyKindFromUseCase(loadManagerRegistrationUseCase());
             await finalizeManagerCompanyRegistration(userId, values, queryClient, companyKind);
             dismissToast(toastId);
-            showSuccess('Registro de Gestor (Empresa) concluído com sucesso!');
+            showSuccess('Empresa cadastrada! Agora assine o contrato para concluir.');
             queryClient.setQueryData(['profile', userId], (old: Record<string, unknown> | null | undefined) =>
                 old
                     ? {
@@ -155,14 +156,8 @@ const ManagerCompanyRegister: React.FC = () => {
             );
             await queryClient.invalidateQueries({ queryKey: ['profile', userId] });
             await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
-            if (companyKind === 'partner') {
-                navigate('/manager/settings/company-profile?tab=billing&plan=consumption_or_license', {
-                    replace: true,
-                });
-            } else {
-                const { resolveManagerPostLoginPath } = await import('@/utils/manager-post-login-path');
-                navigate(await resolveManagerPostLoginPath(userId), { replace: true });
-            }
+            await queryClient.invalidateQueries({ queryKey: ['managerPrimaryCompany', userId] });
+            navigate(MANAGER_TERMS_REGISTER_PATH, { replace: true });
         } catch (e: unknown) {
             dismissToast(toastId);
             console.error('Supabase Save Error:', e);
@@ -195,8 +190,8 @@ const ManagerCompanyRegister: React.FC = () => {
                         Cadastro de Gestor (Pessoa Jurídica)
                     </h1>
                     <p className="text-gray-400 text-sm sm:text-base">
-                        Etapa 2 de 2 — e-mail confirmado. Preencha os dados da empresa para
-                        concluir seu cadastro de gestor.
+                        E-mail confirmado. Preencha os dados da empresa. Em seguida você assina o
+                        contrato.
                     </p>
                 </div>
                 <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-yellow-500/10">

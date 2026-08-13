@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, UserPlus, ArrowLeft } from 'lucide-react';
 import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
 import { showError } from '@/utils/toast';
-import { registerPromoterAccountViaResend, MANAGER_ACCOUNT_REGISTER_PATH, MANAGER_COMPANY_REGISTER_PATH } from '@/utils/promoter-registration-flow';
+import { registerPromoterAccountViaResend, MANAGER_COMPANY_REGISTER_PATH } from '@/utils/promoter-registration-flow';
 
 const ManagerPromoterAccountRegister: React.FC = () => {
     const navigate = useNavigate();
@@ -66,7 +66,9 @@ const ManagerPromoterAccountRegister: React.FC = () => {
             <EmailConfirmationScreen
                 email={pendingConfirmationEmail}
                 variant="pro"
-                loginTo={MANAGER_ACCOUNT_REGISTER_PATH}
+                loginTo="/login"
+                loginState={{ from: MANAGER_COMPANY_REGISTER_PATH }}
+                continuePath={MANAGER_COMPANY_REGISTER_PATH}
                 resendRedirectPath={MANAGER_COMPANY_REGISTER_PATH}
                 onBack={() => navigate('/')}
                 backLabel="Voltar para a página inicial"
@@ -168,7 +170,7 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                                 <Button
                                     type="submit"
                                     disabled={isSaving}
-                                    className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 py-3 font-semibold"
+                                    className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 py-3 font-semibold disabled:opacity-50"
                                 >
                                     {isSaving ? (
                                         <>
@@ -183,7 +185,7 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                                     type="button"
                                     variant="outline"
                                     onClick={() => navigate('/')}
-                                    className="flex-1 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                                    className="flex-1 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                                     disabled={isSaving}
                                 >
                                     <ArrowLeft className="mr-2 h-4 w-4" />

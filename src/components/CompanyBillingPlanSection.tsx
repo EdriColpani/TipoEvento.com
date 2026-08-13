@@ -30,6 +30,8 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useInvalidateCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import { useContractScrollEnd } from '@/hooks/use-contract-scroll-end';
 import ContractScrollHint from '@/components/ContractScrollHint';
+import ContractOtpAcceptanceDialog from '@/components/ContractOtpAcceptanceDialog';
+import ManagerWelcomeAfterPlanDialog from '@/components/ManagerWelcomeAfterPlanDialog';
 import { fetchBillingPlanContract } from '@/utils/fetchBillingPlanContract';
 import { useBillingPlansCatalog } from '@/hooks/use-billing-plans-catalog';
 import { useConsumptionLicenseStatus } from '@/hooks/use-consumption-license-status';
@@ -71,6 +73,12 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     const { displays, settings: pricingSettings, isLoading: isLoadingCatalog } = useBillingPlansCatalog(feeOverrides);
     const invalidatePlanFeatures = useInvalidateCompanyPlanFeatures();
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [otpDialogOpen, setOtpDialogOpen] = useState(false);
+    const [welcomeOpen, setWelcomeOpen] = useState(false);
+    const [welcomeNeedsCheckout, setWelcomeNeedsCheckout] = useState(false);
+    const [welcomeCheckoutPlan, setWelcomeCheckoutPlan] = useState<BillingPlanCode | null>(null);
+    const [welcomePaying, setWelcomePaying] = useState(false);
+    const [welcomeLicenseChargeId, setWelcomeLicenseChargeId] = useState<string | null>(null);
     const [pendingPlan, setPendingPlan] = useState<BillingPlanCode | null>(null);
     const [contractAccepted, setContractAccepted] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,7 +143,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     } = useQuery({
         queryKey: ['billingPlanContract', pendingPlan],
         queryFn: () => fetchBillingPlanContract(pendingPlan!),
-        enabled: !!pendingPlan && dialogOpen,
+        enabled: !!pendingPlan,
         refetchOnMount: 'always',
         retry: 1,
     });
@@ -179,7 +187,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
         openPlanAction(currentPlan);
     };
 
-    const handleConfirm = async () => {
+    const handleConfirm = async (options?: { skipContractAcceptance?: boolean }) => {
         if (!pendingPlan || !pendingContract) {
             showError('Contrato do plano não encontrado. Contate o administrador.');
             return;
@@ -189,6 +197,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
             return;
         }
 
+        const skipAcceptance = options?.skipContractAcceptance === true;
         const isSamePlanReacceptance =
             isContractReacceptance && Boolean(currentPlan) && pendingPlan === currentPlan;
 
@@ -212,6 +221,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                 p_user_agent:
                     typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 2000) : null,
                 p_scrolled_to_end: hasScrolledToEnd,
+                p_skip_contract_acceptance: skipAcceptance,
                 ...(isUpgrade
                     ? { p_new_plan: pendingPlan, p_contract_id: pendingContract.id }
                     : { p_plan: pendingPlan, p_contract_id: pendingContract.id }),
@@ -235,6 +245,7 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                       ? 'Plano atualizado com sucesso!'
                       : 'Plano confirmado com sucesso!',
             );
+            setOtpDialogOpen(false);
             setDialogOpen(false);
             setPendingPlan(null);
             await invalidate();
@@ -252,6 +263,18 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                 !isSamePlanReacceptance &&
                 !isAdminMaster &&
                 (confirmedPlan === 'listing_monthly' || confirmedPlan === 'consumption_or_license');
+
+            // Primeiro aceite do plano: boas-vindas → dashboard (pagamento opcional no popup).
+            const showWelcome = !isSamePlanReacceptance && !isUpgrade;
+
+            if (showWelcome) {
+                const lic = rpcPayload?.consumption_license as { charge_id?: string } | null;
+                setWelcomeLicenseChargeId(lic?.charge_id ?? licenseStatus?.charge_id ?? null);
+                setWelcomeCheckoutPlan(needsPaymentCheckout ? confirmedPlan : null);
+                setWelcomeNeedsCheckout(needsPaymentCheckout);
+                setWelcomeOpen(true);
+                return;
+            }
 
             if (needsPaymentCheckout) {
                 const checkoutToastId = showLoading('Abrindo pagamento no Mercado Pago...');
@@ -308,6 +331,30 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
             setIsSubmitting(false);
         }
     };
+
+    const handleContinueToOtp = () => {
+        if (!pendingPlan || !pendingContract) {
+            showError('Contrato do plano não encontrado. Contate o administrador.');
+            return;
+        }
+        if (!contractAccepted) {
+            showError('Marque a declaração de aceite para continuar.');
+            return;
+        }
+        if (!hasScrolledToEnd) {
+            showError('Role o contrato até o final antes de continuar.');
+            return;
+        }
+        setOtpDialogOpen(true);
+    };
+
+    const billingAcceptanceSource =
+        currentPlan && pendingPlan && isBillingPlanUpgrade(currentPlan, pendingPlan)
+            ? 'billing_upgrade'
+            : 'billing';
+
+    const BILLING_CONTRACT_AGREEMENT_LABEL =
+        'Declaro que li, compreendi e concordo integralmente com este Contrato de Prestação de Serviços EventFest e, quando aplicável, declaro possuir poderes para representar a empresa CONTRATANTE.';
 
     const showBillingSpinner = (isLoading || isLoadingCatalog) && !loadingCapReached;
 
@@ -542,8 +589,8 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                         </DialogTitle>
                         <DialogDescription className="text-gray-400">
                             {isContractReacceptance && pendingPlan === currentPlan
-                                ? 'O contrato deste plano foi atualizado. Leia a nova versão até o final e aceite para continuar.'
-                                : 'Leia e aceite o contrato vinculado a este plano.'}
+                                ? 'O contrato deste plano foi atualizado. Leia a nova versão até o final, confirme por e-mail e assine.'
+                                : 'Leia o contrato, confirme por e-mail e assine para salvar o plano.'}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -580,10 +627,10 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                                     }}
                                     className="mt-1 border-cyan-500/50 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-black"
                                 />
-                                <span className="text-sm text-gray-300">
+                                <span className="text-sm text-gray-300 leading-snug">
                                     {isContractReacceptance && pendingPlan === currentPlan
-                                        ? 'Li e aceito a nova versão deste contrato. Meu plano comercial permanece o mesmo.'
-                                        : 'Li e aceito os termos deste contrato e do plano selecionado.'}
+                                        ? `${BILLING_CONTRACT_AGREEMENT_LABEL} Meu plano comercial permanece o mesmo.`
+                                        : BILLING_CONTRACT_AGREEMENT_LABEL}
                                 </span>
                             </label>
                         </>
@@ -608,19 +655,75 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                             type="button"
                             className={billingBtnSolid}
                             disabled={isSubmitting || !pendingContract || !contractAccepted}
-                            onClick={handleConfirm}
+                            onClick={handleContinueToOtp}
                         >
-                            {isSubmitting ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : isContractReacceptance && pendingPlan === currentPlan ? (
-                                'Aceitar novo contrato'
-                            ) : (
-                                'Confirmar e salvar'
-                            )}
+                            Continuar para confirmação
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {pendingContract && pendingPlan ? (
+                <ContractOtpAcceptanceDialog
+                    open={otpDialogOpen}
+                    onOpenChange={setOtpDialogOpen}
+                    contractId={pendingContract.id}
+                    contractType={pendingContract.contract_type}
+                    companyId={companyId}
+                    acceptanceSource={billingAcceptanceSource}
+                    scrolledToEnd={hasScrolledToEnd}
+                    billingPlan={pendingPlan}
+                    onAccepted={() => {
+                        void handleConfirm({ skipContractAcceptance: true });
+                    }}
+                />
+            ) : null}
+
+            <ManagerWelcomeAfterPlanDialog
+                open={welcomeOpen}
+                onOpenChange={setWelcomeOpen}
+                offerPayment={welcomeNeedsCheckout}
+                paying={welcomePaying}
+                onPayNow={async () => {
+                    if (!welcomeCheckoutPlan) return;
+                    setWelcomePaying(true);
+                    const toastId = showLoading('Abrindo pagamento no Mercado Pago...');
+                    try {
+                        const result = await redirectToPlanPaymentCheckout(companyId, welcomeCheckoutPlan, {
+                            chargeId:
+                                welcomeCheckoutPlan === 'consumption_or_license'
+                                    ? welcomeLicenseChargeId ?? undefined
+                                    : undefined,
+                        });
+                        dismissToast(toastId);
+                        if (result === 'already_paid') {
+                            showSuccess('Pagamento deste mês já consta como quitado.');
+                            setWelcomeOpen(false);
+                        }
+                    } catch (e: unknown) {
+                        dismissToast(toastId);
+                        showError(
+                            e instanceof Error
+                                ? e.message
+                                : 'Não foi possível abrir o checkout. Pague depois em Plano e cobrança.',
+                        );
+                        if (welcomeCheckoutPlan === 'listing_monthly') {
+                            setWelcomeOpen(false);
+                            setListingPayDialogOpen(true);
+                        }
+                        if (welcomeCheckoutPlan === 'consumption_or_license') {
+                            if (welcomeLicenseChargeId) {
+                                setPendingLicenseChargeId(welcomeLicenseChargeId);
+                            }
+                            await refetchLicenseStatus();
+                            setWelcomeOpen(false);
+                            setLicensePayDialogOpen(true);
+                        }
+                    } finally {
+                        setWelcomePaying(false);
+                    }
+                }}
+            />
 
             <Dialog open={listingPayDialogOpen} onOpenChange={setListingPayDialogOpen}>
                 <DialogContent className="max-w-md bg-black border-cyan-500/30 text-white">

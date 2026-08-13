@@ -45,7 +45,7 @@ function formatMoney(value: number): string {
 const ManagerDashboardTodaySlots: React.FC<Props> = ({
     data,
     isLoading = false,
-    isError = false,
+    isError: _isError = false,
 }) => {
     if (isLoading) {
         return (
@@ -59,14 +59,7 @@ const ManagerDashboardTodaySlots: React.FC<Props> = ({
         );
     }
 
-    if (isError) {
-        return (
-            <div className={`${dashPanel} mb-8 text-center py-8`}>
-                <p className="text-red-400 text-sm">Erro ao carregar as métricas de hoje.</p>
-            </div>
-        );
-    }
-
+    // Erro ou primeiro acesso sem dados: mostra zeros (não tela vermelha).
     const participants = data?.participants ?? 0;
     const consumption = data?.consumption ?? 0;
     const ticketsSold = data?.ticketsSold ?? 0;
