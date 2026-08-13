@@ -367,58 +367,93 @@ export const LANDING_FAQ_ITEMS: FaqItem[] = [
     },
 ];
 
-export const PRE_LAUNCH_HERO = {
-    badge: 'Lançamento em preparação',
-    title: 'A plataforma premium para eventos ao vivo',
+/** Página /informacoes — conversão para cadastro de gestor/empresa */
+export const MANAGER_SALES_HERO = {
+    badge: 'Para gestores e promotores de eventos',
+    title: 'Pare de improvisar o evento. Tenha a operação completa em uma só plataforma.',
     subtitle:
-        'Estamos finalizando a EventFest para conectar organizadores, empresas e público em uma experiência segura, moderna e memorável.',
+        'Venda ingressos, controle a portaria, gire consumo no local e acompanhe o dinheiro — com a mesma clareza que seus clientes merecem na compra.',
+    primaryCta: 'Quero ser gestor EventFest',
+    secondaryCta: 'Já organizo eventos — ver solução',
 };
 
-export const PRE_LAUNCH_BENEFITS = [
+export const MANAGER_SALES_PAINS = [
     {
-        title: 'Vitrine de eventos',
-        body: 'Descubra shows, festivais e experiências com informações claras, filtros inteligentes e compra confiável.',
+        title: 'Você ainda não organiza eventos',
+        body: 'Quer entrar no mercado, mas tem medo de errar no pagamento, na fila da entrada ou no controle de vendas. Sem ferramenta profissional, o primeiro evento vira risco — não oportunidade.',
     },
     {
-        title: 'Gestão completa',
-        body: 'Organizadores cadastram eventos, definem lotes, acompanham vendas e relatórios em um painel profissional.',
-    },
-    {
-        title: 'Pagamentos seguros',
-        body: 'Checkout integrado às principais empresas de pagamento do mercado, com padrões de segurança e conformidade. Ingressos e créditos EventFest em um fluxo confiável — para você vender com tranquilidade e o público comprar com facilidade.',
-    },
-    {
-        title: 'Experiência premium',
-        body: 'Do ingresso digital à validação na entrada — tudo pensado para eventos de grande porte e médio porte.',
+        title: 'Você já é gestor e sente o teto',
+        body: 'Planilha + WhatsApp + caixa físico + “depois a gente vê o relatório”. Quanto maior o evento, maior o vazamento de tempo, dinheiro e confiança do público.',
     },
 ];
 
-export const PRE_LAUNCH_STATUS_MESSAGE =
-    'Nossa equipe está em fase final de testes. Em breve você poderá explorar eventos e comprar ingressos por aqui. Enquanto isso, fale conosco se quiser saber mais ou ser avisado do lançamento.';
+export const MANAGER_SALES_BRIDGE =
+    'A EventFest conecta promotores, empresas e público em um ambiente seguro: do cadastro do evento à venda de ingressos e ao consumo no local — com compra confiável para o visitante e controle real para quem organiza.';
 
-export const PRE_LAUNCH_MANAGER_INTRO = {
-    title: 'Para quem organiza eventos',
-    problem:
-        'Produtoras e gestores ainda perdem tempo com planilhas, filas na entrada, dinheiro preso em caixa e pouca visão do que acontece dentro do evento. A EventFest nasce para centralizar gestão, controle e receita em um só lugar.',
-    promise:
-        'Do cadastro do evento à última venda no bar conveniado — com agilidade para o público e controle real para você.',
-};
-
-export const PRE_LAUNCH_MANAGER_PILLARS = [
+export const MANAGER_SALES_OUTCOMES = [
     {
-        title: 'Entrada sem fila',
-        body: 'Ingresso digital com validação rápida na portaria. Menos gargalo, menos stress na abertura dos portões e mais previsibilidade sobre quem já entrou.',
+        title: 'Venda com confiança',
+        body: 'Checkout seguro, lotes e comissão transparentes. O público compra em minutos; você acompanha cada real.',
     },
     {
-        title: 'Créditos EventFest',
-        body: 'O público recarrega saldo e consome com QR Code nos pontos do evento — sem enfrentar filas de caixa. Mais fluidez para o visitante e mais giro para a sua operação.',
+        title: 'Portaria sem caos',
+        body: 'Validação digital na entrada. Menos fila, menos discussão, mais gente dentro no horário certo.',
     },
     {
-        title: 'Empresas conveniadas',
-        body: 'Integre bares, food trucks e lojas parceiras ao ecossistema do evento. Novas vendas no local, dados de consumo e uma experiência que fideliza quem volta no próximo show.',
+        title: 'Consumo que gira',
+        body: 'Créditos EventFest no bar e nos pontos do evento. Menos fila de caixa, mais ticket médio no local.',
     },
     {
-        title: 'Gestão e controle',
-        body: 'Painel para lotes, vendas, relatórios e acompanhamento em tempo real. Você enxerga o evento enquanto ele acontece — não só no dia seguinte.',
+        title: 'Números em tempo real',
+        body: 'Relatórios de ingresso, consumo, comissão e repasse. Decisão com dado — não com feeling no dia seguinte.',
     },
 ];
+
+export const MANAGER_SALES_STEPS = [
+    {
+        title: '1. Crie sua conta de gestor',
+        body: 'Cadastro rápido da empresa (ou pessoa física). Em poucos minutos você entra no painel.',
+    },
+    {
+        title: '2. Publique seu evento',
+        body: 'Lotes, preços, imagem e localização. Sua vitrine fica pronta para o público comprar.',
+    },
+    {
+        title: '3. Opere o dia do evento',
+        body: 'Portaria, consumo e relatórios no mesmo ecossistema. Você conduz o show por trás das câmeras.',
+    },
+];
+
+export const MANAGER_SALES_PROOF = [
+    'Ingressos digitais + validação na portaria',
+    'Vitrine pública para descoberta e compra',
+    'Créditos e PDV para consumo no evento',
+    'Relatórios financeiros para gestor e Admin',
+    'Planos para só divulgação, só ingresso ou ingresso + consumo',
+];
+
+export const MANAGER_SALES_OBJECTIONS: FaqItem[] = [
+    {
+        question: 'Ainda não tenho empresa. Posso começar?',
+        answer: 'Sim. O fluxo de cadastro cobre gestor pessoa física e empresa. Você começa pelo essencial e evolui o perfil conforme sua operação cresce.',
+    },
+    {
+        question: 'Já uso outra ferramenta. Por que migrar?',
+        answer: 'Porque a EventFest une venda, entrada e consumo no mesmo lugar. Menos integração improvisada, menos planilha paralela e mais controle no dia do evento.',
+    },
+    {
+        question: 'Quanto custa?',
+        answer: 'Há planos alinhados ao seu modelo: divulgação, comissão por ingresso e ingresso + consumo. No cadastro e no painel você escolhe o que faz sentido para o seu evento.',
+    },
+    {
+        question: 'Preciso de suporte para o primeiro evento?',
+        answer: 'Sim. Use o formulário de contato nesta página ou os canais oficiais. Preferimos você entrar seguro do que vender no escuro.',
+    },
+];
+
+export const MANAGER_SALES_FINAL = {
+    title: 'Seu próximo evento pode ser o primeiro com operação profissional.',
+    body: 'Quem organiza sozinho carrega o risco. Quem usa a EventFest carrega o painel. Cadastre-se agora e monte a estrutura antes da próxima data.',
+    cta: 'Cadastrar gestor / empresa',
+};

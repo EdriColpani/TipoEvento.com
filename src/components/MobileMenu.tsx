@@ -11,6 +11,7 @@ import { showSuccess } from '@/utils/toast';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useLandingUiOptional } from '@/contexts/LandingUiContext';
 import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
+import { MANAGER_TERMS_REGISTER_PATH } from '@/utils/promoter-registration-flow';
 
 const MANAGER_USER_TYPE_ID = 2;
 
@@ -48,8 +49,8 @@ const MobileMenu: React.FC = () => {
         ? [
               { path: '/informacoes#home', label: 'Início', icon: 'fas fa-home' },
               { path: '/informacoes#sobre', label: 'Sobre', icon: 'fas fa-info-circle' },
-              { path: '/informacoes#gestores', label: 'Gestores', icon: 'fas fa-briefcase' },
               { path: '/informacoes#solucao', label: 'Solução', icon: 'fas fa-star' },
+              { path: '/informacoes#gestores', label: 'Para gestores', icon: 'fas fa-briefcase' },
               { path: '/informacoes#contato', label: 'Contato', icon: 'fas fa-envelope' },
           ]
         : [
@@ -213,10 +214,14 @@ const MobileMenu: React.FC = () => {
                                 Login
                             </Button>
                             <Button
-                                onClick={() => handleNavigation('/register')}
+                                onClick={() =>
+                                    handleNavigation(
+                                        isInformacoesPage ? MANAGER_TERMS_REGISTER_PATH : '/register',
+                                    )
+                                }
                                 className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
                             >
-                                Cadastro
+                                {isInformacoesPage ? 'Cadastro gestor / empresa' : 'Cadastro'}
                             </Button>
                         </div>
                     )}
