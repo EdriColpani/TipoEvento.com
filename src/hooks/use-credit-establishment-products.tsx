@@ -11,6 +11,8 @@ export type CreditEstablishmentProduct = {
     name: string;
     description: string | null;
     unit_price: number;
+    app_discount_pct?: number;
+    app_unit_price?: number;
     active: boolean;
     image_url: string | null;
     packaging_type: CreditProductPackagingType;
@@ -61,6 +63,12 @@ async function fetchEstablishmentProducts(
                         : Number(item.quantity ?? 0)),
             ),
             image_url: item.image_url ?? null,
+            app_discount_pct: Number(item.app_discount_pct ?? 0),
+            app_unit_price: Number(
+                item.app_unit_price ??
+                    Number(item.unit_price) *
+                        (1 - Number(item.app_discount_pct ?? 0) / 100),
+            ),
         })),
     };
 }
@@ -106,6 +114,7 @@ export async function saveCreditEstablishmentProduct(input: {
     packagingType?: CreditProductPackagingType;
     unitsPerBox?: number | null;
     quantity?: number;
+    appDiscountPct?: number;
 }) {
     return callRpcRest<{ ok: boolean; product_id: string; total_units: number }>(
         'save_credit_establishment_product',
@@ -121,6 +130,25 @@ export async function saveCreditEstablishmentProduct(input: {
             p_packaging_type: input.packagingType ?? 'unit',
             p_units_per_box: input.packagingType === 'box' ? (input.unitsPerBox ?? null) : null,
             p_quantity: input.quantity ?? 0,
+            p_app_discount_pct: input.appDiscountPct ?? 0,
+        },
+        15_000,
+    );
+}
+
+export async function applyCreditProductAppDiscount(input: {
+    companyId: string;
+    establishmentId: string;
+    appDiscountPct: number;
+    scope: 'establishment' | 'event';
+}) {
+    return callRpcRest<{ ok: boolean; updated_count: number; app_discount_pct: number; scope: string }>(
+        'apply_credit_product_app_discount',
+        {
+            p_company_id: input.companyId,
+            p_establishment_id: input.establishmentId,
+            p_app_discount_pct: input.appDiscountPct,
+            p_scope: input.scope,
         },
         15_000,
     );

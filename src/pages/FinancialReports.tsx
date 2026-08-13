@@ -15,6 +15,7 @@ import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import { showError, showSuccess } from '@/utils/toast';
 import { reconcilePurchase } from '@/utils/reconcile-purchase';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { PrincipalReportBadge } from '@/components/reports/PrincipalReportBadge';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 const MANAGER_PRO_USER_TYPE_ID = 2;
@@ -227,10 +228,15 @@ const FinancialReports: React.FC = () => {
     return (
         <div className="max-w-7xl mx-auto p-6">
             <div className="flex items-center justify-between mb-8">
-                <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
-                    <DollarSign className="h-7 w-7 mr-3" />
-                    Relatório Financeiro
-                </h1>
+                <div>
+                    <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
+                        <DollarSign className="h-7 w-7 mr-3" />
+                        Relatório Financeiro
+                    </h1>
+                    <div className="mt-2">
+                        <PrincipalReportBadge label="Principal · ingressos" />
+                    </div>
+                </div>
                 <div className="flex gap-2">
                     {reportData && reportData.length > 0 && (
                         <Button

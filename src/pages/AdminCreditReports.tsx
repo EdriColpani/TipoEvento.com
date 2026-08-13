@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp, AlertTriangle, Star } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +20,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { PrincipalReportBadge } from '@/components/reports/PrincipalReportBadge';
 import {
     useAdminCreditFinancialPosition,
     useAdminCreditMpReconciliationIssues,
@@ -337,9 +338,12 @@ const AdminCreditReports: React.FC = () => {
                         <Wallet className="h-7 w-7" />
                         Créditos EventFest — Admin
                     </h1>
-                    <p className="text-gray-400 text-sm mt-1">
-                        Passivo, comissões de consumo, fluxos cross-empresa e auditoria.
-                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <PrincipalReportBadge label="Principal · créditos e MP" />
+                        <p className="text-gray-400 text-sm">
+                            Comissões, receita, posição financeira e conciliação MP.
+                        </p>
+                    </div>
                 </div>
                 <Button
                     variant="outline"
@@ -356,6 +360,7 @@ const AdminCreditReports: React.FC = () => {
                         <Scale className="h-4 w-4 mr-1" /> Passivo
                     </TabsTrigger>
                     <TabsTrigger value="commission" className={TAB_TRIGGER}>
+                        <Star className="h-3.5 w-3.5 mr-1 fill-yellow-500 text-yellow-500" />
                         Comissões
                     </TabsTrigger>
                     <TabsTrigger value="cross" className={TAB_TRIGGER}>
@@ -374,12 +379,15 @@ const AdminCreditReports: React.FC = () => {
                         <FileSpreadsheet className="h-4 w-4 mr-1" /> Contábil
                     </TabsTrigger>
                     <TabsTrigger value="position" className={TAB_TRIGGER}>
+                        <Star className="h-3.5 w-3.5 mr-1 fill-yellow-500 text-yellow-500" />
                         Posição financeira
                     </TabsTrigger>
                     <TabsTrigger value="revenue" className={TAB_TRIGGER}>
-                        <TrendingUp className="h-4 w-4 mr-1" /> Receita plataforma
+                        <Star className="h-3.5 w-3.5 mr-1 fill-yellow-500 text-yellow-500" />
+                        Receita plataforma
                     </TabsTrigger>
                     <TabsTrigger value="mp-recon" className={TAB_TRIGGER}>
+                        <Star className="h-3.5 w-3.5 mr-1 fill-yellow-500 text-yellow-500" />
                         Conciliação MP
                     </TabsTrigger>
                     <TabsTrigger value="chargebacks" className={`${TAB_TRIGGER} relative`}>
@@ -435,8 +443,8 @@ const AdminCreditReports: React.FC = () => {
                                         <TableHeader>
                                             <TableRow className="border-yellow-500/20">
                                                 <TableHead className="text-yellow-500">Empresa</TableHead>
-                                                <TableHead className="text-yellow-500 text-right">Spends</TableHead>
-                                                <TableHead className="text-yellow-500 text-right">Gross</TableHead>
+                                                <TableHead className="text-yellow-500 text-right">Consumos</TableHead>
+                                                <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                                                 <TableHead className="text-yellow-500 text-right">Comissão EF</TableHead>
                                                 <TableHead className="text-yellow-500 text-right">Líq. gestor</TableHead>
                                             </TableRow>

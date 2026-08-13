@@ -27,6 +27,7 @@ import {
     useCreditEstablishmentProducts,
     saveCreditEstablishmentProduct,
     setCreditEstablishmentProductActive,
+    applyCreditProductAppDiscount,
     type CreditEstablishmentProduct,
     type CreditProductPackagingType,
 } from '@/hooks/use-credit-establishment-products';
@@ -43,6 +44,9 @@ import {
 
 type EventOption = { id: string; title: string };
 
+const OUTLINE_BTN =
+    'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400';
+
 function formatProductUnitPriceDisplay(value: number): string {
     return `R$ ${formatCurrencyBrInput(value)}`;
 }
@@ -54,6 +58,14 @@ function parseProductUnitPriceInput(raw: string): number {
 function sanitizeProductUnitPriceInput(raw: string): string {
     const digits = sanitizeCurrencyBrInput(raw.replace(/^R\$\s*/i, '').trim());
     return digits ? `R$ ${digits}` : '';
+}
+
+function parseDiscountPctInput(raw: string): number | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return 0;
+    const n = Number.parseFloat(trimmed.replace(',', '.').replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+    return Math.round(n * 100) / 100;
 }
 
 const ManagerCreditEstablishments: React.FC = () => {
@@ -76,7 +88,10 @@ const ManagerCreditEstablishments: React.FC = () => {
         useState<CreditProductPackagingType>('unit');
     const [productUnitsPerBox, setProductUnitsPerBox] = useState('');
     const [productQuantity, setProductQuantity] = useState('');
+    const [productDiscountPct, setProductDiscountPct] = useState('');
+    const [bulkDiscountPct, setBulkDiscountPct] = useState('');
     const [savingProduct, setSavingProduct] = useState(false);
+    const [applyingBulkDiscount, setApplyingBulkDiscount] = useState(false);
 
     const { company } = useManagerCompany(userId);
     const { context: companyContext } = useManagerCompanyContext(userId);
@@ -127,6 +142,7 @@ const ManagerCreditEstablishments: React.FC = () => {
         setProductPackagingType('unit');
         setProductUnitsPerBox('');
         setProductQuantity('');
+        setProductDiscountPct('');
     };
 
     const productTotalUnits = (() => {
@@ -216,12 +232,17 @@ const ManagerCreditEstablishments: React.FC = () => {
         const parsedPrice = parseProductUnitPriceInput(productPrice);
         const parsedQty = Number(productQuantity);
         const parsedUnitsPerBox = Number(productUnitsPerBox);
+        const parsedDiscount = parseDiscountPctInput(productDiscountPct);
         if (!productName.trim()) {
             showError('Informe o nome do produto.');
             return;
         }
         if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
             showError('Informe um preço unitário válido.');
+            return;
+        }
+        if (parsedDiscount === null) {
+            showError('Informe um desconto entre 0 e 100%.');
             return;
         }
         if (!Number.isFinite(parsedQty) || parsedQty < 0 || !Number.isInteger(parsedQty)) {
@@ -252,6 +273,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                 packagingType: productPackagingType,
                 unitsPerBox: productPackagingType === 'box' ? parsedUnitsPerBox : null,
                 quantity: parsedQty,
+                appDiscountPct: parsedDiscount,
             });
             showSuccess(editingProduct ? 'Produto atualizado.' : 'Produto criado.');
             resetProductForm();
@@ -272,6 +294,50 @@ const ManagerCreditEstablishments: React.FC = () => {
         setProductPackagingType(item.packaging_type === 'box' ? 'box' : 'unit');
         setProductUnitsPerBox(item.units_per_box != null ? String(item.units_per_box) : '');
         setProductQuantity(String(item.quantity ?? 0));
+        setProductDiscountPct(
+            Number(item.app_discount_pct ?? 0) > 0
+                ? String(item.app_discount_pct).replace('.', ',')
+                : '',
+        );
+    };
+
+    const selectedCatalogEstablishment = (data?.items ?? []).find(
+        (item) => item.id === catalogEstablishmentId,
+    );
+
+    const handleBulkDiscount = async (scope: 'establishment' | 'event') => {
+        if (!company?.id || catalogEstablishmentId === 'none') {
+            showError('Selecione um estabelecimento.');
+            return;
+        }
+        const parsedDiscount = parseDiscountPctInput(bulkDiscountPct);
+        if (parsedDiscount === null) {
+            showError('Informe um desconto entre 0 e 100%.');
+            return;
+        }
+        if (scope === 'event' && !selectedCatalogEstablishment?.event_id) {
+            showError('Vincule o estabelecimento a um evento para aplicar em todos os produtos do evento.');
+            return;
+        }
+        setApplyingBulkDiscount(true);
+        try {
+            const result = await applyCreditProductAppDiscount({
+                companyId: company.id,
+                establishmentId: catalogEstablishmentId,
+                appDiscountPct: parsedDiscount,
+                scope,
+            });
+            showSuccess(
+                scope === 'event'
+                    ? `Desconto de ${parsedDiscount.toLocaleString('pt-BR')}% aplicado em ${result.updated_count} produto(s) do evento.`
+                    : `Desconto de ${parsedDiscount.toLocaleString('pt-BR')}% aplicado em ${result.updated_count} produto(s) deste estabelecimento.`,
+            );
+            invalidateProducts();
+        } catch (e: unknown) {
+            showError(e instanceof Error ? e.message : 'Erro ao aplicar desconto.');
+        } finally {
+            setApplyingBulkDiscount(false);
+        }
     };
 
     const toggleProductActive = async (item: CreditEstablishmentProduct) => {
@@ -418,7 +484,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                             {editing ? 'Salvar alterações' : 'Cadastrar'}
                         </Button>
                         {editing && (
-                            <Button variant="outline" onClick={resetForm} className="border-yellow-500/40 text-yellow-500">
+                            <Button variant="outline" onClick={resetForm} className={OUTLINE_BTN}>
                                 Cancelar
                             </Button>
                         )}
@@ -460,10 +526,20 @@ const ManagerCreditEstablishments: React.FC = () => {
                                     <div className="flex gap-2">
                                         {canManageEstablishments && (
                                             <>
-                                                <Button size="sm" variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={() => startEdit(item)}>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className={OUTLINE_BTN}
+                                                    onClick={() => startEdit(item)}
+                                                >
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
-                                                <Button size="sm" variant="outline" className="border-yellow-500/40 text-yellow-500" onClick={() => toggleActive(item)}>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className={OUTLINE_BTN}
+                                                    onClick={() => toggleActive(item)}
+                                                >
                                                     <Power className="h-4 w-4" />
                                                 </Button>
                                             </>
@@ -471,7 +547,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            className="border-yellow-500/40 text-yellow-500"
+                                            className={OUTLINE_BTN}
                                             onClick={() => setCatalogEstablishmentId(item.id)}
                                         >
                                             Produtos
@@ -491,7 +567,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                         Catálogo de produtos
                     </CardTitle>
                     <CardDescription className="text-gray-400">
-                        Cadastre itens padrão por estabelecimento para agilizar o PDV.
+                        Cadastre itens padrão por estabelecimento. Desconto % vale no app/cardápio; o PDV cobra o preço cheio.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -514,7 +590,54 @@ const ManagerCreditEstablishments: React.FC = () => {
 
                     {catalogEstablishmentId !== 'none' && (
                         <>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div className="rounded-xl border border-yellow-500/20 p-3 space-y-2">
+                                <Label className="text-gray-300">Desconto no app (lote)</Label>
+                                <p className="text-xs text-gray-500">
+                                    Vale só no cardápio/app do cliente. O PDV continua no preço cheio.
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-2 items-end">
+                                    <div>
+                                        <Label className="text-gray-400 text-xs">% desconto</Label>
+                                        <Input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={bulkDiscountPct}
+                                            onChange={(e) =>
+                                                setBulkDiscountPct(e.target.value.replace(/[^\d,.]/g, ''))
+                                            }
+                                            placeholder="Ex.: 10"
+                                            className="bg-black/60 border-yellow-500/30 text-white mt-1"
+                                        />
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className={OUTLINE_BTN}
+                                            disabled={applyingBulkDiscount}
+                                            onClick={() => void handleBulkDiscount('establishment')}
+                                        >
+                                            {applyingBulkDiscount ? (
+                                                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                            ) : null}
+                                            Aplicar neste estabelecimento
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className={OUTLINE_BTN}
+                                            disabled={
+                                                applyingBulkDiscount || !selectedCatalogEstablishment?.event_id
+                                            }
+                                            onClick={() => void handleBulkDiscount('event')}
+                                        >
+                                            Aplicar em todos do evento
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                                 <div className="sm:col-span-2">
                                     <Label className="text-gray-300">Nome do produto</Label>
                                     <Input
@@ -540,6 +663,20 @@ const ManagerCreditEstablishments: React.FC = () => {
                                         placeholder="R$ 0,00"
                                         className="bg-black/60 border-yellow-500/30 text-white mt-1"
                                     />
+                                </div>
+                                <div>
+                                    <Label className="text-gray-300">% desconto no app</Label>
+                                    <Input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={productDiscountPct}
+                                        onChange={(e) =>
+                                            setProductDiscountPct(e.target.value.replace(/[^\d,.]/g, ''))
+                                        }
+                                        placeholder="0"
+                                        className="bg-black/60 border-yellow-500/30 text-white mt-1"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">0 = sem desconto. Só no app.</p>
                                 </div>
                             </div>
 
@@ -673,11 +810,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                     {editingProduct ? 'Salvar produto' : 'Adicionar produto'}
                                 </Button>
                                 {editingProduct && (
-                                    <Button
-                                        variant="outline"
-                                        onClick={resetProductForm}
-                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
-                                    >
+                                    <Button variant="outline" onClick={resetProductForm} className={OUTLINE_BTN}>
                                         Cancelar
                                     </Button>
                                 )}
@@ -713,7 +846,10 @@ const ManagerCreditEstablishments: React.FC = () => {
                                                             {Number(item.unit_price).toLocaleString('pt-BR', {
                                                                 style: 'currency',
                                                                 currency: 'BRL',
-                                                            })}{' '}
+                                                            })}
+                                                            {Number(item.app_discount_pct ?? 0) > 0
+                                                                ? ` · app ${Number(item.app_discount_pct).toLocaleString('pt-BR')}% off (${Number(item.app_unit_price ?? item.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`
+                                                                : ''}{' '}
                                                             ·{' '}
                                                             {item.packaging_type === 'box'
                                                                 ? `Caixa (${item.units_per_box} und) · ${item.quantity} cx · total ${item.total_units ?? item.quantity * (item.units_per_box ?? 0)} und`
@@ -726,7 +862,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                                        className={OUTLINE_BTN}
                                                         onClick={() => startEditProduct(item)}
                                                     >
                                                         <Pencil className="h-4 w-4" />
@@ -734,7 +870,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                                     <Button
                                                         size="sm"
                                                         variant="outline"
-                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                                        className={OUTLINE_BTN}
                                                         onClick={() => toggleProductActive(item)}
                                                     >
                                                         <Power className="h-4 w-4" />

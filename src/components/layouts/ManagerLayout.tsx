@@ -489,7 +489,7 @@ const ManagerLayout: React.FC = () => {
     // FILTRAGEM: Remove o item cuja rota é a rota atual
     const navItems = allNavItems.filter(item => item.path !== location.pathname);
     
-    const dashboardTitle = isAdminMaster && location.pathname.startsWith('/admin') ? 'ADMIN' : 'Gestor';
+    const dashboardTitle = isAdminMaster ? 'ADMIN' : 'Gestor';
     
     const userName = profile?.first_name || 'Gestor';
     

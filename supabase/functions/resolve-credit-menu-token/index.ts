@@ -86,7 +86,7 @@ serve(async (req) => {
 
     const { data: products, error: productsErr } = await supabaseService
       .from('credit_establishment_products')
-      .select('id, name, description, unit_price, active, image_url, packaging_type, units_per_box, quantity')
+      .select('id, name, description, unit_price, app_discount_pct, active, image_url, packaging_type, units_per_box, quantity')
       .eq('establishment_id', est.id)
       .eq('active', true)
       .gt('quantity', 0)
@@ -102,16 +102,24 @@ serve(async (req) => {
           companyName: company?.corporate_name ?? 'Empresa parceira',
           eventTitle: event?.title ?? null,
         },
-        products: (products ?? []).map((p) => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          unitPrice: Number(p.unit_price ?? 0),
-          imageUrl: p.image_url ?? null,
-          packagingType: p.packaging_type === 'box' ? 'box' : 'unit',
-          unitsPerBox: p.units_per_box == null ? null : Number(p.units_per_box),
-          stockQuantity: Number(p.quantity ?? 0),
-        })),
+        products: (products ?? []).map((p) => {
+          const listPrice = Number(p.unit_price ?? 0);
+          const discountPct = Number(p.app_discount_pct ?? 0);
+          const appUnitPrice = Math.round(listPrice * (1 - Math.max(0, Math.min(100, discountPct)) / 100) * 100) / 100;
+          return {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            unitPrice: discountPct > 0 ? appUnitPrice : listPrice,
+            listPrice,
+            appDiscountPct: discountPct,
+            appUnitPrice,
+            imageUrl: p.image_url ?? null,
+            packagingType: p.packaging_type === 'box' ? 'box' : 'unit',
+            unitsPerBox: p.units_per_box == null ? null : Number(p.units_per_box),
+            stockQuantity: Number(p.quantity ?? 0),
+          };
+        }),
       }),
       { status: 200, headers: corsHeaders },
     );

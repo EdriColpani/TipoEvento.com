@@ -6,6 +6,7 @@ import { usePageAuth } from '@/hooks/use-page-auth';
 import { supabase } from '@/integrations/supabase/client';
 import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
+import { PrincipalReportBadge } from '@/components/reports/PrincipalReportBadge';
 
 const ManagerCreditAccountingReport: React.FC = () => {
     const navigate = useNavigate();
@@ -102,10 +103,15 @@ const ManagerCreditAccountingReport: React.FC = () => {
                 >
                     <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                 </Button>
-                <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
-                    <FileSpreadsheet className="h-6 w-6" />
-                    Relatório contábil — Créditos
-                </h1>
+                <div>
+                    <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
+                        <FileSpreadsheet className="h-6 w-6" />
+                        Relatório contábil — Créditos
+                    </h1>
+                    <div className="mt-2">
+                        <PrincipalReportBadge label="Principal · caixa crédito" />
+                    </div>
+                </div>
             </div>
 
             <CreditAccountingReportPanel mode="manager" companyId={access.company?.id} />

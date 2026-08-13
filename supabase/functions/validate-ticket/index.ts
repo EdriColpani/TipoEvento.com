@@ -102,10 +102,30 @@ async function ensurePurchaseEventType(wa: AnalyticsAccessRow): Promise<Analytic
   return wa;
 }
 
-/** Regras de entrada/saída por tipo de ingresso (compra = active na entrada, vira used após validar). */
+async function getLastMovementType(
+  wristbandId: string,
+): Promise<'entry' | 'exit' | null> {
+  const { data, error } = await supabaseService
+    .from('wristband_movements')
+    .select('movement_type')
+    .eq('wristband_id', wristbandId)
+    .order('validated_at', { ascending: false })
+    .limit(1);
+  if (error || !data?.length) return null;
+  const t = (data[0] as { movement_type?: string }).movement_type;
+  if (t === 'exit') return 'exit';
+  if (t === 'entry') return 'entry';
+  return null;
+}
+
+/**
+ * Ciclo: entrada → saída → entrada.
+ * Último movimento manda: entry = está dentro; exit/nenhum = está fora.
+ */
 function evaluateAnalyticsAccess(
   wa: AnalyticsAccessRow,
   validation_type: 'entry' | 'exit',
+  lastMovement: 'entry' | 'exit' | null = null,
 ): { ok: boolean; message: string } {
   const isFree = wa.event_type === 'free_registration';
   const isPaid = isPurchaseLikeEventType(wa.event_type);
@@ -114,24 +134,33 @@ function evaluateAnalyticsAccess(
     return { ok: false, message: 'Tipo de ingresso inválido.' };
   }
 
-  if (validation_type === 'exit') {
-    const ok =
-      wa.status === 'used' ||
-      (isPaid && wa.status === 'active');
-    return {
-      ok,
-      message: ok ? '' : 'Ingresso ainda não liberado ou inválido.',
-    };
-  }
-
   if (isPaid) {
-    if (wa.status === 'used') {
+    const isInside =
+      lastMovement === 'entry' ||
+      (lastMovement === null && wa.status === 'used');
+
+    if (validation_type === 'exit') {
+      return {
+        ok: isInside,
+        message: isInside ? '' : 'Ingresso ainda não entrou no evento.',
+      };
+    }
+
+    if (isInside) {
       return { ok: false, message: 'Ingresso já utilizado na entrada.' };
     }
-    if (wa.status === 'active') {
+    if (wa.status === 'active' || lastMovement === 'exit') {
       return { ok: true, message: '' };
     }
     return { ok: false, message: 'Ingresso ainda não liberado ou inválido.' };
+  }
+
+  if (validation_type === 'exit') {
+    const ok = wa.status === 'used' || lastMovement === 'entry';
+    return {
+      ok,
+      message: ok ? '' : 'Ingresso ainda não entrou no evento.',
+    };
   }
 
   if (wa.status === 'used') {
@@ -216,21 +245,9 @@ async function resolveTicketHolder(clientUserId: string | null): Promise<{
     .join(' ')
     .trim();
 
-  let emailHint: string | null = null;
-  try {
-    const { data: authUser } = await supabaseService.auth.admin.getUserById(clientUserId);
-    const email = authUser?.user?.email ?? null;
-    if (email && email.includes('@')) {
-      const [local, domain] = email.split('@');
-      emailHint = local.length <= 2 ? `${local}***@${domain}` : `${local.slice(0, 2)}***@${domain}`;
-    }
-  } catch {
-    /* ignore */
-  }
-
   return {
     holder_name: name || null,
-    holder_email_hint: emailHint,
+    holder_email_hint: null,
     holder_cpf_hint: maskCpfHint((profile as { cpf?: string } | null)?.cpf),
   };
 }
@@ -279,10 +296,22 @@ async function markPurchaseAnalyticsUsedOnEntry(analyticsId: string): Promise<vo
     .from('wristband_analytics')
     .update({ status: 'used', event_type: 'purchase' })
     .eq('id', analyticsId)
-    .in('event_type', ['purchase', 'checkout_pending', 'creation'])
-    .eq('status', 'active');
+    .in('event_type', ['purchase', 'checkout_pending', 'creation']);
   if (error) {
     console.error('[validate-ticket] falha ao marcar ingresso purchase como used:', error);
+  }
+  await bumpEntryTokenVersion(analyticsId);
+}
+
+/** Saída bem-sucedida: libera nova entrada e revoga o QR usado na saída. */
+async function markPurchaseAnalyticsActiveOnExit(analyticsId: string): Promise<void> {
+  const { error } = await supabaseService
+    .from('wristband_analytics')
+    .update({ status: 'active' })
+    .eq('id', analyticsId)
+    .in('event_type', ['purchase', 'checkout_pending', 'creation']);
+  if (error) {
+    console.error('[validate-ticket] falha ao reativar ingresso purchase na saída:', error);
   }
   await bumpEntryTokenVersion(analyticsId);
 }
@@ -339,21 +368,6 @@ serve(async (req) => {
       });
     }
 
-    const listingBlock = await eventListingSubscriptionBlocks(
-      supabaseService,
-      apiKeyData.event_id as string | null,
-    );
-    if (listingBlock.blocked) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: listingBlock.message,
-          error_code: 'subscription_lapsed',
-        }),
-        { status: 403, headers: corsHeaders },
-      );
-    }
-
     // 4. Verificar se a chave não expirou
     if (apiKeyData.expires_at) {
       const expiresAt = new Date(apiKeyData.expires_at);
@@ -378,9 +392,10 @@ serve(async (req) => {
 
     const verify_key_only = body.verify_key_only === true;
     const wristband_code = body.wristband_code as string | undefined;
-    const validation_type = (body.validation_type === 'exit' ? 'exit' : 'entry') as 'entry' | 'exit';
+    const wantAuto = body.validation_type === 'auto';
+    let validation_type = (body.validation_type === 'exit' ? 'exit' : 'entry') as 'entry' | 'exit';
 
-    // 5a. Somente validar chave (validador: liberar UI antes de ler ingressos / consumo)
+    // 5a. Somente validar chave — sem checagem extra de assinatura (mais rápido na portaria)
     if (verify_key_only) {
       let event_title: string | null = null;
       if (apiKeyData.event_id) {
@@ -407,6 +422,21 @@ serve(async (req) => {
       );
     }
 
+    const listingBlock = await eventListingSubscriptionBlocks(
+      supabaseService,
+      apiKeyData.event_id as string | null,
+    );
+    if (listingBlock.blocked) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: listingBlock.message,
+          error_code: 'subscription_lapsed',
+        }),
+        { status: 403, headers: corsHeaders },
+      );
+    }
+
     if (keyPurpose === 'consumption_delivery') {
       return new Response(JSON.stringify({
         success: false,
@@ -428,10 +458,10 @@ serve(async (req) => {
       });
     }
 
-    if (!['entry', 'exit'].includes(validation_type)) {
+    if (!wantAuto && !['entry', 'exit'].includes(String(body.validation_type ?? 'entry'))) {
       return new Response(JSON.stringify({ 
         success: false,
-        error: 'Tipo de validação inválido. Use "entry" ou "exit".' 
+        error: 'Tipo de validação inválido. Use "entry", "exit" ou "auto".' 
       }), { 
         status: 400, 
         headers: corsHeaders 
@@ -467,7 +497,7 @@ serve(async (req) => {
 
       const { data: versionRow, error: versionErr } = await supabaseService
         .from('wristband_analytics')
-        .select('entry_token_version')
+        .select('entry_token_version, status, wristband_id')
         .eq('id', verified.analyticsId)
         .maybeSingle();
 
@@ -476,27 +506,38 @@ serve(async (req) => {
       } else {
         const currentVersion = (versionRow as { entry_token_version?: number } | null)?.entry_token_version ?? 0;
         if (verified.tokenVersion !== currentVersion) {
-          const revokedMsg =
-            'QR revogado. Peça ao cliente para abrir o ingresso no app novamente.';
-          await supabaseService.from('validation_logs').insert({
-            api_key_id: apiKeyData.id,
-            wristband_code: codeTrim.slice(0, 120),
-            validation_type,
-            validation_status: 'invalid',
-            validation_message: revokedMsg,
-            validated_by_name: apiKeyData.name,
-            ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
-            user_agent: req.headers.get('user-agent') || null,
-          });
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: revokedMsg,
-              error_code: 'qr_revoked',
-              wristband_code: codeTrim.slice(0, 80),
-            }),
-            { status: 400, headers: corsHeaders },
-          );
+          const waStatus = (versionRow as { status?: string } | null)?.status ?? '';
+          const wristbandId = (versionRow as { wristband_id?: string } | null)?.wristband_id;
+          const lastMovement = wristbandId ? await getLastMovementType(wristbandId) : null;
+          const isInside =
+            lastMovement === 'entry' ||
+            (lastMovement === null && waStatus === 'used');
+
+          // Mesmo QR da entrada vale para a saída imediata.
+          // Fora do evento, QR antigo exige renovação no app (anti-replay).
+          if (!isInside) {
+            const revokedMsg =
+              'QR revogado. Peça ao cliente para abrir o ingresso no app novamente.';
+            await supabaseService.from('validation_logs').insert({
+              api_key_id: apiKeyData.id,
+              wristband_code: codeTrim.slice(0, 120),
+              validation_type,
+              validation_status: 'invalid',
+              validation_message: revokedMsg,
+              validated_by_name: apiKeyData.name,
+              ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
+              user_agent: req.headers.get('user-agent') || null,
+            });
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: revokedMsg,
+                error_code: 'qr_revoked',
+                wristband_code: codeTrim.slice(0, 80),
+              }),
+              { status: 400, headers: corsHeaders },
+            );
+          }
         }
       }
 
@@ -618,13 +659,20 @@ serve(async (req) => {
         );
       }
 
-      const access = evaluateAnalyticsAccess(waNormalized, validation_type);
+      const lastMovement = await getLastMovementType(wristbandData.id);
+      if (wantAuto) {
+        const isInside =
+          lastMovement === 'entry' ||
+          (lastMovement === null && waNormalized.status === 'used');
+        validation_type = isInside ? 'exit' : 'entry';
+      }
+      const access = evaluateAnalyticsAccess(waNormalized, validation_type, lastMovement);
       const ok = access.ok;
       const validationStatus = ok
         ? 'success'
         : (isPurchaseLikeEventType(waNormalized.event_type) &&
-            waNormalized.status === 'used' &&
-            validation_type === 'entry'
+            validation_type === 'entry' &&
+            (waNormalized.status === 'used' || lastMovement === 'entry')
           ? 'invalid'
           : 'not_paid');
       const validationMessage = ok
@@ -668,6 +716,14 @@ serve(async (req) => {
         isPurchaseLikeEventType(waNormalized.event_type)
       ) {
         await markPurchaseAnalyticsUsedOnEntry(waNormalized.id);
+      }
+
+      if (
+        ok &&
+        validation_type === 'exit' &&
+        isPurchaseLikeEventType(waNormalized.event_type)
+      ) {
+        await markPurchaseAnalyticsActiveOnExit(waNormalized.id);
       }
 
       // Inscrição gratuita: marcar presença e data/hora da confirmação na entrada
@@ -768,13 +824,20 @@ serve(async (req) => {
             );
           }
 
-          const access = evaluateAnalyticsAccess(waNormalized, validation_type);
+          const lastMovement = await getLastMovementType(wristbandData.id);
+          if (wantAuto) {
+            const isInside =
+              lastMovement === 'entry' ||
+              (lastMovement === null && waNormalized.status === 'used');
+            validation_type = isInside ? 'exit' : 'entry';
+          }
+          const access = evaluateAnalyticsAccess(waNormalized, validation_type, lastMovement);
           const ok = access.ok;
           const validationStatus = ok
             ? 'success'
             : (isPurchaseLikeEventType(waNormalized.event_type) &&
-                waNormalized.status === 'used' &&
-                validation_type === 'entry'
+                validation_type === 'entry' &&
+                (waNormalized.status === 'used' || lastMovement === 'entry')
               ? 'invalid'
               : 'not_paid');
           const validationMessage = ok
@@ -817,6 +880,14 @@ serve(async (req) => {
             isPurchaseLikeEventType(waNormalized.event_type)
           ) {
             await markPurchaseAnalyticsUsedOnEntry(waNormalized.id);
+          }
+
+          if (
+            ok &&
+            validation_type === 'exit' &&
+            isPurchaseLikeEventType(waNormalized.event_type)
+          ) {
+            await markPurchaseAnalyticsActiveOnExit(waNormalized.id);
           }
 
           if (ok && validation_type === 'entry' && waNormalized.event_type === 'free_registration') {

@@ -14,6 +14,7 @@ import {
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCreditSpends } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
+import { PrincipalReportBadge } from '@/components/reports/PrincipalReportBadge';
 
 function money(v: number | null | undefined): string {
     return Number(v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -76,10 +77,15 @@ const ManagerCreditSpendsReport: React.FC = () => {
                     >
                         <ArrowLeft className="h-4 w-4 mr-1" /> Relatórios
                     </Button>
-                    <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
-                        <Wallet className="h-6 w-6" />
-                        Consumos via crédito EventFest
-                    </h1>
+                    <div>
+                        <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
+                            <Wallet className="h-6 w-6" />
+                            Consumos via crédito EventFest
+                        </h1>
+                        <div className="mt-2">
+                            <PrincipalReportBadge label="Principal · consumo" />
+                        </div>
+                    </div>
                 </div>
                 <Button
                     variant="outline"
@@ -113,7 +119,7 @@ const ManagerCreditSpendsReport: React.FC = () => {
                                 <TableRow className="border-yellow-500/20">
                                     <TableHead className="text-yellow-500">Data</TableHead>
                                     <TableHead className="text-yellow-500">Evento</TableHead>
-                                    <TableHead className="text-yellow-500 text-right">Gross</TableHead>
+                                    <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
                                 </TableRow>
                             </TableHeader>
