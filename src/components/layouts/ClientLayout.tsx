@@ -7,11 +7,13 @@ import { useDevice } from '@/hooks/use-device';
 import { LandingUiProvider, useLandingUi, useLandingUiOptional } from '@/contexts/LandingUiContext';
 import LandingModals from '@/components/landing/LandingModals';
 import SiteLogo from '@/components/SiteLogo';
+import { Button } from '@/components/ui/button';
 import {
     SITE_HEADER_BAR_CLASS,
     SITE_HEADER_MAIN_OFFSET_CLASS,
     SITE_HEADER_NAV_LINK_CLASS,
 } from '@/constants/branding';
+import { MANAGER_TERMS_REGISTER_PATH } from '@/utils/promoter-registration-flow';
 
 const ClientLandingModalsHost: React.FC = () => {
     const { activeModal, closeModal } = useLandingUi();
@@ -19,17 +21,15 @@ const ClientLandingModalsHost: React.FC = () => {
 };
 
 const ClientLayoutNav: React.FC<{ isInformacoesPage: boolean }> = ({ isInformacoesPage }) => {
+    const navigate = useNavigate();
     const landingUi = useLandingUiOptional();
-    const linkClass = `${SITE_HEADER_NAV_LINK_CLASS} text-white transition-colors duration-300 cursor-pointer ${
-        isInformacoesPage ? 'hover:text-cyan-300' : 'hover:text-yellow-500'
-    }`;
+    const linkClass = `${SITE_HEADER_NAV_LINK_CLASS} text-white transition-colors duration-300 cursor-pointer hover:text-yellow-500`;
 
     const handleContatoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
         if (!landingUi) return;
         e.preventDefault();
         landingUi.openContact();
-        const contactId = isInformacoesPage ? 'contato' : 'contato';
-        document.getElementById(contactId)?.scrollIntoView({ behavior: 'smooth' });
+        document.getElementById('contato')?.scrollIntoView({ behavior: 'smooth' });
     };
 
     if (isInformacoesPage) {
@@ -37,16 +37,23 @@ const ClientLayoutNav: React.FC<{ isInformacoesPage: boolean }> = ({ isInformaco
             <>
                 <a href="/informacoes#home" className={linkClass}>Início</a>
                 <a href="/informacoes#sobre" className={linkClass}>Sobre</a>
-                <a href="/informacoes#gestores" className={linkClass}>Gestores</a>
                 <a href="/informacoes#solucao" className={linkClass}>Solução</a>
+                <a href="/informacoes#gestores" className={linkClass}>Para gestores</a>
                 <a
                     href="/informacoes#contato"
                     onClick={handleContatoClick}
-                    className={`${linkClass} ${landingUi?.contactOpen ? 'text-cyan-400' : ''}`}
+                    className={`${linkClass} ${landingUi?.contactOpen ? 'text-yellow-400' : ''}`}
                     aria-expanded={landingUi?.contactOpen}
                 >
                     Contato
                 </a>
+                <Button
+                    type="button"
+                    onClick={() => navigate(MANAGER_TERMS_REGISTER_PATH, { state: { from: '/informacoes' } })}
+                    className="bg-yellow-500 text-black hover:bg-yellow-600 font-semibold ml-2"
+                >
+                    Cadastre-se
+                </Button>
             </>
         );
     }
@@ -85,9 +92,7 @@ const ClientLayout: React.FC = () => {
     return (
         <div className={`min-h-screen bg-black text-white ${isMobile ? 'device-mobile' : `device-${device}`}`} data-device={device}>
             <header
-                className={`fixed top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md border-b ${
-                    isInformacoesPage ? 'border-cyan-400/30' : 'border-yellow-500/20'
-                }`}
+                className="fixed top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md border-b border-yellow-500/20"
             >
                 <div className={`max-w-7xl mx-auto flex items-center justify-between ${SITE_HEADER_BAR_CLASS}`}>
                     <div className="flex items-center space-x-4 sm:space-x-8">
