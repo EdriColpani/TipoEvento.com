@@ -22,6 +22,8 @@ type CartProduct = {
     id: string;
     name: string;
     unitPrice: number;
+    listPrice: number;
+    discountPct: number;
     stock: number;
     packagingType?: string | null;
     unitsPerBox?: number | null;
@@ -30,10 +32,15 @@ type CartProduct = {
 };
 
 function toCartProduct(p: ClientCreditCatalogProduct): CartProduct {
+    const listPrice = Number(p.unit_price);
+    const discountPct = Number(p.app_discount_pct ?? 0);
+    const appPrice = Number(p.app_unit_price ?? listPrice * (1 - discountPct / 100));
     return {
         id: p.id,
         name: p.name,
-        unitPrice: Number(p.unit_price),
+        unitPrice: discountPct > 0 ? appPrice : listPrice,
+        listPrice,
+        discountPct,
         stock: Number(p.stock_quantity ?? 0),
         packagingType: p.packaging_type,
         unitsPerBox: p.units_per_box,
@@ -319,9 +326,23 @@ const ClientCreditCatalog: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-yellow-500 font-semibold">
-                                                {formatMoney(item.unitPrice)}
-                                            </p>
+                                            {item.discountPct > 0 ? (
+                                                <>
+                                                    <p className="text-xs text-gray-500 line-through">
+                                                        {formatMoney(item.listPrice)}
+                                                    </p>
+                                                    <p className="text-yellow-500 font-semibold">
+                                                        {formatMoney(item.unitPrice)}
+                                                    </p>
+                                                    <p className="text-[11px] text-yellow-400">
+                                                        {item.discountPct.toLocaleString('pt-BR')}% no app
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                <p className="text-yellow-500 font-semibold">
+                                                    {formatMoney(item.unitPrice)}
+                                                </p>
+                                            )}
                                             <div className="mt-2 inline-flex items-center gap-2">
                                                 <Button
                                                     type="button"

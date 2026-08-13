@@ -6,8 +6,11 @@ import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2, Walle
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { EMPTY_ADMIN_METRICS, useAdminDashboardStats } from '@/hooks/use-admin-dashboard-stats';
 import { useAdminCreditTopupChargebackSummary } from '@/hooks/use-credit-reports';
+import { useAdminDashboardUsageGeo } from '@/hooks/use-admin-dashboard-usage-geo';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { showError } from '@/utils/toast';
+import AdminDashboardFinanceCards from '@/components/admin/AdminDashboardFinanceCards';
+import AdminDashboardBrazilUsageMap from '@/components/admin/AdminDashboardBrazilUsageMap';
 
 function money(v: number | undefined | null): string {
     return Number(v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -29,6 +32,7 @@ const AdminDashboard: React.FC = () => {
     const statsEnabled = Boolean(userId && !authPending);
     const { data, isLoading, isFetching, isError, error } = useAdminDashboardStats(statsEnabled);
     const chargebackSummary = useAdminCreditTopupChargebackSummary(null, null, statsEnabled);
+    const usageGeo = useAdminDashboardUsageGeo(statsEnabled);
 
     useEffect(() => {
         if (isError && error) {
@@ -90,8 +94,12 @@ const AdminDashboard: React.FC = () => {
                     <i className="fas fa-user-shield mr-3"></i>
                     Dashboard Admin Master
                 </h1>
-                <p className="text-gray-400 text-sm sm:text-base">Visão geral e gerenciamento da saúde da plataforma EventFest.</p>
+                <p className="text-gray-400 text-sm sm:text-base">
+                    Visão gerencial e financeira da plataforma — caixa MP, comissões, eventos e uso por cidade.
+                </p>
             </div>
+
+            <AdminDashboardFinanceCards enabled={statsEnabled} />
 
             {chargebackSummary.data?.has_platform_loss_alert && (
                 <Alert className="mb-6 border-red-500/50 bg-red-500/10">
@@ -161,23 +169,23 @@ const AdminDashboard: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="bg-black border border-yellow-500/30 rounded-2xl p-6 hover:border-yellow-500/60 transition-all duration-300">
+                <div className="bg-black border-2 border-yellow-500 rounded-2xl p-6 hover:shadow-yellow-500/20 hover:shadow-xl transition-all duration-300">
                     <div className="flex items-center justify-between mb-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-500/20 rounded-xl flex items-center justify-center">
-                            <Zap className="text-green-500 h-5 w-5" />
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-yellow-500/20 rounded-xl flex items-center justify-center">
+                            <Zap className="text-yellow-500 h-5 w-5" />
                         </div>
                         <div className="text-right">
-                            <div className="text-green-500 text-sm font-semibold">{metrics.active_events}</div>
-                            <div className="text-gray-400 text-xs">ativos</div>
+                            <div className="text-yellow-500 text-sm font-semibold">
+                                {metrics.total_events.toLocaleString('pt-BR')} no cadastro
+                            </div>
+                            <div className="text-gray-400 text-xs">+{metrics.events_this_month} este mês</div>
                         </div>
                     </div>
                     <div>
                         <div className="text-xl sm:text-2xl font-bold text-white mb-1">
-                            {metrics.total_events.toLocaleString('pt-BR')}
+                            {metrics.active_events.toLocaleString('pt-BR')}
                         </div>
-                        <div className="text-gray-400 text-sm">
-                            Eventos · +{metrics.events_this_month} novos este mês
-                        </div>
+                        <div className="text-gray-400 text-sm">Eventos ativos agora</div>
                     </div>
                 </div>
 
@@ -200,8 +208,17 @@ const AdminDashboard: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-black border border-yellow-500/30 rounded-2xl p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                <div className="lg:col-span-1">
+                    <AdminDashboardBrazilUsageMap data={usageGeo.data ?? {
+                        byUf: [],
+                        topCities: [],
+                        activeEvents: [],
+                        knownCompanies: 0,
+                        unknownCompanies: 0,
+                    }} />
+                </div>
+                <div className="lg:col-span-1 bg-black border border-yellow-500/30 rounded-2xl p-6">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg sm:text-xl font-semibold text-white flex items-center">
                             <Clock className="h-5 w-5 mr-2 text-yellow-500" />

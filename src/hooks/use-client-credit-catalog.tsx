@@ -6,6 +6,8 @@ export type ClientCreditCatalogProduct = {
     name: string;
     description: string | null;
     unit_price: number;
+    app_discount_pct?: number;
+    app_unit_price?: number;
     image_url: string | null;
     packaging_type: 'unit' | 'box' | string | null;
     units_per_box: number | null;

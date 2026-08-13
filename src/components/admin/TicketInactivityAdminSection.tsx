@@ -30,6 +30,24 @@ import {
     billingTableHead,
 } from '@/constants/billing-ui';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import {
+    formatCurrencyBrInput,
+    parseCurrencyBr,
+    sanitizeCurrencyBrInput,
+} from '@/utils/currency-input';
+
+function formatFeeDisplay(value: number): string {
+    return `R$ ${formatCurrencyBrInput(value)}`;
+}
+
+function parseFeeInput(raw: string): number {
+    return parseCurrencyBr(raw.replace(/^R\$\s*/i, '').trim());
+}
+
+function sanitizeFeeInput(raw: string): string {
+    const digits = sanitizeCurrencyBrInput(raw.replace(/^R\$\s*/i, '').trim());
+    return digits ? `R$ ${digits}` : '';
+}
 
 interface AutoDeactivateLogRow {
     id: string;
@@ -76,13 +94,13 @@ const TicketInactivityAdminSection: React.FC<TicketInactivityAdminSectionProps> 
     React.useEffect(() => {
         if (!settings) return;
         setInactivityEnabled(settings.ticket_inactivity_enabled ?? true);
-        setFeeDefault(String(settings.ticket_inactivity_fee_default ?? 0));
+        setFeeDefault(formatFeeDisplay(Number(settings.ticket_inactivity_fee_default ?? 0)));
         setAutoDeactivateEnabled(settings.ticket_inactivity_auto_deactivate_enabled === true);
         setAutoDeactivateDays(String(settings.ticket_inactivity_auto_deactivate_days ?? 30));
     }, [settings]);
 
     const handleSaveSettings = async () => {
-        const fee = Number.parseFloat(feeDefault.replace(',', '.'));
+        const fee = parseFeeInput(feeDefault);
         const days = Number.parseInt(autoDeactivateDays, 10);
         if (!Number.isFinite(fee) || fee < 0) {
             showError('Informe um valor fixo válido (≥ 0).');
@@ -239,7 +257,8 @@ const TicketInactivityAdminSection: React.FC<TicketInactivityAdminSectionProps> 
                         type="text"
                         inputMode="decimal"
                         value={feeDefault}
-                        onChange={(e) => setFeeDefault(e.target.value)}
+                        onChange={(e) => setFeeDefault(sanitizeFeeInput(e.target.value))}
+                        placeholder="R$ 0,00"
                         className={`mt-2 ${billingInput}`}
                     />
                 </div>

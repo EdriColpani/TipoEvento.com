@@ -40,7 +40,7 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         audience: 'both',
         title: 'Relatório Financeiro',
         summary:
-            'Vendas de ingresso: bruto, comissão EventFest, taxa MP e líquido do organizador (MP split, D+1 ou crédito).',
+            '★ Relatório principal de ingressos: bruto, % EventFest, % MP e líquido (lucro) do gestor.',
         purpose:
             'É o relatório principal de vendas de ingresso. Serve para conferir quanto foi vendido, quanto a EventFest reteve de comissão, quanto o Mercado Pago cobrou de taxa e quanto ficou (ou ficará) para o gestor — por evento e por transação.',
         howItWorks: [
@@ -138,7 +138,7 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         audience: 'gestor',
         title: 'Consumos via crédito',
         summary:
-            'Movimentações pagas com carteira EventFest na sua empresa (ingresso e PDV): bruto, comissão e líquido.',
+            '★ Relatório principal de consumo: bruto, comissão EventFest e líquido do gestor (PDV + carteira).',
         purpose:
             'Ver o que a sua empresa recebeu via crédito do cliente: ingressos pagos com saldo EventFest e consumos no PDV/parceiros — com destaque para a comissão EventFest e o líquido da empresa.',
         howItWorks: [
@@ -200,7 +200,8 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         id: 'credit-accounting',
         audience: 'gestor',
         title: 'Relatório contábil (créditos)',
-        summary: 'Visão contábil exportável: recargas, consumos e repasses da empresa.',
+        summary:
+            '★ Relatório principal do caixa de crédito: recargas, consumos e repasses (CSV).',
         purpose:
             'Exportar e arquivar movimentos de crédito para contabilidade ou conciliação interna — complementar aos Repasses e Consumos.',
         howItWorks: [
@@ -270,7 +271,7 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         audience: 'admin',
         title: 'Receita da plataforma',
         summary:
-            'Receita EventFest: mensalidade vitrine, licença de consumo, taxa de inatividade e comissões consolidadas.',
+            '★ Relatório principal Admin: receita EventFest (vitrine, licença, inatividade e comissões).',
         purpose:
             'Visão gerencial do que a EventFest faturou como plataforma (recorrente + comissões), separada do que deve ser transferido aos gestores.',
         howItWorks: [
@@ -320,7 +321,7 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         audience: 'admin',
         title: 'Painel créditos Admin',
         summary:
-            'Hub Admin: passivo, comissões, cross-empresa, auditoria, repasses, estornos, posição, receita, conciliação MP e chargebacks.',
+            '★ Hub principal Admin: comissão de consumo, receita, posição financeira, totais MP e chargebacks.',
         purpose:
             'Central completa do módulo de créditos para o Admin Master. Cada aba tem um papel: do passivo (saldo nas carteiras) até a conciliação com o Mercado Pago.',
         howItWorks: [

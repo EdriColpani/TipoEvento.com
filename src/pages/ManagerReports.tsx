@@ -22,6 +22,7 @@ import {
     MessageSquareHeart,
     CircleHelp,
     Boxes,
+    Star,
 } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
@@ -43,6 +44,8 @@ type ReportCardProps = {
     title: string;
     description: string;
     guideId?: string;
+    featured?: boolean;
+    featuredLabel?: string;
     onClick: () => void;
     onHelp?: (guideId: string) => void;
 };
@@ -52,10 +55,24 @@ const ReportCard: React.FC<ReportCardProps> = ({
     title,
     description,
     guideId,
+    featured = false,
+    featuredLabel = 'Relatório principal',
     onClick,
     onHelp,
 }) => (
-    <Card className="bg-black border border-yellow-500/30 rounded-2xl p-6 hover:border-yellow-500/60 hover:shadow-2xl hover:shadow-yellow-500/20 transition-all duration-300 relative">
+    <Card
+        className={
+            featured
+                ? 'bg-black border-2 border-yellow-500 rounded-2xl p-6 shadow-2xl shadow-yellow-500/25 hover:shadow-yellow-500/40 transition-all duration-300 relative ring-1 ring-yellow-500/40'
+                : 'bg-black border border-yellow-500/30 rounded-2xl p-6 hover:border-yellow-500/60 hover:shadow-2xl hover:shadow-yellow-500/20 transition-all duration-300 relative'
+        }
+    >
+        {featured ? (
+            <span className="absolute -top-2.5 left-4 z-10 inline-flex items-center gap-1 rounded-full bg-yellow-500 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-black">
+                <Star className="h-3 w-3 fill-black" />
+                {featuredLabel}
+            </span>
+        ) : null}
         {guideId && onHelp && (
             <button
                 type="button"
@@ -110,6 +127,8 @@ const ReportCard: React.FC<ReportCardProps> = ({
 const REPORT_CARDS: Array<{
     featureKey: PlanFeatureKey;
     guideId: string;
+    featured?: boolean;
+    featuredLabel?: string;
     icon: React.ReactNode;
     title: string;
     description: string;
@@ -118,6 +137,8 @@ const REPORT_CARDS: Array<{
     {
         featureKey: 'reports_financial',
         guideId: 'financial',
+        featured: true,
+        featuredLabel: 'Principal · ingressos',
         icon: <DollarSign className="h-6 w-6 text-yellow-500" />,
         title: 'Relatório Financeiro',
         description:
@@ -215,12 +236,6 @@ const ManagerReports: React.FC = () => {
         setGuideOpen(true);
     };
 
-    const visibleReports = REPORT_CARDS.filter(
-        (card) =>
-            isPlanFeatureEnabled(features, card.featureKey, isAdminMaster) &&
-            (isAdminMaster || billingReady),
-    );
-
     const showCreditReport = creditAccess.showCreditReportCards;
     const showConsumptionLicenseReport =
         !isAdminMaster && isConsumptionOrLicensePlan(billing?.billing_plan);
@@ -230,6 +245,228 @@ const ManagerReports: React.FC = () => {
         billingReady &&
         companyAllowsTicketSales(billing?.billing_plan) &&
         isPlanFeatureEnabled(features, 'reports_financial', false);
+
+    type HubCard = {
+        key: string;
+        icon: React.ReactNode;
+        title: string;
+        description: string;
+        guideId?: string;
+        featured?: boolean;
+        featuredLabel?: string;
+        onClick: () => void;
+    };
+
+    const hubCards: HubCard[] = [
+        ...REPORT_CARDS.filter(
+            (card) =>
+                isPlanFeatureEnabled(features, card.featureKey, isAdminMaster) &&
+                (isAdminMaster || billingReady),
+        ).map((card) => ({
+            key: card.path,
+            icon: card.icon,
+            title: card.title,
+            description: card.description,
+            guideId: card.guideId,
+            featured: card.featured === true,
+            featuredLabel: card.featuredLabel,
+            onClick: () => navigate(card.path),
+        })),
+        ...(showCreditReport && creditAccess.isAdminMaster
+            ? [
+                  {
+                      key: 'admin-revenue',
+                      icon: <TrendingUp className="h-6 w-6 text-yellow-500" />,
+                      title: 'Receita da plataforma',
+                      description:
+                          getReportsGuideEntry('admin-revenue')?.summary ??
+                          'Mensalidade vitrine, licença consumo, taxa de inatividade e comissões.',
+                      guideId: 'admin-revenue',
+                      featured: true,
+                      featuredLabel: 'Principal · receita',
+                      onClick: () =>
+                          navigate('/admin/settings/credit-reports', {
+                              state: { creditTab: 'revenue' },
+                          }),
+                  },
+                  {
+                      key: 'admin-credit-panel',
+                      icon: <Wallet className="h-6 w-6 text-yellow-500" />,
+                      title: 'Painel créditos Admin',
+                      description:
+                          getReportsGuideEntry('admin-credit-panel')?.summary ??
+                          'Passivo, auditoria, posição financeira e conciliação Mercado Pago.',
+                      guideId: 'admin-credit-panel',
+                      featured: true,
+                      featuredLabel: 'Principal · créditos e MP',
+                      onClick: () => navigate('/admin/settings/credit-reports'),
+                  },
+                  {
+                      key: 'admin-settlements',
+                      icon: <Banknote className="h-6 w-6 text-yellow-500" />,
+                      title: 'Repasses de crédito (rede)',
+                      description:
+                          getReportsGuideEntry('admin-settlements')?.summary ??
+                          'Liquidações e payouts de crédito de todas as empresas.',
+                      guideId: 'admin-settlements',
+                      onClick: () =>
+                          navigate('/admin/settings/credit-reports', {
+                              state: { creditTab: 'settlements' },
+                          }),
+                  },
+                  {
+                      key: 'admin-accounting',
+                      icon: <FileSpreadsheet className="h-6 w-6 text-yellow-500" />,
+                      title: 'Relatório contábil (créditos)',
+                      description:
+                          getReportsGuideEntry('admin-accounting')?.summary ??
+                          'Toda a rede EventFest — recargas, consumos e estornos (CSV).',
+                      guideId: 'admin-accounting',
+                      onClick: () =>
+                          navigate('/admin/settings/credit-reports', {
+                              state: { creditTab: 'accounting' },
+                          }),
+                  },
+                  {
+                      key: 'admin-contract-acceptances',
+                      icon: <ScrollText className="h-6 w-6 text-yellow-500" />,
+                      title: 'Aceites de contrato',
+                      description:
+                          getReportsGuideEntry('admin-contract-acceptances')?.summary ??
+                          'Auditoria de aceites por empresa.',
+                      guideId: 'admin-contract-acceptances',
+                      onClick: () => navigate('/manager/reports/admin-contract-acceptances'),
+                  },
+              ]
+            : []),
+        ...(showCreditReport && !creditAccess.isAdminMaster
+            ? [
+                  {
+                      key: 'credit-spends',
+                      icon: <Wallet className="h-6 w-6 text-yellow-500" />,
+                      title: 'Consumos via crédito',
+                      description:
+                          getReportsGuideEntry('credit-spends')?.summary ??
+                          'Recebimentos via carteira EventFest na sua empresa.',
+                      guideId: 'credit-spends',
+                      featured: true,
+                      featuredLabel: 'Principal · consumo',
+                      onClick: () => navigate('/manager/reports/credit-spends'),
+                  },
+                  {
+                      key: 'credit-accounting',
+                      icon: <FileSpreadsheet className="h-6 w-6 text-yellow-500" />,
+                      title: 'Relatório contábil (créditos)',
+                      description:
+                          getReportsGuideEntry('credit-accounting')?.summary ??
+                          'Recargas, consumos e repasses — exportável CSV.',
+                      guideId: 'credit-accounting',
+                      featured: true,
+                      featuredLabel: 'Principal · caixa crédito',
+                      onClick: () => navigate('/manager/reports/credit-accounting'),
+                  },
+                  {
+                      key: 'credit-product-inventory',
+                      icon: <Boxes className="h-6 w-6 text-yellow-500" />,
+                      title: 'Estoque e vendas de produtos',
+                      description:
+                          getReportsGuideEntry('credit-product-inventory')?.summary ??
+                          'Estoque atual e quantidade vendida do catálogo, em colunas separadas.',
+                      guideId: 'credit-product-inventory',
+                      onClick: () => navigate('/manager/reports/credit-product-inventory'),
+                  },
+                  {
+                      key: 'credit-settlements',
+                      icon: <Banknote className="h-6 w-6 text-yellow-500" />,
+                      title: 'Repasses de crédito',
+                      description:
+                          getReportsGuideEntry('credit-settlements')?.summary ??
+                          'Liquidações em retenção, liberadas e payouts registrados.',
+                      guideId: 'credit-settlements',
+                      onClick: () => navigate('/manager/credit/settlements'),
+                  },
+              ]
+            : []),
+        ...(showTicketChargebacks
+            ? [
+                  {
+                      key: 'ticket-chargebacks',
+                      icon: <AlertTriangle className="h-6 w-6 text-amber-400" />,
+                      title: 'Chargebacks de ingresso',
+                      description:
+                          getReportsGuideEntry('ticket-chargebacks')?.summary ??
+                          'Dívidas por chargeback MP.',
+                      guideId: 'ticket-chargebacks',
+                      onClick: () => navigate('/manager/reports/ticket-chargebacks'),
+                  },
+              ]
+            : []),
+        ...(showConsumptionLicenseReport && billingReady
+            ? [
+                  {
+                      key: 'consumption-license',
+                      icon: <Receipt className="h-6 w-6 text-yellow-500" />,
+                      title: 'Licença mensal de consumo',
+                      description:
+                          getReportsGuideEntry('consumption-license')?.summary ??
+                          'Faturas da licença do plano consumo/licença.',
+                      guideId: 'consumption-license',
+                      onClick: () => navigate('/manager/reports/consumption-license'),
+                  },
+              ]
+            : []),
+        ...(isManagerPro &&
+        !isAdminMaster &&
+        isPlanFeatureEnabled(features, 'wristbands', false) &&
+        billingReady
+            ? [
+                  {
+                      key: 'complimentary-bundles',
+                      icon: <Gift className="h-6 w-6 text-cyan-400" />,
+                      title: 'Pacotes cortesia',
+                      description:
+                          getReportsGuideEntry('complimentary-bundles')?.summary ??
+                          'Pacotes Staff enviados e resgates.',
+                      guideId: 'complimentary-bundles',
+                      onClick: () => navigate('/manager/reports/complimentary-bundles'),
+                  },
+              ]
+            : []),
+        ...(isManagerPro &&
+        !isAdminMaster &&
+        isPlanFeatureEnabled(features, 'reports', false) &&
+        billingReady
+            ? [
+                  {
+                      key: 'feedback',
+                      icon: <MessageSquareHeart className="h-6 w-6 text-yellow-500" />,
+                      title: 'Feedback dos clientes',
+                      description:
+                          getReportsGuideEntry('feedback')?.summary ??
+                          'Notas e opiniões dos clientes.',
+                      guideId: 'feedback',
+                      onClick: () => navigate('/manager/reports/feedback'),
+                  },
+              ]
+            : []),
+        ...(isAdminMaster
+            ? [
+                  {
+                      key: 'admin-ticket-inventory',
+                      icon: <Ticket className="h-6 w-6 text-cyan-400" />,
+                      title: 'Estoque de ingressos (Admin)',
+                      description:
+                          getReportsGuideEntry('admin-ticket-inventory')?.summary ??
+                          'Por empresa e evento: criado, vendido e disponível.',
+                      guideId: 'admin-ticket-inventory',
+                      onClick: () => navigate('/manager/reports/admin-ticket-inventory'),
+                  },
+              ]
+            : []),
+    ];
+
+    const featuredCards = hubCards.filter((card) => card.featured);
+    const otherCards = hubCards.filter((card) => !card.featured);
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -272,216 +509,62 @@ const ManagerReports: React.FC = () => {
                 deve bater entre gestor e Admin Master.
             </p>
 
-            {visibleReports.length === 0 &&
-            !showCreditReport &&
-            !showConsumptionLicenseReport &&
-            !showTicketChargebacks ? (
+            {hubCards.length === 0 ? (
                 <p className="text-gray-400 text-sm mb-8">
                     Nenhum relatório disponível no plano comercial da sua empresa.
                 </p>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-                    {visibleReports.map((card) => (
-                        <ReportCard
-                            key={card.path}
-                            icon={card.icon}
-                            title={card.title}
-                            description={card.description}
-                            guideId={card.guideId}
-                            onHelp={openGuide}
-                            onClick={() => navigate(card.path)}
-                        />
-                    ))}
-                    {showCreditReport && creditAccess.isAdminMaster && (
-                        <>
-                            <ReportCard
-                                icon={<TrendingUp className="h-6 w-6 text-yellow-500" />}
-                                title="Receita da plataforma"
-                                description={
-                                    getReportsGuideEntry('admin-revenue')?.summary ??
-                                    'Mensalidade vitrine, licença consumo, taxa de inatividade e comissões.'
-                                }
-                                guideId="admin-revenue"
-                                onHelp={openGuide}
-                                onClick={() =>
-                                    navigate('/admin/settings/credit-reports', {
-                                        state: { creditTab: 'revenue' },
-                                    })
-                                }
-                            />
-                            <ReportCard
-                                icon={<Banknote className="h-6 w-6 text-yellow-500" />}
-                                title="Repasses de crédito (rede)"
-                                description={
-                                    getReportsGuideEntry('admin-settlements')?.summary ??
-                                    'Liquidações e payouts de crédito de todas as empresas.'
-                                }
-                                guideId="admin-settlements"
-                                onHelp={openGuide}
-                                onClick={() =>
-                                    navigate('/admin/settings/credit-reports', {
-                                        state: { creditTab: 'settlements' },
-                                    })
-                                }
-                            />
-                            <ReportCard
-                                icon={<FileSpreadsheet className="h-6 w-6 text-yellow-500" />}
-                                title="Relatório contábil (créditos)"
-                                description={
-                                    getReportsGuideEntry('admin-accounting')?.summary ??
-                                    'Toda a rede EventFest — recargas, consumos e estornos (CSV).'
-                                }
-                                guideId="admin-accounting"
-                                onHelp={openGuide}
-                                onClick={() =>
-                                    navigate('/admin/settings/credit-reports', {
-                                        state: { creditTab: 'accounting' },
-                                    })
-                                }
-                            />
-                            <ReportCard
-                                icon={<Wallet className="h-6 w-6 text-yellow-500" />}
-                                title="Painel créditos Admin"
-                                description={
-                                    getReportsGuideEntry('admin-credit-panel')?.summary ??
-                                    'Passivo, auditoria, posição financeira e conciliação Mercado Pago.'
-                                }
-                                guideId="admin-credit-panel"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/admin/settings/credit-reports')}
-                            />
-                            <ReportCard
-                                icon={<ScrollText className="h-6 w-6 text-yellow-500" />}
-                                title="Aceites de contrato"
-                                description={
-                                    getReportsGuideEntry('admin-contract-acceptances')?.summary ??
-                                    'Auditoria de aceites por empresa.'
-                                }
-                                guideId="admin-contract-acceptances"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/manager/reports/admin-contract-acceptances')}
-                            />
-                        </>
-                    )}
-                    {showCreditReport && !creditAccess.isAdminMaster && (
-                        <>
-                            <ReportCard
-                                icon={<Wallet className="h-6 w-6 text-yellow-500" />}
-                                title="Consumos via crédito"
-                                description={
-                                    getReportsGuideEntry('credit-spends')?.summary ??
-                                    'Recebimentos via carteira EventFest na sua empresa.'
-                                }
-                                guideId="credit-spends"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/manager/reports/credit-spends')}
-                            />
-                            <ReportCard
-                                icon={<Boxes className="h-6 w-6 text-yellow-500" />}
-                                title="Estoque e vendas de produtos"
-                                description={
-                                    getReportsGuideEntry('credit-product-inventory')?.summary ??
-                                    'Estoque atual e quantidade vendida do catálogo, em colunas separadas.'
-                                }
-                                guideId="credit-product-inventory"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/manager/reports/credit-product-inventory')}
-                            />
-                            <ReportCard
-                                icon={<Banknote className="h-6 w-6 text-yellow-500" />}
-                                title="Repasses de crédito"
-                                description={
-                                    getReportsGuideEntry('credit-settlements')?.summary ??
-                                    'Liquidações em retenção, liberadas e payouts registrados.'
-                                }
-                                guideId="credit-settlements"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/manager/credit/settlements')}
-                            />
-                            <ReportCard
-                                icon={<FileSpreadsheet className="h-6 w-6 text-yellow-500" />}
-                                title="Relatório contábil (créditos)"
-                                description={
-                                    getReportsGuideEntry('credit-accounting')?.summary ??
-                                    'Recargas, consumos e repasses — exportável CSV.'
-                                }
-                                guideId="credit-accounting"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/manager/reports/credit-accounting')}
-                            />
-                        </>
-                    )}
-                    {showTicketChargebacks && (
-                        <ReportCard
-                            icon={<AlertTriangle className="h-6 w-6 text-amber-400" />}
-                            title="Chargebacks de ingresso"
-                            description={
-                                getReportsGuideEntry('ticket-chargebacks')?.summary ??
-                                'Dívidas por chargeback MP.'
-                            }
-                            guideId="ticket-chargebacks"
-                            onHelp={openGuide}
-                            onClick={() => navigate('/manager/reports/ticket-chargebacks')}
-                        />
-                    )}
-                    {showConsumptionLicenseReport && billingReady && (
-                        <ReportCard
-                            icon={<Receipt className="h-6 w-6 text-yellow-500" />}
-                            title="Licença mensal de consumo"
-                            description={
-                                getReportsGuideEntry('consumption-license')?.summary ??
-                                'Faturas da licença do plano consumo/licença.'
-                            }
-                            guideId="consumption-license"
-                            onHelp={openGuide}
-                            onClick={() => navigate('/manager/reports/consumption-license')}
-                        />
-                    )}
-                    {isManagerPro &&
-                        !isAdminMaster &&
-                        isPlanFeatureEnabled(features, 'wristbands', false) &&
-                        billingReady && (
-                            <ReportCard
-                                icon={<Gift className="h-6 w-6 text-cyan-400" />}
-                                title="Pacotes cortesia"
-                                description={
-                                    getReportsGuideEntry('complimentary-bundles')?.summary ??
-                                    'Pacotes Staff enviados e resgates.'
-                                }
-                                guideId="complimentary-bundles"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/manager/reports/complimentary-bundles')}
-                            />
-                        )}
-                    {isManagerPro &&
-                        !isAdminMaster &&
-                        isPlanFeatureEnabled(features, 'reports', false) &&
-                        billingReady && (
-                            <ReportCard
-                                icon={<MessageSquareHeart className="h-6 w-6 text-yellow-500" />}
-                                title="Feedback dos clientes"
-                                description={
-                                    getReportsGuideEntry('feedback')?.summary ??
-                                    'Notas e opiniões dos clientes.'
-                                }
-                                guideId="feedback"
-                                onHelp={openGuide}
-                                onClick={() => navigate('/manager/reports/feedback')}
-                            />
-                        )}
-                    {isAdminMaster && (
-                        <ReportCard
-                            icon={<Ticket className="h-6 w-6 text-cyan-400" />}
-                            title="Estoque de ingressos (Admin)"
-                            description={
-                                getReportsGuideEntry('admin-ticket-inventory')?.summary ??
-                                'Por empresa e evento: criado, vendido e disponível.'
-                            }
-                            guideId="admin-ticket-inventory"
-                            onHelp={openGuide}
-                            onClick={() => navigate('/manager/reports/admin-ticket-inventory')}
-                        />
-                    )}
+                <div className="mb-10 space-y-8">
+                    {featuredCards.length > 0 ? (
+                        <section>
+                            <div className="mb-4 flex items-center gap-2">
+                                <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                                <h2 className="text-sm font-semibold uppercase tracking-wide text-yellow-500">
+                                    Relatórios principais
+                                </h2>
+                                <span className="text-xs text-gray-500">
+                                    Use estes para conferir comissão, taxa MP e lucro
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                {featuredCards.map((card) => (
+                                    <ReportCard
+                                        key={card.key}
+                                        icon={card.icon}
+                                        title={card.title}
+                                        description={card.description}
+                                        guideId={card.guideId}
+                                        featured
+                                        featuredLabel={card.featuredLabel}
+                                        onHelp={openGuide}
+                                        onClick={card.onClick}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    ) : null}
+                    {otherCards.length > 0 ? (
+                        <section>
+                            {featuredCards.length > 0 ? (
+                                <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-400">
+                                    Demais relatórios
+                                </h2>
+                            ) : null}
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                {otherCards.map((card) => (
+                                    <ReportCard
+                                        key={card.key}
+                                        icon={card.icon}
+                                        title={card.title}
+                                        description={card.description}
+                                        guideId={card.guideId}
+                                        onHelp={openGuide}
+                                        onClick={card.onClick}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    ) : null}
                 </div>
             )}
 
