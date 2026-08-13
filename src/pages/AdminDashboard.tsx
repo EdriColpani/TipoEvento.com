@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2, Wallet, Activity, Globe } from 'lucide-react';
+import { Users, Building, Zap, Clock, AlertTriangle, CheckCircle, Loader2, Wallet, Activity } from 'lucide-react';
 import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { EMPTY_ADMIN_METRICS, useAdminDashboardStats } from '@/hooks/use-admin-dashboard-stats';
 import { useAdminCreditTopupChargebackSummary } from '@/hooks/use-credit-reports';
@@ -303,14 +303,6 @@ const AdminDashboard: React.FC = () => {
                         >
                             <Wallet className="h-4 w-4 mr-2" />
                             Relatórios Créditos EventFest
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={() => navigate('/admin/settings/public-launch')}
-                            className="w-full bg-black/60 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 py-3 transition-all duration-300 cursor-pointer flex items-center justify-center text-sm sm:text-base"
-                        >
-                            <Globe className="h-4 w-4 mr-2" />
-                            Site Público (Pré-lançamento)
                         </Button>
                         <Button
                             type="button"

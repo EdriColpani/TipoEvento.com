@@ -1,15 +1,7 @@
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
-import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
+import { Outlet } from 'react-router-dom';
 
-const PublicLaunchRegistrationGuard: React.FC = () => {
-    const { isPreview } = usePublicLaunchMode();
-
-    if (isPreview) {
-        return <Navigate to="/informacoes" replace />;
-    }
-
-    return <Outlet />;
-};
+/** Cadastros públicos liberados — pré-lançamento desativado. */
+const PublicLaunchRegistrationGuard: React.FC = () => <Outlet />;
 
 export default PublicLaunchRegistrationGuard;

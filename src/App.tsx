@@ -73,7 +73,6 @@ import AdminListingMonthlyBilling from "./pages/AdminListingMonthlyBilling";
 import AdminContactMessages from "./pages/AdminContactMessages";
 import AdminEventGeoBackfill from "./pages/AdminEventGeoBackfill";
 import AdminCheckoutObservability from "./pages/AdminCheckoutObservability";
-import AdminPublicLaunchSettings from "./pages/AdminPublicLaunchSettings";
 import AdminPublicSocialSettings from "./pages/AdminPublicSocialSettings";
 import AdminTicketChargebackPixSettings from "./pages/AdminTicketChargebackPixSettings";
 import ManagerListingMonthlyBilling from "./pages/ManagerListingMonthlyBilling";
@@ -221,7 +220,6 @@ function AppRoutes() {
                 <Route path="/admin/settings/contact-messages" element={<AdminContactMessages />} />
                 <Route path="/admin/settings/event-geo-backfill" element={<AdminEventGeoBackfill />} />
                 <Route path="/admin/settings/checkout-observability" element={<AdminCheckoutObservability />} />
-                <Route path="/admin/settings/public-launch" element={<AdminPublicLaunchSettings />} />
                 <Route path="/admin/settings/public-social" element={<AdminPublicSocialSettings />} />
                 <Route path="/admin/settings/ticket-chargeback-pix" element={<AdminTicketChargebackPixSettings />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 

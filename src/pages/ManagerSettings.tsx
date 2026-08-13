@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings, User, Building, Bell, History, Loader2, Store, ShoppingBag, Banknote, Globe, Share2, Users, KeyRound } from 'lucide-react';
+import { Settings, User, Building, Bell, History, Loader2, Store, ShoppingBag, Banknote, Share2, Users, KeyRound } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useUserRole } from '@/hooks/use-user-role';
@@ -44,7 +44,6 @@ const ManagerSettings: React.FC = () => {
     // Adiciona opções específicas para Admin Master
     if (isAdminMaster) {
         settingsOptions.push(
-            { icon: <Globe className="h-6 w-6 text-yellow-500" />, title: "Site Público", description: "Modo pré-lançamento ou vitrine ao vivo para visitantes.", path: "/admin/settings/public-launch" },
             { icon: <Share2 className="h-6 w-6 text-yellow-500" />, title: "Redes e contato público", description: "Instagram, LinkedIn e telefone exibidos na landing e nos avisos ao gestor.", path: "/admin/settings/public-social" },
             { icon: <KeyRound className="h-6 w-6 text-yellow-500" />, title: "Chave PIX — chargeback", description: "PIX EventFest para gestores devolverem chargeback de ingresso (ticket-only).", path: "/admin/settings/ticket-chargeback-pix" },
             { icon: <History className="h-6 w-6 text-yellow-500" />, title: "Histórico de Configurações", description: "Visualize todas as alterações feitas nas configurações da sua conta.", path: "/manager/settings/history" },

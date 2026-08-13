@@ -1,7 +1,7 @@
 import React from 'react';
 import Index from '@/pages/Index';
 
-/** Home vitrine — só alcançável com usuário logado (ClientAuthGate). */
+/** Home pública (vitrine) — site principal sempre aberto. */
 const ClientHomeRoute: React.FC = () => {
     return <Index />;
 };

@@ -171,7 +171,7 @@ const AdminPublicSocialSettings: React.FC = () => {
                 <Info className="h-4 w-4 text-cyan-300" />
                 <AlertTitle className="text-cyan-200">Site e divulgação</AlertTitle>
                 <AlertDescription className="text-gray-300 text-sm">
-                    Estes dados aparecem no rodapé da landing, na página de pré-lançamento e no formulário de
+                    Estes dados aparecem no rodapé da landing, na página de informações e no formulário de
                     contato. Altere aqui quando mudar Instagram, LinkedIn ou telefone de atendimento ao público.
                 </AlertDescription>
             </Alert>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Globe, Share2, Store, KeyRound } from 'lucide-react';
+import { Menu, X, Loader2, LayoutDashboard, LogOut, User, Settings, QrCode, BarChart3, CalendarDays, ChevronDown, SlidersHorizontal, Plus, Image, ListOrdered, History, CreditCard, Tags, FileText, Key, Database, Building2, Receipt, Shield, Mail, MapPin, Activity, Share2, Store, KeyRound } from 'lucide-react';
 import SiteLogo from '@/components/SiteLogo';
 import { SITE_HEADER_BAR_CLASS } from '@/constants/branding';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
@@ -330,7 +330,7 @@ const ManagerLayout: React.FC = () => {
         } catch {
             showSuccess('Sessão encerrada.');
         } finally {
-            navigate('/informacoes', { replace: true });
+            navigate('/', { replace: true });
         }
     };
 
@@ -642,13 +642,6 @@ const ManagerLayout: React.FC = () => {
                                                             Observabilidade checkout
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem
-                                                            onClick={() => navigate('/admin/settings/public-launch')}
-                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/public-launch' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
-                                                        >
-                                                            <Globe className="mr-2 h-4 w-4" />
-                                                            Site público (pré-lançamento)
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem
                                                             onClick={() => navigate('/admin/settings/public-social')}
                                                             className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/public-social' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
                                                         >
@@ -837,13 +830,6 @@ const ManagerLayout: React.FC = () => {
                                                             >
                                                                 <Activity className="mr-2 h-4 w-4" />
                                                                 Observabilidade checkout
-                                                            </button>
-                                                            <button
-                                                                onClick={() => { navigate('/admin/settings/public-launch'); setIsMobileMenuOpen(false); }}
-                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
-                                                            >
-                                                                <Globe className="mr-2 h-4 w-4" />
-                                                                Site público (pré-lançamento)
                                                             </button>
                                                             <button
                                                                 onClick={() => { navigate('/admin/settings/public-social'); setIsMobileMenuOpen(false); }}

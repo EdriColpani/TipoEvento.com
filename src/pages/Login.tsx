@@ -16,7 +16,6 @@ import {
     isComplimentaryReturnPath,
     resolveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
-import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { withTimeout } from '@/utils/promise-timeout';
 import {
@@ -108,7 +107,6 @@ const Login: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(true);
-    const { isPreview } = usePublicLaunchMode();
     const { tipoUsuarioId: contextTipo } = usePublicSiteAuth();
     const redirectingRef = useRef(false);
 
@@ -141,7 +139,7 @@ const Login: React.FC = () => {
                 } else if (tipo === 3) {
                     navigate('/', { replace: true });
                 } else {
-                    navigate('/informacoes', { replace: true });
+                    navigate('/', { replace: true });
                 }
                 return;
             }
@@ -377,34 +375,27 @@ const Login: React.FC = () => {
                             </Button>
                             <Button
                                 type="button"
-                                onClick={() => navigate('/informacoes')}
+                                onClick={() => navigate('/')}
                                 className="w-full bg-transparent border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
                             >
                                 Voltar
                             </Button>
                         </div>
                         <div className="text-center pt-4 border-t border-cyan-500/25">
-                            {isPreview ? (
-                                <p className="text-gray-400 text-sm">
-                                    Cadastros temporariamente indisponíveis. Estamos em fase de lançamento — use o
-                                    formulário de contato na página de informações.
-                                </p>
-                            ) : (
-                                <p className="text-gray-400 text-sm">
-                                    Não tem uma conta?{' '}
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            navigate('/register', {
-                                                state: returnTo ? { from: returnTo } : undefined,
-                                            })
-                                        }
-                                        className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
-                                    >
-                                        Cadastre-se
-                                    </button>
-                                </p>
-                            )}
+                            <p className="text-gray-400 text-sm">
+                                Não tem uma conta?{' '}
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        navigate('/register', {
+                                            state: returnTo ? { from: returnTo } : undefined,
+                                        })
+                                    }
+                                    className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors cursor-pointer"
+                                >
+                                    Cadastre-se
+                                </button>
+                            </p>
                         </div>
                     </form>
                 </div>
