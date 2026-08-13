@@ -12,7 +12,6 @@ import {
     SITE_HEADER_MAIN_OFFSET_CLASS,
     SITE_HEADER_NAV_LINK_CLASS,
 } from '@/constants/branding';
-import { usePublicLaunchMode } from '@/hooks/use-public-launch-mode';
 
 const ClientLandingModalsHost: React.FC = () => {
     const { activeModal, closeModal } = useLandingUi();
@@ -73,7 +72,6 @@ const ClientLayout: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { device, isMobile } = useDevice();
-    const { isPreview } = usePublicLaunchMode();
     const isInformacoesPage = location.pathname === '/informacoes';
 
     useEffect(() => {
@@ -81,7 +79,7 @@ const ClientLayout: React.FC = () => {
     }, [device]);
 
     const handleLogoClick = () => {
-        navigate(isPreview ? '/informacoes' : '/');
+        navigate('/');
     };
 
     return (

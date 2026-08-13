@@ -26,7 +26,6 @@ const MobileMenu: React.FC = () => {
         sessionReady,
         profileLoading,
         isAuthenticated,
-        isPreview,
         tipoUsuarioId,
     } = usePublicSiteContext();
 
@@ -77,7 +76,7 @@ const MobileMenu: React.FC = () => {
         } catch {
             showSuccess('Sessão encerrada com sucesso.');
         } finally {
-            handleNavigation('/informacoes');
+            handleNavigation('/');
         }
     };
 
@@ -213,14 +212,12 @@ const MobileMenu: React.FC = () => {
                             >
                                 Login
                             </Button>
-                            {!isPreview ? (
-                                <Button
-                                    onClick={() => handleNavigation('/register')}
-                                    className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
-                                >
-                                    Cadastro
-                                </Button>
-                            ) : null}
+                            <Button
+                                onClick={() => handleNavigation('/register')}
+                                className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
+                            >
+                                Cadastro
+                            </Button>
                         </div>
                     )}
 

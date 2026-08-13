@@ -1,19 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserRole } from '@/hooks/use-user-role';
 import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT, isAccessTokenTimeValid, isAuthApiRejectedStatus } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
 import { clearAuthSessionIfCurrentToken, clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
-import {
-    canBypassPublicLaunchPreview,
-    type PublicLaunchMode,
-} from '@/utils/public-launch-access';
-import {
-    PUBLIC_LAUNCH_MODE_QUERY_KEY,
-    fetchPublicLaunchMode,
-} from '@/utils/public-launch-mode-query';
+import type { PublicLaunchMode } from '@/utils/public-launch-access';
 
 export type PublicSiteContextValue = {
     userId: string | undefined;
@@ -24,9 +16,10 @@ export type PublicSiteContextValue = {
     isAuthenticated: boolean;
     tipoUsuarioId: number | undefined;
     roleLoading: boolean;
+    /** Sempre `live` — pré-lançamento removido. */
     mode: PublicLaunchMode;
-    /** true depois da 1ª resposta real do get_public_launch_mode (não placeholder). */
     modeReady: boolean;
+    /** Sempre false — site público sempre aberto. */
     isPreview: boolean;
     canBypassPreview: boolean;
     isError: boolean;
@@ -147,26 +140,11 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         isFetched: roleTipoFetched,
     } = useUserRole(userId);
 
-    const query = useQuery({
-        queryKey: [...PUBLIC_LAUNCH_MODE_QUERY_KEY],
-        queryFn: fetchPublicLaunchMode,
-        staleTime: 5 * 60_000,
-        gcTime: 30 * 60_000,
-        retry: 1,
-        refetchOnWindowFocus: false,
-        placeholderData: 'preview' as PublicLaunchMode,
-    });
-
     const value = useMemo<PublicSiteContextValue>(() => {
-        const mode = query.data ?? 'preview';
         const loggedIn = sessionReady && Boolean(userId);
-        const isPreview = mode === 'preview';
-        // Perfil completo pode falhar/timeout; papel vem de query leve dedicada.
         const tipo =
             normalizeTipoUsuarioId(roleTipo) ??
             normalizeTipoUsuarioId(profile?.tipo_usuario_id);
-        const canBypassPreview = canBypassPublicLaunchPreview(tipo);
-        // Só bloqueia enquanto a query leve ainda não concluiu (ou perfil ainda carrega sem tipo).
         const roleLoading = Boolean(
             userId &&
                 tipo == null &&
@@ -182,17 +160,13 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
             isAuthenticated: loggedIn,
             tipoUsuarioId: tipo,
             roleLoading,
-            mode,
-            modeReady: query.isFetched && !query.isPlaceholderData,
-            isPreview,
-            canBypassPreview,
-            isError: query.isError,
+            mode: 'live',
+            modeReady: true,
+            isPreview: false,
+            canBypassPreview: true,
+            isError: false,
         };
     }, [
-        query.data,
-        query.isError,
-        query.isFetched,
-        query.isPlaceholderData,
         profile,
         profileLoading,
         roleTipo,

@@ -25,7 +25,6 @@ const AuthStatusMenu: React.FC = () => {
         sessionReady,
         profileLoading,
         isAuthenticated,
-        isPreview,
         tipoUsuarioId,
     } = usePublicSiteContext();
 
@@ -50,7 +49,7 @@ const AuthStatusMenu: React.FC = () => {
         } catch {
             showSuccess('Sessão encerrada.');
         } finally {
-            navigate('/informacoes', { replace: true });
+            navigate('/', { replace: true });
         }
     };
 
@@ -154,7 +153,7 @@ const AuthStatusMenu: React.FC = () => {
                             </>
                         ) : null}
 
-                        {isClient && !isPreview && (
+                        {isClient && (
                             <DropdownMenuItem
                                 onClick={() => navigate('/manager/register')}
                                 className={`cursor-pointer text-green-400 font-semibold ${
@@ -219,18 +218,16 @@ const AuthStatusMenu: React.FC = () => {
             >
                 Login
             </Button>
-            {!isPreview ? (
-                <Button
-                    onClick={() => navigate('/register')}
-                    className={`border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
-                        isLandingPage
-                            ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
-                            : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
-                    }`}
-                >
-                    Cadastro
-                </Button>
-            ) : null}
+            <Button
+                onClick={() => navigate('/register')}
+                className={`border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
+                    isLandingPage
+                        ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
+                        : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
+                }`}
+            >
+                Cadastro
+            </Button>
         </div>
     );
 };
