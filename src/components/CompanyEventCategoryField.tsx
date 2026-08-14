@@ -97,21 +97,19 @@ const CompanyEventCategoryField: React.FC<CompanyEventCategoryFieldProps> = ({
                 </Select>
 
                 {companyId && (
-                    <Button
+                    <button
                         type="button"
-                        variant="outline"
-                        size="icon"
-                        className="shrink-0 border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10 h-10 w-10"
                         title="Nova categoria"
                         disabled={!companyId || isCreating}
                         onClick={() => setModalOpen(true)}
+                        className="shrink-0 h-10 w-10 rounded-md inline-flex items-center justify-center !bg-[#22d3ee] !text-black hover:!bg-[#06b6d4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isCreating ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-5 w-5" strokeWidth={2.5} />
                         )}
-                    </Button>
+                    </button>
                 )}
             </div>
             {categories.length > 0 && (
@@ -146,7 +144,7 @@ const CompanyEventCategoryField: React.FC<CompanyEventCategoryFieldProps> = ({
                         <Button
                             type="button"
                             variant="outline"
-                            className="border-yellow-500/30 text-yellow-500"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                             onClick={() => setModalOpen(false)}
                         >
                             Cancelar

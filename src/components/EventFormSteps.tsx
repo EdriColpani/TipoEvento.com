@@ -13,7 +13,7 @@ import CompanyEventCategoryField from '@/components/CompanyEventCategoryField';
 import { normalizeContractContentForDisplay, looksLikeContractHtml, prepareContractContentForHtmlDisplay } from '@/utils/contractContent';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { supabase, supabaseAnonKey, supabaseUrl } from '@/integrations/supabase/client';
-import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, CheckSquare, FileText, XCircle, Plus, Ticket } from 'lucide-react';
+import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, CheckSquare, FileText, XCircle, Plus, Minus, Ticket } from 'lucide-react';
 import { format } from 'date-fns';
 import { parseEventLocalDay } from '@/utils/format-event-date';
 import { DatePicker } from '@/components/DatePicker';
@@ -401,6 +401,8 @@ const eventFormSchema = z.object({
         name: z.string().optional(),
         quantity: z.string().optional(),
         price: z.string().optional(),
+        /** UI: marca lote gratuito para pacotes cortesia (persistido como price = 0). */
+        is_complimentary: z.boolean().optional().default(false),
         start_date: z.date().optional().nullable(),
         end_date: z.date().optional().nullable(),
     })).optional(),
@@ -418,6 +420,7 @@ const eventFormSchema = z.object({
         ctx.addIssue({ code: 'custom', message: 'Para eventos pagos, cadastre pelo menos um lote de ingressos.', path: ['batches'] });
         return;
     }
+    let hasPaidSaleBatch = false;
     data.batches.forEach((batch, i) => {
         if (!batch.name || !String(batch.name).trim()) {
             ctx.addIssue({
@@ -437,12 +440,30 @@ const eventFormSchema = z.object({
                 path: ['batches', i, 'quantity'],
             });
         }
-        if (!isValidBatchPriceBr(batch.price)) {
+        const price = parseBatchPriceBr(batch.price);
+        const isComplimentary = batch.is_complimentary === true;
+        if (isComplimentary) {
+            if (price == null || price !== 0) {
+                ctx.addIssue({
+                    code: 'custom',
+                    message: `Lote ${i + 1}: lote cortesia deve ter preço R$ 0,00.`,
+                    path: ['batches', i, 'price'],
+                });
+            }
+        } else if (price != null && price === 0) {
+            ctx.addIssue({
+                code: 'custom',
+                message: `Lote ${i + 1}: para R$ 0,00 marque “Lote cortesia / gratuito”.`,
+                path: ['batches', i, 'is_complimentary'],
+            });
+        } else if (!isValidBatchPriceBr(batch.price)) {
             ctx.addIssue({
                 code: 'custom',
                 message: `Lote ${i + 1}: informe um preço válido maior que zero (ex.: 0,50 ou 50,00).`,
                 path: ['batches', i, 'price'],
             });
+        } else {
+            hasPaidSaleBatch = true;
         }
         if (!batch.start_date) {
             ctx.addIssue({
@@ -472,6 +493,14 @@ const eventFormSchema = z.object({
             });
         }
     });
+    if (!hasPaidSaleBatch) {
+        ctx.addIssue({
+            code: 'custom',
+            message:
+                'Inclua pelo menos um lote de venda (preço > R$ 0). Lotes cortesia (R$ 0) são só para Staff/convidados.',
+            path: ['batches'],
+        });
+    }
 });
 
 /** Lista pares campo→mensagem de erro (achatando aninhados de lotes/turmas). */
@@ -661,6 +690,10 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             num_batches: initialData?.batches?.length.toString() || '1', // Default para 1 lote
             batches: initialData?.batches?.map((batch) => ({
                 ...batch,
+                is_complimentary:
+                    batch.is_complimentary === true ||
+                    Number(batch.price) === 0 ||
+                    parseBatchPriceBr(String(batch.price).replace('.', ',')) === 0,
                 price: batch.price.toString().replace('.', ','), // Formata o preço para BR
                 start_date:
                     batch.start_date instanceof Date
@@ -671,7 +704,14 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                         ? batch.end_date
                         : parseEventLocalDay(String(batch.end_date)) ?? undefined,
             })) || [
-                { name: 'Lote 1', quantity: '', price: '', start_date: undefined, end_date: undefined } // Lote inicial
+                {
+                    name: 'Lote 1',
+                    quantity: '',
+                    price: '',
+                    is_complimentary: false,
+                    start_date: undefined,
+                    end_date: undefined,
+                },
             ],
             contractAccepted: false,
             contract_id: initialData?.contract_id || undefined, // Inicializa com o contrato existente
@@ -699,6 +739,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     name: `Lote ${currentBatches.length + i + 1}`,
                     quantity: '',
                     price: '',
+                    is_complimentary: false,
                     start_date: undefined,
                     end_date: undefined,
                 }));
@@ -934,14 +975,20 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 };
 
                 if (batches && batches.length > 0) {
-                    const mapped = batches.map((b, idx) => ({
-                        id: String(b.id ?? ''),
-                        name: (b.name as string)?.trim() || `Lote ${idx + 1}`,
-                        quantity: String(b.quantity ?? ''),
-                        price: formatPriceBr(b.price),
-                        start_date: parseEventLocalDay(String(b.start_date ?? '')) ?? undefined,
-                        end_date: parseEventLocalDay(String(b.end_date ?? '')) ?? undefined,
-                    }));
+                    const mapped = batches.map((b, idx) => {
+                        const priceNum =
+                            typeof b.price === 'number' ? b.price : parseFloat(String(b.price ?? ''));
+                        const isComplimentary = Number.isFinite(priceNum) && priceNum === 0;
+                        return {
+                            id: String(b.id ?? ''),
+                            name: (b.name as string)?.trim() || `Lote ${idx + 1}`,
+                            quantity: String(b.quantity ?? ''),
+                            price: formatPriceBr(b.price),
+                            is_complimentary: isComplimentary,
+                            start_date: parseEventLocalDay(String(b.start_date ?? '')) ?? undefined,
+                            end_date: parseEventLocalDay(String(b.end_date ?? '')) ?? undefined,
+                        };
+                    });
                     setValue('num_batches', String(mapped.length));
                     setValue('batches', mapped);
                     lockedBatchesRef.current = snapshotBatchesForLock(mapped);
@@ -1058,13 +1105,20 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 return;
             }
             // Valida se todos os lotes estão preenchidos corretamente
-            const invalidBatches = values.batches.some(batch => 
-                !batch.name || 
-                !batch.quantity || 
-                !batch.price || 
-                !batch.start_date || 
-                !batch.end_date
-            );
+            const invalidBatches = values.batches.some((batch) => {
+                const price = parseBatchPriceBr(batch.price);
+                const priceOk =
+                    batch.is_complimentary === true
+                        ? price === 0
+                        : price != null && price > 0;
+                return (
+                    !batch.name ||
+                    !batch.quantity ||
+                    !priceOk ||
+                    !batch.start_date ||
+                    !batch.end_date
+                );
+            });
             if (invalidBatches) {
                 showError("Por favor, preencha todos os campos dos lotes de ingressos antes de salvar.");
                 setCurrentStep(showContractStep ? 4 : 3);
@@ -1244,11 +1298,14 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     : null;
 
             // Preço mínimo para exibição no card: lotes têm prioridade; senão usa o campo único ticket_price
-            const minPriceFromBatches = effectiveIsPaid && values.batches?.length
-                ? Math.min(
-                    ...values.batches.map((b) => parseBatchPriceBr(b.price) ?? Number.POSITIVE_INFINITY),
-                )
-                : null;
+            const paidBatchPrices =
+                effectiveIsPaid && values.batches?.length
+                    ? values.batches
+                          .map((b) => parseBatchPriceBr(b.price))
+                          .filter((p): p is number => p != null && p > 0)
+                    : [];
+            const minPriceFromBatches =
+                paidBatchPrices.length > 0 ? Math.min(...paidBatchPrices) : null;
             const ticketPriceForEvent = effectiveIsPaid
                 ? (
                     minPriceFromBatches != null && Number.isFinite(minPriceFromBatches)
@@ -1502,8 +1559,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
                     const batchesToInsert = values.batches.map(batch => {
                         const price = parseBatchPriceBr(batch.price);
-                        if (price == null || price <= 0) {
-                            throw new Error(`Preço inválido no lote "${batch.name || ''}". Use formato 0,50 ou 50,00.`);
+                        const isComplimentary = batch.is_complimentary === true;
+                        if (isComplimentary) {
+                            if (price == null || price !== 0) {
+                                throw new Error(
+                                    `Lote cortesia "${batch.name || ''}" deve ter preço R$ 0,00.`,
+                                );
+                            }
+                        } else if (price == null || price <= 0) {
+                            throw new Error(
+                                `Preço inválido no lote "${batch.name || ''}". Use formato 0,50 ou 50,00 (ou marque como cortesia para R$ 0,00).`,
+                            );
                         }
                         if (!(batch.start_date instanceof Date) || !(batch.end_date instanceof Date)) {
                             throw new Error(`Datas do lote "${batch.name || ''}" estão incompletas.`);
@@ -1512,7 +1578,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                             event_id: newEventId!,
                             name: batch.name,
                             quantity: batchQuantityAsNumber(batch.quantity),
-                            price,
+                            price: isComplimentary ? 0 : price!,
                             start_date: format(batch.start_date, 'yyyy-MM-dd'),
                             end_date: format(batch.end_date, 'yyyy-MM-dd'),
                         };
@@ -2310,29 +2376,124 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                     <FormField
                                         control={control}
                                         name="num_batches"
-                                        render={({ field }) => (
+                                        render={({ field }) => {
+                                            const current = Math.max(1, parseInt(field.value || '1', 10) || 1);
+                                            const maxBatches = 20;
+                                            const setCount = (next: number) => {
+                                                const clamped = Math.min(maxBatches, Math.max(1, next));
+                                                field.onChange(String(clamped));
+                                            };
+                                            return (
                                             <FormItem>
                                                 <FormLabel className="text-white">Número de Lotes</FormLabel>
                                                 <FormControl>
-                                                    <Input 
-                                                        type="number" 
-                                                        placeholder="1" 
-                                                        className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                                        disabled={ticketsLocked}
-                                                        {...field} 
-                                                        onChange={e => field.onChange(e.target.value)} 
-                                                        min={1}
-                                                    />
+                                                    <div className="flex items-center gap-3 sm:gap-4">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            aria-label="Diminuir número de lotes"
+                                                            disabled={ticketsLocked || current <= 1}
+                                                            onClick={() => setCount(current - 1)}
+                                                            className="h-14 w-14 shrink-0 rounded-xl bg-black/60 border-2 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/15 hover:text-cyan-300 hover:border-cyan-400 disabled:opacity-40"
+                                                        >
+                                                            <Minus className="h-6 w-6" strokeWidth={2.5} />
+                                                        </Button>
+                                                        <div className="flex-1 min-w-0 rounded-xl border border-cyan-500/30 bg-black/60 px-4 py-3 text-center">
+                                                            <span className="block text-3xl font-bold tabular-nums text-white leading-none">
+                                                                {current}
+                                                            </span>
+                                                            <span className="block text-[11px] text-gray-500 mt-1">
+                                                                {current === 1 ? 'lote' : 'lotes'}
+                                                            </span>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            aria-label="Aumentar número de lotes"
+                                                            disabled={ticketsLocked || current >= maxBatches}
+                                                            onClick={() => setCount(current + 1)}
+                                                            className="h-14 w-14 shrink-0 rounded-xl bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-40"
+                                                        >
+                                                            <Plus className="h-6 w-6" strokeWidth={2.5} />
+                                                        </Button>
+                                                    </div>
                                                 </FormControl>
-                                                <FormDescription className="text-gray-500 text-xs">Quantos lotes de ingressos você deseja criar para este evento.</FormDescription>
+                                                <FormDescription className="text-gray-500 text-xs">
+                                                    Use − e + para definir quantos lotes criar (máx. {maxBatches}). Os
+                                                    botões são grandes de propósito para evitar clique errado.
+                                                </FormDescription>
                                                 <FormMessage />
                                             </FormItem>
-                                        )}
+                                            );
+                                        }}
                                     />
 
-                                    {Array.from({ length: numBatches }).map((_, batchIndex) => (
-                                        <Card key={batchIndex} className="bg-black/70 border border-yellow-500/20 p-4 space-y-4">
-                                            <CardTitle className="text-white text-lg">Lote {batchIndex + 1}</CardTitle>
+                                    {Array.from({ length: numBatches }).map((_, batchIndex) => {
+                                        const isComplimentaryBatch =
+                                            watch(`batches.${batchIndex}.is_complimentary`) === true;
+                                        return (
+                                        <Card
+                                            key={batchIndex}
+                                            className={
+                                                isComplimentaryBatch
+                                                    ? 'bg-black/70 border border-cyan-500/40 p-4 space-y-4'
+                                                    : 'bg-black/70 border border-yellow-500/20 p-4 space-y-4'
+                                            }
+                                        >
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                <CardTitle className="text-white text-lg">
+                                                    Lote {batchIndex + 1}
+                                                    {isComplimentaryBatch ? (
+                                                        <span className="ml-2 inline-flex items-center rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs font-medium text-cyan-300 align-middle">
+                                                            Cortesia
+                                                        </span>
+                                                    ) : null}
+                                                </CardTitle>
+                                                <FormField
+                                                    control={control}
+                                                    name={`batches.${batchIndex}.is_complimentary`}
+                                                    render={({ field }) => (
+                                                        <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-lg border border-cyan-500/30 bg-cyan-950/40 px-3 py-2">
+                                                            <FormControl>
+                                                                <Checkbox
+                                                                    checked={field.value === true}
+                                                                    disabled={ticketsLocked}
+                                                                    onCheckedChange={(checked) => {
+                                                                        const on = checked === true;
+                                                                        field.onChange(on);
+                                                                        if (on) {
+                                                                            setValue(
+                                                                                `batches.${batchIndex}.price`,
+                                                                                '0,00',
+                                                                                { shouldValidate: true },
+                                                                            );
+                                                                        } else if (
+                                                                            watch(`batches.${batchIndex}.price`) ===
+                                                                                '0,00' ||
+                                                                            watch(`batches.${batchIndex}.price`) ===
+                                                                                '0'
+                                                                        ) {
+                                                                            setValue(
+                                                                                `batches.${batchIndex}.price`,
+                                                                                '',
+                                                                                { shouldValidate: true },
+                                                                            );
+                                                                        }
+                                                                    }}
+                                                                    className="border-cyan-400 data-[state=checked]:bg-cyan-500 data-[state=checked]:text-black"
+                                                                />
+                                                            </FormControl>
+                                                            <div className="space-y-0.5 leading-none">
+                                                                <FormLabel className="text-cyan-100 text-sm font-medium cursor-pointer">
+                                                                    Lote cortesia / gratuito
+                                                                </FormLabel>
+                                                                <p className="text-[11px] text-cyan-200/70">
+                                                                    Marque para Staff/convidados (R$ 0). Não depende do nome do lote.
+                                                                </p>
+                                                            </div>
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 <FormField
                                                     control={control}
@@ -2394,7 +2555,9 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                             <FormDescription className="text-cyan-200/90 text-xs">
                                                                 {quantityIncreaseOnly
                                                                     ? `Após vendas, só pode aumentar (mínimo: ${minQty.toLocaleString('pt-BR')}).`
-                                                                    : 'Estoque deste tipo. Os QR codes são gerados automaticamente na venda.'}
+                                                                    : isComplimentaryBatch
+                                                                      ? 'Estoque para pacotes cortesia. Os ingressos são gerados no resgate do link.'
+                                                                      : 'Estoque deste tipo. Os QR codes são gerados automaticamente na venda.'}
                                                             </FormDescription>
                                                             <FormMessage />
                                                         </FormItem>
@@ -2409,15 +2572,24 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                             <FormLabel className="text-white">Preço (R$)</FormLabel>
                                                             <FormControl>
                                                                 <Input 
-                                                                    placeholder="Ex: 50,00" 
-                                                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500"
-                                                                    disabled={ticketsLocked}
+                                                                    placeholder={isComplimentaryBatch ? '0,00' : 'Ex: 50,00'}
+                                                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 disabled:opacity-70"
+                                                                    disabled={ticketsLocked || isComplimentaryBatch}
                                                                     {...field}
-                                                                    value={field.value ?? ''}
+                                                                    value={
+                                                                        isComplimentaryBatch
+                                                                            ? '0,00'
+                                                                            : (field.value ?? '')
+                                                                    }
                                                                     onChange={e => field.onChange(e.target.value.replace('.', ',') )}
                                                                     min="0"
                                                                 />
                                                             </FormControl>
+                                                            <FormDescription className="text-cyan-200/80 text-xs">
+                                                                {isComplimentaryBatch
+                                                                    ? 'Preço travado em R$ 0,00 porque este lote é cortesia.'
+                                                                    : 'Para cortesia, marque “Lote cortesia / gratuito” acima (não digite zero à mão).'}
+                                                            </FormDescription>
                                                             <FormMessage />
                                                         </FormItem>
                                                     )}
@@ -2462,7 +2634,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                 />
                                             </div>
                                         </Card>
-                                    ))}
+                                        );
+                                    })}
                                     
                                     {errors.batches && (
                                         <p className="text-red-500 text-sm mt-2">Houve um erro na configuração dos lotes. Verifique todos os campos.</p>

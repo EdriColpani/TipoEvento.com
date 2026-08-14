@@ -13,7 +13,7 @@ import { useAuthUserId } from '@/hooks/use-auth-user-id';
 import { getAuthAccessToken } from '@/utils/auth-session-cache';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
-import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { formatEventDateForDisplay, formatEventTimeForDisplay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import {
     fetchEventCreditEligibility,
@@ -412,74 +412,80 @@ const EventDetails: React.FC = () => {
                 </div>
             )}
             <section className={`${salesClosed ? 'pt-32' : 'pt-20'} pb-0 flex justify-center`}>
-                <div className="relative w-full max-w-5xl h-[500px] overflow-hidden rounded-xl shadow-2xl shadow-yellow-500/20 mx-4 sm:mx-6">
+                <div className="relative w-full max-w-5xl min-h-[380px] sm:min-h-[440px] overflow-hidden rounded-xl shadow-2xl shadow-yellow-500/20 mx-4 sm:mx-6">
                     <img
                         src={bannerImageUrl}
                         alt={event.title}
-                        className="w-full h-full object-cover object-top"
+                        className="absolute inset-0 w-full h-full object-cover object-top"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/40"></div>
-                    <div className="absolute inset-0 flex items-center">
-                        <div className="w-full px-4 sm:px-6">
-                            <div className="max-w-full lg:max-w-3xl">
-                                <div className="inline-block bg-yellow-500 text-black px-3 py-1 rounded-full text-xs sm:text-sm font-semibold mb-2 sm:mb-4">
-                                    {event.category}
-                                </div>
-                                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif text-white mb-3 sm:mb-6 leading-tight">
-                                    {event.title}
-                                </h1>
-                                <p className="text-base sm:text-xl text-gray-200 mb-4 sm:mb-8 leading-relaxed line-clamp-3">
-                                    {event.description}
-                                </p>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                                    <div className="flex items-center">
-                                        <i className="fas fa-calendar-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4"></i>
-                                        <div>
-                                            <div className="text-xs sm:text-sm text-gray-400">Data</div>
-                                            <div className="text-sm sm:text-lg font-semibold text-white">{formatEventDateForDisplay(event.date) || '—'}</div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center">
-                                        <i className="fas fa-clock text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4"></i>
-                                        <div>
-                                            <div className="text-xs sm:text-sm text-gray-400">Horário</div>
-                                            <div className="text-sm sm:text-lg font-semibold text-white">{event.time}</div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center">
-                                        <i className="fas fa-map-marker-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4"></i>
-                                        <div>
-                                            <div className="text-xs sm:text-sm text-gray-400">Local</div>
-                                            <div className="text-sm sm:text-lg font-semibold text-white">{event.location}</div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-black/40"></div>
+                    <div className="relative z-10 flex min-h-[380px] sm:min-h-[440px] flex-col justify-end p-4 sm:p-6 lg:p-8">
+                        <div className="max-w-3xl w-full space-y-3 sm:space-y-4">
+                            <div className="inline-block bg-yellow-500 text-black px-3 py-1 rounded-full text-xs sm:text-sm font-semibold">
+                                {event.category}
+                            </div>
+                            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-serif text-white leading-tight line-clamp-3 break-words">
+                                {event.title}
+                            </h1>
+                            <p className="text-sm sm:text-base text-gray-200 leading-relaxed line-clamp-2 break-words">
+                                {event.description}
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                                <div className="flex items-start min-w-0">
+                                    <i className="fas fa-calendar-alt text-yellow-500 text-lg sm:text-xl mr-3 mt-0.5 shrink-0"></i>
+                                    <div className="min-w-0">
+                                        <div className="text-xs text-gray-400">Data</div>
+                                        <div className="text-sm sm:text-base font-semibold text-white truncate">
+                                            {formatEventDateForDisplay(event.date) || '—'}
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
-                                    {isListingOnly ? (
-                                        <span className="text-2xl sm:text-3xl font-bold text-blue-400">
-                                            Evento em divulgação — sem venda de ingressos online
+                                <div className="flex items-start min-w-0">
+                                    <i className="fas fa-clock text-yellow-500 text-lg sm:text-xl mr-3 mt-0.5 shrink-0"></i>
+                                    <div className="min-w-0">
+                                        <div className="text-xs text-gray-400">Horário</div>
+                                        <div className="text-sm sm:text-base font-semibold text-white truncate">
+                                            {formatEventTimeForDisplay(event.time)}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-start min-w-0">
+                                    <i className="fas fa-map-marker-alt text-yellow-500 text-lg sm:text-xl mr-3 mt-0.5 shrink-0"></i>
+                                    <div className="min-w-0">
+                                        <div className="text-xs text-gray-400">Local</div>
+                                        <div className="text-sm sm:text-base font-semibold text-white truncate" title={event.location}>
+                                            {event.location}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 pt-1">
+                                {isListingOnly ? (
+                                    <span className="text-lg sm:text-xl font-bold text-blue-400">
+                                        Evento em divulgação — sem venda de ingressos online
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span className="text-xl sm:text-2xl font-bold text-yellow-500 shrink-0">
+                                            {event.min_price != null && event.min_price > 0
+                                                ? `A partir de ${minPriceDisplay}`
+                                                : minPriceDisplay}
                                         </span>
-                                    ) : (
-                                        <>
-                                            <span className="text-2xl sm:text-4xl font-bold text-yellow-500">
-                                                A partir de {minPriceDisplay}
-                                            </span>
-                                            {queueBanner}
-                                            <Button 
-                                                onClick={handleCheckout}
-                                                disabled={isProcessing || getTotalTickets() === 0 || salesClosed || checkoutBlockedByQueue}
-                                                className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
-                                            >
-                                                {isProcessing ? (
-                                                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                                                ) : (
-                                                    <ShoppingCart className="h-5 w-5 mr-2" />
-                                                )}
-                                                {isProcessing ? 'Processando...' : 'Comprar Ingressos'}
-                                            </Button>
-                                        </>
-                                    )}
-                                </div>
+                                        {queueBanner}
+                                        <Button
+                                            onClick={handleCheckout}
+                                            disabled={isProcessing || getTotalTickets() === 0 || salesClosed || checkoutBlockedByQueue}
+                                            className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
+                                        >
+                                            {isProcessing ? (
+                                                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                            ) : (
+                                                <ShoppingCart className="h-5 w-5 mr-2" />
+                                            )}
+                                            {isProcessing ? 'Processando...' : 'Comprar Ingressos'}
+                                        </Button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -488,33 +494,39 @@ const EventDetails: React.FC = () => {
             <div className="w-full h-px bg-yellow-500"></div>
             <section className="py-12 sm:py-20 px-4 sm:px-6">
                 <div className="max-w-7xl mx-auto">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12 lg:items-start">
                         <div className="lg:col-span-2 space-y-8 sm:space-y-12 order-2 lg:order-1">
                             <div>
-                                <h2 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-6">Sobre o Evento</h2>
+                                <h2 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-6 min-h-[2.5rem] sm:min-h-[3rem] flex items-end">
+                                    Sobre o Evento
+                                </h2>
                                 <div className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
-                                    <p className="text-gray-300 text-sm sm:text-lg leading-relaxed mb-6">
+                                    <p className="text-gray-300 text-sm sm:text-base leading-relaxed mb-6 break-words whitespace-pre-wrap">
                                         {event.description}
                                     </p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 border-t border-yellow-500/20 pt-6">
                                         <div className="space-y-3 sm:space-y-4">
-                                            <div className="flex items-center text-sm sm:text-base">
-                                                <i className="fas fa-users text-yellow-500 mr-3"></i>
-                                                <span className="text-white">Capacidade: {capacityDisplay}</span>
+                                            <div className="flex items-start text-sm sm:text-base min-w-0">
+                                                <i className="fas fa-users text-yellow-500 mr-3 mt-0.5 shrink-0"></i>
+                                                <span className="text-white break-words">Capacidade: {capacityDisplay}</span>
                                             </div>
-                                            <div className="flex items-center text-sm sm:text-base">
-                                                <i className="fas fa-clock text-yellow-500 mr-3"></i>
-                                                <span className="text-white">Duração: {durationDisplay}</span>
+                                            <div className="flex items-start text-sm sm:text-base min-w-0">
+                                                <i className="fas fa-clock text-yellow-500 mr-3 mt-0.5 shrink-0"></i>
+                                                <span className="text-white break-words">Duração: {durationDisplay}</span>
                                             </div>
                                         </div>
                                         <div className="space-y-3 sm:space-y-4">
-                                            <div className="flex items-center text-sm sm:text-base">
-                                                <i className="fas fa-user-check text-yellow-500 mr-3"></i>
-                                                <span className="text-white">Classificação: {event.min_age === 0 ? 'Livre' : `${event.min_age} anos`}</span>
+                                            <div className="flex items-start text-sm sm:text-base min-w-0">
+                                                <i className="fas fa-user-check text-yellow-500 mr-3 mt-0.5 shrink-0"></i>
+                                                <span className="text-white break-words">
+                                                    Classificação: {event.min_age === 0 ? 'Livre' : `${event.min_age} anos`}
+                                                </span>
                                             </div>
-                                            <div className="flex items-center text-sm sm:text-base">
-                                                <i className="fas fa-user-tie text-yellow-500 mr-3"></i>
-                                                <span className="text-white">Organizador: {organizerName}</span>
+                                            <div className="flex items-start text-sm sm:text-base min-w-0">
+                                                <i className="fas fa-user-tie text-yellow-500 mr-3 mt-0.5 shrink-0"></i>
+                                                <span className="text-white break-words" title={organizerName}>
+                                                    Organizador: {organizerName}
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
@@ -563,21 +575,22 @@ const EventDetails: React.FC = () => {
                         </div>
                         <div className="lg:col-span-1 order-1 lg:order-2">
                             <div className="lg:sticky lg:top-24">
+                                <h2 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-6 min-h-[2.5rem] sm:min-h-[3rem] flex items-end">
+                                    {isListingOnly ? 'Divulgação' : 'Selecionar Ingressos'}
+                                </h2>
                                 <div className="bg-black/80 backdrop-blur-sm border border-yellow-500/30 rounded-2xl p-6 sm:p-8">
                                     {isListingOnly ? (
                                         <div className="text-center space-y-4">
-                                            <h3 className="text-xl sm:text-2xl font-serif text-blue-400">Divulgação</h3>
                                             <p className="text-gray-300 text-sm leading-relaxed">
                                                 Este evento está publicado apenas para divulgação. Ingressos não são vendidos
                                                 pela plataforma — consulte o organizador para mais informações.
                                             </p>
-                                            <p className="text-gray-500 text-xs">
+                                            <p className="text-gray-500 text-xs break-words">
                                                 Organizador: {organizerName}
                                             </p>
                                         </div>
                                     ) : (
                                     <>
-                                    <h3 className="text-xl sm:text-2xl font-serif text-yellow-500 mb-6">Selecionar Ingressos</h3>
                                     <div className="space-y-6">
                                         {ticketTypes.length > 0 ? (
                                             ticketTypes.map((ticket: TicketType) => (

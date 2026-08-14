@@ -16,6 +16,7 @@ import {
 } from '@/utils/fetch-profile-tipo';
 import { ENTRY_QR_DEFAULT_TTL_SECONDS } from '@/constants/entry-qr';
 import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
+import ManagerScreenHelpButton from '@/components/ManagerScreenHelpButton';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -217,14 +218,22 @@ const ManagerEditEvent: React.FC = () => {
 
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-0">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
-                <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0">
-                    Editar Evento: {initialEventData.title}
-                </h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-3">
+                <div className="space-y-2 min-w-0">
+                    <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500">
+                        Editar Evento: {initialEventData.title}
+                    </h1>
+                    <ManagerScreenHelpButton
+                        guideId="event-edit"
+                        label="Como preencher"
+                        showLink
+                        linkLabel="Para que serve esta tela?"
+                    />
+                </div>
                 <Button
                     onClick={() => navigate('/manager/events')}
                     variant="outline"
-                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm shrink-0"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar para a Lista

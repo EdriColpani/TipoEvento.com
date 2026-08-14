@@ -25,6 +25,7 @@ import { useCompanyTicketChargebackBlock } from '@/hooks/use-company-ticket-char
 import { useCompanyPayoutSetupValid } from '@/hooks/use-company-payout-profile';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Wallet } from 'lucide-react';
+import ManagerScreenHelpButton from '@/components/ManagerScreenHelpButton';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -114,8 +115,16 @@ const ManagerCreateEvent: React.FC = () => {
 
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-0">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
-                <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-0">Criar Novo Evento</h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-3">
+                <div className="space-y-2">
+                    <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500">Criar Novo Evento</h1>
+                    <ManagerScreenHelpButton
+                        guideId="event-create"
+                        label="Como preencher"
+                        showLink
+                        linkLabel="Para que serve esta tela?"
+                    />
+                </div>
                 <div className="flex space-x-3">
                     {isAdminMaster && (
                         <Button 

@@ -31,11 +31,11 @@ function EntryBody({ entry }: { entry: ReportsGuideEntry }) {
     return (
         <div className="space-y-4 text-sm text-gray-300 pb-2">
             <div>
-                <p className="text-yellow-500/90 font-medium mb-1">Para que serve</p>
+                <p className="text-cyan-400 font-medium mb-1">Para que serve</p>
                 <p className="text-gray-300 leading-relaxed">{entry.purpose}</p>
             </div>
             <div>
-                <p className="text-yellow-500/90 font-medium mb-1">Como funciona / o que mostra</p>
+                <p className="text-cyan-400 font-medium mb-1">Como funciona / o que mostra</p>
                 <ul className="list-disc list-inside space-y-1.5 text-gray-400">
                     {entry.howItWorks.map((line) => (
                         <li key={line} className="leading-relaxed">
@@ -46,7 +46,7 @@ function EntryBody({ entry }: { entry: ReportsGuideEntry }) {
             </div>
             {entry.tips && entry.tips.length > 0 && (
                 <div>
-                    <p className="text-yellow-500/90 font-medium mb-1">Dicas</p>
+                    <p className="text-cyan-400 font-medium mb-1">Dicas</p>
                     <ul className="list-disc list-inside space-y-1.5 text-gray-400">
                         {entry.tips.map((line) => (
                             <li key={line} className="leading-relaxed">
@@ -115,9 +115,9 @@ const ReportsGuideDialog: React.FC<ReportsGuideDialogProps> = ({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="bg-black border border-yellow-500/30 text-white max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogContent className="bg-black border border-cyan-500/30 text-white max-w-2xl max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle className="text-yellow-500 font-serif text-xl flex items-center gap-2">
+                    <DialogTitle className="text-cyan-400 font-serif text-xl flex items-center gap-2">
                         <CircleHelp className="h-5 w-5" />
                         {REPORTS_GUIDE_INTRO.title}
                     </DialogTitle>
@@ -155,9 +155,9 @@ const ReportsGuideDialog: React.FC<ReportsGuideDialogProps> = ({
                                     key={entry.id}
                                     value={entry.id}
                                     id={`reports-guide-${entry.id}`}
-                                    className="border-yellow-500/20"
+                                    className="border-cyan-500/20"
                                 >
-                                    <AccordionTrigger className="text-left text-yellow-500 hover:text-yellow-400 hover:no-underline py-3">
+                                    <AccordionTrigger className="text-left text-cyan-400 hover:text-cyan-300 hover:no-underline py-3">
                                         <span className="pr-2">
                                             <span className="block font-medium">{entry.title}</span>
                                             <span className="block text-xs font-normal text-gray-500 mt-0.5">
@@ -189,9 +189,9 @@ const ReportsGuideDialog: React.FC<ReportsGuideDialogProps> = ({
                                         key={entry.id}
                                         value={entry.id}
                                         id={`reports-guide-${entry.id}`}
-                                        className="border-yellow-500/20"
+                                        className="border-cyan-500/20"
                                     >
-                                        <AccordionTrigger className="text-left text-yellow-500 hover:text-yellow-400 hover:no-underline py-3">
+                                        <AccordionTrigger className="text-left text-cyan-400 hover:text-cyan-300 hover:no-underline py-3">
                                             <span className="pr-2">
                                                 <span className="block font-medium">{entry.title}</span>
                                                 <span className="block text-xs font-normal text-gray-500 mt-0.5">
