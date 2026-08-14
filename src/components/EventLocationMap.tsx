@@ -66,6 +66,7 @@ const EventLocationMap: React.FC<EventLocationMapProps> = ({
       {embedUrl ? (
         <div className={`w-full overflow-hidden rounded-xl border border-yellow-500/20 bg-black/40 ${mapHeightClass}`}>
           <iframe
+            key={embedUrl}
             title="Mapa do local do evento"
             src={embedUrl}
             className="h-full w-full border-0"

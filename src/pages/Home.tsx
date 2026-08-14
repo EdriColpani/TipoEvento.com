@@ -11,6 +11,7 @@ import { trackAdvancedFilterUse } from '@/utils/metrics';
 import { usePublicEvents, PublicEvent } from '@/hooks/use-public-events';
 import { Loader2 } from 'lucide-react';
 import { showError } from '@/utils/toast';
+import { formatEventTimeForDisplay } from '@/utils/format-event-date';
 
 const EVENTS_PER_PAGE = 12;
 
@@ -400,7 +401,7 @@ const Home: React.FC = () => {
                                 {isLoadingEvents ? (
                                     <div className="text-center py-20">
                                         <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
-                                        <p className className="text-gray-400">Carregando eventos...</p>
+                                        <p className="text-gray-400">Carregando eventos...</p>
                                     </div>
                                 ) : isErrorEvents || filteredEvents.length === 0 ? (
                                     <div className="text-center py-20">
@@ -413,10 +414,10 @@ const Home: React.FC = () => {
                                         {displayedEvents.map((event) => (
                                             <Card
                                                 key={event.id}
-                                                className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl overflow-hidden hover:border-yellow-500/60 hover:shadow-2xl hover:shadow-yellow-500/20 transition-all duration-300 cursor-pointer hover:scale-[1.02] group"
+                                                className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl overflow-hidden hover:border-yellow-500/60 hover:shadow-2xl hover:shadow-yellow-500/20 transition-all duration-300 cursor-pointer hover:scale-[1.02] group flex flex-col h-full"
                                                 onClick={() => handleEventClick(event)} // Redireciona para FinalizarCompra
                                             >
-                                                <div className="relative overflow-hidden">
+                                                <div className="relative overflow-hidden shrink-0">
                                                     <img
                                                         src={event.image_url}
                                                         alt={event.title}
@@ -434,28 +435,28 @@ const Home: React.FC = () => {
                                                         </button>
                                                     </div>
                                                 </div>
-                                                <div className="p-6">
-                                                    <h3 className="text-xl font-semibold text-white mb-3 line-clamp-2 group-hover:text-yellow-500 transition-colors duration-300">
+                                                <div className="p-6 flex flex-col flex-1">
+                                                    <h3 className="text-xl font-semibold text-white mb-3 line-clamp-2 min-h-[3.5rem] group-hover:text-yellow-500 transition-colors duration-300">
                                                         {event.title}
                                                     </h3>
-                                                    <p className="text-gray-400 text-sm mb-4 line-clamp-2">
+                                                    <p className="text-gray-400 text-sm mb-4 line-clamp-2 min-h-[2.5rem]">
                                                         {event.description}
                                                     </p>
                                                     <div className="space-y-2 mb-4">
                                                         <div className="flex items-center text-gray-300 text-sm">
-                                                            <i className="fas fa-calendar-alt text-yellow-500 mr-3 w-4"></i>
-                                                            {event.date}
+                                                            <i className="fas fa-calendar-alt text-yellow-500 mr-3 w-4 shrink-0"></i>
+                                                            <span className="truncate">{event.date}</span>
                                                         </div>
                                                         <div className="flex items-center text-gray-300 text-sm">
-                                                            <i className="fas fa-map-marker-alt text-yellow-500 mr-3 w-4"></i>
-                                                            {event.location}
+                                                            <i className="fas fa-map-marker-alt text-yellow-500 mr-3 w-4 shrink-0"></i>
+                                                            <span className="truncate">{event.location}</span>
                                                         </div>
                                                         <div className="flex items-center text-gray-300 text-sm">
-                                                            <i className="fas fa-clock text-yellow-500 mr-3 w-4"></i>
-                                                            {event.time}
+                                                            <i className="fas fa-clock text-yellow-500 mr-3 w-4 shrink-0"></i>
+                                                            <span>{formatEventTimeForDisplay(event.time)}</span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center justify-between pt-4 border-t border-yellow-500/20">
+                                                    <div className="flex items-center justify-between pt-4 border-t border-yellow-500/20 mt-auto">
                                                         <div className="flex flex-col">
                                                             <span className="text-sm text-gray-400">A partir de</span>
                                                             <span className="text-2xl font-bold text-yellow-500">

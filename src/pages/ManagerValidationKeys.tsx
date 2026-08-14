@@ -23,6 +23,7 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { useCompanyPlanFeatures } from '@/hooks/use-company-plan-features';
 import { isPlanFeatureEnabled } from '@/constants/plan-features';
 import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
+import ManagerScreenHelpButton from '@/components/ManagerScreenHelpButton';
 
 export type ValidationKeyPurpose = 'entry_exit' | 'consumption_delivery';
 
@@ -529,15 +530,23 @@ const ManagerValidationKeys: React.FC = () => {
 
     return (
         <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between mb-8">
-                <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
-                    <Key className="h-7 w-7 mr-3" />
-                    Chaves de Acesso para Validação
-                </h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-3">
+                <div className="space-y-2">
+                    <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
+                        <Key className="h-7 w-7 mr-3" />
+                        Chaves de Acesso para Validação
+                    </h1>
+                    <ManagerScreenHelpButton
+                        guideId="validation-keys"
+                        label="Como preencher"
+                        showLink
+                        linkLabel="Para que serve esta tela?"
+                    />
+                </div>
                 <Button 
                     onClick={() => navigate('/manager/dashboard')}
                     variant="outline"
-                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm shrink-0"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar para o Dashboard
@@ -822,18 +831,21 @@ const ManagerValidationKeys: React.FC = () => {
             </Card>
 
             {/* Dialog de Criação */}
-            <Dialog open={showCreateDialog} onOpenChange={() => {
-                // Não permite fechar ao clicar fora ou pressionar ESC
-                // Só fecha quando o botão Cancelar for clicado
-            }}>
-                <DialogContent 
+            <Dialog
+                open={showCreateDialog}
+                onOpenChange={(open) => {
+                    setShowCreateDialog(open);
+                    if (!open) {
+                        setNewKeyName('');
+                        setNewKeyEventId('');
+                        setNewKeyExpiresAt('');
+                    }
+                }}
+            >
+                <DialogContent
                     className="bg-black border border-yellow-500/30 text-white max-w-md"
                     onInteractOutside={(e) => {
-                        // Previne o fechamento ao clicar fora
-                        e.preventDefault();
-                    }}
-                    onEscapeKeyDown={(e) => {
-                        // Previne o fechamento com ESC
+                        // Evita fechar por clique acidental fora (X e Cancelar fecham normalmente)
                         e.preventDefault();
                     }}
                 >
@@ -971,9 +983,10 @@ const ManagerValidationKeys: React.FC = () => {
                     </div>
                     <DialogFooter>
                         <Button
-                        variant="outline"
-                        onClick={() => setShowCreateDialog(false)}
-                        className="bg-black/60 border-yellow-500/30 text-yellow-500"
+                            type="button"
+                            variant="outline"
+                            onClick={() => setShowCreateDialog(false)}
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                         >
                             Cancelar
                         </Button>

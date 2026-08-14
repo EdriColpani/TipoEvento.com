@@ -78,7 +78,7 @@ const ReportCard: React.FC<ReportCardProps> = ({
                 type="button"
                 title="Como funciona este relatório"
                 aria-label={`Ajuda: ${title}`}
-                className="absolute top-4 right-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-yellow-500/40 bg-black/80 text-yellow-500 hover:bg-yellow-500/15 hover:text-yellow-400"
+                className="absolute top-4 right-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-cyan-500/40 bg-black/80 text-cyan-400 hover:bg-cyan-500/15 hover:text-cyan-300"
                 onClick={(e) => {
                     e.stopPropagation();
                     onHelp(guideId);
@@ -102,7 +102,7 @@ const ReportCard: React.FC<ReportCardProps> = ({
                     <span
                         role="link"
                         tabIndex={0}
-                        className="mt-3 inline-flex items-center gap-1 text-xs text-yellow-500/90 hover:text-yellow-400 underline-offset-2 hover:underline"
+                        className="mt-3 inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 underline-offset-2 hover:underline"
                         onClick={(e) => {
                             e.stopPropagation();
                             onHelp?.(guideId);
@@ -480,7 +480,7 @@ const ManagerReports: React.FC = () => {
                         type="button"
                         variant="outline"
                         onClick={() => openGuide()}
-                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 text-sm"
+                        className="bg-black/60 border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300 text-sm"
                     >
                         <CircleHelp className="mr-2 h-4 w-4" />
                         Guia dos relatórios
@@ -500,7 +500,7 @@ const ManagerReports: React.FC = () => {
                 Cada card abre o relatório. Use o{' '}
                 <button
                     type="button"
-                    className="text-yellow-500 hover:text-yellow-400 underline-offset-2 hover:underline"
+                    className="text-cyan-400 hover:text-cyan-300 underline-offset-2 hover:underline"
                     onClick={() => openGuide()}
                 >
                     Guia dos relatórios

@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { restGet } from '@/utils/supabase-rest';
 import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
 import { showError, showSuccess } from '@/utils/toast';
-import { formatEventDateForDisplay } from '@/utils/format-event-date';
+import { formatEventDateForDisplay, formatEventTimeForDisplay } from '@/utils/format-event-date';
 import { isEventOpenForNewSales } from '@/utils/event-sales-window';
 import { Loader2 } from 'lucide-react';
 
@@ -388,7 +388,7 @@ const EventInscriptionPage: React.FC = () => {
                                     {event.title}
                                 </h1>
                                 <p className="text-gray-300 text-xs mt-1 line-clamp-2">
-                                    {formatEventDateForDisplay(event.date) || event.date} · {event.time}
+                                    {formatEventDateForDisplay(event.date) || event.date} · {formatEventTimeForDisplay(event.time)}
                                     {event.location ? ` · ${event.location}` : ''}
                                 </p>
                             </div>

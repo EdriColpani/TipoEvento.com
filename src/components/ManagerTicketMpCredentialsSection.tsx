@@ -191,7 +191,7 @@ const ManagerTicketMpCredentialsSection: React.FC<ManagerTicketMpCredentialsSect
                             type="button"
                             variant="outline"
                             onClick={handleDisconnect}
-                            className="border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                         >
                             <Unlink className="h-4 w-4 mr-2" />
                             Desconectar
@@ -199,9 +199,9 @@ const ManagerTicketMpCredentialsSection: React.FC<ManagerTicketMpCredentialsSect
                     )}
                     <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         onClick={() => setShowManual((v) => !v)}
-                        className="text-gray-400 hover:text-white"
+                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                     >
                         {showManual ? 'Ocultar token manual' : 'Usar token manual (avançado)'}
                     </Button>
@@ -251,7 +251,7 @@ const ManagerTicketMpCredentialsSection: React.FC<ManagerTicketMpCredentialsSect
                             onClick={handleSaveManual}
                             disabled={saving}
                             variant="outline"
-                            className="border-yellow-500/40 text-yellow-500"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                         >
                             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar token manual'}
                         </Button>

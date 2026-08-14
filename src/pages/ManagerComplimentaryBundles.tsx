@@ -40,6 +40,11 @@ import {
 const MANAGER_FIELD_CLASS =
     'bg-black/60 border-yellow-500/30 text-white placeholder:text-gray-500 focus:border-yellow-500 focus-visible:ring-yellow-500/30';
 
+/** Outline legível no tema escuro (evita fundo branco do shadcn). */
+const OUTLINE_BTN =
+    'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400';
+const PRIMARY_BTN = 'bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50';
+
 const statusLabel: Record<string, string> = {
     active: 'Ativo',
     expired: 'Expirado',
@@ -261,7 +266,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
         return (
             <div className="max-w-4xl mx-auto py-10">
                 <p className="text-gray-300">Pacotes cortesia disponíveis apenas em eventos pagos com lotes configurados.</p>
-                <Button className="mt-4" variant="outline" onClick={() => navigate('/manager/events')}>
+                <Button className={`mt-4 ${OUTLINE_BTN}`} variant="outline" onClick={() => navigate('/manager/events')}>
                     Voltar
                 </Button>
             </div>
@@ -288,7 +293,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
                 </div>
                 <Button
                     variant="outline"
-                    className="border-cyan-500/30 text-cyan-300 shrink-0"
+                    className={`${OUTLINE_BTN} shrink-0`}
                     onClick={() => navigate('/manager/reports/complimentary-bundles')}
                 >
                     Ver relatório
@@ -306,8 +311,9 @@ const ManagerComplimentaryBundles: React.FC = () => {
                 <CardContent>
                     {freeBatches.length === 0 ? (
                         <p className="text-amber-300 text-sm rounded-lg border border-amber-500/30 bg-amber-950/30 p-4">
-                            Nenhum lote gratuito com estoque disponível. Cadastre um lote com preço R$ 0,00 (ex.: Staff) na
-                            edição do evento.
+                            Nenhum lote gratuito com estoque disponível. Na edição do evento, adicione um lote e
+                            marque <strong className="text-amber-100">“Lote cortesia / gratuito”</strong> (preço
+                            R$ 0,00). O nome do lote pode ser qualquer um.
                         </p>
                     ) : (
                         <form onSubmit={handleCreate} className="space-y-4 [&_label]:text-gray-200">
@@ -390,7 +396,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
                             <Button
                                 type="submit"
                                 disabled={isCreating}
-                                className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                className={PRIMARY_BTN}
                             >
                                 {isCreating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                                 Criar pacote e copiar link
@@ -444,7 +450,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-red-500/40 text-red-400 hover:bg-red-950/30"
+                                                className="bg-black/60 border border-red-500/40 text-red-400 hover:bg-red-950/30 hover:text-red-300"
                                                 onClick={() => void handleCancel(bundle.id)}
                                             >
                                                 <Trash2 className="h-4 w-4 mr-1" />
@@ -457,7 +463,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/30"
+                                                className={OUTLINE_BTN}
                                                 onClick={() => void handleResetHolder(bundle)}
                                             >
                                                 Liberar vínculo
@@ -466,7 +472,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            className="border-yellow-500/30 text-yellow-500"
+                                            className={OUTLINE_BTN}
                                             onClick={() => void copyText(link, 'Link do pacote')}
                                         >
                                             <Copy className="h-4 w-4 mr-1" />
@@ -475,7 +481,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            className="border-green-500/30 text-green-400"
+                                            className={OUTLINE_BTN}
                                             onClick={() => void copyText(whatsapp, 'Mensagem WhatsApp')}
                                         >
                                             <MessageCircle className="h-4 w-4 mr-1" />
@@ -485,7 +491,7 @@ const ManagerComplimentaryBundles: React.FC = () => {
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-cyan-500/30 text-cyan-300"
+                                                className={OUTLINE_BTN}
                                                 onClick={() => void sendBundleEmail(bundle)}
                                             >
                                                 <Mail className="h-4 w-4 mr-1" />

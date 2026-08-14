@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -29,11 +29,33 @@ const EventLocationFormFields: React.FC = () => {
   const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
   const [geocoding, setGeocoding] = useState(false);
   const [mapsAuthBlocked, setMapsAuthBlocked] = useState(false);
+  /** Endereço que gerou as coordenadas atuais — se o texto divergir, limpa lat/lng. */
+  const pinnedAddressRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isGoogleMapsConfigured()) return;
     return subscribeGoogleMapsAuthFailure(setMapsAuthBlocked);
   }, []);
+
+  // Quando lat/lng mudam (place select / confirmar no mapa / load do evento), “fixa” o endereço.
+  useEffect(() => {
+    if (hasCoords) {
+      pinnedAddressRef.current = (getValues('address') ?? '').trim();
+      return;
+    }
+    pinnedAddressRef.current = null;
+  }, [hasCoords, lat, lng, getValues]);
+
+  // Digitar outro endereço com coords antigas → limpa geo para o mapa seguir o texto novo.
+  useEffect(() => {
+    if (!hasCoords || pinnedAddressRef.current == null) return;
+    const current = (address ?? '').trim();
+    if (current !== pinnedAddressRef.current) {
+      setValue('address_lat', null, { shouldDirty: true });
+      setValue('address_lng', null, { shouldDirty: true });
+      setValue('address_place_id', null, { shouldDirty: true });
+    }
+  }, [address, hasCoords, setValue]);
 
   const clearGeo = () => {
     setValue('address_lat', null, { shouldDirty: true });

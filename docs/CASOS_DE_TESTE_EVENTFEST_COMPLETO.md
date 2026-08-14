@@ -4,13 +4,6 @@
 **Versão do documento:** 1.0  
 **Objetivo:** cobrir de ponta a ponta os fluxos de negócio da plataforma EventFest para homologação, regressão e go-live.
 
-**Relacionado:**
-- [CHECKLIST_QA_GO_LIVE_30MIN.md](./CHECKLIST_QA_GO_LIVE_30MIN.md) — smoke rápido
-- [CHECKLIST_HOMOLOGACAO_CREDITOS.md](./CHECKLIST_HOMOLOGACAO_CREDITOS.md) — créditos E2E
-- [EMPRESA_PARCEIRA.md](./EMPRESA_PARCEIRA.md) — parceiros consumo
-- [CHECKLIST_TESTES_ANTI_FRAUDE.md](./CHECKLIST_TESTES_ANTI_FRAUDE.md) — inatividade ingressos
-- [.cursor/rules/ticket-only-chargeback.mdc](../.cursor/rules/ticket-only-chargeback.mdc) — chargeback ingresso
-
 **Legenda de prioridade**
 
 | Sigla | Significado |
@@ -55,19 +48,6 @@ Para testes “app”, usar:
 - **Mobile:** Chrome Android / Safari iOS ou DevTools modo responsivo
 - **PWA:** instalar carteira conforme [WALLET_INSTALAR_CELULAR.md](./WALLET_INSTALAR_CELULAR.md)
 
-### 1.3 Planos comerciais (referência)
-
-| Código | Nome | Venda ingressos | Consumo crédito | Mensalidade |
-|--------|------|:---:|:---:|:---:|
-| `listing_monthly` | Divulgação / vitrine | — | — | Sim (MP) |
-| `ticket_commission` | % sobre ingressos | Sim | Opcional* | — |
-| `ticket_plus_consumption` | Ingresso + consumo | Sim | Sim | — |
-| `consumption_or_license` | Consumo / licença | — | Sim (pós-licença) | Licença MP |
-| **Empresa parceira** (`company_kind: partner`) | Só consumo na rede | — | Sim | Licença MP |
-
-\*Módulo consumo em `ticket_commission` depende de `consumption_module_enabled` no admin.
-
----
 
 ## 2. Pré-requisitos e ambiente
 
@@ -78,19 +58,6 @@ Para testes “app”, usar:
 - [ ] Edge Functions críticas deployadas (MP webhook, checkout, validate-ticket, credit-spend)
 - [ ] `SITE_URL` e webhook Mercado Pago configurados
 - [ ] Modo pré-lançamento definido (`preview` ou `live`) em `/admin/settings/public-launch`
-
-### 2.2 Contas de teste sugeridas
-
-| Persona | Papel | Uso |
-|---------|-------|-----|
-| `cliente+qa@...` | Cliente (`tipo_usuario_id = 3`) | Compras, carteira, ingressos |
-| `gestor-vitrine@...` | Gestor plano divulgação | Eventos gratuitos, inscrições |
-| `gestor-ingresso@...` | Gestor plano ingressos | Lotes, MP OAuth, validação |
-| `gestor-hibrido@...` | Gestor ingresso + consumo | Carteira no evento, PDV |
-| `gestor-licenca@...` | Gestor consumo/licença | Licença mensal, estabelecimentos |
-| `parceiro@...` | Empresa parceira | PDV cross-evento |
-| `admin@...` | Admin Master | Configurações, relatórios rede |
-| `operador-pdv@...` | Operador PDV | Menu restrito |
 
 ### 2.3 Dados auxiliares
 

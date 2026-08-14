@@ -58,7 +58,13 @@ export function parseBatchPriceBr(value: string | number | null | undefined): nu
     return Math.round(n * 100) / 100;
 }
 
-export function isValidBatchPriceBr(value: string | number | null | undefined): boolean {
+export function isValidBatchPriceBr(
+    value: string | number | null | undefined,
+    options?: { allowZero?: boolean },
+): boolean {
     const n = parseBatchPriceBr(value);
-    return n != null && n > 0;
+    if (n == null) return false;
+    if (options?.allowZero) return n >= 0;
+    return n > 0;
 }
+

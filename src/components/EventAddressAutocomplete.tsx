@@ -58,7 +58,8 @@ const GooglePlacesAddressInput: React.FC<GooglePlacesAddressInputProps> = ({
   inputClassName,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const lastSelectedRef = useRef<string | null>(null);
+  // Ao editar evento, parte do endereço já salvo — qualquer alteração limpa lat/lng.
+  const lastSelectedRef = useRef<string | null>(initialValue?.trim() || null);
   const onChangeRef = useRef(onChange);
   const onPlaceSelectRef = useRef(onPlaceSelect);
   const onGeoClearRef = useRef(onGeoClear);
@@ -198,7 +199,7 @@ const EventAddressAutocomplete: React.FC<EventAddressAutocompleteProps> = ({
 }) => {
   const mapsConfigured = isGoogleMapsConfigured();
   const [mode, setMode] = useState<AddressInputMode>(() => (mapsConfigured ? 'manual' : 'manual'));
-  const lastSelectedRef = useRef<string | null>(null);
+  const lastSelectedRef = useRef<string | null>(value?.trim() || null);
 
   const inputClass =
     inputClassName ??

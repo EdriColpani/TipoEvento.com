@@ -17,6 +17,7 @@ import { companyAllowsTicketSales, DEFAULT_MIN_EVENT_TICKETS } from '@/utils/com
 import { validateEventTicketMinimumOnIssue } from '@/utils/min-event-tickets-validation';
 import EventBatchInventoryConsultPanel from '@/components/EventBatchInventoryConsultPanel';
 import EventActivationReminderBanner from '@/components/EventActivationReminderBanner';
+import ManagerScreenHelpButton from '@/components/ManagerScreenHelpButton';
 
 interface WristbandFormData {
     eventId: string;
@@ -375,15 +376,23 @@ const ManagerCreateWristband: React.FC = () => {
 
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-0">
-            <div className="flex items-center justify-between mb-8">
-                <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
-                    <QrCode className="h-7 w-7 mr-3" />
-                    Cadastro de Ingresso
-                </h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-3">
+                <div className="space-y-2">
+                    <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
+                        <QrCode className="h-7 w-7 mr-3" />
+                        Cadastro de Ingresso
+                    </h1>
+                    <ManagerScreenHelpButton
+                        guideId="wristband-create"
+                        label="Como preencher"
+                        showLink
+                        linkLabel="Para que serve esta tela?"
+                    />
+                </div>
                 <Button 
                     onClick={() => navigate('/manager/wristbands')}
                     variant="outline"
-                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 text-sm shrink-0"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar para a Lista
