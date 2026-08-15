@@ -2,9 +2,6 @@ import React, { useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import AuthStatusMenu from '@/components/AuthStatusMenu';
-import { Input } from '@/components/ui/input';
 import { useEventDetails, EventDetailsData, TicketType } from '@/hooks/use-event-details';
 import { Check, Loader2, ShoppingCart, Wallet } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -339,7 +336,7 @@ const EventDetails: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-black text-white flex items-center justify-center pt-20">
+            <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
             </div>
         );
@@ -347,7 +344,7 @@ const EventDetails: React.FC = () => {
 
     if (isError || !details) {
         return (
-            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center pt-20 px-4">
+            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-4">
                 <h1 className="text-4xl font-serif text-red-500 mb-4">Erro 404</h1>
                 <p className="text-xl text-gray-400 mb-6">Evento não encontrado ou indisponível.</p>
                 <Button onClick={() => navigate('/')} className="bg-yellow-500 text-black hover:bg-yellow-600">
@@ -371,121 +368,94 @@ const EventDetails: React.FC = () => {
     const bannerImageUrl = event.banner_image_url || event.image_url;
 
     return (
-        <div className="min-h-screen bg-black text-white overflow-x-hidden">
-            <header className="fixed top-0 left-0 right-0 z-[100] bg-black/80 backdrop-blur-md border-b border-yellow-500/20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center space-x-4 sm:space-x-8">
-                        <div className="text-xl sm:text-2xl font-serif text-yellow-500 font-bold cursor-pointer" onClick={() => navigate('/')}>
-                            EventFest
-                        </div>
-                        <nav className="hidden md:flex items-center space-x-8">
-                            <button onClick={() => navigate('/')} className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Home</button>
-                            <a href="/#eventos" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Eventos</a>
-                            <a href="/#categorias" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Categorias</a>
-                            <a href="/#contato" className="text-white hover:text-yellow-500 transition-colors duration-300 cursor-pointer">Contato</a>
-                        </nav>
-                    </div>
-                    <div className="flex items-center space-x-3 sm:space-x-4">
-                        <div className="relative hidden lg:block">
-                            <Input 
-                                type="search" 
-                                placeholder="Buscar eventos..." 
-                                className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 w-64 pl-4 pr-10 py-2 rounded-xl"
-                            />
-                            <i className="fas fa-search absolute right-4 top-1/2 transform -translate-y-1/2 text-yellow-500/60"></i>
-                        </div>
-                        <AuthStatusMenu />
-                        <Button onClick={() => navigate('/')} className="border border-yellow-500 bg-transparent text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all duration-300 cursor-pointer px-3 sm:px-4">
-                            Voltar
-                        </Button>
-                    </div>
-                </div>
-            </header>
+        <div className="min-h-screen bg-black text-white">
             {salesClosed && (
                 <div
                     role="status"
-                    className="fixed top-[4.25rem] left-0 right-0 z-[95] bg-orange-950/95 border-b border-orange-500/50 px-4 py-2.5 text-center text-sm text-orange-100"
+                    className="bg-orange-950/95 border-b border-orange-500/50 px-4 py-2.5 text-center text-sm text-orange-100"
                 >
                     {salesClosedInactive
                         ? 'Este evento foi desativado pelo organizador e não está aceitando novas compras de ingressos.'
                         : 'O prazo para compra de ingressos deste evento foi encerrado (início do evento).'}
                 </div>
             )}
-            <section className={`${salesClosed ? 'pt-32' : 'pt-20'} pb-0 flex justify-center`}>
-                <div className="relative w-full max-w-5xl min-h-[380px] sm:min-h-[440px] overflow-hidden rounded-xl shadow-2xl shadow-yellow-500/20 mx-4 sm:mx-6">
+            <section className="pb-0 flex justify-center">
+                <div className="relative w-full max-w-5xl h-[500px] overflow-hidden rounded-xl shadow-2xl shadow-yellow-500/20 mx-4 sm:mx-6">
                     <img
                         src={bannerImageUrl}
                         alt={event.title}
-                        className="absolute inset-0 w-full h-full object-cover object-top"
+                        className="w-full h-full object-cover object-top"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-black/40"></div>
-                    <div className="relative z-10 flex min-h-[380px] sm:min-h-[440px] flex-col justify-end p-4 sm:p-6 lg:p-8">
-                        <div className="max-w-3xl w-full space-y-3 sm:space-y-4">
-                            <div className="inline-block bg-yellow-500 text-black px-3 py-1 rounded-full text-xs sm:text-sm font-semibold">
-                                {event.category}
-                            </div>
-                            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-serif text-white leading-tight line-clamp-3 break-words">
-                                {event.title}
-                            </h1>
-                            <p className="text-sm sm:text-base text-gray-200 leading-relaxed line-clamp-2 break-words">
-                                {event.description}
-                            </p>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                                <div className="flex items-start min-w-0">
-                                    <i className="fas fa-calendar-alt text-yellow-500 text-lg sm:text-xl mr-3 mt-0.5 shrink-0"></i>
-                                    <div className="min-w-0">
-                                        <div className="text-xs text-gray-400">Data</div>
-                                        <div className="text-sm sm:text-base font-semibold text-white truncate">
-                                            {formatEventDateForDisplay(event.date) || '—'}
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/40"></div>
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full px-4 sm:px-6">
+                            <div className="max-w-full lg:max-w-3xl">
+                                <div className="inline-block bg-yellow-500 text-black px-3 py-1 rounded-full text-xs sm:text-sm font-semibold mb-2 sm:mb-4">
+                                    {event.category}
+                                </div>
+                                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif text-white mb-3 sm:mb-6 leading-tight line-clamp-3 break-words">
+                                    {event.title}
+                                </h1>
+                                <p className="text-base sm:text-xl text-gray-200 mb-4 sm:mb-8 leading-relaxed line-clamp-3 break-words">
+                                    {event.description}
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+                                    <div className="flex items-center min-w-0">
+                                        <i className="fas fa-calendar-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4 shrink-0"></i>
+                                        <div className="min-w-0">
+                                            <div className="text-xs sm:text-sm text-gray-400">Data</div>
+                                            <div className="text-sm sm:text-lg font-semibold text-white truncate">
+                                                {formatEventDateForDisplay(event.date) || '—'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center min-w-0">
+                                        <i className="fas fa-clock text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4 shrink-0"></i>
+                                        <div className="min-w-0">
+                                            <div className="text-xs sm:text-sm text-gray-400">Horário</div>
+                                            <div className="text-sm sm:text-lg font-semibold text-white truncate">
+                                                {formatEventTimeForDisplay(event.time)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center min-w-0">
+                                        <i className="fas fa-map-marker-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4 shrink-0"></i>
+                                        <div className="min-w-0">
+                                            <div className="text-xs sm:text-sm text-gray-400">Local</div>
+                                            <div className="text-sm sm:text-lg font-semibold text-white truncate" title={event.location}>
+                                                {event.location}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex items-start min-w-0">
-                                    <i className="fas fa-clock text-yellow-500 text-lg sm:text-xl mr-3 mt-0.5 shrink-0"></i>
-                                    <div className="min-w-0">
-                                        <div className="text-xs text-gray-400">Horário</div>
-                                        <div className="text-sm sm:text-base font-semibold text-white truncate">
-                                            {formatEventTimeForDisplay(event.time)}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-start min-w-0">
-                                    <i className="fas fa-map-marker-alt text-yellow-500 text-lg sm:text-xl mr-3 mt-0.5 shrink-0"></i>
-                                    <div className="min-w-0">
-                                        <div className="text-xs text-gray-400">Local</div>
-                                        <div className="text-sm sm:text-base font-semibold text-white truncate" title={event.location}>
-                                            {event.location}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 pt-1">
-                                {isListingOnly ? (
-                                    <span className="text-lg sm:text-xl font-bold text-blue-400">
-                                        Evento em divulgação — sem venda de ingressos online
-                                    </span>
-                                ) : (
-                                    <>
-                                        <span className="text-xl sm:text-2xl font-bold text-yellow-500 shrink-0">
-                                            {event.min_price != null && event.min_price > 0
-                                                ? `A partir de ${minPriceDisplay}`
-                                                : minPriceDisplay}
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
+                                    {isListingOnly ? (
+                                        <span className="text-2xl sm:text-3xl font-bold text-blue-400">
+                                            Evento em divulgação — sem venda de ingressos online
                                         </span>
-                                        {queueBanner}
-                                        <Button
-                                            onClick={handleCheckout}
-                                            disabled={isProcessing || getTotalTickets() === 0 || salesClosed || checkoutBlockedByQueue}
-                                            className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
-                                        >
-                                            {isProcessing ? (
-                                                <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                                            ) : (
-                                                <ShoppingCart className="h-5 w-5 mr-2" />
-                                            )}
-                                            {isProcessing ? 'Processando...' : 'Comprar Ingressos'}
-                                        </Button>
-                                    </>
-                                )}
+                                    ) : (
+                                        <>
+                                            <span className="text-2xl sm:text-4xl font-bold text-yellow-500">
+                                                {event.min_price != null && event.min_price > 0
+                                                    ? `A partir de ${minPriceDisplay}`
+                                                    : minPriceDisplay}
+                                            </span>
+                                            {queueBanner}
+                                            <Button
+                                                onClick={handleCheckout}
+                                                disabled={isProcessing || getTotalTickets() === 0 || salesClosed || checkoutBlockedByQueue}
+                                                className="w-full sm:w-auto bg-yellow-500 text-black hover:bg-yellow-600 px-6 sm:px-8 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer hover:scale-105 disabled:opacity-50"
+                                            >
+                                                {isProcessing ? (
+                                                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                                                ) : (
+                                                    <ShoppingCart className="h-5 w-5 mr-2" />
+                                                )}
+                                                {isProcessing ? 'Processando...' : 'Comprar Ingressos'}
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -574,7 +544,7 @@ const EventDetails: React.FC = () => {
                             </div>
                         </div>
                         <div className="lg:col-span-1 order-1 lg:order-2">
-                            <div className="lg:sticky lg:top-24">
+                            <div className="lg:sticky lg:top-32 xl:top-36">
                                 <h2 className="text-2xl sm:text-3xl font-serif text-yellow-500 mb-4 sm:mb-6 min-h-[2.5rem] sm:min-h-[3rem] flex items-end">
                                     {isListingOnly ? 'Divulgação' : 'Selecionar Ingressos'}
                                 </h2>
