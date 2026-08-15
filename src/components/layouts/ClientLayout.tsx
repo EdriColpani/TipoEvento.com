@@ -8,6 +8,7 @@ import { LandingUiProvider, useLandingUi, useLandingUiOptional } from '@/context
 import LandingModals from '@/components/landing/LandingModals';
 import SiteLogo from '@/components/SiteLogo';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
     SITE_HEADER_BAR_CLASS,
     SITE_HEADER_MAIN_OFFSET_CLASS,
@@ -80,6 +81,7 @@ const ClientLayout: React.FC = () => {
     const location = useLocation();
     const { device, isMobile } = useDevice();
     const isInformacoesPage = location.pathname === '/informacoes';
+    const isEventDetailsPage = /^\/events\/[^/]+$/.test(location.pathname);
 
     useEffect(() => {
         document.documentElement.setAttribute('data-device', device);
@@ -102,9 +104,32 @@ const ClientLayout: React.FC = () => {
                         </nav>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
+                        {isEventDetailsPage && (
+                            <div className="relative hidden lg:block">
+                                <Input
+                                    type="search"
+                                    placeholder="Buscar eventos..."
+                                    className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 w-64 pl-4 pr-10 py-2 rounded-xl"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') navigate('/#eventos');
+                                    }}
+                                />
+                                <i className="fas fa-search absolute right-4 top-1/2 -translate-y-1/2 text-yellow-500/60 pointer-events-none"></i>
+                            </div>
+                        )}
                         <div className="hidden md:block">
                             <AuthStatusMenu />
                         </div>
+                        {isEventDetailsPage && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => navigate('/')}
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 px-3 sm:px-4"
+                            >
+                                Voltar
+                            </Button>
+                        )}
                         <MobileMenu />
                     </div>
                 </div>

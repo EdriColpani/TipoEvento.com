@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import {
     Select,
     SelectContent,
@@ -33,6 +34,10 @@ import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { useProfile } from '@/hooks/use-profile';
 import { showError, showSuccess } from '@/utils/toast';
 import { parseEventLocalDay } from '@/utils/format-event-date';
+import ComplimentaryReportBundleDetails, {
+    formatReportDateTime,
+    type ComplimentaryReportBundle,
+} from '@/components/ComplimentaryReportBundleDetails';
 
 const ADMIN_MASTER = 1;
 const MANAGER_PRO = 2;
@@ -142,10 +147,33 @@ const formatDate = (value: string | null | undefined) => {
     return d.toLocaleDateString('pt-BR');
 };
 
-const formatDateTime = (value: string | null | undefined) => {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('pt-BR');
-};
+function bundleStatusClass(status: string): string {
+    switch (status) {
+        case 'active':
+            return 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/30';
+        case 'fully_redeemed':
+            return 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30';
+        case 'expired':
+            return 'bg-black text-gray-200 border border-yellow-500/30';
+        case 'cancelled':
+            return 'bg-red-950/50 text-red-200 border border-red-500/30';
+        default:
+            return 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20';
+    }
+}
+
+function usageLabel(row: ComplimentaryReportBundle): string {
+    const seats = row.seats ?? [];
+    const cancelled = seats.filter((s) => s.status === 'cancelled').length;
+    const available = seats.filter((s) => s.status === 'available').length;
+    if (row.redeemed_count === 0 && cancelled === row.quantity) {
+        return `0 resgatados · ${cancelled} cancelados`;
+    }
+    if (available > 0) {
+        return `${row.redeemed_count} resgatados · ${available} livres`;
+    }
+    return `${row.redeemed_count}/${row.quantity} resgatados`;
+}
 
 const ManagerComplimentaryBundlesReport: React.FC = () => {
     const navigate = useNavigate();
@@ -191,9 +219,9 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
                     resgatado_por: seat.redeemer_name ?? '',
                     email_resgatante: seat.redeemer_email ?? '',
                     codigo_ingresso: seat.ticket_code ?? '',
-                    resgatado_em: seat.redeemed_at ? formatDateTime(seat.redeemed_at) : '',
-                    criado_em: formatDateTime(bundle.created_at),
-                    expira_em: formatDateTime(bundle.expires_at),
+                    resgatado_em: seat.redeemed_at ? formatReportDateTime(seat.redeemed_at) : '',
+                    criado_em: formatReportDateTime(bundle.created_at),
+                    expira_em: formatReportDateTime(bundle.expires_at),
                 });
             }
         }
@@ -288,11 +316,11 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
                         { label: 'Ativos', value: summary.active_bundles },
                         { label: 'Ingressos no total', value: summary.total_seats },
                         { label: 'Resgatados', value: summary.redeemed_seats },
-                        { label: 'Pendentes', value: summary.pending_seats },
+                        { label: 'Não resgatados', value: summary.pending_seats },
                     ].map((item) => (
-                        <Card key={item.label} className="bg-black border border-yellow-500/20">
+                        <Card key={item.label} className="bg-black border border-yellow-500/30">
                             <CardContent className="p-4">
-                                <p className="text-xs text-gray-500">{item.label}</p>
+                                <p className="text-xs text-gray-400">{item.label}</p>
                                 <p className="text-xl font-semibold text-white tabular-nums">
                                     {item.value.toLocaleString('pt-BR')}
                                 </p>
@@ -352,7 +380,8 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
                 <CardHeader>
                     <CardTitle className="text-white">Detalhamento</CardTitle>
                     <CardDescription className="text-gray-400">
-                        Clique em um pacote para ver cada ingresso e quem resgatou.
+                        Uso de cada pacote: quem recebeu, se abriu o link, se o e-mail saiu e quais ingressos foram
+                        resgatados. Clique na linha para abrir o detalhe.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -368,14 +397,15 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
                         <div className="overflow-x-auto">
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="border-yellow-500/20">
-                                        <TableHead className="w-8" />
-                                        <TableHead>Evento</TableHead>
-                                        <TableHead>Destinatário</TableHead>
-                                        <TableHead>Lote</TableHead>
-                                        <TableHead className="text-center">Ingressos</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Validade</TableHead>
+                                    <TableRow className="border-yellow-500/20 hover:bg-transparent">
+                                        <TableHead className="w-8 text-gray-400" />
+                                        <TableHead className="text-gray-400">Evento</TableHead>
+                                        <TableHead className="text-gray-400">Destinatário</TableHead>
+                                        <TableHead className="text-gray-400">Lote</TableHead>
+                                        <TableHead className="text-gray-400">Uso</TableHead>
+                                        <TableHead className="text-gray-400">E-mail / acesso</TableHead>
+                                        <TableHead className="text-gray-400">Status</TableHead>
+                                        <TableHead className="text-gray-400">Validade</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -384,7 +414,10 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
                                         return (
                                             <React.Fragment key={row.bundle_id}>
                                                 <TableRow
-                                                    className="border-yellow-500/10 cursor-pointer hover:bg-black/40"
+                                                    className={cn(
+                                                        'border-yellow-500/10 cursor-pointer hover:bg-yellow-500/5',
+                                                        expanded && 'bg-yellow-500/5',
+                                                    )}
                                                     onClick={() =>
                                                         setExpandedBundleId(expanded ? null : row.bundle_id)
                                                     }
@@ -403,93 +436,50 @@ const ManagerComplimentaryBundlesReport: React.FC = () => {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <div className="text-sm text-gray-200">{row.recipient_name}</div>
+                                                        <div className="text-sm text-white">{row.recipient_name}</div>
                                                         <div className="text-xs text-gray-500">
-                                                            {row.recipient_email ?? '—'}
+                                                            {row.recipient_email ?? 'Sem e-mail'}
                                                         </div>
-                                                        {row.holder_claimed && (
-                                                            <div className="text-[10px] text-cyan-400 mt-0.5">
-                                                                Destinatário acessou
-                                                            </div>
-                                                        )}
                                                     </TableCell>
-                                                    <TableCell className="text-yellow-500/90">{row.batch_name}</TableCell>
-                                                    <TableCell className="text-center tabular-nums text-sm">
-                                                        {row.redeemed_count}/{row.quantity}
+                                                    <TableCell className="text-yellow-500">{row.batch_name}</TableCell>
+                                                    <TableCell className="text-sm text-white">
+                                                        <div className="font-semibold tabular-nums">
+                                                            {row.redeemed_count}/{row.quantity} resgatados
+                                                        </div>
+                                                        <div className="text-xs text-gray-400">{usageLabel(row)}</div>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-gray-300">
+                                                        <div>
+                                                            {row.email_sent_at
+                                                                ? 'E-mail enviado'
+                                                                : row.recipient_email
+                                                                  ? 'E-mail não enviado'
+                                                                  : 'Sem e-mail'}
+                                                        </div>
+                                                        <div className="text-yellow-500">
+                                                            {row.holder_claimed
+                                                                ? 'Destinatário acessou'
+                                                                : 'Link ainda não aberto'}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400">
+                                                        <span
+                                                            className={cn(
+                                                                'text-xs px-2 py-1 rounded-full',
+                                                                bundleStatusClass(row.status),
+                                                            )}
+                                                        >
                                                             {STATUS_LABELS[row.status] ?? row.status}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="text-xs text-gray-400">
-                                                        {formatDateTime(row.expires_at)}
+                                                        {formatReportDateTime(row.expires_at)}
                                                     </TableCell>
                                                 </TableRow>
                                                 {expanded && (
-                                                    <TableRow className="border-yellow-500/10 bg-black/30">
-                                                        <TableCell colSpan={7} className="p-0">
-                                                            <div className="p-4 space-y-2">
-                                                                <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-3">
-                                                                    <span>Criado: {formatDateTime(row.created_at)}</span>
-                                                                    {row.email_sent_at && (
-                                                                        <span>E-mail: {formatDateTime(row.email_sent_at)}</span>
-                                                                    )}
-                                                                    {row.notes && <span>Obs.: {row.notes}</span>}
-                                                                </div>
-                                                                <Table>
-                                                                    <TableHeader>
-                                                                        <TableRow className="border-yellow-500/10">
-                                                                            <TableHead className="text-xs">Nº</TableHead>
-                                                                            <TableHead className="text-xs">Status</TableHead>
-                                                                            <TableHead className="text-xs">Resgatante</TableHead>
-                                                                            <TableHead className="text-xs">Código</TableHead>
-                                                                            <TableHead className="text-xs">Resgatado em</TableHead>
-                                                                        </TableRow>
-                                                                    </TableHeader>
-                                                                    <TableBody>
-                                                                        {(row.seats ?? []).map((seat) => (
-                                                                            <TableRow
-                                                                                key={seat.seat_number}
-                                                                                className="border-yellow-500/5"
-                                                                            >
-                                                                                <TableCell className="text-xs">
-                                                                                    {seat.seat_number}
-                                                                                </TableCell>
-                                                                                <TableCell className="text-xs">
-                                                                                    {SEAT_STATUS_LABELS[seat.status] ??
-                                                                                        seat.status}
-                                                                                </TableCell>
-                                                                                <TableCell className="text-xs">
-                                                                                    <div>{seat.redeemer_name ?? '—'}</div>
-                                                                                    <div className="text-gray-500">
-                                                                                        {seat.redeemer_email ?? ''}
-                                                                                    </div>
-                                                                                </TableCell>
-                                                                                <TableCell className="text-xs font-mono text-yellow-500/80">
-                                                                                    {seat.ticket_code ?? '—'}
-                                                                                </TableCell>
-                                                                                <TableCell className="text-xs text-gray-400">
-                                                                                    {formatDateTime(seat.redeemed_at)}
-                                                                                </TableCell>
-                                                                            </TableRow>
-                                                                        ))}
-                                                                    </TableBody>
-                                                                </Table>
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    className="border-cyan-500/30 text-cyan-300"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        navigate(
-                                                                            `/manager/events/${row.event_id}/cortesias`,
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    Gerenciar pacotes deste evento
-                                                                </Button>
-                                                            </div>
+                                                    <TableRow className="border-yellow-500/10 hover:bg-transparent">
+                                                        <TableCell colSpan={8} className="p-0 bg-black">
+                                                            <ComplimentaryReportBundleDetails row={row} />
                                                         </TableCell>
                                                     </TableRow>
                                                 )}
