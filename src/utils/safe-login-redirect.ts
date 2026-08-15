@@ -19,6 +19,27 @@ export function resolveClientPostLoginPath(fromUnknown: unknown): string {
     return path || '/';
 }
 
+/**
+ * State do React Router ao abrir /login.
+ * Home (`/`) não entra como retorno — senão o /login redireciona de volta à landing.
+ */
+export function buildLoginLocationState(
+    pathname: string,
+    search = '',
+): { from: string } | undefined {
+    const path = pathname.trim() || '/';
+    if (
+        path === '/' ||
+        path === '/login' ||
+        path === '/register' ||
+        path === '/forgot-password' ||
+        path === '/reset-password'
+    ) {
+        return undefined;
+    }
+    return { from: `${path}${search}` };
+}
+
 /** Cadastro gestor pendente após confirmação de e-mail (visitante → login → empresa). */
 export function resolvePendingManagerRegistrationPath(fromUnknown: unknown): string | null {
     if (typeof fromUnknown !== 'string') return null;

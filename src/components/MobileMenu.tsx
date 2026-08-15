@@ -12,6 +12,7 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useLandingUiOptional } from '@/contexts/LandingUiContext';
 import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
 import { MANAGER_TERMS_REGISTER_PATH } from '@/utils/promoter-registration-flow';
+import { buildLoginLocationState } from '@/utils/safe-login-redirect';
 
 const MANAGER_USER_TYPE_ID = 2;
 
@@ -60,10 +61,11 @@ const MobileMenu: React.FC = () => {
               { path: '/#contato', label: 'Contato', icon: 'fas fa-envelope' },
           ];
 
-    const handleNavigation = (path: string, loginReturnTo?: string) => {
+    const handleNavigation = (path: string) => {
         setIsOpen(false);
-        if (path === '/login' && loginReturnTo !== undefined) {
-            navigate(path, { state: { from: loginReturnTo } });
+        if (path === '/login') {
+            const state = buildLoginLocationState(location.pathname, location.search);
+            navigate(path, state ? { state } : undefined);
             return;
         }
         navigate(path);
@@ -203,12 +205,7 @@ const MobileMenu: React.FC = () => {
                     ) : (
                         <div className="space-y-4">
                             <Button
-                                onClick={() =>
-                                    handleNavigation(
-                                        '/login',
-                                        `${location.pathname}${location.search}`,
-                                    )
-                                }
+                                onClick={() => handleNavigation('/login')}
                                 className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-lg font-semibold"
                             >
                                 Login

@@ -636,7 +636,7 @@ const ManagerValidationKeys: React.FC = () => {
                                                             size="sm"
                                                             variant="ghost"
                                                             onClick={async () => await copyToClipboard(apiKeyToShow)}
-                                                            className="h-6 w-6 p-0 text-yellow-500 hover:text-yellow-400 flex-shrink-0"
+                                                            className="h-6 w-6 p-0 bg-transparent text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 flex-shrink-0"
                                                             title="Copiar chave"
                                                         >
                                                             <Copy className="h-3 w-3" />
@@ -651,7 +651,7 @@ const ManagerValidationKeys: React.FC = () => {
                                                             size="sm"
                                                             variant="ghost"
                                                             onClick={() => setRevealedKeys(new Set([...revealedKeys, key.id]))}
-                                                            className="h-6 text-xs text-yellow-500 hover:text-yellow-400"
+                                                            className="h-6 text-xs bg-transparent text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                                             title="Mostrar chave"
                                                         >
                                                             <Eye className="h-3 w-3 mr-1" />
@@ -770,7 +770,7 @@ const ManagerValidationKeys: React.FC = () => {
                                                             size="sm"
                                                             variant="ghost"
                                                             onClick={() => setRevealedKeys(new Set([...revealedKeys, key.id]))}
-                                                            className="h-8 text-yellow-500 hover:text-yellow-400"
+                                                            className="h-8 bg-transparent text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                                             title="Mostrar chave"
                                                         >
                                                             <Eye className="h-4 w-4" />
@@ -780,7 +780,7 @@ const ManagerValidationKeys: React.FC = () => {
                                                         size="sm"
                                                         variant="ghost"
                                                         onClick={() => handleEditKey(key)}
-                                                        className="h-8 text-yellow-500 hover:text-yellow-400"
+                                                        className="h-8 bg-transparent text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                                         title="Editar chave"
                                                     >
                                                         <Edit className="h-4 w-4" />
@@ -792,7 +792,7 @@ const ManagerValidationKeys: React.FC = () => {
                                                             setSelectedApiKeyId(key.id);
                                                             setShowLogsDialog(true);
                                                         }}
-                                                        className="h-8 text-blue-500 hover:text-blue-400"
+                                                        className="h-8 bg-transparent text-blue-400 hover:bg-yellow-500/10 hover:text-blue-300"
                                                         title="Ver logs"
                                                     >
                                                         <History className="h-4 w-4" />
@@ -801,10 +801,10 @@ const ManagerValidationKeys: React.FC = () => {
                                                         size="sm"
                                                         variant="ghost"
                                                         onClick={() => handleToggleActive(key.id, key.is_active)}
-                                                        className={`h-8 ${
+                                                        className={`h-8 bg-transparent ${
                                                             key.is_active
-                                                                ? 'text-red-500 hover:text-red-400'
-                                                                : 'text-green-500 hover:text-green-400'
+                                                                ? 'text-red-500 hover:bg-red-500/10 hover:text-red-400'
+                                                                : 'text-green-500 hover:bg-green-500/10 hover:text-green-400'
                                                         }`}
                                                         title={key.is_active ? 'Desativar' : 'Ativar'}
                                                     >
@@ -814,7 +814,7 @@ const ManagerValidationKeys: React.FC = () => {
                                                         size="sm"
                                                         variant="ghost"
                                                         onClick={() => handleDeleteKey(key.id)}
-                                                        className="h-8 text-red-500 hover:text-red-400"
+                                                        className="h-8 bg-transparent text-red-500 hover:bg-red-500/10 hover:text-red-400"
                                                         title="Excluir"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -1077,7 +1077,7 @@ const ManagerValidationKeys: React.FC = () => {
                                 setShowEditDialog(false);
                                 setEditingKey(null);
                             }}
-                            className="bg-black/60 border-yellow-500/30 text-yellow-500"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                         >
                             Cancelar
                         </Button>
