@@ -139,3 +139,10 @@ export function captureAuthUrlCallbackAtBoot(): AuthUrlCallback {
 export function getAuthUrlCallbackAtBoot(): AuthUrlCallback {
     return captureAuthUrlCallbackAtBoot();
 }
+
+/** Usa o snapshot uma vez (após tratar type=signup) para não reviver o fluxo no re-render. */
+export function consumeAuthUrlCallbackAtBoot(): AuthUrlCallback {
+    const current = captureAuthUrlCallbackAtBoot();
+    bootCallback = { ...EMPTY_CALLBACK };
+    return current;
+}

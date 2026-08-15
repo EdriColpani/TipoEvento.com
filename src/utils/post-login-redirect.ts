@@ -69,6 +69,16 @@ export async function resolvePostLoginRedirect(
 
     const userType = await fetchProfileTipoUsuarioIdResilient(userId);
     if (userType == null) {
+        const intent = String(
+            (user?.user_metadata as { account_intent?: unknown } | undefined)?.account_intent ?? '',
+        ).toLowerCase();
+        // Cadastro cliente recém-confirmado: o perfil pode atrasar um ciclo; não expulsar o login.
+        if (intent === 'client') {
+            return {
+                path: resolveClientPostLoginPath(returnTo),
+                message: 'Login de Cliente realizado com sucesso!',
+            };
+        }
         throw new Error('PROFILE_NOT_FOUND');
     }
 
