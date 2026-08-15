@@ -172,6 +172,9 @@ const Register: React.FC = () => {
 
             if (!registerResult.ok) {
                 showError(registerResult.message);
+                if (registerResult.message.toLowerCase().includes('faça login')) {
+                    window.setTimeout(() => navigate('/login'), 1800);
+                }
                 return;
             }
 
