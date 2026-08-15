@@ -37,6 +37,14 @@ export function fixActionLinkRedirect(actionLink: string, redirectTo: string): s
 
 export function translateGenerateLinkError(message: string): string {
   const lower = message.toLowerCase();
+  if (
+    lower.includes("already been registered") ||
+    lower.includes("already registered") ||
+    lower.includes("email_exists") ||
+    (lower.includes("already") && lower.includes("exists"))
+  ) {
+    return "Já existe uma conta com este e-mail. Faça login para continuar.";
+  }
   if (lower.includes("already") && lower.includes("confirmed")) {
     return "Este e-mail já foi confirmado. Faça login para continuar.";
   }
@@ -52,7 +60,7 @@ export function translateGenerateLinkError(message: string): string {
 export function translateCreateUserError(message: string): string {
   const lower = message.toLowerCase();
   if (lower.includes("already") && (lower.includes("registered") || lower.includes("exists"))) {
-    return "Já existe uma conta com este e-mail.";
+    return "Já existe uma conta com este e-mail. Faça login para continuar.";
   }
   if (lower.includes("password") && lower.includes("6")) {
     return "A senha deve ter no mínimo 6 caracteres.";
@@ -63,7 +71,37 @@ export function translateCreateUserError(message: string): string {
   return "Não foi possível criar a conta. Tente novamente.";
 }
 
-type LinkType = "signup" | "recovery";
+type LinkType = "signup" | "recovery" | "magiclink";
+
+function isEmailExistsError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("already been registered") ||
+    lower.includes("already registered") ||
+    lower.includes("email_exists") ||
+    (lower.includes("already") && (lower.includes("exists") || lower.includes("registered")))
+  );
+}
+
+async function findAuthUserByEmail(
+  admin: SupabaseClient,
+  email: string,
+): Promise<{ id: string; emailConfirmed: boolean } | null> {
+  const normalized = email.trim().toLowerCase();
+  for (let page = 1; page <= 8; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error || !data?.users?.length) return null;
+    const found = data.users.find((user) => (user.email ?? "").toLowerCase() === normalized);
+    if (found) {
+      return { id: found.id, emailConfirmed: Boolean(found.email_confirmed_at) };
+    }
+    if (data.users.length < 200) return null;
+  }
+  return null;
+}
+
+const EMAIL_EXISTS_LOGIN_MESSAGE =
+  "Já existe uma conta com este e-mail. Faça login para continuar.";
 
 export async function sendAuthLinkViaResend(
   admin: SupabaseClient,
@@ -75,19 +113,43 @@ export async function sendAuthLinkViaResend(
   },
 ): Promise<{ ok: true } | { ok: false; message: string; error?: string }> {
   const redirectTo = getAuthRedirect(input.redirectPath);
-  const actionType = input.linkType === "recovery" ? "recovery" : "signup";
+  let usedType: LinkType = input.linkType;
+  let emailActionType = input.linkType === "recovery" ? "recovery" : "signup";
 
-  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-    type: input.linkType,
+  let { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: usedType,
     email: input.email,
     options: { redirectTo },
   });
 
+  if (linkError && usedType === "signup" && isEmailExistsError(linkError.message)) {
+    const existing = await findAuthUserByEmail(admin, input.email);
+    if (existing?.emailConfirmed) {
+      return {
+        ok: false,
+        error: "email_exists",
+        message: EMAIL_EXISTS_LOGIN_MESSAGE,
+      };
+    }
+
+    const magic = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email: input.email,
+      options: { redirectTo },
+    });
+    if (!magic.error && magic.data) {
+      linkData = magic.data;
+      linkError = null;
+      usedType = "magiclink";
+      emailActionType = "signup";
+    }
+  }
+
   if (linkError) {
-    console.error(`[auth-resend] generateLink ${input.linkType}:`, linkError.message);
+    console.error(`[auth-resend] generateLink ${usedType}:`, linkError.message);
     return {
       ok: false,
-      error: "generate_link_failed",
+      error: isEmailExistsError(linkError.message) ? "email_exists" : "generate_link_failed",
       message: translateGenerateLinkError(linkError.message),
     };
   }
@@ -108,7 +170,7 @@ export async function sendAuthLinkViaResend(
     undefined;
 
   const content = buildAuthEmail({
-    actionType,
+    actionType: emailActionType,
     confirmationUrl,
     userName,
   });
@@ -132,7 +194,7 @@ export async function sendAuthLinkViaResend(
     };
   }
 
-  console.info(`[auth-resend] ok → ${input.email} (${input.linkType})`);
+  console.info(`[auth-resend] ok → ${input.email} (${usedType})`);
   return { ok: true };
 }
 
@@ -162,6 +224,14 @@ export async function registerUserAndSendConfirmation(
       (lower.includes("registered") || lower.includes("exists") || lower.includes("duplicate"));
 
     if (alreadyExists) {
+      const existing = await findAuthUserByEmail(admin, email);
+      if (existing?.emailConfirmed) {
+        return {
+          ok: false,
+          error: "email_exists",
+          message: EMAIL_EXISTS_LOGIN_MESSAGE,
+        };
+      }
       return sendAuthLinkViaResend(admin, {
         email,
         linkType: "signup",
