@@ -17,12 +17,19 @@ import {
     resolveComplimentaryReturnPath,
 } from '@/utils/complimentary-auth-return';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
-import { withTimeout } from '@/utils/promise-timeout';
 import {
     isPartnerOwnerInviteCallback,
     RESET_PASSWORD_PATH,
     userMustSetPartnerPassword,
 } from '@/utils/partner-password-setup';
+import {
+    clearStayOnLoginForPassword,
+    getAuthUrlCallbackAtBoot,
+    isSignupEmailCallback,
+    shouldStayOnLoginForPassword,
+    signupCallbackErrorMessage,
+    stripAuthCallbackFromUrl,
+} from '@/utils/auth-url-callback';
 import type { User } from '@supabase/supabase-js';
 
 /** JWT vencido: tenta refresh antes de limpar (evita perder sessão no retorno do MP). */
@@ -43,47 +50,25 @@ async function ensureFreshCachedSession(): Promise<void> {
 }
 
 /**
- * Resolve usuário já autenticado priorizando REST + cache local.
- * Nunca inventa sessão a partir de 401/403 — isso gerava loop Avatar ↔ Login.
+ * Só considera logado com token no cache validado pelo Auth REST.
+ * getSession() em memória + usuário inventado em timeout mandavam /login de volta à landing.
  */
 async function resolveExistingSessionUser(): Promise<User | null> {
     await ensureFreshCachedSession();
     const cached = readCachedAuthSession();
+    if (!cached.accessToken) return null;
 
-    if (cached.accessToken) {
-        const rest = await fetchAuthUserViaRest(cached.accessToken, 5_000);
-        if (rest.user) return rest.user;
+    const rest = await fetchAuthUserViaRest(cached.accessToken, 5_000);
+    if (rest.user) return rest.user;
 
-        if (isAuthApiRejectedStatus(rest.error?.status)) {
-            const refreshed = await refreshSessionViaRest(8_000);
-            if (refreshed) return refreshed;
-            clearAuthSessionIfCurrentToken(cached.accessToken);
-            return null;
-        }
-
-        // Só em timeout/rede com JWT ainda no prazo (cold boot sem Auth API).
-        const softNet =
-            rest.error?.message === 'timeout' || rest.error?.message === 'network_error';
-        if (softNet && cached.userId && isAccessTokenTimeValid(cached.accessToken)) {
-            return {
-                id: cached.userId,
-                email: cached.userEmail ?? undefined,
-                email_confirmed_at: new Date().toISOString(),
-                app_metadata: {},
-                user_metadata: {},
-                aud: 'authenticated',
-                created_at: '',
-            } as User;
-        }
-
+    if (isAuthApiRejectedStatus(rest.error?.status)) {
+        const refreshed = await refreshSessionViaRest(8_000);
+        if (refreshed) return refreshed;
+        clearAuthSessionIfCurrentToken(cached.accessToken);
         return null;
     }
 
-    const {
-        data: { session },
-    } = await withTimeout(supabase.auth.getSession(), 4_000, { data: { session: null } });
-
-    return session?.user ?? null;
+    return null;
 }
 
 const Login: React.FC = () => {
@@ -107,8 +92,21 @@ const Login: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(true);
-    const { tipoUsuarioId: contextTipo } = usePublicSiteAuth();
+    const [signupNotice, setSignupNotice] = useState<'confirmed' | 'error' | null>(() => {
+        const cb = getAuthUrlCallbackAtBoot();
+        if (!isSignupEmailCallback(cb)) return null;
+        return cb.error ? 'error' : 'confirmed';
+    });
+    const [signupNoticeText, setSignupNoticeText] = useState(() => {
+        const cb = getAuthUrlCallbackAtBoot();
+        return isSignupEmailCallback(cb) ? signupCallbackErrorMessage(cb) : '';
+    });
+    const { tipoUsuarioId: contextTipo, isAuthenticated, sessionReady } = usePublicSiteAuth();
     const redirectingRef = useRef(false);
+    const stayOnLoginRef = useRef(
+        shouldStayOnLoginForPassword() || isSignupEmailCallback(getAuthUrlCallbackAtBoot()),
+    );
+    const signupCallbackHandledRef = useRef(false);
 
     const completeAuthenticatedRedirect = async (
         userId: string,
@@ -127,6 +125,8 @@ const Login: React.FC = () => {
             redirectingRef.current = false;
             const code = error instanceof Error ? error.message : '';
             if (code === 'PROFILE_NOT_FOUND') {
+                // Silent: sessão residual/perfil lento — permanece no formulário.
+                if (options?.silent) return;
                 // Cold boot: NÃO desloga — evita /login com menu ainda autenticado.
                 showError(
                     'Sessão ativa, mas o perfil demorou a responder. Continuando…',
@@ -136,8 +136,6 @@ const Login: React.FC = () => {
                     navigate('/admin/dashboard', { replace: true });
                 } else if (tipo === 2) {
                     navigate('/manager/dashboard', { replace: true });
-                } else if (tipo === 3) {
-                    navigate('/', { replace: true });
                 } else {
                     navigate('/', { replace: true });
                 }
@@ -166,6 +164,28 @@ const Login: React.FC = () => {
             return;
         }
 
+        const signupCallback = getAuthUrlCallbackAtBoot();
+        const stayOnLoginForPassword =
+            stayOnLoginRef.current ||
+            shouldStayOnLoginForPassword() ||
+            isSignupEmailCallback(signupCallback);
+        stayOnLoginRef.current = stayOnLoginForPassword;
+
+        if (stayOnLoginForPassword && !signupCallbackHandledRef.current) {
+            signupCallbackHandledRef.current = true;
+            if (isSignupEmailCallback(signupCallback)) {
+                setSignupNotice(signupCallback.error ? 'error' : 'confirmed');
+                setSignupNoticeText(signupCallbackErrorMessage(signupCallback));
+                if (!signupCallback.error) {
+                    showSuccess('E-mail confirmado! Entre com e-mail e senha.');
+                } else {
+                    showError(signupCallbackErrorMessage(signupCallback));
+                }
+            }
+            stripAuthCallbackFromUrl();
+            void signOutSession();
+        }
+
         const isAuthCallbackUrl = () => {
             const currentHash = window.location.hash;
             const search = window.location.search;
@@ -186,8 +206,11 @@ const Login: React.FC = () => {
             return true;
         };
 
-        /** Se já há sessão (menu logado), sai de /login imediatamente. */
+        /** Só sai de /login se o menu já mostra sessão autenticada e o Auth REST confirma. */
         const redirectIfAlreadyAuthenticated = async () => {
+            if (stayOnLoginRef.current || shouldStayOnLoginForPassword()) return;
+            if (!sessionReady || !isAuthenticated) return;
+
             const user = await resolveExistingSessionUser();
             if (cancelled || !user?.id) return;
 
@@ -215,6 +238,11 @@ const Login: React.FC = () => {
             if (event !== 'SIGNED_IN') return;
 
             void (async () => {
+                if (stayOnLoginRef.current || shouldStayOnLoginForPassword()) {
+                    await signOutSession();
+                    return;
+                }
+
                 // Revalida: sessão client pode estar stale.
                 const verified = await resolveExistingSessionUser();
                 if (cancelled || !verified?.id) return;
@@ -236,13 +264,15 @@ const Login: React.FC = () => {
             cancelled = true;
             authListener.subscription.unsubscribe();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- montagem /login
-    }, [navigate, returnTo]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- montagem /login + sessão
+    }, [navigate, returnTo, sessionReady, isAuthenticated]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         redirectingRef.current = false;
+        stayOnLoginRef.current = false;
+        clearStayOnLoginForPassword();
         clearAuthSessionStorage();
 
         try {
@@ -302,6 +332,17 @@ const Login: React.FC = () => {
                     </p>
                 </div>
                 <div className="bg-black/80 backdrop-blur-sm border border-cyan-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/15">
+                    {signupNotice ? (
+                        <div
+                            className={`mb-5 rounded-xl border px-4 py-3 text-sm ${
+                                signupNotice === 'error'
+                                    ? 'border-amber-500/40 bg-amber-950/60 text-amber-50'
+                                    : 'border-cyan-500/40 bg-cyan-950/60 text-cyan-50'
+                            }`}
+                        >
+                            {signupNoticeText}
+                        </div>
+                    ) : null}
                     <form onSubmit={handleLogin} className="space-y-5 sm:space-y-6">
                         <div>
                             <label htmlFor="email" className="block text-sm font-medium text-white mb-2">

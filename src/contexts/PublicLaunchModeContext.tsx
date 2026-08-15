@@ -5,6 +5,7 @@ import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT, isAccessTokenTimeValid, is
 import { fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
 import { clearAuthSessionIfCurrentToken, clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
+import { shouldStayOnLoginForPassword } from '@/utils/auth-url-callback';
 import type { PublicLaunchMode } from '@/utils/public-launch-access';
 
 export type PublicSiteContextValue = {
@@ -45,12 +46,22 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
 
         const applyUser = (id: string, email?: string) => {
             if (cancelled) return;
+            if (shouldStayOnLoginForPassword()) {
+                clearSession();
+                return;
+            }
             setUserId(id);
             setUserEmail(email);
             setSessionReady(true);
         };
 
         const boot = async () => {
+            if (shouldStayOnLoginForPassword()) {
+                clearAuthSessionStorage();
+                clearSession();
+                return;
+            }
+
             const stored = readCachedAuthSession();
 
             if (!stored.accessToken && !stored.refreshToken) {
@@ -116,6 +127,7 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         const onSignedIn = (event: Event) => {
             const detail = (event as CustomEvent<{ userId?: string; userEmail?: string }>).detail;
             if (cancelled || !detail?.userId) return;
+            if (shouldStayOnLoginForPassword()) return;
             applyUser(detail.userId, detail.userEmail);
         };
 

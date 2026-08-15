@@ -1,4 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+import { captureAuthUrlCallbackAtBoot } from '@/utils/auth-url-callback';
+
+// Hash do /auth/v1/verify (type=signup) precisa ser lido antes do detectSessionInUrl.
+captureAuthUrlCallbackAtBoot();
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;

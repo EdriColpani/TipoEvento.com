@@ -12,6 +12,7 @@ import { Shield, LayoutDashboard } from 'lucide-react';
 import { useUserType } from '@/hooks/use-user-type';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
+import { buildLoginLocationState } from '@/utils/safe-login-redirect';
 
 const AuthStatusMenu: React.FC = () => {
     const navigate = useNavigate();
@@ -209,7 +210,7 @@ const AuthStatusMenu: React.FC = () => {
             <Button
                 onClick={() =>
                     navigate('/login', {
-                        state: { from: `${location.pathname}${location.search}` },
+                        state: buildLoginLocationState(location.pathname, location.search),
                     })
                 }
                 className={`bg-transparent transition-all duration-300 cursor-pointer px-4 ${
