@@ -107,6 +107,7 @@ const Login: React.FC = () => {
         shouldStayOnLoginForPassword() || isSignupEmailCallback(getAuthUrlCallbackAtBoot()),
     );
     const signupCallbackHandledRef = useRef(false);
+    const passwordLoginInFlightRef = useRef(false);
 
     const completeAuthenticatedRedirect = async (
         userId: string,
@@ -165,25 +166,29 @@ const Login: React.FC = () => {
         }
 
         const signupCallback = getAuthUrlCallbackAtBoot();
-        const stayOnLoginForPassword =
-            stayOnLoginRef.current ||
-            shouldStayOnLoginForPassword() ||
-            isSignupEmailCallback(signupCallback);
-        stayOnLoginRef.current = stayOnLoginForPassword;
+        // Se o usuário já submeteu a senha, não reviver o modo "só formulário"
+        // (o snapshot type=signup sobrevivia e o SIGNED_IN chamava signOut no meio do login).
+        if (stayOnLoginRef.current && !passwordLoginInFlightRef.current) {
+            const stayOnLoginForPassword =
+                shouldStayOnLoginForPassword() || isSignupEmailCallback(signupCallback);
+            stayOnLoginRef.current = stayOnLoginForPassword;
 
-        if (stayOnLoginForPassword && !signupCallbackHandledRef.current) {
-            signupCallbackHandledRef.current = true;
-            if (isSignupEmailCallback(signupCallback)) {
-                setSignupNotice(signupCallback.error ? 'error' : 'confirmed');
-                setSignupNoticeText(signupCallbackErrorMessage(signupCallback));
-                if (!signupCallback.error) {
-                    showSuccess('E-mail confirmado! Entre com e-mail e senha.');
-                } else {
-                    showError(signupCallbackErrorMessage(signupCallback));
+            if (stayOnLoginForPassword && !signupCallbackHandledRef.current) {
+                signupCallbackHandledRef.current = true;
+                if (isSignupEmailCallback(signupCallback)) {
+                    setSignupNotice(signupCallback.error ? 'error' : 'confirmed');
+                    setSignupNoticeText(signupCallbackErrorMessage(signupCallback));
+                    if (!signupCallback.error) {
+                        showSuccess('E-mail confirmado! Entre com e-mail e senha.');
+                    } else {
+                        showError(signupCallbackErrorMessage(signupCallback));
+                    }
                 }
+                stripAuthCallbackFromUrl();
+                void signOutSession();
             }
-            stripAuthCallbackFromUrl();
-            void signOutSession();
+        } else {
+            stayOnLoginRef.current = false;
         }
 
         const isAuthCallbackUrl = () => {
@@ -238,7 +243,10 @@ const Login: React.FC = () => {
             if (event !== 'SIGNED_IN') return;
 
             void (async () => {
-                if (stayOnLoginRef.current || shouldStayOnLoginForPassword()) {
+                if (
+                    !passwordLoginInFlightRef.current &&
+                    (stayOnLoginRef.current || shouldStayOnLoginForPassword())
+                ) {
                     await signOutSession();
                     return;
                 }
@@ -272,6 +280,7 @@ const Login: React.FC = () => {
         setIsLoading(true);
         redirectingRef.current = false;
         stayOnLoginRef.current = false;
+        passwordLoginInFlightRef.current = true;
         clearStayOnLoginForPassword();
         clearAuthSessionStorage();
 
@@ -305,6 +314,7 @@ const Login: React.FC = () => {
             console.error('Erro inesperado no login:', error);
             showError("Ocorreu um erro inesperado. Tente novamente.");
         } finally {
+            passwordLoginInFlightRef.current = false;
             setIsLoading(false);
         }
     };
