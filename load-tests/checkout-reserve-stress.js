@@ -1,10 +1,10 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { randomString } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
+import { pickAuthToken } from './_shared.js';
 
 const supabaseUrl = (__ENV.SUPABASE_URL || '').replace(/\/$/, '');
 const anonKey = __ENV.SUPABASE_ANON_KEY || '';
-const authToken = __ENV.AUTH_TOKEN || '';
 const eventId = __ENV.EVENT_ID || '';
 const wristbandId = __ENV.WRISTBAND_ID || '';
 const unitPrice = Number(__ENV.UNIT_PRICE || '10');
@@ -26,8 +26,9 @@ export const options = {
 };
 
 export default function () {
+  const authToken = pickAuthToken(__VU, __ITER);
   if (!supabaseUrl || !anonKey || !authToken || !eventId || !wristbandId) {
-    throw new Error('Defina SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_TOKEN, EVENT_ID, WRISTBAND_ID');
+    throw new Error('Defina SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_TOKEN ou AUTH_TOKENS, EVENT_ID, WRISTBAND_ID');
   }
 
   const idempotencyKey = `k6-${__VU}-${__ITER}-${randomString(8)}`;
@@ -66,6 +67,7 @@ export default function () {
 }
 
 export function teardown() {
+  const authToken = pickAuthToken(1, 0);
   if (!supabaseUrl || !anonKey || !authToken || !eventId) return;
 
   const res = http.post(

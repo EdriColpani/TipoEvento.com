@@ -56,8 +56,10 @@ $env:STRESS_DURATION = "2m"
 ### 1. Disponibilidade (leitura)
 
 ```powershell
-k6 run load-tests/availability.js
+powershell -ExecutionPolicy Bypass -File .\load-tests\run.ps1 availability.js
 ```
+
+O k6 **nao le** `env.local.ps1` sozinho. Use `run.ps1` (carrega o arquivo e passa `-e`). Nao rode so `k6 run ...`.
 
 Meta: p95 < 500 ms em `get_event_ticket_availability`.
 

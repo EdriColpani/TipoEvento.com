@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Credenciais do teste de carga (nunca commitar)
+load-tests/env.local.ps1
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

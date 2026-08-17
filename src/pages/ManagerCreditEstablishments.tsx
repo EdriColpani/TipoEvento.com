@@ -36,6 +36,7 @@ import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { showError, showSuccess } from '@/utils/toast';
 import { resolveEventGeoOnSave } from '@/utils/google-maps';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
+import CopyableId from '@/components/CopyableId';
 import {
     formatCurrencyBrInput,
     parseCurrencyBr,
@@ -516,6 +517,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                 >
                                     <div>
                                         <p className="text-white font-medium">{item.name}</p>
+                                        <CopyableId value={item.id} label="ID do estabelecimento" />
                                         <p className="text-xs text-gray-500">
                                             {item.event_title ? `Evento: ${item.event_title}` : 'Sem evento'}
                                             {item.address ? ` · ${item.address}` : ''}
@@ -590,6 +592,7 @@ const ManagerCreditEstablishments: React.FC = () => {
 
                     {catalogEstablishmentId !== 'none' && (
                         <>
+                            <CopyableId value={catalogEstablishmentId} label="ID do estabelecimento" />
                             <div className="rounded-xl border border-yellow-500/20 p-3 space-y-2">
                                 <Label className="text-gray-300">Desconto no app (lote)</Label>
                                 <p className="text-xs text-gray-500">
@@ -842,6 +845,7 @@ const ManagerCreditEstablishments: React.FC = () => {
                                                     )}
                                                     <div className="min-w-0">
                                                         <p className="text-white font-medium truncate">{item.name}</p>
+                                                        <CopyableId value={item.id} label="ID do produto" />
                                                         <p className="text-xs text-gray-500">
                                                             {Number(item.unit_price).toLocaleString('pt-BR', {
                                                                 style: 'currency',

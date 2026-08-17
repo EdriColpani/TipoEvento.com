@@ -18,6 +18,8 @@ export interface FinancialReportData {
     /** Soma do "Recebido gestor" por transação (alinhado à tabela de transações). */
     valor_liquido_organizador: number;
     comissao_total_sistema: number;
+    /** Soma das taxas Mercado Pago (`mp_fee_amount`) das vendas do evento. */
+    comissao_total_mp: number;
     percentual_comissao_medio: number;
 }
 
@@ -67,6 +69,7 @@ const fetchFinancialReports = async (
         let valorTotalVendido = 0;
         let valorLiquidoOrganizador = 0;
         let comissaoTotalSistema = 0;
+        let comissaoTotalMp = 0;
 
         for (const t of eventTransactions) {
             const eventPct =
@@ -82,6 +85,7 @@ const fetchFinancialReports = async (
             valorTotalVendido += resolved.gross;
             valorLiquidoOrganizador += resolved.organizerNet;
             comissaoTotalSistema += resolved.systemCommission;
+            comissaoTotalMp += Number(t.mp_fee_amount ?? 0);
         }
 
         const percentualMedio =
@@ -103,6 +107,7 @@ const fetchFinancialReports = async (
             valor_total_vendido: valorTotalVendido,
             valor_liquido_organizador: valorLiquidoOrganizador,
             comissao_total_sistema: comissaoTotalSistema,
+            comissao_total_mp: comissaoTotalMp,
             percentual_comissao_medio: percentualMedio,
         });
     });

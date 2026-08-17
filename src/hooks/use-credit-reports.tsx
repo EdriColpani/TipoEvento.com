@@ -333,6 +333,7 @@ export type SettlementSummary = {
 
 export type CompanyPayoutBankSnapshot = {
     payout_mode?: string | null;
+    mp_configured?: boolean | null;
     bank_code?: string | null;
     bank_name?: string | null;
     agency?: string | null;

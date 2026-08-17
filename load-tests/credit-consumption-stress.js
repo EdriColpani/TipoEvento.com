@@ -57,13 +57,17 @@ export default function () {
   );
 
   const intentBody = safeJson(intentRes);
-  const intentOk = intentRes.status === 200 && intentBody.intentId;
+  const intentId = intentBody.intentId || intentBody.intent_id;
+  const intentOk = intentRes.status === 200 && Boolean(intentId);
 
   check(intentRes, {
     'intent criado': () => intentOk || intentRes.status === 400 || intentRes.status === 402,
   });
 
   if (!intentOk) {
+    if (__ITER === 0 && __VU === 1) {
+      console.error('intent falhou:', intentRes.status, JSON.stringify(intentBody).slice(0, 400));
+    }
     sleep(0.5);
     return;
   }
@@ -72,8 +76,8 @@ export default function () {
   const confirmRes = http.post(
     `${supabaseUrl}/functions/v1/confirm-credit-consumption-intent`,
     JSON.stringify({
-      intentId: intentBody.intentId,
-      biometricConfirmed: intentBody.biometricRequired === true,
+      intentId,
+      biometricConfirmed: intentBody.biometricRequired === true || intentBody.biometric_required === true,
       idempotencyKey,
     }),
     {

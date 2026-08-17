@@ -15,7 +15,7 @@ import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { restGet, restPatch } from '@/utils/supabase-rest';
 import CompanyForm, { createCompanySchema, CompanyFormData } from '@/components/CompanyForm';
-import ManagerCompanyTabs from '@/components/ManagerCompanyTabs'; // Importando o novo componente
+import ManagerCompanyTabs from '@/components/ManagerCompanyTabs';
 
 // --- Utility Functions ---
 
