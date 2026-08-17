@@ -40,19 +40,27 @@ function dt(iso: string): string {
 }
 
 const ROW_KIND_LABELS: Record<string, string> = {
-    topup_origin: 'Recarga (origem)',
-    topup: 'Recarga',
-    spend_received: 'Consumo',
-    spend: 'Consumo',
-    refund: 'Estorno',
-    settlement_paid: 'Repasse liquidado (manual)',
+    topup_origin: 'Recarga de crédito (Mercado Pago)',
+    topup: 'Recarga de crédito (Mercado Pago)',
+    spend_received: 'Consumo (crédito EventFest)',
+    spend: 'Consumo (crédito EventFest)',
+    spend_ticket: 'Ingresso (crédito EventFest)',
+    spend_consumption: 'Consumo (crédito EventFest)',
+    ticket_sale_mp: 'Ingresso (Mercado Pago — split automático)',
+    ticket_sale_d1: 'Ingresso (Mercado Pago — caixa EventFest)',
+    refund: 'Estorno de crédito',
+    settlement_paid: 'Repasse manual EventFest → gestor (crédito)',
+    ticket_settlement_paid: 'Repasse manual EventFest → gestor (ingresso)',
 };
 
 const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
     pending_d1: 'Retenção D+1',
     awaiting_manual_payment: 'Aguardando TED/PIX',
-    paid_manual: 'Pago (manual)',
+    paid_manual: 'Pago (manual PIX/TED)',
     clawback: 'Clawback',
+    caixa_eventfest: 'Caixa EventFest',
+    caixa_eventfest_d1: 'Caixa EventFest (D+1)',
+    mp_split_automatico: 'Transferência automática (split MP)',
 };
 
 function settlementStatusLabel(status: string | null | undefined): string {
@@ -138,8 +146,8 @@ const CreditAccountingReportPanel: React.FC<CreditAccountingReportPanelProps> = 
                     </CardTitle>
                     <CardDescription className="text-gray-400">
                         {mode === 'manager'
-                            ? 'Recargas originadas na sua empresa e consumos recebidos (ingresso + PDV).'
-                            : 'Todas as recargas, consumos e estornos da rede EventFest.'}
+                            ? 'Livro de movimentos da empresa: recargas, ingressos, consumo, taxas MP, comissão EventFest e repasses.'
+                            : 'Livro contábil da rede: entradas do cliente, taxas Mercado Pago, comissão EventFest, split automático e repasses manuais ao gestor.'}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-4 items-end">
@@ -253,11 +261,17 @@ function SummaryCards({
 }) {
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <MiniStat label="Recargas" value={String(summary.topup_count ?? 0)} sub={money(summary.topup_gross)} />
-            <MiniStat label="Taxas MP (recargas)" value={money(summary.topup_mp_fees)} />
-            <MiniStat label="Consumos" value={String(summary.spend_count ?? 0)} sub={money(summary.spend_gross)} />
-            <MiniStat label="Comissão EF" value={money(summary.platform_commission)} />
+            <MiniStat label="Recargas crédito" value={String(summary.topup_count ?? 0)} sub={money(summary.topup_gross)} />
+            <MiniStat label="Ingressos MP" value={String(summary.ticket_sale_count ?? 0)} sub={money(summary.ticket_sale_gross)} />
+            <MiniStat label="Taxas Mercado Pago" value={money(summary.topup_mp_fees)} />
+            <MiniStat label="Consumos crédito" value={String(summary.spend_count ?? 0)} sub={money(summary.spend_gross)} />
+            <MiniStat label="Comissão EventFest" value={money(summary.platform_commission)} />
             <MiniStat label="Líq. gestores" value={money(summary.manager_net)} />
+            <MiniStat
+                label="Repasses manuais"
+                value={String(summary.settlement_paid_count ?? 0)}
+                sub={money(summary.settlement_paid_total)}
+            />
             {mode === 'admin' && summary.refund_count != null && summary.refund_count > 0 ? (
                 <MiniStat label="Estornos" value={String(summary.refund_count)} sub={money(summary.refund_total)} />
             ) : (
@@ -280,6 +294,46 @@ function MiniStat({ label, value, sub }: { label: string; value: string; sub?: s
     );
 }
 
+function commissionCell(row: CreditAccountingRow): string {
+    const kind = row.row_kind;
+    const isSpend =
+        kind === 'spend' ||
+        kind === 'spend_ticket' ||
+        kind === 'spend_consumption' ||
+        kind === 'spend_received' ||
+        kind === 'ticket_sale_mp' ||
+        kind === 'ticket_sale_d1';
+    if (!isSpend) return '—';
+    return money(row.platform_amount);
+}
+
+function commissionTitle(row: CreditAccountingRow): string | undefined {
+    const kind = row.row_kind;
+    if (kind === 'topup' || kind === 'topup_origin') {
+        return 'Recarga não tem comissão EventFest. A taxa cobrada aqui é só a do Mercado Pago.';
+    }
+    if (kind === 'settlement_paid' || kind === 'ticket_settlement_paid') {
+        return 'Repasse transfere o líquido já líquido. A comissão EventFest está na linha de consumo/ingresso.';
+    }
+    if (
+        (kind === 'spend' || kind === 'spend_ticket' || kind === 'spend_consumption' || kind === 'spend_received') &&
+        Number(row.platform_amount ?? 0) === 0 &&
+        Number(row.gross_amount ?? 0) > 0
+    ) {
+        return 'Alíquota 6% sobre o bruto, arredondada em centavos. Em R$ 0,05 vira R$ 0,003 → R$ 0,00.';
+    }
+    return undefined;
+}
+
+function flowLabel(row: CreditAccountingRow): string {
+    const origin = (row.origin_company_name || '').trim();
+    const dest = (row.receiver_company_name || '').trim();
+    if (origin && dest) return `${origin} → ${dest}`;
+    if (origin) return origin;
+    if (dest) return dest;
+    return '—';
+}
+
 function AccountingTable({ rows, mode }: { rows: CreditAccountingRow[]; mode: 'manager' | 'admin' }) {
     return (
         <Table>
@@ -288,41 +342,50 @@ function AccountingTable({ rows, mode }: { rows: CreditAccountingRow[]; mode: 'm
                     <TableHead className="text-yellow-500">Data</TableHead>
                     <TableHead className="text-yellow-500">Tipo</TableHead>
                     {mode === 'admin' && <TableHead className="text-yellow-500">Empresa</TableHead>}
-                    <TableHead className="text-yellow-500">Origem → Receptor</TableHead>
+                    <TableHead className="text-yellow-500">Origem / Receptor</TableHead>
                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
-                    <TableHead className="text-yellow-500 text-right">Comissão</TableHead>
-                    <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
-                    <TableHead className="text-yellow-500">Repasse</TableHead>
+                    <TableHead className="text-yellow-500 text-right">Taxa MP</TableHead>
+                    <TableHead className="text-yellow-500 text-right">Comissão EF</TableHead>
+                    <TableHead className="text-yellow-500 text-right">Líquido gestor</TableHead>
+                    <TableHead className="text-yellow-500">Liquidação</TableHead>
+                    <TableHead className="text-yellow-500">Descrição</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
                 {rows.map((row) => (
                     <TableRow key={`${row.row_kind}-${row.reference_id}`} className="border-yellow-500/10">
                         <TableCell className="text-gray-400 text-xs whitespace-nowrap">{dt(row.transaction_at)}</TableCell>
-                        <TableCell className="text-gray-200 text-xs">{kindLabel(row.row_kind)}</TableCell>
+                        <TableCell className="text-gray-200 text-xs max-w-[200px]">{kindLabel(row.row_kind)}</TableCell>
                         {mode === 'admin' && (
                             <TableCell className="text-gray-300 text-xs max-w-[140px] truncate" title={row.company_name ?? ''}>
                                 {row.company_name ?? '—'}
                             </TableCell>
                         )}
-                        <TableCell className="text-gray-400 text-xs max-w-[180px] truncate">
-                            {row.row_kind.includes('topup')
-                                ? row.origin_company_name ?? '—'
-                                : `${row.origin_company_name ?? '?'} → ${row.receiver_company_name ?? '?'}`}
+                        <TableCell className="text-gray-200 text-xs max-w-[260px]" title={flowLabel(row)}>
+                            {flowLabel(row)}
                             {row.is_cross_company && (
                                 <span className="text-yellow-600 ml-1">(cross)</span>
                             )}
                         </TableCell>
                         <TableCell className="text-right text-gray-300 text-xs">{money(row.gross_amount)}</TableCell>
-                        <TableCell className="text-right text-gray-400 text-xs">{money(row.platform_amount)}</TableCell>
+                        <TableCell className="text-right text-gray-400 text-xs">{money(row.mp_fee_amount)}</TableCell>
+                        <TableCell
+                            className="text-right text-gray-400 text-xs"
+                            title={commissionTitle(row)}
+                        >
+                            {commissionCell(row)}
+                        </TableCell>
                         <TableCell className="text-right text-yellow-400 text-xs">{money(row.manager_amount)}</TableCell>
-                        <TableCell className="text-gray-500 text-xs">
+                        <TableCell className="text-gray-400 text-xs">
                             {settlementStatusLabel(row.disbursement_status)}
                             {row.mp_transfer_id && (
-                                <span className="block text-gray-600 font-mono truncate max-w-[8rem]" title={row.mp_transfer_id}>
+                                <span className="block text-gray-500 font-mono truncate max-w-[8rem]" title={row.mp_transfer_id}>
                                     {row.mp_transfer_id}
                                 </span>
                             )}
+                        </TableCell>
+                        <TableCell className="text-gray-500 text-xs max-w-[220px] truncate" title={row.public_description ?? ''}>
+                            {row.public_description || row.event_title || '—'}
                         </TableCell>
                     </TableRow>
                 ))}

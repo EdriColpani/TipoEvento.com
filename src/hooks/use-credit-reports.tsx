@@ -509,6 +509,10 @@ export type CreditAccountingSummary = {
     spend_gross?: number;
     platform_commission?: number;
     manager_net?: number;
+    ticket_sale_count?: number;
+    ticket_sale_gross?: number;
+    settlement_paid_count?: number;
+    settlement_paid_total?: number;
     refund_count?: number;
     refund_total?: number;
     cross_spend_count?: number;
