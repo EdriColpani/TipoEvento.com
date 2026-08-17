@@ -21,6 +21,8 @@ const eventId = __ENV.EVENT_ID || '';
 const wristbandId = __ENV.WRISTBAND_ID || '';
 const unitPrice = Number(__ENV.UNIT_PRICE || '10');
 
+http.setResponseCallback(http.expectedStatuses(200, 400, 402, 409));
+
 export const options = stressOptions(10, '2m');
 
 export function setup() {

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, DollarSign, TrendingUp, Users, Loader2, AlertCircle, Download, Eye } from 'lucide-react';
+import { ArrowLeft, DollarSign, TrendingUp, Users, Loader2, AlertCircle, Download, Eye, Search } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useFinancialReports } from '@/hooks/use-financial-reports';
 import { useManagerTransactions } from '@/hooks/use-manager-transactions';
@@ -22,6 +23,7 @@ const MANAGER_PRO_USER_TYPE_ID = 2;
 
 const FinancialReports: React.FC = () => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const { userId, authPending, sessionReady, bootExpired } = usePageAuth();
     const [selectedEventId, setSelectedEventId] = useState<string>('all');
     const [startDate, setStartDate] = useState<string>('');
@@ -29,6 +31,12 @@ const FinancialReports: React.FC = () => {
     const [transactionStatusFilter, setTransactionStatusFilter] = useState<'all' | 'pending' | 'paid' | 'failed'>('all');
     const [transactionPage, setTransactionPage] = useState(1);
     const [checkingTransactionId, setCheckingTransactionId] = useState<string | null>(null);
+    const [appliedFilters, setAppliedFilters] = useState({
+        eventId: undefined as string | undefined,
+        startDate: undefined as string | undefined,
+        endDate: undefined as string | undefined,
+        status: undefined as 'pending' | 'paid' | 'failed' | undefined,
+    });
 
     const { tipoUsuarioId, isLoading: isLoadingRole, isFetched: roleFetched } = useUserRole(userId);
     const tipo = normalizeTipoUsuarioId(tipoUsuarioId);
@@ -38,27 +46,36 @@ const FinancialReports: React.FC = () => {
 
     const { events, isLoading: isLoadingEvents } = useManagerEvents(userId, isAdminMaster);
 
-    const filters = {
-        eventId: selectedEventId !== 'all' ? selectedEventId : undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        status: transactionStatusFilter !== 'all' ? transactionStatusFilter : undefined,
-    };
+    const filters = appliedFilters;
 
     const reportsQueryEnabled = Boolean(userId && roleFetched && canAccess);
 
-    const { data: reportData, isLoading: isLoadingReports, isError } = useFinancialReports(
+    const { data: reportData, isLoading: isLoadingReports, isError, isFetching: isFetchingReports } = useFinancialReports(
         filters,
         userId,
         isAdminMaster || false,
         { enabled: reportsQueryEnabled },
     );
-    const { transactions } = useManagerTransactions(
+    const { transactions, isFetching: isFetchingTransactions } = useManagerTransactions(
         userId,
         isAdminMaster || false,
         filters,
         { enabled: reportsQueryEnabled },
     );
+
+    const isSearching = isFetchingReports || isFetchingTransactions;
+
+    const handleSearch = () => {
+        setTransactionPage(1);
+        setAppliedFilters({
+            eventId: selectedEventId !== 'all' ? selectedEventId : undefined,
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            status: transactionStatusFilter !== 'all' ? transactionStatusFilter : undefined,
+        });
+        void queryClient.invalidateQueries({ queryKey: ['financial-reports'] });
+        void queryClient.invalidateQueries({ queryKey: ['managerTransactions'] });
+    };
 
     // Calcular totais gerais
     const totals = reportData ? {
@@ -67,6 +84,7 @@ const FinancialReports: React.FC = () => {
         totalVendido: reportData.reduce((sum, item) => sum + item.valor_total_vendido, 0),
         totalOrganizador: reportData.reduce((sum, item) => sum + item.valor_liquido_organizador, 0),
         totalComissao: reportData.reduce((sum, item) => sum + item.comissao_total_sistema, 0),
+        totalComissaoMp: reportData.reduce((sum, item) => sum + item.comissao_total_mp, 0),
     } : null;
 
     const transactionSummary = {
@@ -156,7 +174,7 @@ const FinancialReports: React.FC = () => {
         }
 
         // Criar CSV
-        const headers = ['Evento', 'Data', 'Vendas', 'Ingressos Vendidos', 'Valor Total', 'Recebido gestor', 'Comissão Sistema', '% Comissão'];
+        const headers = ['Evento', 'Data', 'Vendas', 'Ingressos Vendidos', 'Valor Total', 'Recebido gestor', 'Comissão Sistema', 'Comissão Mercado Pago', '% Comissão'];
         const rows = reportData.map(item => [
             item.event_title,
             formatDate(item.event_date),
@@ -165,6 +183,7 @@ const FinancialReports: React.FC = () => {
             formatCurrency(item.valor_total_vendido),
             formatCurrency(item.valor_liquido_organizador),
             formatCurrency(item.comissao_total_sistema),
+            formatCurrency(item.comissao_total_mp),
             `${item.percentual_comissao_medio.toFixed(2)}%`,
         ]);
 
@@ -265,8 +284,14 @@ const FinancialReports: React.FC = () => {
                     <CardTitle className="text-white text-lg">Filtros</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
+                    <form
+                        className="flex flex-col lg:flex-row lg:items-end gap-4"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSearch();
+                        }}
+                    >
+                        <div className="flex-1 min-w-0">
                             <label className="text-sm text-gray-400 mb-2 block">Evento</label>
                             <Select value={selectedEventId} onValueChange={setSelectedEventId}>
                                 <SelectTrigger className="bg-black/60 border-yellow-500/30 text-white">
@@ -286,7 +311,7 @@ const FinancialReports: React.FC = () => {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div>
+                        <div className="w-full sm:w-40 shrink-0">
                             <label className="text-sm text-gray-400 mb-2 block">Data Inicial</label>
                             <Input
                                 type="date"
@@ -295,7 +320,7 @@ const FinancialReports: React.FC = () => {
                                 className="bg-black/60 border-yellow-500/30 text-white"
                             />
                         </div>
-                        <div>
+                        <div className="w-full sm:w-40 shrink-0">
                             <label className="text-sm text-gray-400 mb-2 block">Data Final</label>
                             <Input
                                 type="date"
@@ -304,13 +329,25 @@ const FinancialReports: React.FC = () => {
                                 className="bg-black/60 border-yellow-500/30 text-white"
                             />
                         </div>
-                    </div>
+                        <Button
+                            type="submit"
+                            disabled={isSearching}
+                            className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 shrink-0 w-full sm:w-auto"
+                        >
+                            {isSearching ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Search className="mr-2 h-4 w-4" />
+                            )}
+                            Pesquisar
+                        </Button>
+                    </form>
                 </CardContent>
             </Card>
 
             {/* Cards de Resumo */}
             {totals && (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
                     <Card className="bg-black border border-yellow-500/30 rounded-xl p-4">
                         <CardContent className="p-0">
                             <div className="flex items-center justify-between">
@@ -366,6 +403,17 @@ const FinancialReports: React.FC = () => {
                             </div>
                         </CardContent>
                     </Card>
+                    <Card className="bg-black border border-yellow-500/30 rounded-xl p-4">
+                        <CardContent className="p-0">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-gray-400 text-sm">Comissão Mercado Pago</p>
+                                    <p className="text-white text-2xl font-bold">{formatCurrency(totals.totalComissaoMp)}</p>
+                                </div>
+                                <DollarSign className="h-8 w-8 text-yellow-500" />
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             )}
 
@@ -390,6 +438,8 @@ const FinancialReports: React.FC = () => {
                         </li>
                         <li>
                             <strong className="text-white">R$ Comissão Sistema</strong> = comissão EventFest.{' '}
+                            <strong className="text-white">Comissão Mercado Pago</strong> = soma das taxas MP
+                            (`fee_details`) do evento/filtro.{' '}
                             <strong className="text-white">Recebido gestor</strong> = líquido (extrato MP no modo
                             split, ou a pagar/pago no D+1 no modo banco).
                         </li>
@@ -611,6 +661,7 @@ const FinancialReports: React.FC = () => {
                                         <TableHead className="text-yellow-500 text-right">Valor Total</TableHead>
                                         <TableHead className="text-yellow-500 text-right">Recebido gestor</TableHead>
                                         <TableHead className="text-yellow-500 text-right">Comissão Sistema</TableHead>
+                                        <TableHead className="text-yellow-500 text-right">Comissão Mercado Pago</TableHead>
                                         <TableHead className="text-yellow-500">% Comissão</TableHead>
                                         <TableHead className="text-yellow-500">Ações</TableHead>
                                     </TableRow>
@@ -625,6 +676,7 @@ const FinancialReports: React.FC = () => {
                                             <TableCell className="text-white text-right font-semibold">{formatCurrency(item.valor_total_vendido)}</TableCell>
                                             <TableCell className="text-green-400 text-right">{formatCurrency(item.valor_liquido_organizador)}</TableCell>
                                             <TableCell className="text-yellow-400 text-right">{formatCurrency(item.comissao_total_sistema)}</TableCell>
+                                            <TableCell className="text-gray-300 text-right">{formatCurrency(item.comissao_total_mp)}</TableCell>
                                             <TableCell className="text-gray-400 text-right">{item.percentual_comissao_medio.toFixed(2)}%</TableCell>
                                             <TableCell>
                                                 <Button
@@ -650,6 +702,7 @@ const FinancialReports: React.FC = () => {
                                             <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(totals.totalVendido)}</TableCell>
                                             <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(totals.totalOrganizador)}</TableCell>
                                             <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(totals.totalComissao)}</TableCell>
+                                            <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(totals.totalComissaoMp)}</TableCell>
                                             <TableCell className="text-yellow-500 text-right font-semibold">
                                                 {totals.totalVendido > 0 ? `${((totals.totalComissao / totals.totalVendido) * 100).toFixed(2)}%` : '0.00%'}
                                             </TableCell>

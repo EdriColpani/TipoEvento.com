@@ -62,8 +62,8 @@ $env:AUTH_TOKENS = "jwt1,jwt2,jwt3" # pool — recomendado
 $env:EVENT_ID = "uuid-do-evento"
 $env:WRISTBAND_ID = "uuid-do-lote"
 $env:UNIT_PRICE = "50"
-$env:STRESS_VUS = "30"
-$env:STRESS_DURATION = "2m"
+$env:STRESS_VUS = "10"
+$env:STRESS_DURATION = "1m"
 $env:VALIDATION_API_KEY = "AB12CD34"       # portaria entry_exit
 $env:CONSUMPTION_API_KEY = "XY98ZW76"      # consumo delivery
 $env:WRISTBAND_CODES = "uuid1,uuid2,EF1.xxx"
@@ -71,6 +71,8 @@ $env:DELIVERY_TOKENS = "EFDEL.aaa,EFDEL.bbb"
 $env:ESTABLISHMENT_ID = "uuid-bar"
 $env:PRODUCT_ID = "uuid-produto"
 ```
+
+Salve os valores reais em `load-tests/env.local.ps1` (arquivo local, fora do git). Carregue com `. .\load-tests\env.local.ps1` antes do k6.
 
 | Variável | Descrição |
 |----------|-----------|

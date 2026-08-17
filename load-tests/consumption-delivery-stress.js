@@ -24,6 +24,8 @@ import {
 const tokens = new SharedArray('delivery_tokens', () => parseCsvEnv('DELIVERY_TOKENS'));
 const actionMode = (__ENV.DELIVERY_ACTION || 'both').trim().toLowerCase();
 
+http.setResponseCallback(http.expectedStatuses(200, 400, 403, 404, 409));
+
 export const options = stressOptions(5, '2m');
 
 export function setup() {

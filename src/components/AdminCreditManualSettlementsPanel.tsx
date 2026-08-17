@@ -46,23 +46,40 @@ function dt(iso: string | null | undefined): string {
     return new Date(iso).toLocaleString('pt-BR');
 }
 
+function hasBankOrPix(bank: AdminSettlementGroupedCompany['payout_bank']): boolean {
+    return Boolean(bank?.pix_key?.trim() || bank?.bank_name?.trim());
+}
+
 function PayoutBankBlock({
     bank,
 }: {
     bank: AdminSettlementGroupedCompany['payout_bank'];
 }) {
-    if (!bank?.pix_key && !bank?.bank_name) {
+    const isMercadoPago =
+        bank?.payout_mode === 'mercado_pago' ||
+        (Boolean(bank?.mp_configured) && !hasBankOrPix(bank));
+
+    if (isMercadoPago) {
         return (
-            <p className="text-amber-200/90 text-xs mt-2">
-                Empresa sem conta bancária/PIX cadastrada em Recebimento.
+            <p className="text-cyan-200/90 text-xs mt-2">
+                Conta conectada: Mercado Pago
             </p>
         );
     }
+
+    if (!hasBankOrPix(bank)) {
+        return (
+            <p className="text-amber-200/90 text-xs mt-2">
+                Empresa sem conta de recebimento cadastrada.
+            </p>
+        );
+    }
+
     return (
         <div className="mt-3 rounded-lg border border-yellow-500/20 bg-black/50 p-3 text-xs text-gray-300 space-y-1">
             <p className="text-yellow-500 font-medium">Dados para PIX/TED</p>
-            {bank.holder_name && <p>Titular: {bank.holder_name}</p>}
-            {bank.bank_name && (
+            {bank?.holder_name && <p>Titular: {bank.holder_name}</p>}
+            {bank?.bank_name && (
                 <p>
                     Banco: {bank.bank_name}
                     {bank.bank_code ? ` (${bank.bank_code})` : ''} · Ag {bank.agency} · Cc{' '}
@@ -70,7 +87,7 @@ function PayoutBankBlock({
                     {bank.account_digit ? `-${bank.account_digit}` : ''}
                 </p>
             )}
-            {bank.pix_key && (
+            {bank?.pix_key && (
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                     <span>
                         PIX ({bank.pix_key_type ?? 'chave'}):{' '}

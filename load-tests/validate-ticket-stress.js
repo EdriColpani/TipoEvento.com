@@ -28,6 +28,8 @@ const codes = new SharedArray('wristband_codes', () => {
 
 const validationType = (__ENV.VALIDATION_TYPE || 'entry').trim();
 
+http.setResponseCallback(http.expectedStatuses(200, 400, 403, 404, 409));
+
 export const options = stressOptions(10, '2m');
 
 export function setup() {
