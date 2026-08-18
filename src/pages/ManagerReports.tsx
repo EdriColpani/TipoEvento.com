@@ -18,6 +18,7 @@ import {
     Ticket,
     Gift,
     ScrollText,
+    Landmark,
     AlertTriangle,
     MessageSquareHeart,
     CircleHelp,
@@ -274,6 +275,36 @@ const ManagerReports: React.FC = () => {
         })),
         ...(showCreditReport && creditAccess.isAdminMaster
             ? [
+                  {
+                      key: 'admin-fiscal',
+                      icon: <Landmark className="h-6 w-6 text-yellow-500" />,
+                      title: 'Sintético fiscal',
+                      description:
+                          getReportsGuideEntry('admin-fiscal')?.summary ??
+                          'Giro na conta vs lucro EventFest: créditos, taxas MP, comissões e mensalidades.',
+                      guideId: 'admin-fiscal',
+                      featured: true,
+                      featuredLabel: 'Principal · contador / RF',
+                      onClick: () =>
+                          navigate('/admin/settings/credit-reports', {
+                              state: { creditTab: 'fiscal' },
+                          }),
+                  },
+                  {
+                      key: 'admin-taxes',
+                      icon: <Receipt className="h-6 w-6 text-yellow-500" />,
+                      title: 'Impostos a pagar',
+                      description:
+                          getReportsGuideEntry('admin-taxes')?.summary ??
+                          'Base de lucro da competência, lançamento de guias e baixa como pago.',
+                      guideId: 'admin-taxes',
+                      featured: true,
+                      featuredLabel: 'Principal · impostos',
+                      onClick: () =>
+                          navigate('/admin/settings/credit-reports', {
+                              state: { creditTab: 'taxes' },
+                          }),
+                  },
                   {
                       key: 'admin-revenue',
                       icon: <TrendingUp className="h-6 w-6 text-yellow-500" />,

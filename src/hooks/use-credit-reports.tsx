@@ -194,6 +194,65 @@ export function useAdminPlatformBillingRevenue(startDate?: string | null, endDat
     });
 }
 
+export type FiscalAmountBreakdown = {
+    gross?: number;
+    commission?: number;
+    manager_net?: number;
+};
+
+export type AdminFiscalSyntheticReport = {
+    period?: { start_date?: string | null; end_date?: string | null };
+    client_credits?: {
+        topup_gross?: number;
+        topup_credit_granted?: number;
+        wallet_balance_now?: number;
+        spend_ticket_gross?: number;
+        spend_consumption_gross?: number;
+        spend_gross?: number;
+        refunds_period?: number;
+    };
+    mp_fees?: {
+        topup?: number;
+        ticket_d1?: number;
+        listing_monthly?: number;
+        consumption_license?: number;
+        eventfest_total?: number;
+        ticket_mp_split_manager?: number;
+    };
+    profit?: {
+        ticket_mp_split?: FiscalAmountBreakdown;
+        ticket_mp_d1?: FiscalAmountBreakdown;
+        ticket_wallet?: FiscalAmountBreakdown;
+        ticket_commission_total?: number;
+        consumption_wallet?: FiscalAmountBreakdown;
+        listing_monthly?: number;
+        consumption_license?: number;
+        ticket_inactivity?: number;
+        other_billing_total?: number;
+        eventfest_profit_total?: number;
+    };
+    bridge?: {
+        cash_through_eventfest?: number;
+        eventfest_profit?: number;
+        mp_expense_eventfest?: number;
+        wallet_obligation_now?: number;
+        remitted_to_managers_period?: number;
+        pending_remit_now?: number;
+    };
+};
+
+export function useAdminFiscalSyntheticReport(startDate?: string | null, endDate?: string | null) {
+    return useQuery({
+        queryKey: ['adminFiscalSyntheticReport', startDate, endDate],
+        queryFn: () =>
+            callRpcRest<AdminFiscalSyntheticReport>('get_admin_fiscal_synthetic_report', {
+                p_start_date: startDate || null,
+                p_end_date: endDate || null,
+            }, 25_000),
+        staleTime: 30_000,
+    });
+}
+
 export function useAdminCreditMpReconciliationIssues(startDate?: string | null, endDate?: string | null) {
     return useQuery({
         queryKey: ['adminCreditMpReconciliationIssues', startDate, endDate],
