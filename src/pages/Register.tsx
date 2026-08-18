@@ -171,8 +171,18 @@ const Register: React.FC = () => {
             });
 
             if (!registerResult.ok) {
-                showError(registerResult.message);
-                if (registerResult.message.toLowerCase().includes('faça login')) {
+                const msg = registerResult.message;
+                const isCpfTaken =
+                    registerResult.error === 'cpf_exists' ||
+                    (msg.toLowerCase().includes('cpf') && msg.toLowerCase().includes('cadastrado'));
+                if (isCpfTaken) {
+                    setFormErrors((prev) => ({ ...prev, cpf: msg }));
+                }
+                showError(msg);
+                if (
+                    msg.toLowerCase().includes('faça login') ||
+                    registerResult.error === 'cpf_exists'
+                ) {
                     window.setTimeout(() => navigate('/login'), 1800);
                 }
                 return;

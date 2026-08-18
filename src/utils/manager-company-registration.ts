@@ -3,10 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import type { CompanyFormData } from '@/components/CompanyForm';
 import type { CompanyKind } from '@/constants/company-kind';
 import { clearManagerRegistrationUseCase } from '@/constants/company-kind';
+import { applyCachedProfileTipo, invalidateProfileRoleQueries } from '@/hooks/use-user-role';
 
 export const MANAGER_COMPANY_REGISTER_DRAFT_KEY = 'eventfest_manager_company_register_draft';
 export const MANAGER_COMPANY_REGISTER_PATH = '/manager/register/company';
 export const PENDING_PROMOTER_METADATA_KEY = 'pending_promoter_registration';
+export const POSTPONE_COMPANY_REGISTER_KEY = 'eventfest_postpone_company_register';
 
 export type CompanyRegisterDraft = {
     company: CompanyFormData;
@@ -36,6 +38,31 @@ export function loadCompanyRegisterDraft(): CompanyRegisterDraft | null {
 
 export function clearCompanyRegisterDraft() {
     sessionStorage.removeItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY);
+}
+
+/** Usuário saiu da tela de empresa sem concluir — não forçar de volta nesta sessão. */
+export function postponeCompanyRegistration() {
+    try {
+        sessionStorage.setItem(POSTPONE_COMPANY_REGISTER_KEY, '1');
+    } catch {
+        /* ignore */
+    }
+}
+
+export function isCompanyRegistrationPostponed(): boolean {
+    try {
+        return sessionStorage.getItem(POSTPONE_COMPANY_REGISTER_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+export function clearCompanyRegistrationPostpone() {
+    try {
+        sessionStorage.removeItem(POSTPONE_COMPANY_REGISTER_KEY);
+    } catch {
+        /* ignore */
+    }
 }
 
 export function hasPendingPromoterRegistration(user: {
@@ -132,8 +159,9 @@ export async function finalizeManagerCompanyRegistration(
     clearManagerRegistrationUseCase();
 
     if (queryClient) {
+        applyCachedProfileTipo(queryClient, activeUserId, 2);
         queryClient.invalidateQueries({ queryKey: ['managerCompany', activeUserId] });
-        queryClient.invalidateQueries({ queryKey: ['profile', activeUserId] });
+        invalidateProfileRoleQueries(queryClient, activeUserId);
         queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
     }
 

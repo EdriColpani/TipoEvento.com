@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -6,7 +6,26 @@ import { Input } from '@/components/ui/input';
 import { Loader2, UserPlus, ArrowLeft } from 'lucide-react';
 import EmailConfirmationScreen from '@/components/EmailConfirmationScreen';
 import { showError } from '@/utils/toast';
-import { registerPromoterAccountViaResend, MANAGER_COMPANY_REGISTER_PATH } from '@/utils/promoter-registration-flow';
+import { registerPromoterAccountViaResend } from '@/utils/promoter-registration-flow';
+import { resolveManagerOnboardingPath } from '@/utils/manager-registration-kind';
+import {
+    clearCompanyRegistrationPostpone,
+    postponeCompanyRegistration,
+} from '@/utils/manager-company-registration';
+
+function isValidAccountEmail(value: string): boolean {
+    const email = value.trim().toLowerCase();
+    if (!email.includes('@')) return false;
+    const [local, domain] = email.split('@');
+    if (!local || !domain || email.split('@').length !== 2) return false;
+    if (local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false;
+    const labels = domain.split('.');
+    if (labels.length < 2) return false;
+    return labels.every((part) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(part));
+}
+
+const EMAIL_INVALID_MESSAGE =
+    'Informe um e-mail válido, com @ e domínio (ex.: nome@empresa.com.br).';
 
 const ManagerPromoterAccountRegister: React.FC = () => {
     const navigate = useNavigate();
@@ -16,28 +35,54 @@ const ManagerPromoterAccountRegister: React.FC = () => {
     const [passwordConfirm, setPasswordConfirm] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<{
+        email?: string;
+        password?: string;
+        passwordConfirm?: string;
+    }>({});
+    const emailInputRef = useRef<HTMLInputElement>(null);
+    const continuePath = resolveManagerOnboardingPath();
+
+    const inputClass = (hasError?: boolean) =>
+        `bg-black/60 text-white ${
+            hasError
+                ? 'border-red-500 focus-visible:ring-red-500/30'
+                : 'border-yellow-500/30'
+        }`;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        const errors: { email?: string; password?: string; passwordConfirm?: string } = {};
 
         if (!accountName.trim()) {
             showError('Informe o nome do responsável.');
             return;
         }
         if (!email.trim()) {
-            showError('Informe o e-mail de acesso.');
-            return;
+            errors.email = 'Informe o e-mail de acesso.';
+        } else if (!isValidAccountEmail(email)) {
+            errors.email = EMAIL_INVALID_MESSAGE;
         }
         if (password.length < 6) {
-            showError('A senha deve ter no mínimo 6 caracteres.');
-            return;
+            errors.password = 'A senha deve ter no mínimo 6 caracteres.';
         }
-        if (password !== passwordConfirm) {
-            showError('As senhas não conferem.');
+        if (!passwordConfirm) {
+            errors.passwordConfirm = 'Confirme a senha.';
+        } else if (password !== passwordConfirm) {
+            errors.passwordConfirm = 'As senhas não conferem.';
+        }
+
+        setFieldErrors(errors);
+        if (errors.email || errors.password || errors.passwordConfirm) {
+            showError(errors.email || errors.password || errors.passwordConfirm || 'Verifique os dados.');
+            if (errors.email) {
+                window.setTimeout(() => emailInputRef.current?.focus(), 0);
+            }
             return;
         }
 
         setIsSaving(true);
+        clearCompanyRegistrationPostpone();
         const result = await registerPromoterAccountViaResend({
             email,
             password,
@@ -55,7 +100,7 @@ const ManagerPromoterAccountRegister: React.FC = () => {
             return;
         }
 
-        navigate(MANAGER_COMPANY_REGISTER_PATH, {
+        navigate(continuePath, {
             state: { fromPromoterCta: true },
             replace: true,
         });
@@ -67,10 +112,13 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                 email={pendingConfirmationEmail}
                 variant="pro"
                 loginTo="/login"
-                loginState={{ from: MANAGER_COMPANY_REGISTER_PATH }}
-                continuePath={MANAGER_COMPANY_REGISTER_PATH}
-                resendRedirectPath={MANAGER_COMPANY_REGISTER_PATH}
-                onBack={() => navigate('/')}
+                loginState={{ from: continuePath }}
+                continuePath={continuePath}
+                resendRedirectPath={continuePath}
+                onBack={() => {
+                    postponeCompanyRegistration();
+                    navigate('/');
+                }}
                 backLabel="Voltar para a página inicial"
             />
         );
@@ -82,7 +130,10 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                 <div className="text-center mb-6 sm:mb-8">
                     <div
                         className="text-3xl font-serif text-yellow-500 font-bold mb-2 cursor-pointer"
-                        onClick={() => navigate('/')}
+                        onClick={() => {
+                            postponeCompanyRegistration();
+                            navigate('/');
+                        }}
                     >
                         EventFest
                     </div>
@@ -106,7 +157,7 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+                        <form noValidate onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
                             <div>
                                 <label className="block text-sm text-white mb-2">
                                     Nome do responsável *
@@ -121,13 +172,24 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                             <div>
                                 <label className="block text-sm text-white mb-2">E-mail *</label>
                                 <Input
+                                    ref={emailInputRef}
                                     type="email"
                                     value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="bg-black/60 border-yellow-500/30 text-white"
+                                    onChange={(e) => {
+                                        setEmail(e.target.value);
+                                        if (fieldErrors.email) {
+                                            setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                                        }
+                                    }}
+                                    className={inputClass(Boolean(fieldErrors.email))}
                                     disabled={isSaving}
-                                    placeholder="seu@email.com"
+                                    placeholder="nome@empresa.com.br"
+                                    autoComplete="email"
+                                    inputMode="email"
                                 />
+                                <p className={`text-xs mt-1 ${fieldErrors.email ? 'text-red-400' : 'text-gray-500'}`}>
+                                    {fieldErrors.email || 'Precisa ter @ e um domínio, como .com ou .com.br.'}
+                                </p>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -135,11 +197,20 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                                     <Input
                                         type="password"
                                         value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="bg-black/60 border-yellow-500/30 text-white"
+                                        onChange={(e) => {
+                                            setPassword(e.target.value);
+                                            if (fieldErrors.password) {
+                                                setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                                            }
+                                        }}
+                                        className={inputClass(Boolean(fieldErrors.password))}
                                         disabled={isSaving}
-                                        minLength={6}
+                                        placeholder="Mínimo 6 caracteres"
+                                        autoComplete="new-password"
                                     />
+                                    <p className={`text-xs mt-1 ${fieldErrors.password ? 'text-red-400' : 'text-gray-500'}`}>
+                                        {fieldErrors.password || 'Use no mínimo 6 caracteres.'}
+                                    </p>
                                 </div>
                                 <div>
                                     <label className="block text-sm text-white mb-2">
@@ -148,18 +219,27 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                                     <Input
                                         type="password"
                                         value={passwordConfirm}
-                                        onChange={(e) => setPasswordConfirm(e.target.value)}
-                                        className="bg-black/60 border-yellow-500/30 text-white"
+                                        onChange={(e) => {
+                                            setPasswordConfirm(e.target.value);
+                                            if (fieldErrors.passwordConfirm) {
+                                                setFieldErrors((prev) => ({ ...prev, passwordConfirm: undefined }));
+                                            }
+                                        }}
+                                        className={inputClass(Boolean(fieldErrors.passwordConfirm))}
                                         disabled={isSaving}
-                                        minLength={6}
+                                        placeholder="Repita a senha"
+                                        autoComplete="new-password"
                                     />
+                                    {fieldErrors.passwordConfirm && (
+                                        <p className="text-red-400 text-xs mt-1">{fieldErrors.passwordConfirm}</p>
+                                    )}
                                 </div>
                             </div>
                             <p className="text-xs text-gray-500">
                                 Já tem conta?{' '}
                                 <Link
                                     to="/login"
-                                    state={{ from: MANAGER_COMPANY_REGISTER_PATH }}
+                                    state={{ from: continuePath }}
                                     className="text-yellow-500 hover:underline"
                                 >
                                     Faça login
@@ -184,7 +264,10 @@ const ManagerPromoterAccountRegister: React.FC = () => {
                                 <Button
                                     type="button"
                                     variant="outline"
-                                    onClick={() => navigate('/')}
+                                    onClick={() => {
+                                        postponeCompanyRegistration();
+                                        navigate('/');
+                                    }}
                                     className="flex-1 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
                                     disabled={isSaving}
                                 >

@@ -8,7 +8,9 @@ import {
     hasPendingPromoterRegistration,
     MANAGER_COMPANY_REGISTER_DRAFT_KEY,
     MANAGER_COMPANY_REGISTER_PATH,
+    isCompanyRegistrationPostponed,
 } from '@/utils/manager-company-registration';
+import { resolveManagerOnboardingPath } from '@/utils/manager-registration-kind';
 import type { User } from '@supabase/supabase-js';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest } from '@/utils/auth-rest';
@@ -44,7 +46,8 @@ export async function resolvePostLoginRedirect(
 
     if (
         sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY) &&
-        !resolveComplimentaryReturnPath(undefined)
+        !resolveComplimentaryReturnPath(undefined) &&
+        !isCompanyRegistrationPostponed()
     ) {
         return {
             path: MANAGER_COMPANY_REGISTER_PATH,
@@ -60,10 +63,14 @@ export async function resolvePostLoginRedirect(
             user = restUser;
         }
     }
-    if (hasPendingPromoterRegistration(user) && !resolveComplimentaryReturnPath(undefined)) {
+    if (
+        hasPendingPromoterRegistration(user) &&
+        !resolveComplimentaryReturnPath(undefined) &&
+        !isCompanyRegistrationPostponed()
+    ) {
         return {
-            path: MANAGER_COMPANY_REGISTER_PATH,
-            message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
+            path: resolveManagerOnboardingPath(user),
+            message: 'E-mail confirmado! Conclua o cadastro de gestor.',
         };
     }
 

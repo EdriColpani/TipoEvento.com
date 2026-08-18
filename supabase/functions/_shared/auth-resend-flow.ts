@@ -59,6 +59,13 @@ export function translateGenerateLinkError(message: string): string {
 
 export function translateCreateUserError(message: string): string {
   const lower = message.toLowerCase();
+  if (
+    lower.includes("profiles_cpf") ||
+    lower.includes("cpf_digits_unique") ||
+    (lower.includes("duplicate") && lower.includes("cpf"))
+  ) {
+    return CPF_EXISTS_MESSAGE;
+  }
   if (lower.includes("already") && (lower.includes("registered") || lower.includes("exists"))) {
     return "Já existe uma conta com este e-mail. Faça login para continuar.";
   }
@@ -102,6 +109,30 @@ async function findAuthUserByEmail(
 
 const EMAIL_EXISTS_LOGIN_MESSAGE =
   "Já existe uma conta com este e-mail. Faça login para continuar.";
+
+const CPF_EXISTS_MESSAGE =
+  "Este CPF já está cadastrado. Se for sua conta, faça login ou recupere sua senha.";
+
+async function cpfAlreadyRegistered(
+  admin: SupabaseClient,
+  cpf: string | undefined,
+): Promise<boolean> {
+  const digits = (cpf ?? "").replace(/\D/g, "");
+  if (digits.length !== 11) return false;
+
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("cpf", digits)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[auth-resend] cpf check:", error.message);
+    return false;
+  }
+
+  return Boolean(data?.id);
+}
 
 export async function sendAuthLinkViaResend(
   admin: SupabaseClient,
@@ -209,6 +240,15 @@ export async function registerUserAndSendConfirmation(
 ): Promise<{ ok: true } | { ok: false; message: string; error?: string }> {
   const email = input.email.trim().toLowerCase();
   const metadata = input.metadata ?? {};
+
+  const cpfRaw = typeof metadata.cpf === "string" ? metadata.cpf : "";
+  if (await cpfAlreadyRegistered(admin, cpfRaw)) {
+    return {
+      ok: false,
+      error: "cpf_exists",
+      message: CPF_EXISTS_MESSAGE,
+    };
+  }
 
   const { error: createError } = await admin.auth.admin.createUser({
     email,
