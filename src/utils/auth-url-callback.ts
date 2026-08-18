@@ -129,7 +129,7 @@ export function captureAuthUrlCallbackAtBoot(): AuthUrlCallback {
     if (!captured) {
         bootCallback = captureFromWindow();
         captured = true;
-        if (isSignupEmailCallback(bootCallback)) {
+        if (isSignupEmailCallback(bootCallback) && isLoginPath()) {
             markStayOnLoginForPassword();
         }
     }
@@ -145,4 +145,16 @@ export function consumeAuthUrlCallbackAtBoot(): AuthUrlCallback {
     const current = captureAuthUrlCallbackAtBoot();
     bootCallback = { ...EMPTY_CALLBACK };
     return current;
+}
+
+/** Hash de confirmação ainda na URL — não redirecionar para “criar conta”. */
+export function isSignupHashSessionPending(): boolean {
+    if (typeof window === 'undefined') return false;
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    return (
+        hash.includes('access_token') ||
+        hash.includes('type=signup') ||
+        search.includes('type=signup')
+    );
 }

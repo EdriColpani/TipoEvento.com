@@ -3,6 +3,7 @@ import { withTimeout } from '@/utils/promise-timeout';
 import { restGet } from '@/utils/supabase-rest';
 import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
+import { PROFILE_TIPO_QUERY_KEY } from '@/hooks/use-user-role';
 
 interface ProfileData {
     first_name: string;
@@ -118,7 +119,10 @@ export const useProfile = (userId: string | undefined) => {
     return {
         ...query,
         profile: query.data,
-        invalidateProfile: () => queryClient.invalidateQueries({ queryKey: ['profile', userId] }),
+        invalidateProfile: () => {
+            queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+            queryClient.invalidateQueries({ queryKey: [PROFILE_TIPO_QUERY_KEY, userId] });
+        },
     };
 };
 

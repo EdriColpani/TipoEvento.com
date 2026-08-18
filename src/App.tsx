@@ -54,7 +54,8 @@ import ResetPassword from "./pages/ResetPassword";
 import ManagerRegister from "./pages/ManagerRegister"; 
 import ManagerIndividualProfile from "./pages/ManagerIndividualProfile";
 import ManagerCompanyRegister from "./pages/ManagerCompanyRegister";
-import ManagerPromoterAccountRegister from "./pages/ManagerPromoterAccountRegister"; 
+import ManagerPromoterAccountRegister from "./pages/ManagerPromoterAccountRegister";
+import ManagerIndividualRegister from "./pages/ManagerIndividualRegister"; 
 import AdminCarouselSettings from "./pages/AdminCarouselSettings"; 
 import AdminCreatePromotionalBanner from "./pages/AdminCreatePromotionalBanner"; 
 import AdminPromotionalBannersList from "./pages/AdminPromotionalBannersList"; 
@@ -157,6 +158,7 @@ function AppRoutes() {
             <Route path="/manager/register" element={<ManagerRegister />} />
             <Route path="/manager/register/account" element={<ManagerPromoterAccountRegister />} />
             <Route path="/manager/register/company" element={<ManagerCompanyRegister />} />
+            <Route path="/manager/register/individual" element={<ManagerIndividualRegister />} />
           </Route>
           
           {/* Manager Routes (Protected by ManagerLayout, which handles auth/redirect) */}

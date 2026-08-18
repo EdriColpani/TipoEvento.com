@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -49,6 +49,12 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { billingBtnGhost, billingBtnSolid } from '@/constants/billing-ui';
 import { isBillingContractReacceptance } from '@/constants/manager-billing-gate';
+import {
+    hasSignedCompanyRegistration,
+    isCompanyRegistrationSatisfied,
+    MANAGER_COMPANY_REGISTRATION_PATH,
+} from '@/constants/manager-onboarding-gate';
+import { useManagerCompanyContractAcceptances } from '@/hooks/use-manager-contract-acceptances';
 
 interface CompanyBillingPlanSectionProps {
     companyId: string;
@@ -60,9 +66,15 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     isAdminMaster = false,
 }) => {
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const urlRecommendedPlan = searchParams.get('plan') as BillingPlanCode | null;
     const { billing, isLoading, invalidate } = useCompanyBilling(companyId);
+    const { data: acceptancesData, isLoading: isLoadingAcceptances } =
+        useManagerCompanyContractAcceptances(isAdminMaster ? undefined : companyId);
+    const registrationSatisfied =
+        isAdminMaster ||
+        isCompanyRegistrationSatisfied(hasSignedCompanyRegistration(acceptancesData?.items), billing);
     const feeOverrides = useMemo(
         () => ({
             listingMonthlyFee: billing?.listing_monthly_fee,
@@ -356,13 +368,41 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
     const BILLING_CONTRACT_AGREEMENT_LABEL =
         'Declaro que li, compreendi e concordo integralmente com este Contrato de Prestação de Serviços EventFest e, quando aplicável, declaro possuir poderes para representar a empresa CONTRATANTE.';
 
-    const showBillingSpinner = (isLoading || isLoadingCatalog) && !loadingCapReached;
+    const showBillingSpinner =
+        ((isLoading || isLoadingCatalog) && !loadingCapReached) ||
+        (!isAdminMaster && isLoadingAcceptances);
 
     if (showBillingSpinner) {
         return (
             <Card className="bg-black border border-cyan-500/30 rounded-2xl p-8 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-cyan-400 mx-auto" />
                 <p className="text-gray-400 mt-4 text-sm">Carregando plano comercial...</p>
+            </Card>
+        );
+    }
+
+    if (!registrationSatisfied) {
+        return (
+            <Card className="bg-black border border-amber-500/40 rounded-2xl">
+                <CardHeader>
+                    <CardTitle className="text-amber-200 text-xl flex items-center gap-2">
+                        <AlertTriangle className="h-6 w-6" />
+                        Contrato de cadastro pendente
+                    </CardTitle>
+                    <CardDescription className="text-gray-400">
+                        Assine o contrato de cadastro da empresa antes de escolher um plano. Sem esse
+                        aceite não é possível usar o painel nem cadastrar eventos.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button
+                        type="button"
+                        className="bg-yellow-500 text-black hover:bg-yellow-600"
+                        onClick={() => navigate(MANAGER_COMPANY_REGISTRATION_PATH)}
+                    >
+                        Assinar contrato de cadastro
+                    </Button>
+                </CardContent>
             </Card>
         );
     }

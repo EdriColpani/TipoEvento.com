@@ -13,9 +13,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
     finalizeManagerCompanyRegistration,
     MANAGER_ACCOUNT_REGISTER_PATH,
-    MANAGER_COMPANY_REGISTER_PATH,
     MANAGER_TERMS_REGISTER_PATH,
 } from '@/utils/promoter-registration-flow';
+import { postponeCompanyRegistration } from '@/utils/manager-company-registration';
+import { applyCachedProfileTipo, PROFILE_TIPO_QUERY_KEY } from '@/hooks/use-user-role';
 import {
     companyKindFromUseCase,
     loadManagerRegistrationUseCase,
@@ -25,6 +26,7 @@ import { usePageAuth } from '@/hooks/use-page-auth';
 import { fetchAuthUserViaRest } from '@/utils/auth-rest';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { signOutSession } from '@/utils/sign-out-session';
+import { isSignupHashSessionPending } from '@/utils/auth-url-callback';
 
 const ManagerCompanyRegister: React.FC = () => {
     const navigate = useNavigate();
@@ -61,7 +63,7 @@ const ManagerCompanyRegister: React.FC = () => {
         if (authPending) return;
 
         if (!userId) {
-            if (sessionReady) {
+            if (sessionReady && !isSignupHashSessionPending()) {
                 navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
                     state: { fromPromoterCta: locationState.fromPromoterCta },
                     replace: true,
@@ -154,7 +156,9 @@ const ManagerCompanyRegister: React.FC = () => {
                       }
                     : old,
             );
+            applyCachedProfileTipo(queryClient, userId, 2);
             await queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+            await queryClient.invalidateQueries({ queryKey: [PROFILE_TIPO_QUERY_KEY, userId] });
             await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
             await queryClient.invalidateQueries({ queryKey: ['managerPrimaryCompany', userId] });
             navigate(MANAGER_TERMS_REGISTER_PATH, { replace: true });
@@ -182,7 +186,10 @@ const ManagerCompanyRegister: React.FC = () => {
                 <div className="text-center mb-6 sm:mb-8">
                     <div
                         className="text-3xl font-serif text-yellow-500 font-bold mb-2 cursor-pointer"
-                        onClick={() => navigate('/')}
+                        onClick={() => {
+                            postponeCompanyRegistration();
+                            navigate('/');
+                        }}
                     >
                         EventFest
                     </div>
@@ -235,19 +242,16 @@ const ManagerCompanyRegister: React.FC = () => {
                                         </Button>
                                         <Button
                                             type="button"
-                                            onClick={() =>
-                                                navigate(
-                                                    locationState.fromPromoterCta
-                                                        ? '/'
-                                                        : '/manager/register',
-                                                )
-                                            }
+                                            onClick={() => {
+                                                postponeCompanyRegistration();
+                                                navigate('/');
+                                            }}
                                             variant="outline"
-                                            className="flex-1 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer"
+                                            className="flex-1 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer disabled:opacity-50"
                                             disabled={isSaving}
                                         >
                                             <ArrowLeft className="mr-2 h-5 w-5" />
-                                            Voltar
+                                            Voltar para a Home
                                         </Button>
                                     </div>
                                 </form>

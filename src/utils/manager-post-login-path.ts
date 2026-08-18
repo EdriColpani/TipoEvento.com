@@ -1,14 +1,71 @@
 import { supabase } from '@/integrations/supabase/client';
 import { isCompanyBillingReady, type CompanyBillingFields } from '@/constants/billing-plans';
 import { MANAGER_BILLING_SETUP_PATH } from '@/constants/manager-billing-gate';
+import {
+    isCompanyRegistrationSatisfied,
+    MANAGER_COMPANY_REGISTRATION_PATH,
+} from '@/constants/manager-onboarding-gate';
 import { fetchManagerPrimaryCompanyId, fetchManagerPrimaryCompanyIdRest } from '@/utils/manager-scope';
+import { callRpcRest } from '@/utils/supabase-rest-rpc';
 import { restGet } from '@/utils/supabase-rest';
 import { withTimeout } from '@/utils/promise-timeout';
 
 const BILLING_FIELDS =
     'billing_plan, billing_plan_accepted_at, billing_contract_id, requires_billing_reacceptance';
 
-/** Destino após login do gestor PRO (dashboard ou aceite de contrato). */
+async function fetchCompanyBilling(companyId: string): Promise<CompanyBillingFields | null> {
+    const billingFields =
+        'billing_plan,billing_plan_accepted_at,billing_contract_id,requires_billing_reacceptance';
+
+    try {
+        const rows = await restGet<CompanyBillingFields[]>(
+            `companies?id=eq.${companyId}&select=${billingFields}&limit=1`,
+            6_000,
+        );
+        return rows[0] ?? null;
+    } catch {
+        /* fallback supabase */
+    }
+
+    const { data, error } = await withTimeout(
+        supabase.from('companies').select(BILLING_FIELDS).eq('id', companyId).maybeSingle(),
+        6_000,
+        { data: null, error: { message: 'timeout' } as { message: string } },
+    );
+
+    if (error && error.code !== 'PGRST116') {
+        console.warn('[resolveManagerPostLoginPath]', error.message);
+        return null;
+    }
+
+    return (data as CompanyBillingFields | null) ?? null;
+}
+
+async function registrationGateSatisfied(
+    companyId: string,
+    billing: CompanyBillingFields | null,
+): Promise<boolean> {
+    try {
+        const signed = await callRpcRest<boolean>(
+            'company_registration_gate_satisfied',
+            { p_company_id: companyId },
+            6_000,
+        );
+        if (typeof signed === 'boolean') return signed;
+    } catch {
+        /* fallback: só o legado de plano antigo */
+    }
+    return isCompanyRegistrationSatisfied(false, billing);
+}
+
+function pathAfterOnboarding(billing: CompanyBillingFields | null): string {
+    if (!isCompanyBillingReady(billing)) {
+        return MANAGER_BILLING_SETUP_PATH;
+    }
+    return '/manager/dashboard';
+}
+
+/** Destino após login do gestor PRO (contrato de cadastro → plano → dashboard). */
 export async function resolveManagerPostLoginPath(userId: string): Promise<string> {
     let companyId: string | null = null;
     try {
@@ -23,36 +80,14 @@ export async function resolveManagerPostLoginPath(userId: string): Promise<strin
         return '/manager/dashboard';
     }
 
-    const billingFields =
-        'billing_plan,billing_plan_accepted_at,billing_contract_id,requires_billing_reacceptance';
-
-    try {
-        const rows = await restGet<CompanyBillingFields[]>(
-            `companies?id=eq.${companyId}&select=${billingFields}&limit=1`,
-            6_000,
-        );
-        if (!isCompanyBillingReady(rows[0] ?? null)) {
-            return MANAGER_BILLING_SETUP_PATH;
-        }
-        return '/manager/dashboard';
-    } catch {
-        /* fallback supabase */
+    const billing = await fetchCompanyBilling(companyId);
+    if (!(await registrationGateSatisfied(companyId, billing))) {
+        return MANAGER_COMPANY_REGISTRATION_PATH;
     }
 
-    const { data, error } = await withTimeout(
-        supabase.from('companies').select(BILLING_FIELDS).eq('id', companyId).maybeSingle(),
-        6_000,
-        { data: null, error: { message: 'timeout' } as { message: string } },
-    );
-
-    if (error && error.code !== 'PGRST116') {
-        console.warn('[resolveManagerPostLoginPath]', error.message);
+    if (!billing) {
         return '/manager/dashboard';
     }
 
-    if (!isCompanyBillingReady(data as CompanyBillingFields | null)) {
-        return MANAGER_BILLING_SETUP_PATH;
-    }
-
-    return '/manager/dashboard';
+    return pathAfterOnboarding(billing);
 }

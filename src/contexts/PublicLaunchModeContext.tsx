@@ -1,12 +1,21 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/hooks/use-profile';
 import { useUserRole } from '@/hooks/use-user-role';
-import { readCachedAuthSession, AUTH_SIGNED_IN_EVENT, isAccessTokenTimeValid, isAuthApiRejectedStatus } from '@/utils/auth-session-cache';
+import {
+    readCachedAuthSession,
+    AUTH_SIGNED_IN_EVENT,
+    isAccessTokenTimeValid,
+    isAuthApiRejectedStatus,
+    persistAuthSession,
+} from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
 import { clearAuthSessionIfCurrentToken, clearAuthSessionStorage, AUTH_SIGNED_OUT_EVENT } from '@/utils/sign-out-session';
 import { normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
-import { shouldStayOnLoginForPassword } from '@/utils/auth-url-callback';
+import { isSignupHashSessionPending, shouldStayOnLoginForPassword } from '@/utils/auth-url-callback';
+import { withTimeout } from '@/utils/promise-timeout';
 import type { PublicLaunchMode } from '@/utils/public-launch-access';
+import type { Session } from '@supabase/supabase-js';
 
 export type PublicSiteContextValue = {
     userId: string | undefined;
@@ -55,11 +64,33 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
             setSessionReady(true);
         };
 
+        const persistAndApply = (session: Session) => {
+            persistAuthSession({
+                access_token: session.access_token,
+                refresh_token: session.refresh_token ?? '',
+                expires_in: session.expires_in ?? 3600,
+                expires_at: session.expires_at,
+                user: session.user,
+            });
+            applyUser(session.user.id, session.user.email ?? undefined);
+        };
+
         const boot = async () => {
             if (shouldStayOnLoginForPassword()) {
                 clearAuthSessionStorage();
                 clearSession();
                 return;
+            }
+
+            if (isSignupHashSessionPending()) {
+                const { data } = await withTimeout(supabase.auth.getSession(), 8_000, {
+                    data: { session: null },
+                });
+                if (cancelled) return;
+                if (data.session?.user) {
+                    persistAndApply(data.session);
+                    return;
+                }
             }
 
             const stored = readCachedAuthSession();
@@ -138,10 +169,18 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
         window.addEventListener(AUTH_SIGNED_OUT_EVENT, onSignedOut);
         window.addEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
 
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (cancelled || shouldStayOnLoginForPassword()) return;
+            if (session?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+                persistAndApply(session);
+            }
+        });
+
         return () => {
             cancelled = true;
             window.removeEventListener(AUTH_SIGNED_OUT_EVENT, onSignedOut);
             window.removeEventListener(AUTH_SIGNED_IN_EVENT, onSignedIn);
+            authListener.subscription.unsubscribe();
         };
     }, []);
 
@@ -154,9 +193,11 @@ export function PublicLaunchModeProvider({ children }: { children: React.ReactNo
 
     const value = useMemo<PublicSiteContextValue>(() => {
         const loggedIn = sessionReady && Boolean(userId);
+        // Perfil é a fonte após promoção cliente→gestor. O cache `profileTipo`
+        // tem staleTime de 5 min e, se ficar na frente, o menu do avatar não muda sem F5.
         const tipo =
-            normalizeTipoUsuarioId(roleTipo) ??
-            normalizeTipoUsuarioId(profile?.tipo_usuario_id);
+            normalizeTipoUsuarioId(profile?.tipo_usuario_id) ??
+            normalizeTipoUsuarioId(roleTipo);
         const roleLoading = Boolean(
             userId &&
                 tipo == null &&

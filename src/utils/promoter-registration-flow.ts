@@ -6,7 +6,16 @@ import { signOutSession } from '@/utils/sign-out-session';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { registerUserViaResend } from '@/utils/auth-email-via-resend';
-import { PENDING_PROMOTER_METADATA_KEY } from '@/utils/manager-company-registration';
+import {
+    PENDING_PROMOTER_METADATA_KEY,
+    clearCompanyRegistrationPostpone,
+} from '@/utils/manager-company-registration';
+import {
+    MANAGER_REGISTRATION_KIND_METADATA_KEY,
+    loadManagerRegistrationKind,
+    resolveManagerOnboardingPath,
+    type ManagerRegistrationKind,
+} from '@/utils/manager-registration-kind';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import { showError, showSuccess } from '@/utils/toast';
 
@@ -17,6 +26,7 @@ export const USER_TYPE_CLIENT = 3;
 export const MANAGER_ACCOUNT_REGISTER_PATH = '/manager/register/account';
 export const MANAGER_COMPANY_REGISTER_PATH = '/manager/register/company';
 export const MANAGER_TERMS_REGISTER_PATH = '/manager/register';
+export { MANAGER_INDIVIDUAL_REGISTER_PATH } from '@/utils/manager-registration-kind';
 
 export type RegisterPromoterAccountResult =
     | { ok: true; needsConfirmation: true }
@@ -28,8 +38,13 @@ export async function registerPromoterAccountViaResend(input: {
     email: string;
     password: string;
     accountName: string;
+    kind?: ManagerRegistrationKind;
 }): Promise<RegisterPromoterAccountResult> {
     const normalizedEmail = input.email.trim().toLowerCase();
+    const kind = input.kind ?? loadManagerRegistrationKind() ?? 'company';
+    const continuePath = resolveManagerOnboardingPath({
+        user_metadata: { [MANAGER_REGISTRATION_KIND_METADATA_KEY]: kind },
+    });
 
     if (!normalizedEmail || !input.password) {
         return { ok: false, message: 'Informe e-mail e senha.' };
@@ -41,10 +56,11 @@ export async function registerPromoterAccountViaResend(input: {
     const registerResult = await registerUserViaResend({
         email: normalizedEmail,
         password: input.password,
-        redirectPath: MANAGER_COMPANY_REGISTER_PATH,
+        redirectPath: continuePath,
         metadata: {
             name: input.accountName.trim() || 'Gestor EventFest',
             [PENDING_PROMOTER_METADATA_KEY]: true,
+            [MANAGER_REGISTRATION_KIND_METADATA_KEY]: kind,
         },
     });
 
@@ -76,7 +92,7 @@ export type PromoterCtaProfile = {
  * Fluxo de adesão:
  * 1. Visitante → /manager/register (escolhe tipo; sem assinar contrato ainda)
  *    ou → /manager/register/account (conta + e-mail)
- * 2. Após confirmar e-mail → /manager/register/company (dados da empresa)
+ * 2. Após confirmar e-mail → /manager/register/company (PJ) ou /manager/register/individual (PF)
  * 3. Assina o contrato em /manager/register (com company_id)
  * 4. Perfil gestor + destino pós-login (plano/dashboard)
  */
@@ -103,6 +119,7 @@ export async function navigateFromPromoterCta(
     userId: string | undefined,
     profile: PromoterCtaProfile | null | undefined,
 ): Promise<void> {
+    clearCompanyRegistrationPostpone();
     if (!userId) {
         navigate(MANAGER_ACCOUNT_REGISTER_PATH, {
             state: { fromPromoterCta: true },
@@ -137,7 +154,7 @@ export async function navigateFromPromoterCta(
     }
 
     if (userType === USER_TYPE_CLIENT) {
-        navigate(MANAGER_COMPANY_REGISTER_PATH, { state: { fromPromoterCta: true } });
+        navigate(resolveManagerOnboardingPath(), { state: { fromPromoterCta: true } });
         return;
     }
 

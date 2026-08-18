@@ -11,7 +11,6 @@ import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import ManagerTypeSelectionDialog from '@/components/ManagerTypeSelectionDialog';
 import ManagerUseCaseSelectionDialog from '@/components/ManagerUseCaseSelectionDialog';
-import ManagerIndividualRegisterDialog from '@/components/ManagerIndividualRegisterDialog';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActivePlatformContract } from '@/utils/fetchPlatformContract';
 import {
@@ -22,7 +21,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { MANAGER_ACCOUNT_REGISTER_PATH } from '@/utils/promoter-registration-flow';
+import { clearCompanyRegistrationPostpone } from '@/utils/manager-company-registration';
+import {
+    MANAGER_INDIVIDUAL_REGISTER_PATH,
+    saveManagerRegistrationKind,
+} from '@/utils/manager-registration-kind';
 import { useManagerCompanyContractAcceptances } from '@/hooks/use-manager-contract-acceptances';
+import { hasSignedCompanyRegistration } from '@/constants/manager-onboarding-gate';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -39,7 +44,6 @@ const ManagerRegister: React.FC = () => {
     const [showTypeSelectionModal, setShowTypeSelectionModal] = useState(false);
     const [showUseCaseModal, setShowUseCaseModal] = useState(false);
     const [registrationUseCase, setRegistrationUseCase] = useState<ManagerRegistrationUseCase>('organizer');
-    const [showIndividualRegisterModal, setShowIndividualRegisterModal] = useState(false);
 
     const { userId } = usePageAuth();
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
@@ -60,17 +64,11 @@ const ManagerRegister: React.FC = () => {
     const { data: acceptancesData, isLoading: isLoadingAcceptances } =
         useManagerCompanyContractAcceptances(companyId);
 
-    const hasSignedCompanyRegistration = Boolean(
-        acceptancesData?.items?.some(
-            (row) =>
-                row.contract_type === 'company_registration' ||
-                row.acceptance_source === 'manager_register',
-        ),
-    );
+    const hasSignedCompanyRegistrationContract = hasSignedCompanyRegistration(acceptancesData?.items);
 
     const needsCompanyFirst = !isAdminRegisterRoute && !companyId;
     const showContractStep =
-        isAdminRegisterRoute || (Boolean(companyId) && !hasSignedCompanyRegistration);
+        isAdminRegisterRoute || (Boolean(companyId) && !hasSignedCompanyRegistrationContract);
 
     const {
         data: platformContract,
@@ -87,7 +85,7 @@ const ManagerRegister: React.FC = () => {
 
     useEffect(() => {
         if (isAdminRegisterRoute || !userId || isLoadingCompany || isLoadingAcceptances) return;
-        if (!companyId || !hasSignedCompanyRegistration) return;
+        if (!companyId || !hasSignedCompanyRegistrationContract) return;
 
         let cancelled = false;
         void (async () => {
@@ -103,7 +101,7 @@ const ManagerRegister: React.FC = () => {
         isAdminRegisterRoute,
         userId,
         companyId,
-        hasSignedCompanyRegistration,
+        hasSignedCompanyRegistrationContract,
         isLoadingCompany,
         isLoadingAcceptances,
         navigate,
@@ -115,6 +113,7 @@ const ManagerRegister: React.FC = () => {
     };
 
     const handleStartRegistration = () => {
+        clearCompanyRegistrationPostpone();
         setShowUseCaseModal(true);
     };
 
@@ -171,6 +170,7 @@ const ManagerRegister: React.FC = () => {
         }
 
         if (type === 'individual') {
+            saveManagerRegistrationKind('individual');
             if (!userId) {
                 showError('Crie sua conta e confirme o e-mail antes do cadastro de Pessoa Física.');
                 setIsSubmitting(false);
@@ -179,10 +179,12 @@ const ManagerRegister: React.FC = () => {
                 });
                 return;
             }
-            setShowIndividualRegisterModal(true);
             setIsSubmitting(false);
+            navigate(MANAGER_INDIVIDUAL_REGISTER_PATH);
             return;
         }
+
+        saveManagerRegistrationKind('company');
 
         showSuccess('Você selecionou o cadastro como Pessoa Jurídica.');
         setTimeout(() => {
@@ -298,11 +300,16 @@ const ManagerRegister: React.FC = () => {
                             Continuar para confirmação
                         </Button>
                         <Button
-                            onClick={() => navigate('/')}
+                            onClick={() => {
+                                showError(
+                                    'Assine o contrato de cadastro da empresa para usar o painel e escolher um plano.',
+                                );
+                                navigate('/');
+                            }}
                             variant="outline"
                             className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
                         >
-                            Voltar para a Home
+                            Sair sem assinar o contrato
                         </Button>
                     </div>
                 )}
@@ -333,13 +340,6 @@ const ManagerRegister: React.FC = () => {
                 onClose={() => setShowTypeSelectionModal(false)}
                 onSelectType={handleSelectManagerType}
                 isSubmitting={isSubmitting}
-            />
-
-            <ManagerIndividualRegisterDialog
-                isOpen={showIndividualRegisterModal}
-                onClose={() => setShowIndividualRegisterModal(false)}
-                profile={profile}
-                userId={userId}
             />
         </div>
     );

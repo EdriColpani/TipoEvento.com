@@ -1,6 +1,6 @@
 import { supabaseUrl, supabaseAnonKey } from '@/integrations/supabase/client';
 
-type AuthEmailResult = { ok: true } | { ok: false; message: string };
+type AuthEmailResult = { ok: true } | { ok: false; message: string; error?: string };
 
 async function callAuthEmailFunction(
     functionName: string,
@@ -32,7 +32,7 @@ async function callAuthEmailFunction(
         }
 
         if (data.message) {
-            return { ok: false, message: data.message };
+            return { ok: false, message: data.message, error: data.error };
         }
 
         if (data.error === 'resend_rejected') {

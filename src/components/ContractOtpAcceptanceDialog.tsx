@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,6 +50,7 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
     billingPlan = null,
     onAccepted,
 }) => {
+    const queryClient = useQueryClient();
     const [step, setStep] = useState<Step>('otp');
     const [challengeId, setChallengeId] = useState<string | null>(null);
     const [destinationMasked, setDestinationMasked] = useState('');
@@ -147,6 +149,24 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
             setResult(res);
             setStep('done');
             showSuccess('Contrato aceito e registrado.');
+            if (companyId) {
+                queryClient.setQueryData(
+                    ['managerCompanyContractAcceptances', companyId],
+                    (old: { items?: Array<Record<string, unknown>>; total?: number } | undefined) => ({
+                        items: [
+                            ...(old?.items ?? []),
+                            {
+                                contract_type: contractType,
+                                acceptance_source: acceptanceSource,
+                            },
+                        ],
+                        total: (old?.total ?? 0) + 1,
+                    }),
+                );
+                void queryClient.invalidateQueries({
+                    queryKey: ['managerCompanyContractAcceptances', companyId],
+                });
+            }
         } catch (e: unknown) {
             showError(e instanceof Error ? e.message : 'Falha ao assinar o contrato.');
         } finally {

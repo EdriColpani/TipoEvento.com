@@ -7,22 +7,22 @@ import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
 import {
     hasPendingPromoterRegistration,
     loadCompanyRegisterDraft,
-    MANAGER_COMPANY_REGISTER_DRAFT_KEY,
-    MANAGER_COMPANY_REGISTER_PATH,
+    isCompanyRegistrationPostponed,
 } from '@/utils/manager-company-registration';
+import { resolveManagerOnboardingPath } from '@/utils/manager-registration-kind';
 import { peekComplimentaryReturnPath } from '@/utils/complimentary-auth-return';
 import { isRegistrationBlockedByPreview } from '@/utils/public-launch-registration-block';
 
 /**
  * Após confirmar e-mail, o Supabase pode redirecionar para / ou /login.
- * Envia o usuário ao cadastro de empresa quando há rascunho ou flag de promotor.
+ * Retoma o cadastro PF ou PJ conforme o tipo escolhido.
  */
 export function usePromoterRegistrationResume() {
     const navigate = useNavigate();
     const location = useLocation();
 
     useEffect(() => {
-        if (location.pathname === MANAGER_COMPANY_REGISTER_PATH) return;
+        if (location.pathname.startsWith('/manager/register')) return;
 
         let cancelled = false;
 
@@ -32,6 +32,10 @@ export function usePromoterRegistrationResume() {
             }
 
             if (await isRegistrationBlockedByPreview()) {
+                return;
+            }
+
+            if (isCompanyRegistrationPostponed()) {
                 return;
             }
 
@@ -49,7 +53,9 @@ export function usePromoterRegistrationResume() {
             const pendingPromoter = hasPendingPromoterRegistration(session.user);
             if (!hasDraft && !pendingPromoter) return;
 
-            navigate(MANAGER_COMPANY_REGISTER_PATH, { replace: true });
+            const nextPath = resolveManagerOnboardingPath(session.user);
+            if (location.pathname === nextPath) return;
+            navigate(nextPath, { replace: true });
         };
 
         void resumeIfNeeded();
@@ -57,12 +63,15 @@ export function usePromoterRegistrationResume() {
         const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (cancelled || !session?.user || !isAuthEmailConfirmed(session.user)) return;
             if (location.pathname.startsWith('/cortesia/') || peekComplimentaryReturnPath()) return;
+            if (location.pathname.startsWith('/manager/register')) return;
             if (await isRegistrationBlockedByPreview()) return;
-            const hasDraft = Boolean(sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY));
+            if (isCompanyRegistrationPostponed()) return;
+            const hasDraft = Boolean(loadCompanyRegisterDraft());
             const pendingPromoter = hasPendingPromoterRegistration(session.user);
-            if ((hasDraft || pendingPromoter) && location.pathname !== MANAGER_COMPANY_REGISTER_PATH) {
-                navigate(MANAGER_COMPANY_REGISTER_PATH, { replace: true });
-            }
+            if (!hasDraft && !pendingPromoter) return;
+            const nextPath = resolveManagerOnboardingPath(session.user);
+            if (location.pathname === nextPath) return;
+            navigate(nextPath, { replace: true });
         });
 
         return () => {

@@ -40,6 +40,13 @@ import {
     requiresManagerCompanyBillingAcceptance,
 } from '@/constants/manager-billing-gate';
 import {
+    hasSignedCompanyRegistration,
+    MANAGER_COMPANY_REGISTRATION_PATH,
+    MANAGER_REGISTRATION_GATE_TOAST,
+    requiresManagerCompanyRegistrationAcceptance,
+} from '@/constants/manager-onboarding-gate';
+import { useManagerCompanyContractAcceptances } from '@/hooks/use-manager-contract-acceptances';
+import {
     isManagerPathAllowedWhenListingPastDue,
     listingSubscriptionBlocksOperations,
     MANAGER_LISTING_RENEWAL_PATH,
@@ -110,20 +117,36 @@ const ManagerLayout: React.FC = () => {
         needsBillingGateCheck ? company!.id : undefined,
     );
     const billingLoaded = !needsBillingGateCheck || !isLoadingBilling;
-    const requiresContractAcceptance = requiresManagerCompanyBillingAcceptance(
+    const { data: acceptancesData, isLoading: isLoadingAcceptances } =
+        useManagerCompanyContractAcceptances(needsBillingGateCheck ? company?.id : undefined);
+    const acceptancesLoaded = !needsBillingGateCheck || !isLoadingAcceptances;
+    const signedCompanyRegistration = hasSignedCompanyRegistration(acceptancesData?.items);
+    const registrationGatesLoaded = billingLoaded && acceptancesLoaded;
+    const requiresRegistrationAcceptance = requiresManagerCompanyRegistrationAcceptance(
         isManagerPro,
         isAdminMaster,
         company?.id,
+        signedCompanyRegistration,
         billing,
-        billingLoaded,
+        registrationGatesLoaded,
     );
+    const requiresContractAcceptance =
+        !requiresRegistrationAcceptance &&
+        requiresManagerCompanyBillingAcceptance(
+            isManagerPro,
+            isAdminMaster,
+            company?.id,
+            billing,
+            billingLoaded,
+        );
     const billingReady = isCompanyBillingReady(billing);
     const needsPlanFeatureCheck =
-        isManagerPro && !isAdminMaster && !!company?.id && !requiresContractAcceptance;
+        isManagerPro && !isAdminMaster && !!company?.id && !requiresContractAcceptance && !requiresRegistrationAcceptance;
     const { features: planFeatures, isLoading: isLoadingPlanFeatures } = useCompanyPlanFeatures(
         company?.id,
         { isAdminMaster, enabled: needsPlanFeatureCheck },
     );
+    const registrationGateToastShown = useRef(false);
     const billingGateToastShown = useRef(false);
     const planFeatureRedirectShown = useRef(false);
     const listingGateToastShown = useRef(false);
@@ -143,6 +166,21 @@ const ManagerLayout: React.FC = () => {
     const licenseBlocksPanel = consumptionLicenseBlocksOperations(consumptionLicenseStatus);
 
     useEffect(() => {
+        if (!registrationGatesLoaded || !requiresRegistrationAcceptance) {
+            registrationGateToastShown.current = false;
+            return;
+        }
+        if (!registrationGateToastShown.current) {
+            registrationGateToastShown.current = true;
+            showError(MANAGER_REGISTRATION_GATE_TOAST);
+        }
+        navigate(MANAGER_COMPANY_REGISTRATION_PATH, { replace: true });
+    }, [registrationGatesLoaded, requiresRegistrationAcceptance, navigate]);
+
+    useEffect(() => {
+        if (requiresRegistrationAcceptance) {
+            return;
+        }
         if (!billingLoaded || !requiresContractAcceptance) {
             billingGateToastShown.current = false;
             return;
@@ -155,7 +193,14 @@ const ManagerLayout: React.FC = () => {
             showError(getBillingGateToastMessage(billing));
         }
         navigate(MANAGER_BILLING_SETUP_PATH, { replace: true });
-    }, [billingLoaded, requiresContractAcceptance, location.pathname, navigate, billing]);
+    }, [
+        requiresRegistrationAcceptance,
+        billingLoaded,
+        requiresContractAcceptance,
+        location.pathname,
+        navigate,
+        billing,
+    ]);
 
     useEffect(() => {
         if (!needsPlanFeatureCheck || isLoadingPlanFeatures) {
@@ -266,6 +311,7 @@ const ManagerLayout: React.FC = () => {
           (isLoadingProfile && !profile) ||
           (isManagerPro && isLoadingCompany) ||
           (needsBillingGateCheck && isLoadingBilling) ||
+          (needsBillingGateCheck && isLoadingAcceptances) ||
           (needsPlanFeatureCheck && isLoadingPlanFeatures) ||
           (isListingPlan && isLoadingListingSubscription) ||
           (isConsumptionLicensePlan && isLoadingConsumptionLicense);
@@ -452,7 +498,7 @@ const ManagerLayout: React.FC = () => {
     }
     
     const handleNavClick = (path: string, closeMobile = false) => {
-        if (isManagerNavItemLocked(path, requiresContractAcceptance)) {
+        if (isManagerNavItemLocked(path, requiresContractAcceptance, requiresRegistrationAcceptance)) {
             navigate(MANAGER_BILLING_SETUP_PATH);
             if (closeMobile) setIsMobileMenuOpen(false);
             return;
@@ -700,7 +746,11 @@ const ManagerLayout: React.FC = () => {
                                     
                                     // Renderiza itens normais
                                     const navLocked =
-                                        isManagerNavItemLocked(item.path, requiresContractAcceptance) ||
+                                        isManagerNavItemLocked(
+                                            item.path,
+                                            requiresContractAcceptance,
+                                            requiresRegistrationAcceptance,
+                                        ) ||
                                         isNavPathLockedByPlan(item.path, planFeatures, isAdminMaster, billingReady);
                                     return (
                                         <DropdownMenuItem
@@ -890,6 +940,7 @@ const ManagerLayout: React.FC = () => {
                                                 isManagerNavItemLocked(
                                                     item.path,
                                                     requiresContractAcceptance,
+                                                    requiresRegistrationAcceptance,
                                                 ) ||
                                                 isNavPathLockedByPlan(
                                                     item.path,

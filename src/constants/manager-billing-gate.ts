@@ -11,9 +11,17 @@ export function isManagerPathAllowedWithoutBilling(pathname: string): boolean {
 }
 
 /** Rotas do menu PRO bloqueadas até aceitar o contrato do plano. */
-export function isManagerNavItemLocked(navPath: string, requiresContractAcceptance: boolean): boolean {
-    if (!requiresContractAcceptance) return false;
+export function isManagerNavItemLocked(
+    navPath: string,
+    requiresContractAcceptance: boolean,
+    requiresRegistrationAcceptance = false,
+): boolean {
+    if (!requiresContractAcceptance && !requiresRegistrationAcceptance) return false;
     if (navPath === '/') return false;
+    if (requiresRegistrationAcceptance) {
+        if (navPath.startsWith('/manager') || navPath.startsWith('/admin')) return true;
+        return false;
+    }
     if (isManagerPathAllowedWithoutBilling(navPath)) return false;
     if (navPath.startsWith('/manager') || navPath.startsWith('/admin')) return true;
     return false;
