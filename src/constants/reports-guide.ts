@@ -267,6 +267,42 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         ],
     },
     {
+        id: 'admin-fiscal',
+        audience: 'admin',
+        title: 'Sintético fiscal',
+        summary:
+            '★ Relatório do contador: créditos dos clientes, taxas MP, lucro de ingresso/consumo e mensalidades — giro ≠ receita.',
+        purpose:
+            'Explicar à Receita Federal por que a conta EventFest gira muito dinheiro e o lucro (base de imposto) é só comissão + cobranças da plataforma.',
+        howItWorks: [
+            'Bloco 1: recargas e saldo em carteira (passivo do cliente, não é faturamento).',
+            'Bloco 2: taxas Mercado Pago pagas pela EventFest.',
+            'Bloco 3: lucro — ingresso (MP e carteira), consumo, mensalidade, licença e inatividade.',
+            'Bloco 4: texto de conciliação giro × lucro. CSV e impressão/PDF.',
+        ],
+        tips: [
+            'Use o livro Contábil para o detalhe linha a linha; este sintético é o resumo para o contador.',
+        ],
+    },
+    {
+        id: 'admin-taxes',
+        audience: 'admin',
+        title: 'Impostos a pagar',
+        summary:
+            '★ Base de lucro da competência + lançamento e baixa das guias (DAS, PIS, COFINS, ISS, etc.).',
+        purpose:
+            'Partir do lucro EventFest do sintético fiscal e registrar cada guia a pagar, com baixa quando o imposto for quitado.',
+        howItWorks: [
+            'O topo mostra só o lucro total da competência (soma das receitas EventFest).',
+            'Lançamento: tipo, descrição, vencimento e valor da guia. Status inicial: A pagar.',
+            'Baixa: informa a data de pagamento e marca como Pago. Cancelamento exige motivo.',
+            'A base de lucro no momento do lançamento fica gravada na guia (snapshot).',
+        ],
+        tips: [
+            'O sistema não calcula alíquota. O valor da guia vem do contador.',
+        ],
+    },
+    {
         id: 'admin-revenue',
         audience: 'admin',
         title: 'Receita da plataforma',
@@ -325,6 +361,8 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         purpose:
             'Central completa do módulo de créditos para o Admin Master. Cada aba tem um papel: do passivo (saldo nas carteiras) até a conciliação com o Mercado Pago.',
         howItWorks: [
+            'Sintético fiscal: giro vs lucro para o contador (Receita Federal).',
+            'Impostos: base de lucro da competência, lançamento e baixa de guias.',
             'Passivo: saldos nas carteiras dos clientes (obrigação EventFest).',
             'Comissões: comissão EventFest sobre consumo/crédito.',
             'Cross-empresa: fluxos entre empresas/parceiros.',

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, FileSpreadsheet, Loader2, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp, AlertTriangle, Star } from 'lucide-react';
+import { ArrowLeft, Banknote, FileSpreadsheet, Landmark, Loader2, Receipt, Wallet, Scale, MapPin, Shield, Undo2, TrendingUp, AlertTriangle, Star } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { invokeEdgeFunctionRest } from '@/utils/edge-function-rest';
 import { supabase } from '@/integrations/supabase/client';
 import CreditAccountingReportPanel from '@/components/CreditAccountingReportPanel';
+import AdminFiscalSyntheticReportPanel from '@/components/AdminFiscalSyntheticReportPanel';
+import AdminTaxGuidesPanel from '@/components/AdminTaxGuidesPanel';
 import AdminCreditManualSettlementsPanel from '@/components/AdminCreditManualSettlementsPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,6 +67,8 @@ function settlementStatusLabel(s: string): string {
 }
 
 const ADMIN_CREDIT_REPORT_TABS = new Set([
+    'fiscal',
+    'taxes',
     'liability',
     'commission',
     'cross',
@@ -341,7 +345,7 @@ const AdminCreditReports: React.FC = () => {
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                         <PrincipalReportBadge label="Principal · créditos e MP" />
                         <p className="text-gray-400 text-sm">
-                            Comissões, receita, posição financeira e conciliação MP.
+                            Sintético fiscal, comissões, receita, posição financeira e conciliação MP.
                         </p>
                     </div>
                 </div>
@@ -356,6 +360,12 @@ const AdminCreditReports: React.FC = () => {
 
             <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="bg-black border border-yellow-500/30 mb-4 flex flex-wrap h-auto gap-1 p-1">
+                    <TabsTrigger value="fiscal" className={TAB_TRIGGER}>
+                        <Landmark className="h-4 w-4 mr-1" /> Sintético fiscal
+                    </TabsTrigger>
+                    <TabsTrigger value="taxes" className={TAB_TRIGGER}>
+                        <Receipt className="h-4 w-4 mr-1" /> Impostos
+                    </TabsTrigger>
                     <TabsTrigger value="liability" className={TAB_TRIGGER}>
                         <Scale className="h-4 w-4 mr-1" /> Passivo
                     </TabsTrigger>
@@ -634,6 +644,14 @@ const AdminCreditReports: React.FC = () => {
                             )}
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                <TabsContent value="fiscal">
+                    <AdminFiscalSyntheticReportPanel />
+                </TabsContent>
+
+                <TabsContent value="taxes">
+                    <AdminTaxGuidesPanel />
                 </TabsContent>
 
                 <TabsContent value="accounting">
