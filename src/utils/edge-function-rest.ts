@@ -45,7 +45,13 @@ export async function invokeEdgeFunctionRest<T>(
         const data = (await response.json().catch(() => null)) as T & EdgeErrorPayload | null;
 
         if (!response.ok) {
-            throw new Error(formatEdgeError(data, `Erro ao chamar ${functionName}.`));
+            const fallback =
+                response.status === 429
+                    ? 'Muitas tentativas. Aguarde um momento e solicite um novo código.'
+                    : response.status === 502
+                      ? 'Serviço temporariamente indisponível. Tente novamente em instantes.'
+                      : `Erro ao chamar ${functionName}.`;
+            throw new Error(formatEdgeError(data, fallback));
         }
 
         return data as T;

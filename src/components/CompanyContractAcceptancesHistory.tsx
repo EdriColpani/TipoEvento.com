@@ -37,7 +37,9 @@ function planFromSnapshot(snap: Record<string, unknown> | null | undefined): str
 const CompanyContractAcceptancesHistory: React.FC<Props> = ({ companyId }) => {
     const query = useManagerCompanyContractAcceptances(companyId);
     const [busyId, setBusyId] = useState<string | null>(null);
-    const items = query.data?.items ?? [];
+    const items = (query.data?.items ?? []).filter(
+        (row): row is typeof row & { id: string } => typeof row?.id === 'string' && row.id.length > 0,
+    );
 
     const handlePdf = async (rowId: string, path: string | null, mode: 'view' | 'download') => {
         if (!path) {
@@ -47,7 +49,7 @@ const CompanyContractAcceptancesHistory: React.FC<Props> = ({ companyId }) => {
         setBusyId(rowId);
         try {
             if (mode === 'view') await openContractAcceptancePdf(path);
-            else await downloadContractAcceptancePdf(path, `contrato-aceite-${rowId.slice(0, 8)}.pdf`);
+            else await downloadContractAcceptancePdf(path, `contrato-aceite-${rowId.slice(0, 8) || 'aceite'}.pdf`);
         } catch (e: unknown) {
             showError(e instanceof Error ? e.message : 'Falha ao abrir o PDF.');
         } finally {
