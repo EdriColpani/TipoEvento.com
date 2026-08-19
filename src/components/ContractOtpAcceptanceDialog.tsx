@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,7 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
             ? crypto.randomUUID()
             : `ca-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
+    const initialSendRef = useRef(false);
 
     const sendCode = async (isResend: boolean) => {
         setSending(true);
@@ -76,7 +77,12 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
                 acceptanceSource,
             });
             if (!res.ok || !res.challenge_id) {
-                throw new Error(res.message || 'Não foi possível enviar o código.');
+                const msg =
+                    res.error === 'cooldown' || res.error === 'rate_limited'
+                        ? res.message ||
+                          'Aguarde antes de solicitar outro código. Use o último e-mail recebido.'
+                        : res.message || 'Não foi possível enviar o código.';
+                throw new Error(msg);
             }
             setChallengeId(res.challenge_id);
             setDestinationMasked(res.destination_masked || '');
@@ -92,12 +98,17 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
     };
 
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            initialSendRef.current = false;
+            return;
+        }
+        if (initialSendRef.current) return;
+        initialSendRef.current = true;
         setStep('otp');
         setCode('');
         setResult(null);
         void sendCode(false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- envia ao abrir o diálogo
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- envia uma vez ao abrir
     }, [open, contractId]);
 
     useEffect(() => {
@@ -115,7 +126,16 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
         try {
             const res = await verifyContractAcceptanceOtp({ challengeId, code });
             if (!res.ok) {
-                throw new Error(res.message || 'Código inválido.');
+                if (res.error === 'too_many_attempts') {
+                    setChallengeId(null);
+                    setCode('');
+                }
+                throw new Error(
+                    res.message ||
+                        (res.error === 'too_many_attempts'
+                            ? 'Muitas tentativas com código errado. Clique em "Reenviar código".'
+                            : 'Código inválido.'),
+                );
             }
             setStep('sign');
             showSuccess('Código confirmado. Agora assine o contrato.');
@@ -150,19 +170,6 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
             setStep('done');
             showSuccess('Contrato aceito e registrado.');
             if (companyId) {
-                queryClient.setQueryData(
-                    ['managerCompanyContractAcceptances', companyId],
-                    (old: { items?: Array<Record<string, unknown>>; total?: number } | undefined) => ({
-                        items: [
-                            ...(old?.items ?? []),
-                            {
-                                contract_type: contractType,
-                                acceptance_source: acceptanceSource,
-                            },
-                        ],
-                        total: (old?.total ?? 0) + 1,
-                    }),
-                );
                 void queryClient.invalidateQueries({
                     queryKey: ['managerCompanyContractAcceptances', companyId],
                 });
@@ -199,8 +206,8 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
                         <div className="flex justify-center">
                             <InputOTP
                                 maxLength={6}
-                                value={code}
-                                onChange={setCode}
+                                value={code ?? ''}
+                                onChange={(value) => setCode(value ?? '')}
                                 disabled={sending || verifying}
                             >
                                 <InputOTPGroup>
