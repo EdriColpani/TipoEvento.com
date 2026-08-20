@@ -26,7 +26,7 @@ import { applyCachedProfileTipo, invalidateProfileRoleQueries } from '@/hooks/us
 import { ensureGestorCompanyLinked } from '@/utils/ensureGestorCompany';
 import { restPatch } from '@/utils/supabase-rest';
 import { MANAGER_TERMS_REGISTER_PATH } from '@/utils/promoter-registration-flow';
-import { clearPendingPromoterMetadata } from '@/utils/manager-company-registration';
+import { clearPendingPromoterMetadata, clearCompanyRegistrationPostpone } from '@/utils/manager-company-registration';
 import { clearManagerRegistrationKind } from '@/utils/manager-registration-kind';
 
 interface ManagerIndividualRegisterDialogProps {
@@ -338,7 +338,9 @@ const ManagerIndividualRegisterDialog: React.FC<ManagerIndividualRegisterDialogP
             invalidateProfileRoleQueries(queryClient, userId);
             await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
             await queryClient.invalidateQueries({ queryKey: ['managerPrimaryCompany', userId] });
+            await queryClient.invalidateQueries({ queryKey: ['managerRegistrationContractGate', userId] });
             void clearPendingPromoterMetadata();
+            clearCompanyRegistrationPostpone();
             clearManagerRegistrationKind();
 
             navigate(MANAGER_TERMS_REGISTER_PATH, { replace: true });

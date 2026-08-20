@@ -16,6 +16,8 @@ import { usePageAuth } from '@/hooks/use-page-auth';
 import { restGet, restPatch } from '@/utils/supabase-rest';
 import CompanyForm, { createCompanySchema, CompanyFormData } from '@/components/CompanyForm';
 import ManagerCompanyTabs from '@/components/ManagerCompanyTabs';
+import { fetchManagerRegistrationGateStatus } from '@/utils/manager-registration-contract-gate';
+import { MANAGER_COMPANY_REGISTRATION_PATH } from '@/constants/manager-onboarding-gate';
 
 // --- Utility Functions ---
 
@@ -105,6 +107,7 @@ const ManagerCompanyProfile: React.FC = () => {
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
     const companyId = company?.id;
     const isAdminMaster = profile?.tipo_usuario_id === 1;
+    const [registrationGateChecked, setRegistrationGateChecked] = useState(false);
 
     const [isPartnerCompany, setIsPartnerCompany] = useState(false);
     const form = useForm<CompanyProfileData>({
@@ -124,6 +127,28 @@ const ManagerCompanyProfile: React.FC = () => {
             complement: '',
         },
     });
+
+    useEffect(() => {
+        if (!userId || isLoadingCompany || isLoadingProfile || isAdminMaster) {
+            if (isAdminMaster) setRegistrationGateChecked(true);
+            return;
+        }
+
+        let cancelled = false;
+        void fetchManagerRegistrationGateStatus(userId).then((status) => {
+            if (cancelled) return;
+            if (status.pendingContractSigning) {
+                showError('Assine o contrato de cadastro da empresa antes de editar o perfil.');
+                navigate(MANAGER_COMPANY_REGISTRATION_PATH, { replace: true });
+                return;
+            }
+            setRegistrationGateChecked(true);
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userId, isLoadingCompany, isLoadingProfile, isAdminMaster, navigate]);
 
     // 2. Fetch Company Details using companyId
     useEffect(() => {
@@ -286,7 +311,7 @@ const ManagerCompanyProfile: React.FC = () => {
         }
     };
 
-    if (authPending || !sessionReady || isFetching || isLoadingCompany || isLoadingProfile) {
+    if (authPending || !sessionReady || isFetching || isLoadingCompany || isLoadingProfile || !registrationGateChecked) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -300,13 +325,16 @@ const ManagerCompanyProfile: React.FC = () => {
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <div className="bg-red-500/20 border border-red-500/50 text-red-400 p-6 rounded-xl mb-8">
                     <i className="fas fa-exclamation-triangle text-2xl mb-3"></i>
-                    <h3 className="font-semibold text-white mb-2">Empresa Não Cadastrada</h3>
-                    <p className="text-sm">Sua conta de gestor (PJ) não está associada a uma empresa. Por favor, complete o cadastro.</p>
-                    <Button 
-                        onClick={() => navigate('/manager/register/company')}
+                    <h3 className="font-semibold text-white mb-2">Empresa não vinculada</h3>
+                    <p className="text-sm">
+                        Sua conta de gestor ainda não está associada a uma empresa. Conclua o cadastro de gestor
+                        antes de editar o perfil corporativo.
+                    </p>
+                    <Button
+                        onClick={() => navigate('/manager/register')}
                         className="mt-4 bg-yellow-500 text-black hover:bg-yellow-600"
                     >
-                        Cadastrar Empresa
+                        Continuar cadastro de gestor
                     </Button>
                 </div>
             </div>

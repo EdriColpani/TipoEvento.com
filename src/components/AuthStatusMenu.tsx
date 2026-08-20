@@ -13,6 +13,7 @@ import { useUserType } from '@/hooks/use-user-type';
 import { useManagerCompany } from '@/hooks/use-manager-company';
 import { usePublicSiteContext } from '@/contexts/PublicLaunchModeContext';
 import { buildLoginLocationState } from '@/utils/safe-login-redirect';
+import { useClientToManagerTransitionWarning } from '@/hooks/use-client-to-manager-transition-warning';
 
 const AuthStatusMenu: React.FC = () => {
     const navigate = useNavigate();
@@ -41,6 +42,8 @@ const AuthStatusMenu: React.FC = () => {
 
     const isManagerPro = resolvedTipo === 2;
     const { company } = useManagerCompany(isManagerPro ? userId : undefined);
+    const { requestClientToManagerTransition, transitionWarningDialog } =
+        useClientToManagerTransitionWarning();
 
     const handleLogout = async () => {
         queryClient.clear();
@@ -81,7 +84,9 @@ const AuthStatusMenu: React.FC = () => {
         }
 
         return (
-            <div className="flex items-center space-x-4">
+            <>
+                {transitionWarningDialog}
+                <div className="flex items-center space-x-4">
                 {profile ? (
                     <NotificationBell
                         userId={userId}
@@ -156,7 +161,9 @@ const AuthStatusMenu: React.FC = () => {
 
                         {isClient && (
                             <DropdownMenuItem
-                                onClick={() => navigate('/manager/register')}
+                                onClick={() =>
+                                    requestClientToManagerTransition(() => navigate('/manager/register'))
+                                }
                                 className={`cursor-pointer text-green-400 font-semibold ${
                                     isLandingPage ? 'hover:bg-cyan-400/10' : 'hover:bg-yellow-500/10'
                                 }`}
@@ -201,7 +208,8 @@ const AuthStatusMenu: React.FC = () => {
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
-            </div>
+                </div>
+            </>
         );
     }
 

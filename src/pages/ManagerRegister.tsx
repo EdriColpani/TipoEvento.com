@@ -11,7 +11,7 @@ import { usePageAuth } from '@/hooks/use-page-auth';
 import { useProfile } from '@/hooks/use-profile';
 import ManagerTypeSelectionDialog from '@/components/ManagerTypeSelectionDialog';
 import ManagerUseCaseSelectionDialog from '@/components/ManagerUseCaseSelectionDialog';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchActivePlatformContract } from '@/utils/fetchPlatformContract';
 import {
     saveManagerRegistrationUseCase,
@@ -28,6 +28,7 @@ import {
 } from '@/utils/manager-registration-kind';
 import { useManagerCompanyContractAcceptances } from '@/hooks/use-manager-contract-acceptances';
 import { hasSignedCompanyRegistration } from '@/constants/manager-onboarding-gate';
+import { useClientToManagerTransitionWarning } from '@/hooks/use-client-to-manager-transition-warning';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -37,6 +38,7 @@ const MANAGER_CONTRACT_AGREEMENT_LABEL =
 const ManagerRegister: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const queryClient = useQueryClient();
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     const [termsScrolledToEnd, setTermsScrolledToEnd] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,6 +67,9 @@ const ManagerRegister: React.FC = () => {
         useManagerCompanyContractAcceptances(companyId);
 
     const hasSignedCompanyRegistrationContract = hasSignedCompanyRegistration(acceptancesData?.items);
+
+    const { requestClientToManagerTransition, transitionWarningDialog } =
+        useClientToManagerTransitionWarning();
 
     const needsCompanyFirst = !isAdminRegisterRoute && !companyId;
     const showContractStep =
@@ -113,8 +118,10 @@ const ManagerRegister: React.FC = () => {
     };
 
     const handleStartRegistration = () => {
-        clearCompanyRegistrationPostpone();
-        setShowUseCaseModal(true);
+        requestClientToManagerTransition(() => {
+            clearCompanyRegistrationPostpone();
+            setShowUseCaseModal(true);
+        });
     };
 
     const handleContinueToSign = () => {
@@ -146,6 +153,11 @@ const ManagerRegister: React.FC = () => {
         if (!userId) {
             navigate('/');
             return;
+        }
+        if (companyId) {
+            await queryClient.invalidateQueries({
+                queryKey: ['managerRegistrationContractGate', userId],
+            });
         }
         const path = await resolveManagerPostLoginPath(userId);
         navigate(path, { replace: true });
@@ -292,6 +304,10 @@ const ManagerRegister: React.FC = () => {
 
                 {!isAdminRegisterRoute && showContractStep && platformContract && (
                     <div className="space-y-4">
+                        <div className="rounded-xl border border-amber-500/40 bg-amber-950/60 p-4 text-amber-50 text-sm leading-relaxed">
+                            Sua empresa já está cadastrada. Este é o último passo do cadastro de gestor — assine o
+                            contrato abaixo para liberar o painel. Não é possível cadastrar a empresa novamente.
+                        </div>
                         <Button
                             onClick={handleContinueToSign}
                             disabled={!agreedToTerms || isSubmitting || !platformContract}
@@ -341,6 +357,8 @@ const ManagerRegister: React.FC = () => {
                 onSelectType={handleSelectManagerType}
                 isSubmitting={isSubmitting}
             />
+
+            {transitionWarningDialog}
         </div>
     );
 };

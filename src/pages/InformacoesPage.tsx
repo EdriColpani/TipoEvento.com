@@ -35,6 +35,7 @@ import {
 import { usePublicSiteContact } from '@/hooks/use-public-site-contact';
 import { formatPhoneBR } from '@/utils/phone-format';
 import { MANAGER_TERMS_REGISTER_PATH } from '@/utils/promoter-registration-flow';
+import { useClientToManagerTransitionWarning } from '@/hooks/use-client-to-manager-transition-warning';
 
 const OUTCOME_ICONS = [Ticket, QrCode, Wallet, BarChart3] as const;
 const OUTLINE_BTN =
@@ -45,6 +46,8 @@ const InformacoesPage: React.FC = () => {
     const { isMobile } = useDevice();
     const { openContact } = useLandingUi();
     const { contact: publicContact } = usePublicSiteContact();
+    const { requestClientToManagerTransition, transitionWarningDialog } =
+        useClientToManagerTransitionWarning();
     const contactPhone = formatPhoneBR(publicContact.phone);
     const contactCompanyName = publicContact.company_name;
     const [contactName, setContactName] = useState('');
@@ -60,7 +63,9 @@ const InformacoesPage: React.FC = () => {
     }, []);
 
     const goRegister = () => {
-        navigate(MANAGER_TERMS_REGISTER_PATH, { state: { from: '/informacoes' } });
+        requestClientToManagerTransition(() => {
+            navigate(MANAGER_TERMS_REGISTER_PATH, { state: { from: '/informacoes' } });
+        });
     };
 
     const scrollTo = (id: string) => {
@@ -99,7 +104,9 @@ const InformacoesPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white">
+        <>
+            {transitionWarningDialog}
+            <div className="min-h-screen bg-black text-white">
             <section id="home" className="relative overflow-hidden px-4 sm:px-6 pt-10 pb-16 sm:pb-20">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(234,179,8,0.18),_transparent_55%)] pointer-events-none" />
                 <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/5 via-transparent to-black pointer-events-none" />
@@ -341,7 +348,8 @@ const InformacoesPage: React.FC = () => {
                     </p>
                 </div>
             </footer>
-        </div>
+            </div>
+        </>
     );
 };
 

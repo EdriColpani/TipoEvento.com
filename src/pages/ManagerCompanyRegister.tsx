@@ -27,6 +27,7 @@ import { fetchAuthUserViaRest } from '@/utils/auth-rest';
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { signOutSession } from '@/utils/sign-out-session';
 import { isSignupHashSessionPending } from '@/utils/auth-url-callback';
+import { fetchManagerRegistrationGateStatus } from '@/utils/manager-registration-contract-gate';
 
 const ManagerCompanyRegister: React.FC = () => {
     const navigate = useNavigate();
@@ -38,6 +39,7 @@ const ManagerCompanyRegister: React.FC = () => {
     const [isFetching, setIsFetching] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isCepLoading, setIsCepLoading] = useState(false);
+    const [gateChecked, setGateChecked] = useState(false);
 
     const schema = createCompanySchema(true);
 
@@ -100,6 +102,29 @@ const ManagerCompanyRegister: React.FC = () => {
         void validateSession();
     }, [authPending, userId, sessionReady, navigate, locationState.fromPromoterCta, form]);
 
+    useEffect(() => {
+        if (!userId || authPending || isFetching) return;
+
+        let cancelled = false;
+        void fetchManagerRegistrationGateStatus(userId).then((status) => {
+            if (cancelled) return;
+            if (status.companyId) {
+                if (status.pendingContractSigning) {
+                    showError('Sua empresa já está cadastrada. Assine o contrato para continuar.');
+                    navigate(MANAGER_TERMS_REGISTER_PATH, { replace: true });
+                    return;
+                }
+                navigate('/manager/dashboard', { replace: true });
+                return;
+            }
+            setGateChecked(true);
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userId, authPending, isFetching, navigate]);
+
     const fetchAddressByCep = async (cep: string) => {
         const cleanCep = cep.replace(/\D/g, '');
         if (cleanCep.length !== 8) return;
@@ -161,6 +186,7 @@ const ManagerCompanyRegister: React.FC = () => {
             await queryClient.invalidateQueries({ queryKey: [PROFILE_TIPO_QUERY_KEY, userId] });
             await queryClient.invalidateQueries({ queryKey: ['managerCompany', userId] });
             await queryClient.invalidateQueries({ queryKey: ['managerPrimaryCompany', userId] });
+            await queryClient.invalidateQueries({ queryKey: ['managerRegistrationContractGate', userId] });
             navigate(MANAGER_TERMS_REGISTER_PATH, { replace: true });
         } catch (e: unknown) {
             dismissToast(toastId);
@@ -172,7 +198,7 @@ const ManagerCompanyRegister: React.FC = () => {
         }
     };
 
-    if (authPending || isFetching) {
+    if (authPending || isFetching || !gateChecked) {
         return (
             <div className="min-h-screen bg-black text-white flex items-center justify-center">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500" />
