@@ -12,10 +12,15 @@ import {
 import { resolveManagerOnboardingPath } from '@/utils/manager-registration-kind';
 import { peekComplimentaryReturnPath } from '@/utils/complimentary-auth-return';
 import { isRegistrationBlockedByPreview } from '@/utils/public-launch-registration-block';
+import {
+    fetchManagerRegistrationGateStatus,
+    MANAGER_REGISTRATION_CONTRACT_PATH,
+} from '@/utils/manager-registration-contract-gate';
 
 /**
  * Após confirmar e-mail, o Supabase pode redirecionar para / ou /login.
  * Retoma o cadastro PF ou PJ conforme o tipo escolhido.
+ * Se a empresa já foi criada, força assinatura do contrato (ignora postpone).
  */
 export function usePromoterRegistrationResume() {
     const navigate = useNavigate();
@@ -35,10 +40,6 @@ export function usePromoterRegistrationResume() {
                 return;
             }
 
-            if (isCompanyRegistrationPostponed()) {
-                return;
-            }
-
             const cached = readCachedAuthSession();
             if (!cached.userId) return;
 
@@ -46,6 +47,20 @@ export function usePromoterRegistrationResume() {
                 data: { session },
             } = await withTimeout(supabase.auth.getSession(), 3_000, { data: { session: null } });
             if (cancelled || !session?.user || !isAuthEmailConfirmed(session.user)) {
+                return;
+            }
+
+            const gateStatus = await fetchManagerRegistrationGateStatus(session.user.id);
+            if (cancelled) return;
+
+            if (gateStatus.pendingContractSigning) {
+                if (location.pathname !== MANAGER_REGISTRATION_CONTRACT_PATH) {
+                    navigate(MANAGER_REGISTRATION_CONTRACT_PATH, { replace: true });
+                }
+                return;
+            }
+
+            if (isCompanyRegistrationPostponed()) {
                 return;
             }
 
@@ -65,6 +80,17 @@ export function usePromoterRegistrationResume() {
             if (location.pathname.startsWith('/cortesia/') || peekComplimentaryReturnPath()) return;
             if (location.pathname.startsWith('/manager/register')) return;
             if (await isRegistrationBlockedByPreview()) return;
+
+            const gateStatus = await fetchManagerRegistrationGateStatus(session.user.id);
+            if (cancelled) return;
+
+            if (gateStatus.pendingContractSigning) {
+                if (location.pathname !== MANAGER_REGISTRATION_CONTRACT_PATH) {
+                    navigate(MANAGER_REGISTRATION_CONTRACT_PATH, { replace: true });
+                }
+                return;
+            }
+
             if (isCompanyRegistrationPostponed()) return;
             const hasDraft = Boolean(loadCompanyRegisterDraft());
             const pendingPromoter = hasPendingPromoterRegistration(session.user);

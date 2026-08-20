@@ -173,6 +173,9 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
                 void queryClient.invalidateQueries({
                     queryKey: ['managerCompanyContractAcceptances', companyId],
                 });
+                void queryClient.invalidateQueries({
+                    queryKey: ['managerRegistrationContractGate'],
+                });
             }
         } catch (e: unknown) {
             showError(e instanceof Error ? e.message : 'Falha ao assinar o contrato.');
@@ -210,13 +213,9 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
                                 onChange={(value) => setCode(value ?? '')}
                                 disabled={sending || verifying}
                             >
-                                <InputOTPGroup>
+                                <InputOTPGroup className="gap-2">
                                     {Array.from({ length: 6 }).map((_, i) => (
-                                        <InputOTPSlot
-                                            key={i}
-                                            index={i}
-                                            className="border-yellow-500/40 bg-black text-white first:border-l"
-                                        />
+                                        <InputOTPSlot key={i} index={i} />
                                     ))}
                                 </InputOTPGroup>
                             </InputOTP>

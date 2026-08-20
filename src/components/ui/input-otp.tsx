@@ -24,9 +24,15 @@ const InputOTPGroup = React.forwardRef<
   React.ElementRef<"div">,
   React.ComponentPropsWithoutRef<"div">
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("flex items-center", className)} {...props} />
+  <div ref={ref} className={cn("flex items-center gap-2", className)} {...props} />
 ));
 InputOTPGroup.displayName = "InputOTPGroup";
+
+const OTP_SLOT_CLASS =
+  "relative flex h-11 w-11 items-center justify-center rounded-md border-2 border-white/90 bg-black/70 text-base font-semibold text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08)] transition-all";
+
+const OTP_SLOT_ACTIVE_CLASS =
+  "z-10 border-yellow-500 ring-2 ring-yellow-500/50 ring-offset-2 ring-offset-black";
 
 const InputOTPSlot = React.forwardRef<
   React.ElementRef<"div">,
@@ -38,10 +44,7 @@ const InputOTPSlot = React.forwardRef<
     return (
       <div
         ref={ref}
-        className={cn(
-          "relative flex h-10 w-10 items-center justify-center border-y border-r border-input text-sm first:rounded-l-md first:border-l last:rounded-r-md",
-          className,
-        )}
+        className={cn(OTP_SLOT_CLASS, className)}
         {...props}
       />
     );
@@ -51,17 +54,13 @@ const InputOTPSlot = React.forwardRef<
   return (
     <div
       ref={ref}
-      className={cn(
-        "relative flex h-10 w-10 items-center justify-center border-y border-r border-input text-sm transition-all first:rounded-l-md first:border-l last:rounded-r-md",
-        isActive && "z-10 ring-2 ring-ring ring-offset-background",
-        className,
-      )}
+      className={cn(OTP_SLOT_CLASS, isActive && OTP_SLOT_ACTIVE_CLASS, className)}
       {...props}
     >
       {char}
       {hasFakeCaret && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />
+          <div className="h-5 w-0.5 animate-caret-blink bg-yellow-500 duration-1000" />
         </div>
       )}
     </div>

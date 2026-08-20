@@ -156,6 +156,7 @@ export async function finalizeManagerCompanyRegistration(
 
     await clearPendingPromoterMetadata();
     clearCompanyRegisterDraft();
+    clearCompanyRegistrationPostpone();
     clearManagerRegistrationUseCase();
 
     if (queryClient) {

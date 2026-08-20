@@ -4,6 +4,8 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { usePublicSiteAuth } from '@/contexts/PublicLaunchModeContext';
 import { isGuestAllowedPath } from '@/utils/public-launch-access';
 import { fetchProfileTipoUsuarioId, normalizeTipoUsuarioId } from '@/utils/fetch-profile-tipo';
+import ManagerRegistrationContractGateRedirect from '@/components/ManagerRegistrationContractGateRedirect';
+import { MANAGER_PRO_USER_TYPE_ID } from '@/utils/public-launch-access';
 
 const PUBLIC_HOME_PATHS = new Set(['/', '/informacoes']);
 
@@ -88,7 +90,19 @@ const ClientAuthGate: React.FC = () => {
         }
     }
 
-    return <Outlet />;
+    const isManagerPro =
+        isAuthenticated &&
+        (normalizeTipoUsuarioId(tipoUsuarioId) ?? normalizeTipoUsuarioId(tipoFallback)) ===
+            MANAGER_PRO_USER_TYPE_ID;
+
+    return (
+        <>
+            {isManagerPro ? (
+                <ManagerRegistrationContractGateRedirect showLoading />
+            ) : null}
+            <Outlet />
+        </>
+    );
 };
 
 export default ClientAuthGate;
