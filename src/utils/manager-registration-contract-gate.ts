@@ -1,5 +1,6 @@
 import { fetchManagerPrimaryCompanyIdRest } from '@/utils/manager-scope';
 import { callRpcRest } from '@/utils/supabase-rest-rpc';
+import { restGet } from '@/utils/supabase-rest';
 import { MANAGER_COMPANY_REGISTRATION_PATH } from '@/constants/manager-onboarding-gate';
 
 export type ManagerRegistrationGateStatus = {
@@ -18,6 +19,42 @@ export function isManagerRegistrationContractPath(pathname: string): boolean {
 
 export function isManagerRegistrationSubFlowPath(pathname: string): boolean {
     return pathname.startsWith('/manager/register/');
+}
+
+/**
+ * Fallback quando a RPC do gate falha: se a empresa já tem plano aceito,
+ * o onboarding está concluído (trigger impede plano sem contrato de cadastro).
+ */
+async function fallbackRegistrationSatisfied(companyId: string): Promise<boolean> {
+    try {
+        const rows = await restGet<
+            {
+                billing_plan_accepted_at?: string | null;
+            }[]
+        >(
+            `companies?id=eq.${encodeURIComponent(companyId)}&select=billing_plan_accepted_at&limit=1`,
+            6_000,
+        );
+        if (rows[0]?.billing_plan_accepted_at) return true;
+    } catch {
+        /* continue */
+    }
+
+    try {
+        const acceptances = await restGet<{ contract_type?: string; acceptance_source?: string }[]>(
+            `contract_acceptances?company_id=eq.${encodeURIComponent(companyId)}&select=contract_type,acceptance_source&limit=50`,
+            6_000,
+        );
+        return Boolean(
+            acceptances?.some(
+                (row) =>
+                    row.contract_type === 'company_registration' ||
+                    row.acceptance_source === 'manager_register',
+            ),
+        );
+    } catch {
+        return false;
+    }
 }
 
 export async function fetchManagerRegistrationGateStatus(
@@ -47,7 +84,8 @@ export async function fetchManagerRegistrationGateStatus(
         );
         registrationSatisfied = satisfied === true;
     } catch {
-        registrationSatisfied = false;
+        // Não assumir "pendente" em falha de rede — evita loop em gestores já cadastrados.
+        registrationSatisfied = await fallbackRegistrationSatisfied(companyId);
     }
 
     return {
