@@ -18,7 +18,10 @@ import {
     type ManagerRegistrationUseCase,
 } from '@/constants/company-kind';
 import { supabase } from '@/integrations/supabase/client';
-import { fetchManagerPrimaryCompanyId } from '@/utils/manager-scope';
+import {
+    fetchManagerPrimaryCompanyId,
+    fetchManagerPrimaryCompanyIdRest,
+} from '@/utils/manager-scope';
 import { resolveManagerPostLoginPath } from '@/utils/manager-post-login-path';
 import { MANAGER_ACCOUNT_REGISTER_PATH } from '@/utils/promoter-registration-flow';
 import { clearCompanyRegistrationPostpone } from '@/utils/manager-company-registration';
@@ -29,8 +32,11 @@ import {
 import { useManagerCompanyContractAcceptances } from '@/hooks/use-manager-contract-acceptances';
 import { hasSignedCompanyRegistration } from '@/constants/manager-onboarding-gate';
 import { useClientToManagerTransitionWarning } from '@/hooks/use-client-to-manager-transition-warning';
+import { fetchManagerRegistrationGateStatus } from '@/utils/manager-registration-contract-gate';
+import { withTimeout } from '@/utils/promise-timeout';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
+const MANAGER_USER_TYPE_ID = 2;
 
 const MANAGER_CONTRACT_AGREEMENT_LABEL =
     'Declaro que li, compreendi e concordo integralmente com este Contrato de Prestação de Serviços EventFest e, quando aplicável, declaro possuir poderes para representar a empresa CONTRATANTE.';
@@ -56,24 +62,50 @@ const ManagerRegister: React.FC = () => {
     const {
         data: companyId,
         isLoading: isLoadingCompany,
+        isError: isErrorCompany,
     } = useQuery({
         queryKey: ['managerPrimaryCompany', userId],
-        queryFn: () => fetchManagerPrimaryCompanyId(supabase, userId!),
+        queryFn: async () => {
+            try {
+                const fromRest = await fetchManagerPrimaryCompanyIdRest(userId!);
+                if (fromRest) return fromRest;
+            } catch {
+                /* fallback supabase-js */
+            }
+            return withTimeout(fetchManagerPrimaryCompanyId(supabase, userId!), 8_000, null);
+        },
         enabled: Boolean(userId) && !isAdminRegisterRoute,
         staleTime: 15_000,
+        retry: 1,
     });
 
-    const { data: acceptancesData, isLoading: isLoadingAcceptances } =
-        useManagerCompanyContractAcceptances(companyId);
+    const { data: gateStatus, isLoading: isLoadingGate } = useQuery({
+        queryKey: ['managerRegistrationContractGate', userId],
+        queryFn: () => fetchManagerRegistrationGateStatus(userId!),
+        enabled: Boolean(userId) && !isAdminRegisterRoute,
+        staleTime: 10_000,
+        retry: 1,
+    });
 
-    const hasSignedCompanyRegistrationContract = hasSignedCompanyRegistration(acceptancesData?.items);
+    const resolvedCompanyId = companyId ?? gateStatus?.companyId ?? null;
+
+    const { data: acceptancesData, isLoading: isLoadingAcceptances } =
+        useManagerCompanyContractAcceptances(resolvedCompanyId);
+
+    const hasSignedCompanyRegistrationContract =
+        hasSignedCompanyRegistration(acceptancesData?.items) ||
+        gateStatus?.registrationSatisfied === true;
 
     const { requestClientToManagerTransition, transitionWarningDialog } =
         useClientToManagerTransitionWarning();
 
-    const needsCompanyFirst = !isAdminRegisterRoute && !companyId;
+    const isExistingManager = Number(profile?.tipo_usuario_id) === MANAGER_USER_TYPE_ID;
+    /** Só inicia cadastro se realmente não há empresa — gestor existente nunca vê "Começar cadastro". */
+    const needsCompanyFirst =
+        !isAdminRegisterRoute && !resolvedCompanyId && !isExistingManager && !isLoadingGate;
     const showContractStep =
-        isAdminRegisterRoute || (Boolean(companyId) && !hasSignedCompanyRegistrationContract);
+        isAdminRegisterRoute ||
+        (Boolean(resolvedCompanyId) && !hasSignedCompanyRegistrationContract);
 
     const {
         data: platformContract,
@@ -89,26 +121,37 @@ const ManagerRegister: React.FC = () => {
     const shouldShowAgreementCheckbox = !isAdminRegisterRoute;
 
     useEffect(() => {
-        if (isAdminRegisterRoute || !userId || isLoadingCompany || isLoadingAcceptances) return;
-        if (!companyId || !hasSignedCompanyRegistrationContract) return;
+        if (isAdminRegisterRoute || !userId || isLoadingCompany || isLoadingAcceptances || isLoadingGate) {
+            return;
+        }
 
-        let cancelled = false;
-        void (async () => {
-            const path = await resolveManagerPostLoginPath(userId);
-            if (!cancelled) {
-                navigate(path, { replace: true });
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
+        // Gestor com cadastro completo (empresa + contrato/plano) → sai desta tela.
+        if (resolvedCompanyId && hasSignedCompanyRegistrationContract) {
+            let cancelled = false;
+            void (async () => {
+                const path = await resolveManagerPostLoginPath(userId);
+                if (!cancelled) {
+                    navigate(path, { replace: true });
+                }
+            })();
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        // Gestor existente sem companyId resolvido (falha de leitura) → painel, nunca "Começar cadastro".
+        if (isExistingManager && !resolvedCompanyId) {
+            navigate('/manager/dashboard', { replace: true });
+        }
     }, [
         isAdminRegisterRoute,
         userId,
-        companyId,
+        resolvedCompanyId,
         hasSignedCompanyRegistrationContract,
         isLoadingCompany,
         isLoadingAcceptances,
+        isLoadingGate,
+        isExistingManager,
         navigate,
     ]);
 
@@ -141,7 +184,7 @@ const ManagerRegister: React.FC = () => {
             showError('Sessão inválida. Faça login novamente.');
             return;
         }
-        if (!companyId) {
+        if (!resolvedCompanyId) {
             showError('Cadastre a empresa antes de assinar o contrato.');
             return;
         }
@@ -154,7 +197,7 @@ const ManagerRegister: React.FC = () => {
             navigate('/');
             return;
         }
-        if (companyId) {
+        if (resolvedCompanyId) {
             await queryClient.invalidateQueries({
                 queryKey: ['managerRegistrationContractGate', userId],
             });
@@ -213,7 +256,9 @@ const ManagerRegister: React.FC = () => {
 
     const bootLoading =
         isLoadingProfile ||
-        (!isAdminRegisterRoute && Boolean(userId) && (isLoadingCompany || isLoadingAcceptances));
+        (!isAdminRegisterRoute &&
+            Boolean(userId) &&
+            (isLoadingCompany || isLoadingAcceptances || isLoadingGate));
 
     return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center px-4 sm:px-6 py-12">
@@ -278,6 +323,21 @@ const ManagerRegister: React.FC = () => {
                             Voltar para a Home
                         </Button>
                     </div>
+                ) : isExistingManager && !resolvedCompanyId ? (
+                    <div className="bg-black border border-yellow-500/30 rounded-2xl p-6 sm:p-8 space-y-4 text-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto" />
+                        <p className="text-gray-400 text-sm">
+                            {isErrorCompany
+                                ? 'Não foi possível carregar sua empresa. Redirecionando ao painel…'
+                                : 'Localizando sua empresa…'}
+                        </p>
+                        <Button
+                            onClick={() => navigate('/manager/dashboard', { replace: true })}
+                            className="w-full bg-yellow-500 text-black hover:bg-yellow-600"
+                        >
+                            Ir para o Dashboard
+                        </Button>
+                    </div>
                 ) : isLoadingContract ? (
                     <div className="text-center py-10">
                         <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -331,13 +391,13 @@ const ManagerRegister: React.FC = () => {
                 )}
             </div>
 
-            {platformContract && companyId && (
+            {platformContract && resolvedCompanyId && (
                 <ContractOtpAcceptanceDialog
                     open={otpDialogOpen}
                     onOpenChange={setOtpDialogOpen}
                     contractId={platformContract.id}
                     contractType={platformContract.contract_type}
-                    companyId={companyId}
+                    companyId={resolvedCompanyId}
                     acceptanceSource="manager_register"
                     scrolledToEnd={termsScrolledToEnd}
                     onAccepted={handleContractAccepted}
