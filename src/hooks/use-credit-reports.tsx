@@ -165,12 +165,34 @@ export function useAdminCreditFinancialPosition(startDate?: string | null, endDa
     });
 }
 
+export type SettlementFundingSummary = {
+    pending_retention_fast?: number;
+    pending_retention_card?: number;
+    awaiting_payment_fast?: number;
+    awaiting_payment_card?: number;
+    paid_fast?: number;
+    paid_card?: number;
+};
+
 export type TicketManualSettlementTotals = {
     pending_retention: number;
     awaiting_payment: number;
     paid: number;
     clawback: number;
+    by_funding?: SettlementFundingSummary;
 };
+
+export function useSettlementFundingSummary(companyId?: string | null, enabled = true) {
+    return useQuery({
+        queryKey: ['settlementFundingSummary', companyId ?? 'all'],
+        queryFn: () =>
+            callRpcRest<SettlementFundingSummary>('summarize_settlement_ledgers_by_funding', {
+                p_company_id: companyId ?? null,
+            }, 12_000),
+        enabled,
+        staleTime: 20_000,
+    });
+}
 
 export function useTicketManualSettlementTotals(enabled = true) {
     return useQuery({
@@ -238,6 +260,7 @@ export type AdminFiscalSyntheticReport = {
         wallet_obligation_now?: number;
         remitted_to_managers_period?: number;
         pending_remit_now?: number;
+        pending_retention?: number;
     };
 };
 
@@ -378,6 +401,8 @@ export type ManagerSettlementRow = {
     group_label?: string | null;
     source_type?: 'credit' | 'ticket' | string | null;
     source_label?: string | null;
+    settlement_funding_type?: string | null;
+    settlement_delay_days?: number | null;
 };
 
 export type SettlementSummary = {
@@ -430,6 +455,7 @@ export function useManagerCreditSettlements(companyId: string | undefined, statu
                 items: ManagerSettlementRow[];
                 summary: SettlementSummary;
                 retention_days: number;
+                settlement_policy?: string;
             }>(
                 'list_manager_credit_settlements',
                 {

@@ -57,12 +57,12 @@ function buildManagerEmail(row: TicketChargebackNotifyRow): { subject: string; h
 
   const recoveryBlock = recovery === 'manual_pix'
     ? `<p style="margin:0 0 12px;font-size:14px;color:#fbbf24;">
-  <strong>Como pagar:</strong> como sua empresa opera só com venda de ingressos (sem repasse de crédito D+1),
+  <strong>Como pagar:</strong> como sua empresa opera só com venda de ingressos (sem fila de repasse de crédito),
   devolva <strong>${amount}</strong> à EventFest via <strong>PIX ou TED</strong>.
   Use a referência <strong style="font-family:monospace;">${refHint}</strong> no comprovante e aguarde a confirmação do Admin.
 </p>
 <p style="margin:0;font-size:13px;color:#a3a3a3;">Os dados da chave PIX EventFest estão no painel do gestor em Relatórios → Chargebacks de ingresso.</p>`
-    : `<p style="margin:0;font-size:13px;color:#a3a3a3;">Esse valor será descontado automaticamente nos próximos repasses (liquidação D+1 de crédito), até a quitação.</p>`;
+    : `<p style="margin:0;font-size:13px;color:#a3a3a3;">Esse valor será descontado automaticamente nos próximos repasses de crédito, até a quitação.</p>`;
 
   const extraHtml = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 16px;font-size:14px;color:#d4d4d4;">
   <tr><td style="padding:4px 0;color:#737373;width:42%;">Data</td><td>${formatDt(row.created_at)}</td></tr>

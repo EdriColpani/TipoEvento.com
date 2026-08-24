@@ -24,6 +24,11 @@ import {
     type AdminSettlementRow,
 } from '@/hooks/use-credit-reports';
 import { downloadSettlementPaymentProof } from '@/utils/settlement-payment-proof';
+import {
+    settlementFundingDelayHint,
+    settlementFundingLabel,
+    settlementStatusLabel,
+} from '@/utils/settlement-funding-labels';
 import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number): string {
@@ -33,17 +38,6 @@ function money(v: number): string {
 function dt(iso: string | null | undefined): string {
     if (!iso) return '—';
     return new Date(iso).toLocaleString('pt-BR');
-}
-
-function statusLabel(s: string): string {
-    const map: Record<string, string> = {
-        pending: 'Retenção D+1',
-        released: 'Aguardando TED/PIX',
-        paid: 'Pago',
-        clawback: 'Clawback',
-        cancelled: 'Cancelado',
-    };
-    return map[s] ?? s;
 }
 
 type StatusFilter = 'all' | 'paid' | 'released' | 'pending' | 'clawback';
@@ -186,7 +180,7 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
                                     Aguardando TED/PIX
                                 </SelectItem>
                                 <SelectItem value="pending" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
-                                    Retenção D+1
+                                    Em retenção
                                 </SelectItem>
                                 <SelectItem value="clawback" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
                                     Clawback
@@ -264,8 +258,10 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
                                     <TableHead className="text-yellow-500">Consumo</TableHead>
                                     <TableHead className="text-yellow-500">Gestor</TableHead>
                                     <TableHead className="text-yellow-500">Evento / destino</TableHead>
+                                    <TableHead className="text-yellow-500">Meio</TableHead>
                                     <TableHead className="text-yellow-500">Status</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
+                                    <TableHead className="text-yellow-500">Liberação</TableHead>
                                     <TableHead className="text-yellow-500">Pago em</TableHead>
                                     <TableHead className="text-yellow-500">Ref.</TableHead>
                                     <TableHead className="text-yellow-500">Arquivo</TableHead>
@@ -289,11 +285,23 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
                                         >
                                             {destinationLabel(row)}
                                         </TableCell>
+                                        <TableCell className="text-gray-300 text-xs whitespace-nowrap">
+                                            <div>{settlementFundingLabel(row.settlement_funding_type)}</div>
+                                            <div className="text-gray-500 text-[10px]">
+                                                {settlementFundingDelayHint(
+                                                    row.settlement_funding_type,
+                                                    row.settlement_delay_days,
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-gray-300 text-xs">
-                                            {statusLabel(row.status)}
+                                            {settlementStatusLabel(row.status)}
                                         </TableCell>
                                         <TableCell className="text-right text-yellow-400 text-xs font-medium">
                                             {money(Number(row.manager_amount ?? 0))}
+                                        </TableCell>
+                                        <TableCell className="text-gray-400 text-xs whitespace-nowrap">
+                                            {dt(row.release_at)}
                                         </TableCell>
                                         <TableCell className="text-gray-400 text-xs whitespace-nowrap">
                                             {dt(row.paid_at)}

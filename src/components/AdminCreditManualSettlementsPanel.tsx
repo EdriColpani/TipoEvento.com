@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Download, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -29,6 +29,13 @@ import {
 } from '@/hooks/use-credit-reports';
 import { registerAdminCreditSettlementPayment } from '@/utils/credit-manager-payout';
 import { exportCreditSettlementsCsv } from '@/utils/export-credit-settlements-csv';
+import {
+    SETTLEMENT_POLICY_SHORT,
+    matchesSettlementFundingFilter,
+    settlementFundingDelayHint,
+    settlementFundingLabel,
+    type SettlementFundingFilter,
+} from '@/utils/settlement-funding-labels';
 import {
     assertSettlementProofFile,
     removeSettlementPaymentProof,
@@ -128,6 +135,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
 }) => {
     const queryClient = useQueryClient();
     const [viewFilter, setViewFilter] = useState<SettlementViewFilter>('released');
+    const [fundingFilter, setFundingFilter] = useState<SettlementFundingFilter>('all');
     const showOperationalList = viewFilter !== 'history';
     const grouped = useAdminCreditSettlementsGrouped(viewFilter === 'pending' ? 'pending' : 'released', {
         enabled: showOperationalList,
@@ -143,7 +151,23 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
     const [submitting, setSubmitting] = useState(false);
     const [exporting, setExporting] = useState(false);
 
-    const companies = grouped.data?.companies ?? [];
+    const companiesRaw = grouped.data?.companies ?? [];
+    const companies = useMemo(() => {
+        if (fundingFilter === 'all') return companiesRaw;
+        return companiesRaw
+            .map((company) => ({
+                ...company,
+                groups: (company.groups ?? [])
+                    .map((group) => ({
+                        ...group,
+                        items: (group.items ?? []).filter((item) =>
+                            matchesSettlementFundingFilter(item.settlement_funding_type, fundingFilter),
+                        ),
+                    }))
+                    .filter((group) => (group.items ?? []).length > 0),
+            }))
+            .filter((company) => (company.groups ?? []).length > 0);
+    }, [companiesRaw, fundingFilter]);
     const releasedCompanies = releasedGrouped.data?.companies ?? [];
     const totalAwaiting = releasedCompanies.reduce((s, c) => s + Number(c.awaiting_payment_total ?? 0), 0);
     const totalRetention = companies.reduce((s, c) => s + Number(c.pending_retention_total ?? 0), 0);
@@ -221,13 +245,14 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
             <Card className="bg-black border-yellow-500/30">
                 <CardHeader className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div>
-                        <CardTitle className="text-white">Liquidação manual D+1 (TED / PIX)</CardTitle>
+                        <CardTitle className="text-white">Liquidação manual (TED / PIX)</CardTitle>
                         <CardDescription className="text-gray-400">
-                            Crédito EventFest e ingressos em modo banco. Retenção de 1 dia. Aguardando pagamento:{' '}
+                            Crédito EventFest e ingressos em modo banco. {SETTLEMENT_POLICY_SHORT}. Aguardando
+                            pagamento:{' '}
                             <span className="text-yellow-500 font-semibold">{money(totalAwaiting)}</span>
                             {totalRetention > 0 && (
                                 <span className="ml-2 text-gray-500">
-                                    · Em retenção D+1: {money(totalRetention)}
+                                    · Em retenção: {money(totalRetention)}
                                 </span>
                             )}
                         </CardDescription>
@@ -252,7 +277,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                             variant="outline"
                             disabled={exporting}
                             className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
-                            onClick={() => void handleExport('pending', 'retenção D+1')}
+                            onClick={() => void handleExport('pending', 'em retenção')}
                         >
                             <Download className="h-4 w-4 mr-2" />
                             CSV retenção
@@ -291,13 +316,44 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                         value="pending"
                                         className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
                                     >
-                                        Em retenção D+1
+                                        Em retenção
                                     </SelectItem>
                                     <SelectItem
                                         value="history"
                                         className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
                                     >
                                         Conferência / histórico
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="w-56">
+                            <Label className="text-gray-300">Meio da venda</Label>
+                            <Select
+                                value={fundingFilter}
+                                onValueChange={(v) => setFundingFilter(v as SettlementFundingFilter)}
+                            >
+                                <SelectTrigger className="mt-1 bg-black border-yellow-500/30 text-white">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-black border border-yellow-500/30 text-white">
+                                    <SelectItem
+                                        value="all"
+                                        className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
+                                    >
+                                        Todos
+                                    </SelectItem>
+                                    <SelectItem
+                                        value="fast"
+                                        className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
+                                    >
+                                        PIX / débito
+                                    </SelectItem>
+                                    <SelectItem
+                                        value="card"
+                                        className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
+                                    >
+                                        Cartão de crédito
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
@@ -396,12 +452,12 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
 
                     {viewFilter === 'pending' && (
                         <Alert className="border-amber-500/30 bg-amber-950/40">
-                            <AlertTitle className="text-amber-200">Retenção D+1 — pagamento ainda não disponível</AlertTitle>
+                            <AlertTitle className="text-amber-200">Em retenção — pagamento ainda não disponível</AlertTitle>
                             <AlertDescription className="text-amber-100/90 text-sm space-y-2">
                                 <p>
-                                    Itens nesta lista só liberam para TED/PIX após 1 dia (veja a coluna{' '}
-                                    <strong>Liberação</strong>). O botão de baixa aparece no filtro{' '}
-                                    <strong>Aguardando TED/PIX</strong>.
+                                    Itens nesta lista só liberam para TED/PIX na data da coluna{' '}
+                                    <strong>Liberação</strong> ({SETTLEMENT_POLICY_SHORT}). O botão de baixa aparece no
+                                    filtro <strong>Aguardando TED/PIX</strong>.
                                 </p>
                                 {totalAwaiting > 0 && (
                                     <Button
@@ -488,7 +544,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                 <p className="text-gray-500 text-sm text-center py-8">
                     {viewFilter === 'released'
                         ? 'Nenhum repasse liberado aguardando pagamento.'
-                        : 'Nenhum repasse em retenção D+1 no momento.'}
+                        : 'Nenhum repasse em retenção no momento.'}
                 </p>
             ) : (
                 companies.map((company) => (
@@ -506,7 +562,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                         </>
                                     ) : (
                                         <>
-                                            Em retenção D+1:{' '}
+                                            Em retenção:{' '}
                                             <span className="text-yellow-500 font-semibold">
                                                 {money(Number(company.pending_retention_total ?? 0))}
                                             </span>
@@ -515,7 +571,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                     {viewFilter === 'released' &&
                                         Number(company.pending_retention_total ?? 0) > 0 && (
                                             <span className="ml-3 text-gray-500">
-                                                Em retenção D+1:{' '}
+                                                Em retenção:{' '}
                                                 {money(Number(company.pending_retention_total))}
                                             </span>
                                         )}
@@ -564,6 +620,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                             <TableHeader>
                                                 <TableRow className="border-yellow-500/20">
                                                     <TableHead className="text-yellow-500">Origem</TableHead>
+                                                    <TableHead className="text-yellow-500">Meio</TableHead>
                                                     <TableHead className="text-yellow-500">Consumo</TableHead>
                                                     <TableHead className="text-yellow-500">Descrição</TableHead>
                                                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
@@ -577,6 +634,15 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                                     <TableRow key={item.id} className="border-yellow-500/10">
                                                         <TableCell className="text-yellow-500/90 text-xs whitespace-nowrap">
                                                             {item.source_type === 'ticket' ? 'Ingresso' : 'Crédito'}
+                                                        </TableCell>
+                                                        <TableCell className="text-gray-300 text-xs whitespace-nowrap">
+                                                            <div>{settlementFundingLabel(item.settlement_funding_type)}</div>
+                                                            <div className="text-gray-500 text-[10px]">
+                                                                {settlementFundingDelayHint(
+                                                                    item.settlement_funding_type,
+                                                                    item.settlement_delay_days,
+                                                                )}
+                                                            </div>
                                                         </TableCell>
                                                         <TableCell className="text-gray-400 text-xs whitespace-nowrap">
                                                             {dt(item.spend_at)}

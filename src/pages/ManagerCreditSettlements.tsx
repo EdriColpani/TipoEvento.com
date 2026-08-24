@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Banknote, Download, Loader2, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -12,25 +12,32 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import { useManagerCreditSettlements, useManagerTicketChargebackDebts } from '@/hooks/use-credit-reports';
+import { useManagerCreditSettlements, useManagerTicketChargebackDebts, useSettlementFundingSummary } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
 import { downloadSettlementPaymentProof } from '@/utils/settlement-payment-proof';
+import {
+    SETTLEMENT_POLICY_HELP,
+    SETTLEMENT_POLICY_SHORT,
+    matchesSettlementFundingFilter,
+    settlementFundingDelayHint,
+    settlementFundingLabel,
+    settlementSourceOriginLabel,
+    settlementStatusLabel,
+    type SettlementFundingFilter,
+} from '@/utils/settlement-funding-labels';
 import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number): string {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function statusLabel(s: string): string {
-    const map: Record<string, string> = {
-        pending: 'Retenção D+1',
-        released: 'Aguardando TED/PIX EventFest',
-        paid: 'Pago',
-        clawback: 'Clawback',
-        cancelled: 'Cancelado',
-    };
-    return map[s] ?? s;
 }
 
 function dt(iso: string | null | undefined): string {
@@ -42,13 +49,21 @@ const ManagerCreditSettlements: React.FC = () => {
     const navigate = useNavigate();
     const { userId } = usePageAuth();
     const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
+    const [fundingFilter, setFundingFilter] = useState<SettlementFundingFilter>('all');
 
     const access = useCreditReportsAccess(userId);
     const { data, isLoading, isError, error, refetch } = useManagerCreditSettlements(access.company?.id);
     const debts = useManagerTicketChargebackDebts(access.company?.id);
+    const fundingSummary = useSettlementFundingSummary(access.company?.id, !!access.company?.id);
 
     const summary = data?.summary;
-    const retentionDays = data?.retention_days ?? 1;
+    const policyLabel = data?.settlement_policy ?? SETTLEMENT_POLICY_SHORT;
+    const items = useMemo(() => {
+        const rows = data?.items ?? [];
+        return rows.filter((row) =>
+            matchesSettlementFundingFilter(row.settlement_funding_type, fundingFilter),
+        );
+    }, [data?.items, fundingFilter]);
 
     const handleDownloadProof = async (path: string, fileName?: string | null) => {
         setDownloadingPath(path);
@@ -97,11 +112,10 @@ const ManagerCreditSettlements: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-serif text-yellow-500 flex items-center gap-2">
                         <Banknote className="h-6 w-6" />
-                        Repasses D+1 — Crédito e ingressos (banco)
+                        Repasses — Crédito e ingressos (modo banco)
                     </h1>
                     <p className="text-gray-400 text-sm mt-1">
-                        Crédito EventFest e vendas de ingresso no modo conta bancária geram repasse com retenção de{' '}
-                        {retentionDays} dia(s) (D+1). Após a liberação, a EventFest liquida via TED/PIX.
+                        {policyLabel}. {SETTLEMENT_POLICY_HELP} Após a liberação, a EventFest liquida via TED/PIX.
                     </p>
                 </div>
                 <Button
@@ -114,11 +128,29 @@ const ManagerCreditSettlements: React.FC = () => {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <SummaryCard label="Em retenção D+1" value={money(Number(summary?.pending_retention ?? summary?.pending ?? 0))} />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <SummaryCard label="Em retenção" value={money(Number(summary?.pending_retention ?? summary?.pending ?? 0))} />
                 <SummaryCard label="Aguardando pagamento" value={money(Number(summary?.awaiting_payment ?? summary?.released ?? 0))} highlight />
                 <SummaryCard label="Já recebidos" value={money(Number(summary?.paid ?? 0))} />
                 <SummaryCard label="Clawback" value={money(Number(summary?.clawback ?? 0))} />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <SummaryCard
+                    label="Retenção PIX/débito"
+                    value={money(Number(fundingSummary.data?.pending_retention_fast ?? 0))}
+                />
+                <SummaryCard
+                    label="Retenção cartão"
+                    value={money(Number(fundingSummary.data?.pending_retention_card ?? 0))}
+                />
+                <SummaryCard
+                    label="A pagar PIX/débito"
+                    value={money(Number(fundingSummary.data?.awaiting_payment_fast ?? 0))}
+                />
+                <SummaryCard
+                    label="A pagar cartão"
+                    value={money(Number(fundingSummary.data?.awaiting_payment_card ?? 0))}
+                />
             </div>
 
             {(debts.data ?? []).some((d) => d.status === 'open' || d.status === 'partial') && (
@@ -182,6 +214,28 @@ const ManagerCreditSettlements: React.FC = () => {
                     <CardDescription className="text-gray-400">
                         Ingressos, PDV e consumo em parceiros — valores líquidos após comissão EventFest
                     </CardDescription>
+                    <div className="w-56 mt-3">
+                        <Label className="text-gray-300 text-xs">Filtrar por meio</Label>
+                        <Select
+                            value={fundingFilter}
+                            onValueChange={(v) => setFundingFilter(v as SettlementFundingFilter)}
+                        >
+                            <SelectTrigger className="mt-1 bg-black border-yellow-500/30 text-white">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-black border border-yellow-500/30 text-white">
+                                <SelectItem value="all" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    Todos
+                                </SelectItem>
+                                <SelectItem value="fast" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    PIX / débito (D+1)
+                                </SelectItem>
+                                <SelectItem value="card" className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400">
+                                    Cartão (D+30 / data MP)
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
                     {isError ? (
@@ -202,7 +256,7 @@ const ManagerCreditSettlements: React.FC = () => {
                         </Alert>
                     ) : isLoading ? (
                         <Loader2 className="h-8 w-8 animate-spin text-yellow-500 mx-auto py-8" />
-                    ) : (data?.items ?? []).length === 0 ? (
+                    ) : items.length === 0 ? (
                         <p className="text-gray-500 text-sm text-center py-8">Nenhum repasse registrado ainda.</p>
                     ) : (
                         <Table>
@@ -211,6 +265,7 @@ const ManagerCreditSettlements: React.FC = () => {
                                     <TableHead className="text-yellow-500">Status</TableHead>
                                     <TableHead className="text-yellow-500">Data consumo</TableHead>
                                     <TableHead className="text-yellow-500">Origem</TableHead>
+                                    <TableHead className="text-yellow-500">Meio</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Bruto</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Comissão EF</TableHead>
                                     <TableHead className="text-yellow-500 text-right">Líquido</TableHead>
@@ -220,13 +275,13 @@ const ManagerCreditSettlements: React.FC = () => {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {data!.items.map((row) => (
+                                {items.map((row) => (
                                     <TableRow key={row.id} className="border-yellow-500/10">
-                                        <TableCell className="text-gray-300 text-sm">{statusLabel(row.status)}</TableCell>
+                                        <TableCell className="text-gray-300 text-sm">{settlementStatusLabel(row.status)}</TableCell>
                                         <TableCell className="text-gray-400 text-xs whitespace-nowrap">{dt(row.spend_at)}</TableCell>
                                         <TableCell className="text-gray-300 text-xs max-w-[14rem]">
                                             <div className="text-yellow-500/80 text-[10px] uppercase tracking-wide mb-0.5">
-                                                {row.source_type === 'ticket' ? 'Ingresso D+1' : 'Crédito'}
+                                                {settlementSourceOriginLabel(row.source_type)}
                                             </div>
                                             <div className="truncate" title={row.spend_description ?? undefined}>
                                                 {row.event_title
@@ -234,6 +289,15 @@ const ManagerCreditSettlements: React.FC = () => {
                                                     : row.establishment_name
                                                       ? `PDV: ${row.establishment_name}`
                                                       : row.spend_description ?? '—'}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-gray-300 text-xs whitespace-nowrap">
+                                            <div>{settlementFundingLabel(row.settlement_funding_type)}</div>
+                                            <div className="text-gray-500 text-[10px]">
+                                                {settlementFundingDelayHint(
+                                                    row.settlement_funding_type,
+                                                    row.settlement_delay_days,
+                                                )}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right text-gray-400">{money(Number(row.gross_amount ?? 0))}</TableCell>

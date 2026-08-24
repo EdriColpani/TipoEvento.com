@@ -20,8 +20,8 @@ type Props = {
 };
 
 /**
- * Redireciona gestor com empresa criada mas contrato de cadastro pendente
- * para /manager/register. Empresa já existe — não recadastrar PJ/PF.
+ * Redireciona gestor PRO com empresa criada mas contrato de cadastro pendente
+ * para /manager/register. Admin Master e clientes nunca entram neste gate.
  */
 const ManagerRegistrationContractGateRedirect: React.FC<Props> = ({
     showLoading = false,
@@ -33,11 +33,12 @@ const ManagerRegistrationContractGateRedirect: React.FC<Props> = ({
 
     const resolvedTipo =
         normalizeTipoUsuarioId(tipoUsuarioId) ?? normalizeTipoUsuarioId(profile?.tipo_usuario_id);
+    const isAdminMaster = isAuthenticated && resolvedTipo === 1;
     const isManagerPro = isAuthenticated && resolvedTipo === MANAGER_USER_TYPE_ID;
 
     const { pendingContractSigning, isLoading, isFetching } = useManagerRegistrationContractGateStatus(
         userId,
-        isManagerPro && sessionReady,
+        isManagerPro && !isAdminMaster && sessionReady,
     );
 
     const onContractPath = isManagerRegistrationContractPath(location.pathname);
@@ -53,7 +54,7 @@ const ManagerRegistrationContractGateRedirect: React.FC<Props> = ({
         }
     }, [pendingContractSigning, onContractPath]);
 
-    if (!isManagerPro || !sessionReady) {
+    if (!isManagerPro || isAdminMaster || !sessionReady) {
         return <>{children}</>;
     }
 

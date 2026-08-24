@@ -27,7 +27,7 @@ export const REPORTS_GUIDE_INTRO = {
         'Use este guia para saber a finalidade de cada relatório, o que cada número significa e quais telas devem mostrar os mesmos valores (gestor × Admin Master).',
     matchBoxTitle: 'O que deve bater (sem dúvida)',
     matchBoxItems: [
-        'A receber / a transferir (ingresso modo banco D+1 + consumo/crédito): gestor em “Repasses D+1” ↔ Admin em Créditos → aba Repasses (mesmo ledger).',
+        'A receber / a transferir (ingresso modo banco + consumo/crédito): gestor em “Repasses” ↔ Admin em Créditos → aba Repasses (mesmo ledger). PIX/débito D+1 · cartão D+30 (ou data MP).',
         'Comissão de ingresso EventFest: Relatório Financeiro (coluna Comissão Sistema) — no gestor e no Admin, com o mesmo filtro de período/evento.',
         'Comissão de consumo/crédito: gestor em “Consumos via crédito” ↔ Admin em Créditos → aba Comissões.',
         'Ingresso com Mercado Pago (split): o líquido já caiu na conta MP do gestor. Não entra na fila de TED/PIX dos Repasses — confira no Relatório Financeiro (“Recebido gestor” / Split Registrado).',
@@ -46,16 +46,16 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         howItWorks: [
             'Lista transações de pagamento (pendentes, pagas e falhas) com valor bruto, %/R$ MP, %/R$ comissão do sistema e “Recebido gestor”.',
             'Modo Mercado Pago (conta MP conectada): o líquido do gestor cai na conta dele no ato (split). A coluna Split mostra Registrado; a comissão EventFest vai via marketplace fee.',
-            'Modo conta bancária (D+1): a EventFest cobra na própria conta MP; o líquido do gestor entra na fila de Repasses D+1 para TED/PIX depois da retenção.',
+            'Modo conta bancária: a EventFest cobra na própria conta MP; o líquido do gestor entra na fila de Repasses para TED/PIX (PIX/débito D+1 · cartão D+30 ou data MP).',
             'Pagamento com crédito EventFest: não há split no MP; comissão e líquido seguem o fluxo de crédito/repasses.',
             'Há totais por evento (valores vendidos, comissão e líquido) e filtros de status/período conforme a tela.',
         ],
         tips: [
             'Admin Master vê a rede (conforme filtro) e a soma de comissão EventFest do período.',
-            'Gestor: use este relatório para comissão de ingresso; use “Repasses D+1” para o que ainda falta receber em dinheiro (modo banco e crédito).',
+            'Gestor: use este relatório para comissão de ingresso; use “Repasses” para o que ainda falta receber em dinheiro (modo banco e crédito).',
         ],
         matchesWith:
-            'Líquido de ingresso no modo banco deve bater com os lançamentos de origem “ingresso” em Repasses D+1. Comissão de ingresso bate com a soma Admin no mesmo filtro.',
+            'Líquido de ingresso no modo banco deve bater com os lançamentos de origem “ingresso” em Repasses. Comissão de ingresso bate com a soma Admin no mesmo filtro.',
     },
     {
         id: 'sales',
@@ -144,11 +144,11 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         howItWorks: [
             'Totais: valor bruto (gross), comissão EventFest e líquido da empresa.',
             'Lista movimentações com data, descrição/evento, gross e líquido.',
-            'O valor líquido entra na fila de Repasses D+1 para pagamento (TED/PIX) após a retenção.',
+            'O valor líquido entra na fila de Repasses para pagamento (TED/PIX) conforme o meio (PIX/débito D+1 · cartão D+30 ou data MP).',
         ],
         tips: [
             'Use este relatório para entender comissão de consumo/crédito.',
-            'Para “quando vou receber o dinheiro”, abra Repasses D+1 (retenção / aguardando pagamento / pagos).',
+            'Para “quando vou receber o dinheiro”, abra Repasses (retenção / aguardando pagamento / pagos).',
         ],
         matchesWith:
             'Comissão e líquidos devem alinhar com os lançamentos de crédito em Repasses e, no Admin, com a aba Comissões / Contábil no mesmo recorte.',
@@ -178,15 +178,15 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
     {
         id: 'credit-settlements',
         audience: 'gestor',
-        title: 'Repasses D+1 — Crédito e ingressos (banco)',
+        title: 'Repasses — Crédito e ingressos (modo banco)',
         summary:
             'Extrato do que a EventFest deve pagar ao gestor: retenção, liberado e já pago (crédito + ingresso modo banco).',
         purpose:
-            'É o relatório “a receber” do gestor no fluxo manual D+1. Reúne líquido de vendas de ingresso no modo conta bancária e de consumos/crédito, após a comissão EventFest.',
+            'É o relatório “a receber” do gestor no fluxo manual. Reúne líquido de vendas de ingresso no modo conta bancária e de consumos/crédito, após a comissão EventFest. Prazo: PIX/débito D+1 · cartão D+30 (ou data MP).',
         howItWorks: [
-            'Cards: Em retenção D+1 · Aguardando pagamento · Já recebidos · Clawback (se houver).',
-            'Extrato unificado: origem ingresso (D+1) ou crédito/consumo, com status e valores líquidos.',
-            'Após a retenção (ex.: D+1), o item fica liberado para a EventFest registrar o pagamento (PIX/TED) no painel Admin.',
+            'Cards: Em retenção · Aguardando pagamento · Já recebidos · Clawback (se houver).',
+            'Extrato unificado: origem ingresso ou crédito/consumo, com meio (PIX/cartão), status e data de liberação.',
+            'Após a data de liberação, o item fica disponível para a EventFest registrar o pagamento (PIX/TED) no painel Admin.',
             'Pode exibir débitos de chargeback de ingresso a descontar nos próximos repasses (planos com crédito).',
         ],
         tips: [
@@ -209,7 +209,7 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
             'Permite exportação CSV para o contador.',
         ],
         tips: [
-            'Não é a tela operacional de “pagar agora”; para isso use Repasses D+1.',
+            'Não é a tela operacional de “pagar agora”; para isso use Repasses.',
         ],
     },
     {
@@ -217,13 +217,13 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         audience: 'gestor',
         title: 'Chargebacks de ingresso',
         summary:
-            'Dívidas por chargeback/estorno MP: PIX/TED (plano só ingresso) ou desconto no repasse D+1 (plano com crédito).',
+            'Dívidas por chargeback/estorno MP: PIX/TED (plano só ingresso) ou desconto no próximo repasse (plano com crédito).',
         purpose:
             'Acompanhar quando o Mercado Pago avisa chargeback de uma venda de ingresso e o que a empresa deve devolver ou terá descontado.',
         howItWorks: [
             'Lista dívidas abertas/parciais/quitadas com valores e modo de recuperação.',
             'Plano só ingresso: devolução manual via PIX/TED com referência EF-TCB-{id}.',
-            'Plano com crédito/híbrido: abatimento automático nos próximos repasses D+1.',
+            'Plano com crédito/híbrido: abatimento automático nos próximos repasses.',
             'Três dívidas em aberto com saldo podem bloquear cadastro/reativação de eventos.',
         ],
         tips: [
@@ -324,18 +324,18 @@ export const REPORTS_GUIDE_ENTRIES: ReportsGuideEntry[] = [
         audience: 'admin',
         title: 'Repasses de crédito (rede)',
         summary:
-            'Fila operacional Admin: retenção D+1, liberados a pagar e histórico — ingressos modo banco + consumo/crédito de todas as empresas.',
+            'Fila operacional Admin: retenção, liberados a pagar e histórico — ingressos modo banco + consumo/crédito de todas as empresas (PIX/débito D+1 · cartão D+30 ou data MP).',
         purpose:
             'É o relatório “a transferir” do Admin Master. Mostra, por empresa, o que está em retenção, o que já pode ser pago (PIX/TED) e o que já foi liquidado — alinhado ao extrato que o gestor vê.',
         howItWorks: [
-            'Filtros: Retenção D+1 · Liberados / a pagar · Histórico.',
+            'Filtros: Em retenção · Liberados / a pagar · Histórico.',
             'Permite registrar pagamento com referência e comprovante.',
-            'Inclui lançamentos de ingresso D+1 (bank_transfer) e de crédito/consumo.',
+            'Inclui lançamentos de ingresso modo banco e de crédito/consumo, com coluna de meio e data de liberação.',
             'Exportação CSV disponível para conferência.',
         ],
         tips: [
             'Antes de pagar, confira se a empresa está em modo banco ou se o lançamento é de crédito.',
-            'Valores por empresa devem bater com o Repasses D+1 do gestor daquela empresa.',
+            'Valores por empresa devem bater com o Repasses do gestor daquela empresa.',
         ],
         matchesWith:
             'Mesmo ledger do gestor em /manager/credit/settlements (por company_id e status).',

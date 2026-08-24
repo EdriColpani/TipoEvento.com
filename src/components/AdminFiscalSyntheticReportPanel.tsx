@@ -206,7 +206,7 @@ const AdminFiscalSyntheticReportPanel: React.FC = () => {
                         <CardContent className="space-y-3">
                             <GroupBox title="Despesa na conta EventFest">
                                 <Row label="Recargas" value={money(data?.mp_fees?.topup)} />
-                                <Row label="Ingressos na conta EventFest (D+1)" value={money(data?.mp_fees?.ticket_d1)} />
+                                <Row label="Ingressos na conta EventFest (modo banco)" value={money(data?.mp_fees?.ticket_d1)} />
                                 <Row label="Mensalidade vitrine" value={money(data?.mp_fees?.listing_monthly)} />
                                 <Row label="Licença de consumo" value={money(data?.mp_fees?.consumption_license)} />
                                 <SubtotalBar
@@ -241,7 +241,7 @@ const AdminFiscalSyntheticReportPanel: React.FC = () => {
                                     hint={`Bruto ${money(data?.profit?.ticket_mp_split?.gross)} · líquido gestor ${money(data?.profit?.ticket_mp_split?.manager_net)}`}
                                 />
                                 <Row
-                                    label="Via Mercado Pago (caixa EventFest D+1)"
+                                    label="Via Mercado Pago (caixa EventFest — modo banco)"
                                     value={money(data?.profit?.ticket_mp_d1?.commission)}
                                     hint={`Bruto ${money(data?.profit?.ticket_mp_d1?.gross)} · líquido gestor ${money(data?.profit?.ticket_mp_d1?.manager_net)}`}
                                 />
@@ -295,7 +295,7 @@ const AdminFiscalSyntheticReportPanel: React.FC = () => {
                         </CardHeader>
                         <CardContent className="text-sm text-gray-200 space-y-3 leading-relaxed">
                             <p>
-                                No período entrou na conta EventFest (recargas + ingressos D+1 + cobranças de plano){' '}
+                                No período entrou na conta EventFest (recargas + ingressos modo banco + cobranças de plano){' '}
                                 <strong className="text-white">{money(data?.bridge?.cash_through_eventfest)}</strong>.
                                 Desse giro, a maior parte é obrigação: crédito em carteira ou repasse ao gestor.
                             </p>
@@ -307,9 +307,11 @@ const AdminFiscalSyntheticReportPanel: React.FC = () => {
                             </p>
                             <p>
                                 Ainda há <strong className="text-white">{money(data?.bridge?.wallet_obligation_now)}</strong>{' '}
-                                em carteiras de clientes e{' '}
-                                <strong className="text-white">{money(data?.bridge?.pending_remit_now)}</strong> a
-                                repassar aos gestores. No período já foram pagos{' '}
+                                em carteiras de clientes,{' '}
+                                <strong className="text-white">{money(data?.bridge?.pending_remit_now)}</strong> já
+                                liberados a pagar agora e{' '}
+                                <strong className="text-white">{money(data?.bridge?.pending_retention)}</strong> ainda
+                                em retenção (não pagar — inclui cartão até a data MP/D+30). No período já foram pagos{' '}
                                 <strong className="text-white">{money(data?.bridge?.remitted_to_managers_period)}</strong>.
                             </p>
                             <p className="text-cyan-100/90 text-xs">

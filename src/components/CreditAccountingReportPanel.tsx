@@ -54,12 +54,12 @@ const ROW_KIND_LABELS: Record<string, string> = {
 };
 
 const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
-    pending_d1: 'Retenção D+1',
+    pending_d1: 'Em retenção',
     awaiting_manual_payment: 'Aguardando TED/PIX',
     paid_manual: 'Pago (manual PIX/TED)',
     clawback: 'Clawback',
     caixa_eventfest: 'Caixa EventFest',
-    caixa_eventfest_d1: 'Caixa EventFest (D+1)',
+    caixa_eventfest_d1: 'Caixa EventFest (modo banco)',
     mp_split_automatico: 'Transferência automática (split MP)',
 };
 
