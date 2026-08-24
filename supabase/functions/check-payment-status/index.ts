@@ -6,6 +6,7 @@ import {
   countAssignedTickets,
   emitReceivableTicketsForPaidPurchase,
 } from "./emit-receivable-tickets.ts";
+import { extractMpPaymentMethodFields } from "../_shared/mp-payment-method.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,6 +273,7 @@ serve(async (req) => {
       : (paymentPayload.preference_id ? String(paymentPayload.preference_id) : null);
 
     const mpFinancials = extractMpPaymentFinancials(paymentPayload);
+    const mpMethodFields = extractMpPaymentMethodFields(paymentPayload as Record<string, unknown>);
 
     const updatePayload: Record<string, unknown> = {
       payment_status: paymentStatus,
@@ -279,6 +281,10 @@ serve(async (req) => {
       mp_payment_id: mpPaymentId,
       mp_preference_id: mpPreferenceId,
       gross_amount: mpFinancials.grossAmount,
+      mp_payment_type_id: mpMethodFields.mp_payment_type_id,
+      mp_payment_method_id: mpMethodFields.mp_payment_method_id,
+      mp_money_release_date: mpMethodFields.mp_money_release_date,
+      settlement_funding_type: mpMethodFields.settlement_funding_type,
     };
 
     // Taxas só existem depois da liquidação. Gravá-las em pagamento não aprovado

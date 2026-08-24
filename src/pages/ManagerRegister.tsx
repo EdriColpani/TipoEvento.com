@@ -34,6 +34,7 @@ import { hasSignedCompanyRegistration } from '@/constants/manager-onboarding-gat
 import { useClientToManagerTransitionWarning } from '@/hooks/use-client-to-manager-transition-warning';
 import { fetchManagerRegistrationGateStatus } from '@/utils/manager-registration-contract-gate';
 import { withTimeout } from '@/utils/promise-timeout';
+import { signOutSession } from '@/utils/sign-out-session';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 const MANAGER_USER_TYPE_ID = 2;
@@ -121,9 +122,17 @@ const ManagerRegister: React.FC = () => {
     const shouldShowAgreementCheckbox = !isAdminRegisterRoute;
 
     useEffect(() => {
+        if (isAdminRegisterRoute || !userId || isLoadingProfile) return;
+        if (isAdminMaster) {
+            navigate('/admin/dashboard', { replace: true });
+        }
+    }, [isAdminRegisterRoute, userId, isLoadingProfile, isAdminMaster, navigate]);
+
+    useEffect(() => {
         if (isAdminRegisterRoute || !userId || isLoadingCompany || isLoadingAcceptances || isLoadingGate) {
             return;
         }
+        if (isAdminMaster) return;
 
         // Gestor com cadastro completo (empresa + contrato/plano) → sai desta tela.
         if (resolvedCompanyId && hasSignedCompanyRegistrationContract) {
@@ -152,12 +161,27 @@ const ManagerRegister: React.FC = () => {
         isLoadingAcceptances,
         isLoadingGate,
         isExistingManager,
+        isAdminMaster,
         navigate,
     ]);
 
     const handleAgreeToTerms = (agreed: boolean, context?: { scrolledToEnd: boolean }) => {
         setAgreedToTerms(agreed);
         setTermsScrolledToEnd(context?.scrolledToEnd ?? false);
+    };
+
+    const handleExitWithoutSigning = async () => {
+        clearCompanyRegistrationPostpone();
+        queryClient.clear();
+        try {
+            await signOutSession();
+        } catch {
+            /* sessão local já limpa */
+        }
+        showSuccess(
+            'Você saiu sem assinar. Ao entrar de novo, será preciso concluir a assinatura do contrato para usar o painel.',
+        );
+        navigate('/', { replace: true });
     };
 
     const handleStartRegistration = () => {
@@ -376,12 +400,7 @@ const ManagerRegister: React.FC = () => {
                             Continuar para confirmação
                         </Button>
                         <Button
-                            onClick={() => {
-                                showError(
-                                    'Assine o contrato de cadastro da empresa para usar o painel e escolher um plano.',
-                                );
-                                navigate('/');
-                            }}
+                            onClick={() => void handleExitWithoutSigning()}
                             variant="outline"
                             className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 text-base sm:text-lg font-semibold transition-all duration-300 cursor-pointer"
                         >

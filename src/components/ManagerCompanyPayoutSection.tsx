@@ -174,8 +174,8 @@ const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = 
           </CardTitle>
           <CardDescription className="text-gray-400">
             {forceBankOnly
-              ? 'Empresa parceira recebe via PIX/TED (D+1). Informe os dados bancários.'
-              : 'Mercado Pago: split no ato. Conta bancária: EventFest cobra e repassa em D+1.'}
+              ? 'Empresa parceira recebe via PIX/TED. PIX/débito D+1 · cartão D+30 (ou data MP). Informe os dados bancários.'
+              : 'Mercado Pago: split no ato. Conta bancária: EventFest cobra e repassa (PIX/débito D+1 · cartão D+30 ou data MP).'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -212,7 +212,7 @@ const ManagerCompanyPayoutSection: React.FC<ManagerCompanyPayoutSectionProps> = 
                   Conta bancária / PIX
                 </div>
                 <p className="text-xs mt-1 opacity-80">
-                  EventFest cobra e gera lançamento D+1 para repasse manual.
+                  EventFest cobra e gera lançamento para repasse manual (PIX/débito D+1 · cartão D+30 ou data MP).
                 </p>
               </button>
             </div>

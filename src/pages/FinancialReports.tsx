@@ -419,7 +419,7 @@ const FinancialReports: React.FC = () => {
 
             <Card className="bg-black border border-cyan-500/20 rounded-2xl p-5 mb-6">
                 <CardContent className="p-0 space-y-2 text-sm text-gray-300">
-                    <p className="text-cyan-400 font-semibold">Split MP vs repasse D+1 (banco)</p>
+                    <p className="text-cyan-400 font-semibold">Split MP vs repasse modo banco</p>
                     <ol className="list-decimal list-inside space-y-1 text-gray-400">
                         <li>
                             <strong className="text-white">Modo Mercado Pago</strong>: coluna{' '}
@@ -428,8 +428,9 @@ const FinancialReports: React.FC = () => {
                         </li>
                         <li>
                             <strong className="text-white">Modo conta bancária</strong>: EventFest cobra na própria
-                            conta MP; o líquido do gestor entra em <strong className="text-white">Repasses D+1</strong>{' '}
-                            (TED/PIX). Veja também a coluna Canal (quando disponível).
+                            conta MP; o líquido do gestor entra em <strong className="text-white">Repasses</strong>{' '}
+                            (TED/PIX; PIX/débito D+1 · cartão D+30 ou data MP). Veja também a coluna Canal (quando
+                            disponível).
                         </li>
                         <li>
                             <strong className="text-white">Pagamento com crédito EventFest</strong>: coluna{' '}
@@ -441,7 +442,7 @@ const FinancialReports: React.FC = () => {
                             <strong className="text-white">Comissão Mercado Pago</strong> = soma das taxas MP
                             (`fee_details`) do evento/filtro.{' '}
                             <strong className="text-white">Recebido gestor</strong> = líquido (extrato MP no modo
-                            split, ou a pagar/pago no D+1 no modo banco).
+                            split, ou a pagar/pago na fila de repasses no modo banco).
                         </li>
                     </ol>
                     {isAdminMaster && transactionTotals.systemCommission > 0 && (

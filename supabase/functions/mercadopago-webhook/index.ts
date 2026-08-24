@@ -4,6 +4,7 @@ import { resolveWebhookPayment } from './mp-ticket-payment.ts';
 import { extractMpPaymentFinancials, resolveSplitAmounts } from './mp-payment-financials.ts';
 import { triggerChargebackNotifyFromWebhook } from '../_shared/credit-topup-chargeback-notify.ts';
 import { triggerTicketChargebackNotifyFromWebhook } from '../_shared/ticket-chargeback-notify.ts';
+import { extractMpPaymentMethodFields } from '../_shared/mp-payment-method.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -176,6 +177,7 @@ serve(async (req) => {
       ? String(mpPaymentData.order.id)
       : (mpPaymentData.preference_id ? String(mpPaymentData.preference_id) : null);
     const mpFinancials = extractMpPaymentFinancials(mpPaymentData);
+    const mpMethodFields = extractMpPaymentMethodFields(mpPaymentData as Record<string, unknown>);
     const grossAmount = mpFinancials.grossAmount;
     const mpFeeAmount = mpFinancials.mpFeeAmount;
     const netAmountAfterMp = mpFinancials.collectorNetAmount;
@@ -183,6 +185,9 @@ serve(async (req) => {
     console.log(`[MP Webhook] Payment status from Mercado Pago API: ${paymentStatus}`);
     console.log(`[MP Webhook] Payment status_detail: ${paymentStatusDetail}`);
     console.log(`[MP Webhook] Payment ID: ${mpPaymentData.id}`);
+    console.log(
+      `[MP Webhook] Payment method: type=${mpMethodFields.mp_payment_type_id} method=${mpMethodFields.mp_payment_method_id} funding=${mpMethodFields.settlement_funding_type} release=${mpMethodFields.mp_money_release_date}`,
+    );
     console.log(`[MP Webhook] Payment operation_type: ${mpPaymentData.operation_type || 'N/A'}`);
     console.log(`[MP Webhook] Full payment data (truncated):`, JSON.stringify({
         id: mpPaymentData.id,
@@ -224,6 +229,10 @@ serve(async (req) => {
                 p_mp_fee_amount: mpFeeAmount ?? 0,
                 p_net_cash_received: netAmountAfterMp,
                 p_payment_status: paymentStatus,
+                p_mp_payment_type_id: mpMethodFields.mp_payment_type_id,
+                p_mp_payment_method_id: mpMethodFields.mp_payment_method_id,
+                p_mp_money_release_date: mpMethodFields.mp_money_release_date,
+                p_settlement_funding_type: mpMethodFields.settlement_funding_type,
             });
             if (settleErr) {
                 console.error('[MP Webhook] credit_topup_settle:', settleErr);
@@ -693,6 +702,10 @@ serve(async (req) => {
                 platform_fee_amount: platformFeeAmount,
                 net_amount_after_mp: netAmountAfterMp,
                 paid_at: new Date().toISOString(),
+                mp_payment_type_id: mpMethodFields.mp_payment_type_id,
+                mp_payment_method_id: mpMethodFields.mp_payment_method_id,
+                mp_money_release_date: mpMethodFields.mp_money_release_date,
+                settlement_funding_type: mpMethodFields.settlement_funding_type,
             })
             .eq('id', finalTransactionId)
             .select('id, status');
@@ -1057,6 +1070,10 @@ serve(async (req) => {
                 mp_fee_amount: mpFeeAmount,
                 platform_fee_amount: platformFeeAmount,
                 net_amount_after_mp: netAmountAfterMp,
+                mp_payment_type_id: mpMethodFields.mp_payment_type_id,
+                mp_payment_method_id: mpMethodFields.mp_payment_method_id,
+                mp_money_release_date: mpMethodFields.mp_money_release_date,
+                settlement_funding_type: mpMethodFields.settlement_funding_type,
             })
             .eq('id', finalTransactionId);
 
@@ -1094,6 +1111,10 @@ serve(async (req) => {
                 mp_fee_amount: mpFeeAmount,
                 platform_fee_amount: platformFeeAmount,
                 net_amount_after_mp: netAmountAfterMp,
+                mp_payment_type_id: mpMethodFields.mp_payment_type_id,
+                mp_payment_method_id: mpMethodFields.mp_payment_method_id,
+                mp_money_release_date: mpMethodFields.mp_money_release_date,
+                settlement_funding_type: mpMethodFields.settlement_funding_type,
             })
             .eq('id', finalTransactionId);
         await logPaymentEvent({

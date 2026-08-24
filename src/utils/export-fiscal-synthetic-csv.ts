@@ -30,7 +30,7 @@ export function exportFiscalSyntheticCsv(
         '',
         '2. Despesa taxas Mercado Pago (conta EventFest)',
         line('Taxa MP nas recargas', f?.topup),
-        line('Taxa MP nos ingressos D+1 (caixa EventFest)', f?.ticket_d1),
+        line('Taxa MP nos ingressos modo banco (caixa EventFest)', f?.ticket_d1),
         line('Taxa MP na mensalidade vitrine', f?.listing_monthly),
         line('Taxa MP na licença de consumo', f?.consumption_license),
         line('Total despesa MP EventFest', f?.eventfest_total),
@@ -38,7 +38,7 @@ export function exportFiscalSyntheticCsv(
         '',
         '3. Lucro EventFest (comissões + mensalidades + licença + inatividade)',
         line('Ingresso Mercado Pago split — comissão', p?.ticket_mp_split?.commission),
-        line('Ingresso Mercado Pago D+1 — comissão', p?.ticket_mp_d1?.commission),
+        line('Ingresso Mercado Pago modo banco — comissão', p?.ticket_mp_d1?.commission),
         line('Ingresso carteira EventFest — comissão', p?.ticket_wallet?.commission),
         line('Total lucro ingresso', p?.ticket_commission_total),
         line('Consumo carteira EventFest — comissão', p?.consumption_wallet?.commission),
@@ -48,12 +48,13 @@ export function exportFiscalSyntheticCsv(
         line('Total lucro EventFest', p?.eventfest_profit_total),
         '',
         '4. Ponte giro x lucro',
-        line('Giro na conta EventFest (recargas + ingresso D+1 + cobranças)', b?.cash_through_eventfest),
+        line('Giro na conta EventFest (recargas + ingresso modo banco + cobranças)', b?.cash_through_eventfest),
         line('Lucro EventFest (base)', b?.eventfest_profit),
         line('Despesa MP EventFest', b?.mp_expense_eventfest),
         line('Obrigação em carteira agora', b?.wallet_obligation_now),
         line('Repassado aos gestores no período', b?.remitted_to_managers_period),
-        line('A repassar agora (D+1 / PIX)', b?.pending_remit_now),
+        line('A pagar agora (já liberados)', b?.pending_remit_now),
+        line('Ainda em retenção (não pagar)', b?.pending_retention),
     ];
 
     const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });

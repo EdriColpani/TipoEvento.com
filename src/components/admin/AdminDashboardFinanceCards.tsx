@@ -138,9 +138,9 @@ const AdminDashboardFinanceCards: React.FC<Props> = ({ enabled }) => {
                 />
                 <FinanceCard
                     icon={<Ticket className="h-5 w-5 text-yellow-500" />}
-                    label="Comissão ingressos + D+1"
+                    label="Comissão ingressos (modo banco)"
                     value={position.isLoading ? '…' : money(ticketCommission)}
-                    hint={`Receita consolidada (recorrente + comissões): ${money(consolidated)}. Ingressos D+1 ainda na fila: ${money(d1Open)}.`}
+                    hint={`Receita consolidada (recorrente + comissões): ${money(consolidated)}. Ingressos modo banco ainda na fila: ${money(d1Open)}.`}
                     onClick={() => navigate('/manager/reports/financial')}
                 />
             </div>

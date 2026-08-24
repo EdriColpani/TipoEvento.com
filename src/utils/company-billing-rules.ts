@@ -36,7 +36,7 @@ export function managerCanViewCreditReports(
         || (plan === 'ticket_commission' && creditModuleGloballyEnabled);
 }
 
-/** Repasses D+1: crédito e/ou ingresso em modo banco. */
+/** Repasses modo banco: crédito e/ou ingresso (prazo por meio: PIX/débito D+1 · cartão D+30/MP). */
 export function managerCanViewSettlements(
     plan: BillingPlanCode | string | null | undefined,
     creditModuleGloballyEnabled: boolean,

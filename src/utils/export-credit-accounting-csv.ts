@@ -30,6 +30,21 @@ function rowKindLabel(kind: string): string {
     return ROW_KIND_LABELS[kind] ?? kind;
 }
 
+const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+    pending_d1: 'Em retenção',
+    awaiting_manual_payment: 'Aguardando TED/PIX',
+    paid_manual: 'Pago (manual PIX/TED)',
+    clawback: 'Clawback',
+    caixa_eventfest: 'Caixa EventFest',
+    caixa_eventfest_d1: 'Caixa EventFest (modo banco)',
+    mp_split_automatico: 'Transferência automática (split MP)',
+};
+
+function settlementStatusLabelCsv(status: string | null | undefined): string {
+    if (!status) return '';
+    return SETTLEMENT_STATUS_LABELS[status] ?? status;
+}
+
 const CSV_HEADER = [
     'Data/Hora',
     'Tipo',
@@ -69,7 +84,7 @@ function rowToCsvLine(row: CreditAccountingRow): string {
         moneyCsv(row.manager_amount),
         moneyCsv(row.credit_granted_amount),
         moneyCsv(row.net_cash_received),
-        escapeCsv(row.disbursement_status ?? ''),
+        escapeCsv(settlementStatusLabelCsv(row.disbursement_status)),
         escapeCsv(row.mp_transfer_id ?? ''),
         escapeCsv(row.event_title ?? ''),
         escapeCsv(row.channel ?? ''),

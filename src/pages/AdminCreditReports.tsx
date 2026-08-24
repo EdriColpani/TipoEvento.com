@@ -57,7 +57,7 @@ function dt(iso: string | null | undefined): string {
 
 function settlementStatusLabel(s: string): string {
     const map: Record<string, string> = {
-        pending: 'Retenção D+1',
+        pending: 'Em retenção',
         released: 'Aguardando TED/PIX',
         paid: 'Pago',
         clawback: 'Clawback',
@@ -726,16 +726,24 @@ const AdminCreditReports: React.FC = () => {
                                         value={money(position.data?.platform_revenue?.manager_net)}
                                     />
                                     <Metric
-                                        label="Ingressos D+1 (retenção)"
+                                        label="Ingressos modo banco (retenção)"
                                         value={money(ticketSettlements.data?.pending_retention)}
                                     />
                                     <Metric
-                                        label="Ingressos D+1 (a pagar)"
+                                        label="Ingressos modo banco (a pagar)"
                                         value={money(ticketSettlements.data?.awaiting_payment)}
                                     />
                                     <Metric
-                                        label="Ingressos D+1 (já pagos)"
+                                        label="Ingressos modo banco (já pagos)"
                                         value={money(ticketSettlements.data?.paid)}
+                                    />
+                                    <Metric
+                                        label="Retenção PIX/débito (crédito+ingresso)"
+                                        value={money(ticketSettlements.data?.by_funding?.pending_retention_fast)}
+                                    />
+                                    <Metric
+                                        label="Retenção cartão (crédito+ingresso)"
+                                        value={money(ticketSettlements.data?.by_funding?.pending_retention_card)}
                                     />
 
                                     <Metric
@@ -1153,7 +1161,7 @@ const AdminCreditReports: React.FC = () => {
                             <AlertDescription className="text-amber-100/90">
                                 Há{' '}
                                 <strong>{money(ticketCbSummary.data?.open_debt_remaining)}</strong>{' '}
-                                em aberto. Plano só ingresso = cobrança PIX/TED; plano com crédito = abate no D+1.
+                                em aberto. Plano só ingresso = cobrança PIX/TED; plano com crédito = abate no próximo repasse.
                             </AlertDescription>
                         </Alert>
                     )}
@@ -1188,7 +1196,7 @@ const AdminCreditReports: React.FC = () => {
                             <div>
                                 <CardTitle className="text-white">Chargebacks de ingresso</CardTitle>
                                 <CardDescription className="text-gray-400">
-                                    Cancela ingresso + dívida. Ticket-only: baixe com comprovante PIX. Híbrido: desconto D+1.
+                                    Cancela ingresso + dívida. Ticket-only: baixe com comprovante PIX. Híbrido: desconto no próximo repasse.
                                 </CardDescription>
                             </div>
                             <div className="flex flex-wrap gap-2 items-center">
@@ -1271,7 +1279,7 @@ const AdminCreditReports: React.FC = () => {
                                                             <div className="text-gray-600 font-mono mt-1">{row.payment_ref_hint}</div>
                                                         </TableCell>
                                                         <TableCell className="text-gray-300 text-xs">
-                                                            {isManual ? 'PIX/TED gestor → EF' : 'Abate no D+1'}
+                                                            {isManual ? 'PIX/TED gestor → EF' : 'Abate no repasse'}
                                                             <div className="text-gray-500 mt-1">
                                                                 {row.debt_status ?? 'sem dívida'} · {row.mp_status}
                                                             </div>

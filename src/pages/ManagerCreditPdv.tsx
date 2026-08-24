@@ -295,7 +295,7 @@ const ManagerCreditPdv: React.FC = () => {
             if (payload?.error) throw new Error(payload.error);
             if (payload.settlementQueued) {
                 showSuccess(
-                    `Venda concluída — ${formatMoney(Number(payload.grossAmount ?? cartTotal))}. Repasse ao gestor em liquidação manual D+1.`,
+                    `Venda concluída — ${formatMoney(Number(payload.grossAmount ?? cartTotal))}. Repasse ao gestor na fila (PIX/débito D+1 · cartão D+30 ou data MP).`,
                 );
             } else {
                 showSuccess(

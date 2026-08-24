@@ -95,6 +95,16 @@ export async function fetchManagerRegistrationGateStatus(
     };
 }
 
+/**
+ * Só gestores PRO (tipo 2) devem ser forçados a assinar.
+ * Admin Master (tipo 1) e clientes (tipo 3) nunca.
+ */
+export function shouldApplyManagerRegistrationContractGate(
+    tipoUsuarioId: number | null | undefined,
+): boolean {
+    return Number(tipoUsuarioId) === 2;
+}
+
 export function shouldForceManagerRegistrationContract(
     status: ManagerRegistrationGateStatus | null | undefined,
 ): boolean {

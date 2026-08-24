@@ -233,7 +233,7 @@ const ManagerTicketChargebacks: React.FC = () => {
                 <Alert className="mb-6 border-cyan-500/30 bg-cyan-950/40 text-cyan-50">
                     <AlertTitle className="text-cyan-100">Abatimento no repasse de crédito</AlertTitle>
                     <AlertDescription className="text-cyan-50/90 text-sm">
-                        {openOffset.length} dívida(s) serão descontadas automaticamente na próxima liquidação D+1 de
+                        {openOffset.length} dívida(s) serão descontadas automaticamente na próxima liquidação de
                         crédito (total{' '}
                         {money(openOffset.reduce((s, d) => s + Number(d.amount_remaining ?? 0), 0))}).
                     </AlertDescription>
