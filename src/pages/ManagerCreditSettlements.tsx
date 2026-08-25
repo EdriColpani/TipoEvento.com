@@ -23,6 +23,7 @@ import {
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerCreditSettlements, useManagerTicketChargebackDebts, useSettlementFundingSummary } from '@/hooks/use-credit-reports';
 import { useCreditReportsAccess } from '@/hooks/use-credit-reports-access';
+import { SettlementFundingClarityBoard } from '@/components/settlement/SettlementFundingClarityBoard';
 import { downloadSettlementPaymentProof } from '@/utils/settlement-payment-proof';
 import {
     SETTLEMENT_POLICY_HELP,
@@ -34,6 +35,7 @@ import {
     settlementStatusLabel,
     type SettlementFundingFilter,
 } from '@/utils/settlement-funding-labels';
+import { fundingTotalsFromSummary } from '@/utils/settlement-funding-totals';
 import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number): string {
@@ -128,30 +130,13 @@ const ManagerCreditSettlements: React.FC = () => {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                <SummaryCard label="Em retenção" value={money(Number(summary?.pending_retention ?? summary?.pending ?? 0))} />
-                <SummaryCard label="Aguardando pagamento" value={money(Number(summary?.awaiting_payment ?? summary?.released ?? 0))} highlight />
-                <SummaryCard label="Já recebidos" value={money(Number(summary?.paid ?? 0))} />
-                <SummaryCard label="Clawback" value={money(Number(summary?.clawback ?? 0))} />
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <SummaryCard
-                    label="Retenção PIX/débito"
-                    value={money(Number(fundingSummary.data?.pending_retention_fast ?? 0))}
-                />
-                <SummaryCard
-                    label="Retenção cartão"
-                    value={money(Number(fundingSummary.data?.pending_retention_card ?? 0))}
-                />
-                <SummaryCard
-                    label="A pagar PIX/débito"
-                    value={money(Number(fundingSummary.data?.awaiting_payment_fast ?? 0))}
-                />
-                <SummaryCard
-                    label="A pagar cartão"
-                    value={money(Number(fundingSummary.data?.awaiting_payment_card ?? 0))}
-                />
-            </div>
+            <SettlementFundingClarityBoard
+                audience="manager"
+                totals={fundingTotalsFromSummary(fundingSummary.data)}
+                paidTotal={Number(summary?.paid ?? 0)}
+                clawbackTotal={Number(summary?.clawback ?? 0)}
+                loading={fundingSummary.isLoading || isLoading}
+            />
 
             {(debts.data ?? []).some((d) => d.status === 'open' || d.status === 'partial') && (
                 <Alert className="mb-6 border-amber-500/40 bg-amber-950/40">
@@ -343,24 +328,5 @@ const ManagerCreditSettlements: React.FC = () => {
         </div>
     );
 };
-
-function SummaryCard({
-    label,
-    value,
-    highlight,
-}: {
-    label: string;
-    value: string;
-    highlight?: boolean;
-}) {
-    return (
-        <Card className={`bg-black border-yellow-500/30 ${highlight ? 'border-yellow-500/60' : ''}`}>
-            <CardContent className="pt-4 pb-4">
-                <p className="text-gray-500 text-xs">{label}</p>
-                <p className={`text-lg font-semibold mt-1 ${highlight ? 'text-yellow-500' : 'text-white'}`}>{value}</p>
-            </CardContent>
-        </Card>
-    );
-}
 
 export default ManagerCreditSettlements;

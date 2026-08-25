@@ -24,9 +24,11 @@ import {
 import {
     fetchAdminCreditSettlementsExport,
     useAdminCreditSettlementsGrouped,
+    useSettlementFundingSummary,
     type AdminSettlementGroupedCompany,
     type ManagerSettlementRow,
 } from '@/hooks/use-credit-reports';
+import { SettlementFundingClarityBoard } from '@/components/settlement/SettlementFundingClarityBoard';
 import { registerAdminCreditSettlementPayment } from '@/utils/credit-manager-payout';
 import { exportCreditSettlementsCsv } from '@/utils/export-credit-settlements-csv';
 import {
@@ -36,6 +38,13 @@ import {
     settlementFundingLabel,
     type SettlementFundingFilter,
 } from '@/utils/settlement-funding-labels';
+import {
+    awaitingTotal,
+    fundingTotalsFromSummary,
+    retentionTotal,
+    sumSettlementItemsByFunding,
+    type SettlementFundingTotals,
+} from '@/utils/settlement-funding-totals';
 import {
     assertSettlementProofFile,
     removeSettlementPaymentProof,
@@ -51,6 +60,20 @@ function money(v: number): string {
 function dt(iso: string | null | undefined): string {
     if (!iso) return '—';
     return new Date(iso).toLocaleString('pt-BR');
+}
+
+function collectCompanyItems(company: AdminSettlementGroupedCompany): ManagerSettlementRow[] {
+    const rows: ManagerSettlementRow[] = [];
+    for (const group of company.groups ?? []) {
+        for (const item of group.items ?? []) {
+            rows.push(item);
+        }
+    }
+    return rows;
+}
+
+function companyFundingTotals(company: AdminSettlementGroupedCompany): SettlementFundingTotals {
+    return sumSettlementItemsByFunding(collectCompanyItems(company));
 }
 
 function hasBankOrPix(bank: AdminSettlementGroupedCompany['payout_bank']): boolean {
@@ -143,6 +166,10 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
     const releasedGrouped = useAdminCreditSettlementsGrouped('released', {
         enabled: showOperationalList,
     });
+    const pendingGrouped = useAdminCreditSettlementsGrouped('pending', {
+        enabled: showOperationalList,
+    });
+    const networkFunding = useSettlementFundingSummary(null, showOperationalList);
     const [payingCompanyId, setPayingCompanyId] = useState<string | null>(null);
     const [paymentMethod, setPaymentMethod] = useState<'pix' | 'ted' | 'other'>('pix');
     const [paymentReference, setPaymentReference] = useState('');
@@ -169,8 +196,48 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
             .filter((company) => (company.groups ?? []).length > 0);
     }, [companiesRaw, fundingFilter]);
     const releasedCompanies = releasedGrouped.data?.companies ?? [];
-    const totalAwaiting = releasedCompanies.reduce((s, c) => s + Number(c.awaiting_payment_total ?? 0), 0);
-    const totalRetention = companies.reduce((s, c) => s + Number(c.pending_retention_total ?? 0), 0);
+    const pendingCompanies = pendingGrouped.data?.companies ?? [];
+
+    /** Totais da rede (RPC) — fonte da verdade para o painel de clareza. */
+    const networkTotals = fundingTotalsFromSummary(networkFunding.data);
+
+    /** Totais visíveis na lista (respeitam filtro de meio). */
+    const listFundingTotals = useMemo(() => {
+        const items = companies.flatMap((c) => collectCompanyItems(c));
+        return sumSettlementItemsByFunding(
+            items.map((item) => ({
+                ...item,
+                status: viewFilter === 'pending' ? 'pending' : 'released',
+            })),
+        );
+    }, [companies, viewFilter]);
+
+    const releasedFundingFromItems = useMemo(() => {
+        const items = releasedCompanies.flatMap((c) => collectCompanyItems(c));
+        return sumSettlementItemsByFunding(
+            items.map((item) => ({ ...item, status: 'released' })),
+        );
+    }, [releasedCompanies]);
+
+    const pendingFundingFromItems = useMemo(() => {
+        const items = pendingCompanies.flatMap((c) => collectCompanyItems(c));
+        return sumSettlementItemsByFunding(
+            items.map((item) => ({ ...item, status: 'pending' })),
+        );
+    }, [pendingCompanies]);
+
+    const totalAwaiting =
+        fundingFilter === 'all'
+            ? awaitingTotal(networkTotals)
+            : fundingFilter === 'fast'
+              ? releasedFundingFromItems.awaitingFast
+              : releasedFundingFromItems.awaitingCard;
+    const totalRetention =
+        fundingFilter === 'all'
+            ? retentionTotal(networkTotals)
+            : fundingFilter === 'fast'
+              ? pendingFundingFromItems.retentionFast
+              : pendingFundingFromItems.retentionCard;
     const canRegisterPayment = viewFilter === 'released' && releasedCompanies.some((c) => Number(c.awaiting_payment_total ?? 0) > 0);
 
     const handlePayCompany = async (company: AdminSettlementGroupedCompany) => {
@@ -210,6 +277,7 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
             await queryClient.invalidateQueries({ queryKey: ['adminCreditSettlementsGrouped'] });
             await queryClient.invalidateQueries({ queryKey: ['adminCreditSettlements'] });
             await queryClient.invalidateQueries({ queryKey: ['managerCreditSettlements'] });
+            await queryClient.invalidateQueries({ queryKey: ['settlementFundingSummary'] });
             await queryClient.invalidateQueries({ queryKey: ['adminCreditAccounting'] });
         } catch (e: unknown) {
             if (uploadedPath) {
@@ -247,14 +315,9 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                     <div>
                         <CardTitle className="text-white">Liquidação manual (TED / PIX)</CardTitle>
                         <CardDescription className="text-gray-400">
-                            Crédito EventFest e ingressos em modo banco. {SETTLEMENT_POLICY_SHORT}. Aguardando
-                            pagamento:{' '}
-                            <span className="text-yellow-500 font-semibold">{money(totalAwaiting)}</span>
-                            {totalRetention > 0 && (
-                                <span className="ml-2 text-gray-500">
-                                    · Em retenção: {money(totalRetention)}
-                                </span>
-                            )}
+                            Crédito EventFest e ingressos em modo banco. {SETTLEMENT_POLICY_SHORT}.
+                            Valores abaixo separam o que <span className="text-yellow-400">já pode ser pago</span> do
+                            que ainda está em <span className="text-amber-300">retenção</span>.
                         </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2 shrink-0">
@@ -295,6 +358,27 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    {showOperationalList && (
+                        <SettlementFundingClarityBoard
+                            audience="admin"
+                            totals={networkTotals}
+                            loading={networkFunding.isLoading}
+                        />
+                    )}
+                    {fundingFilter !== 'all' && showOperationalList && (
+                        <Alert className="border-cyan-500/30 bg-cyan-950/40">
+                            <AlertTitle className="text-cyan-100 text-sm">Filtro de meio ativo</AlertTitle>
+                            <AlertDescription className="text-cyan-50/90 text-sm">
+                                Lista filtrada: {fundingFilter === 'fast' ? 'PIX / débito (D+1)' : 'Cartão (D+30)'}.
+                                Visível agora —{' '}
+                                {viewFilter === 'released'
+                                    ? `a pagar ${money(awaitingTotal(listFundingTotals))}`
+                                    : `em retenção ${money(retentionTotal(listFundingTotals))}`}
+                                . A baixa confirma <strong className="text-white">todos</strong> os itens liberados da
+                                empresa (PIX/débito + cartão já liberados), não só o filtro.
+                            </AlertDescription>
+                        </Alert>
+                    )}
                     <div className="flex flex-wrap items-end gap-4">
                         <div className="w-48">
                             <Label className="text-gray-300">Exibir</Label>
@@ -347,13 +431,13 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                         value="fast"
                                         className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
                                     >
-                                        PIX / débito
+                                        PIX / débito (D+1)
                                     </SelectItem>
                                     <SelectItem
                                         value="card"
                                         className="text-gray-200 data-[highlighted]:bg-yellow-500/15 data-[highlighted]:text-yellow-400"
                                     >
-                                        Cartão de crédito
+                                        Cartão (D+30 / data MP)
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
@@ -479,10 +563,28 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                 1. Faça o PIX/TED no banco · 2. Anexe o comprovante e a referência · 3. Clique em{' '}
                                 <strong className="text-yellow-500">Confirmar pagamento</strong>
                             </p>
+                            <p className="text-xs text-gray-400">
+                                A pagar agora na rede:{' '}
+                                <span className="text-yellow-400 font-medium">{money(totalAwaiting)}</span>
+                                {' · '}
+                                PIX/débito {money(networkTotals.awaitingFast)}
+                                {' · '}
+                                Cartão liberado {money(networkTotals.awaitingCard)}
+                                {totalRetention > 0 && (
+                                    <>
+                                        {' · '}
+                                        <span className="text-amber-300">
+                                            retenção (não pagar): {money(totalRetention)}
+                                        </span>
+                                    </>
+                                )}
+                            </p>
                             <div className="flex flex-wrap gap-2">
                                 {releasedCompanies
                                     .filter((c) => Number(c.awaiting_payment_total ?? 0) > 0)
-                                    .map((company) => (
+                                    .map((company) => {
+                                        const ft = companyFundingTotals(company);
+                                        return (
                                         <Button
                                             key={company.company_id}
                                             type="button"
@@ -493,16 +595,18 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                                             }
                                             className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
                                             onClick={() => void handlePayCompany(company)}
+                                            title={`PIX/débito: ${money(ft.awaitingFast)} · Cartão: ${money(ft.awaitingCard)}`}
                                         >
                                             {submitting && payingCompanyId === company.company_id ? (
                                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                                             ) : (
                                                 <CheckCircle2 className="h-4 w-4 mr-2" />
                                             )}
-                                            Confirmar pagamento — {company.company_name} (
+                                            Confirmar — {company.company_name} (
                                             {money(Number(company.awaiting_payment_total ?? 0))})
                                         </Button>
-                                    ))}
+                                        );
+                                    })}
                                 {releasedCompanies.filter((c) => Number(c.awaiting_payment_total ?? 0) > 0).length === 0 && (
                                     <p className="text-gray-500 text-sm">Nenhum repasse liberado aguardando baixa no momento.</p>
                                 )}
@@ -547,34 +651,71 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                         : 'Nenhum repasse em retenção no momento.'}
                 </p>
             ) : (
-                companies.map((company) => (
+                companies.map((company) => {
+                    const ft = companyFundingTotals(company);
+                    const listTotal = (company.groups ?? []).reduce(
+                        (s, g) =>
+                            s +
+                            (g.items ?? []).reduce((ss, item) => ss + Number(item.manager_amount ?? 0), 0),
+                        0,
+                    );
+                    return (
                     <Card key={company.company_id} className="bg-black border-yellow-500/30">
                         <CardHeader className="flex flex-row items-start justify-between gap-4">
                             <div>
                                 <CardTitle className="text-white text-lg">{company.company_name}</CardTitle>
-                                <CardDescription className="text-gray-400">
+                                <CardDescription className="text-gray-400 space-y-1">
                                     {viewFilter === 'released' ? (
                                         <>
-                                            A pagar:{' '}
-                                            <span className="text-yellow-500 font-semibold">
-                                                {money(Number(company.awaiting_payment_total ?? 0))}
-                                            </span>
+                                            <p>
+                                                A pagar agora:{' '}
+                                                <span className="text-yellow-500 font-semibold">
+                                                    {money(
+                                                        fundingFilter === 'all'
+                                                            ? Number(company.awaiting_payment_total ?? listTotal)
+                                                            : listTotal,
+                                                    )}
+                                                </span>
+                                            </p>
+                                            <p className="text-xs">
+                                                <span className="text-cyan-200">
+                                                    PIX/débito D+1: {money(ft.awaitingFast)}
+                                                </span>
+                                                <span className="mx-2 text-gray-600">·</span>
+                                                <span className="text-yellow-300/90">
+                                                    Cartão liberado: {money(ft.awaitingCard)}
+                                                </span>
+                                            </p>
+                                            {Number(company.pending_retention_total ?? 0) > 0 && (
+                                                <p className="text-amber-300/90 text-xs">
+                                                    Em retenção (não pagar):{' '}
+                                                    {money(Number(company.pending_retention_total))}
+                                                </p>
+                                            )}
                                         </>
                                     ) : (
                                         <>
-                                            Em retenção:{' '}
-                                            <span className="text-yellow-500 font-semibold">
-                                                {money(Number(company.pending_retention_total ?? 0))}
-                                            </span>
+                                            <p>
+                                                Em retenção:{' '}
+                                                <span className="text-amber-300 font-semibold">
+                                                    {money(
+                                                        fundingFilter === 'all'
+                                                            ? Number(company.pending_retention_total ?? listTotal)
+                                                            : listTotal,
+                                                    )}
+                                                </span>
+                                            </p>
+                                            <p className="text-xs">
+                                                <span className="text-cyan-200">
+                                                    PIX/débito (até D+1): {money(ft.retentionFast)}
+                                                </span>
+                                                <span className="mx-2 text-gray-600">·</span>
+                                                <span className="text-amber-200">
+                                                    Cartão (até D+30): {money(ft.retentionCard)}
+                                                </span>
+                                            </p>
                                         </>
                                     )}
-                                    {viewFilter === 'released' &&
-                                        Number(company.pending_retention_total ?? 0) > 0 && (
-                                            <span className="ml-3 text-gray-500">
-                                                Em retenção:{' '}
-                                                {money(Number(company.pending_retention_total))}
-                                            </span>
-                                        )}
                                     <PayoutBankBlock bank={company.payout_bank} />
                                 </CardDescription>
                             </div>
@@ -680,7 +821,8 @@ const AdminCreditManualSettlementsPanel: React.FC<AdminCreditManualSettlementsPa
                             ))}
                         </CardContent>
                     </Card>
-                ))
+                    );
+                })
             )}
         </div>
     );
