@@ -53,6 +53,10 @@ export function consolidateSplitsByTransaction(
   return map;
 }
 
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 export function resolveReceivableFinancials(
   receivable: {
     gross_amount?: number | null;
@@ -60,6 +64,8 @@ export function resolveReceivableFinancials(
     mp_fee_amount?: number | null;
     net_amount_after_mp?: number | null;
     platform_fee_amount?: number | null;
+    settlement_channel?: string | null;
+    collector_type?: string | null;
   },
   split: ConsolidatedSplit | undefined,
   eventAppliedPercentage: number | null,
@@ -69,15 +75,31 @@ export function resolveReceivableFinancials(
   const netMp = Number(
     receivable.net_amount_after_mp ?? Math.max(gross - fee, 0),
   );
+  const appliedPercentage =
+    split?.system_commission_percentage !== null &&
+    split?.system_commission_percentage !== undefined
+      ? split.system_commission_percentage
+      : eventAppliedPercentage;
+
+  // Modo banco (EventFest cobra): comissão = % do evento, não residual/marketplace_fee do MP.
+  const isManualD1 =
+    receivable.settlement_channel === 'manual_d1' ||
+    receivable.collector_type === 'platform';
+  if (isManualD1 && appliedPercentage !== null && gross > 0) {
+    const systemCommission = roundMoney(gross * (appliedPercentage / 100));
+    const organizerNet = Math.max(roundMoney(gross - fee - systemCommission), 0);
+    return { gross, organizerNet, systemCommission, appliedPercentage };
+  }
+
   const platformFeeStored = Number(receivable.platform_fee_amount ?? 0);
   const fallbackSystemCommission =
     platformFeeStored > 0
       ? platformFeeStored
-      : eventAppliedPercentage !== null && gross > 0
-        ? gross * (eventAppliedPercentage / 100)
+      : appliedPercentage !== null && gross > 0
+        ? roundMoney(gross * (appliedPercentage / 100))
         : 0;
   const fallbackOrganizerNet =
-    netMp > 0 ? netMp : Math.max(gross - fee - fallbackSystemCommission, 0);
+    netMp > 0 ? netMp : Math.max(roundMoney(gross - fee - fallbackSystemCommission), 0);
 
   const systemCommission =
     split && split.system_commission_amount > 0
@@ -87,11 +109,6 @@ export function resolveReceivableFinancials(
     split && split.organizer_net_amount > 0
       ? split.organizer_net_amount
       : fallbackOrganizerNet;
-  const appliedPercentage =
-    split?.system_commission_percentage !== null &&
-    split?.system_commission_percentage !== undefined
-      ? split.system_commission_percentage
-      : eventAppliedPercentage;
 
   return { gross, organizerNet, systemCommission, appliedPercentage };
 }

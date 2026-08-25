@@ -10,6 +10,7 @@ import {
   fetchFinancialSplitsRest,
   fetchReceivablesRest,
 } from '@/utils/fetch-receivables-rest';
+import { purchasePaymentMethodLabel } from '@/utils/settlement-funding-labels';
 
 export interface ManagerTransactionData {
   id: string;
@@ -17,6 +18,7 @@ export interface ManagerTransactionData {
   payment_status: string | null;
   mp_status_detail: string | null;
   mp_payment_id: string | null;
+  payment_gateway_id?: string | null;
   total_value: number;
   gross_amount: number | null;
   mp_fee_amount: number | null;
@@ -29,6 +31,13 @@ export interface ManagerTransactionData {
   split_recorded: boolean;
   /** 'mp' = split Mercado Pago; 'credit' = pago com crédito EventFest. */
   split_source: 'mp' | 'credit' | null;
+  /** Meio da compra: cartão / PIX / débito / crédito EventFest. */
+  purchase_method_label: string;
+  settlement_funding_type?: string | null;
+  mp_payment_type_id?: string | null;
+  mp_payment_method_id?: string | null;
+  settlement_channel?: string | null;
+  collector_type?: string | null;
   created_at: string;
   paid_at: string | null;
   events: {
@@ -116,6 +125,13 @@ const fetchManagerTransactions = async (
       organizer_net_amount: resolved.organizerNet,
       split_recorded: splitRecorded,
       split_source: splitRecorded ? (creditOrderId ? 'credit' : 'mp') : null,
+      purchase_method_label: purchasePaymentMethodLabel({
+        payment_gateway_id: row.payment_gateway_id,
+        settlement_funding_type: row.settlement_funding_type,
+        mp_payment_type_id: row.mp_payment_type_id,
+        mp_payment_method_id: row.mp_payment_method_id,
+        split_source: creditOrderId ? 'credit' : null,
+      }),
     };
   });
 };

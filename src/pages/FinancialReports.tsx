@@ -439,6 +439,7 @@ const FinancialReports: React.FC = () => {
                         </li>
                         <li>
                             <strong className="text-white">R$ Comissão Sistema</strong> = comissão EventFest.{' '}
+                            <strong className="text-white">Tipo</strong> = meio da compra (cartão, PIX, débito ou crédito EventFest).{' '}
                             <strong className="text-white">Comissão Mercado Pago</strong> = soma das taxas MP
                             (`fee_details`) do evento/filtro.{' '}
                             <strong className="text-white">Recebido gestor</strong> = líquido (extrato MP no modo
@@ -489,6 +490,7 @@ const FinancialReports: React.FC = () => {
                                 <TableRow className="border-yellow-500/20">
                                     <TableHead className="text-yellow-500">Compra</TableHead>
                                     <TableHead className="text-yellow-500">Evento</TableHead>
+                                    <TableHead className="text-yellow-500">Tipo</TableHead>
                                     <TableHead className="text-yellow-500">Status</TableHead>
                                     <TableHead className="text-yellow-500">Split</TableHead>
                                     <TableHead className="text-yellow-500">ID MP</TableHead>
@@ -517,6 +519,9 @@ const FinancialReports: React.FC = () => {
                                     <TableRow key={transaction.id} className="border-yellow-500/10">
                                         <TableCell className="text-white">#{transaction.id.slice(0, 8)}...</TableCell>
                                         <TableCell className="text-white">{transaction.events?.title || 'Evento'}</TableCell>
+                                        <TableCell className="text-cyan-200 text-sm whitespace-nowrap">
+                                            {transaction.purchase_method_label || '—'}
+                                        </TableCell>
                                         <TableCell>
                                             <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusClass(transaction.status, transaction.payment_status)}`}>
                                                 {getStatusLabel(transaction.status, transaction.payment_status)}
@@ -587,7 +592,7 @@ const FinancialReports: React.FC = () => {
                                 ))}
                                 {transactions.length > 0 && (
                                     <TableRow className="border-yellow-500/30 bg-yellow-500/5">
-                                        <TableCell className="text-yellow-500 font-semibold" colSpan={5}>Total Geral (filtro atual)</TableCell>
+                                        <TableCell className="text-yellow-500 font-semibold" colSpan={6}>Total Geral (filtro atual)</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.gross)}</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{transactionAvgFeePct.toFixed(2)}%</TableCell>
                                         <TableCell className="text-yellow-500 text-right font-semibold">{formatCurrency(transactionTotals.fee)}</TableCell>
