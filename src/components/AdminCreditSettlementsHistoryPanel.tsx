@@ -29,6 +29,7 @@ import {
     settlementFundingLabel,
     settlementStatusLabel,
 } from '@/utils/settlement-funding-labels';
+import { sumSettlementItemsByFunding } from '@/utils/settlement-funding-totals';
 import { showError, showSuccess } from '@/utils/toast';
 
 function money(v: number): string {
@@ -87,14 +88,14 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
 
     const query = useAdminCreditSettlements(rpcStatus, rpcCompanyId, { enabled: true });
     const items = query.data?.items ?? [];
-    const summary = query.data?.summary;
 
     const totalsOnScreen = useMemo(() => {
         let net = 0;
         for (const row of items) {
             net += Number(row.manager_amount ?? 0);
         }
-        return { net, count: items.length };
+        const byFunding = sumSettlementItemsByFunding(items);
+        return { net, count: items.length, byFunding };
     }, [items]);
 
     const destinationLabel = (row: AdminSettlementRow) => {
@@ -215,7 +216,7 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
                     </p>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
                         <p className="text-gray-500 text-xs">Linhas na tela</p>
                         <p className="text-yellow-500 font-semibold">{totalsOnScreen.count}</p>
@@ -224,14 +225,28 @@ const AdminCreditSettlementsHistoryPanel: React.FC<AdminCreditSettlementsHistory
                         <p className="text-gray-500 text-xs">Soma líquido (filtro)</p>
                         <p className="text-yellow-500 font-semibold">{money(totalsOnScreen.net)}</p>
                     </div>
-                    <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
-                        <p className="text-gray-500 text-xs">Pago (rede / filtro empresa)</p>
-                        <p className="text-yellow-500 font-semibold">{money(Number(summary?.paid ?? 0))}</p>
+                    <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/30 p-3">
+                        <p className="text-gray-500 text-xs">PIX/débito liberado</p>
+                        <p className="text-cyan-200 font-semibold">
+                            {money(totalsOnScreen.byFunding.awaitingFast)}
+                        </p>
                     </div>
-                    <div className="rounded-xl border border-yellow-500/20 bg-black/40 p-3">
-                        <p className="text-gray-500 text-xs">Aguardando (rede / filtro)</p>
-                        <p className="text-yellow-500 font-semibold">
-                            {money(Number(summary?.awaiting_payment ?? summary?.released ?? 0))}
+                    <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-3">
+                        <p className="text-gray-500 text-xs">Cartão liberado</p>
+                        <p className="text-yellow-400 font-semibold">
+                            {money(totalsOnScreen.byFunding.awaitingCard)}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/30 p-3">
+                        <p className="text-gray-500 text-xs">Retenção PIX/débito</p>
+                        <p className="text-amber-200 font-semibold">
+                            {money(totalsOnScreen.byFunding.retentionFast)}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/30 p-3">
+                        <p className="text-gray-500 text-xs">Retenção cartão D+30</p>
+                        <p className="text-amber-200 font-semibold">
+                            {money(totalsOnScreen.byFunding.retentionCard)}
                         </p>
                     </div>
                 </div>
