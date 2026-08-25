@@ -30,6 +30,45 @@ export function settlementFundingLabel(type: SettlementFundingType): string {
   }
 }
 
+/** Normaliza type/method MP → funding (espelha edge `_shared/mp-payment-method`). */
+export function normalizeSettlementFundingType(
+  paymentTypeId?: string | null,
+  paymentMethodId?: string | null,
+): SettlementFundingType {
+  const type = (paymentTypeId ?? '').trim().toLowerCase();
+  const method = (paymentMethodId ?? '').trim().toLowerCase();
+
+  if (method === 'pix' || method.includes('pix')) return 'pix';
+  if (type === 'credit_card' || type === 'credit') return 'credit_card';
+  if (type === 'debit_card' || type === 'debit') return 'debit_card';
+  if (type === 'bank_transfer' || type === 'account_money' || type === 'digital_currency') {
+    return 'pix';
+  }
+  if (!type && !method) return null;
+  return 'other';
+}
+
+/**
+ * Label da coluna “Tipo da compra” no Relatório Financeiro
+ * (cartão / PIX / débito / crédito EventFest).
+ */
+export function purchasePaymentMethodLabel(row: {
+  payment_gateway_id?: string | null;
+  settlement_funding_type?: string | null;
+  mp_payment_type_id?: string | null;
+  mp_payment_method_id?: string | null;
+  split_source?: 'mp' | 'credit' | null;
+}): string {
+  const gateway = row.payment_gateway_id ?? '';
+  if (row.split_source === 'credit' || gateway.startsWith('eventfest_credit:')) {
+    return 'Crédito EventFest';
+  }
+  const funding =
+    (row.settlement_funding_type && String(row.settlement_funding_type).trim()) ||
+    normalizeSettlementFundingType(row.mp_payment_type_id, row.mp_payment_method_id);
+  return settlementFundingLabel(funding);
+}
+
 /** Prazo comercial associado ao meio (não substitui a coluna release_at). */
 export function settlementFundingDelayHint(
   type: SettlementFundingType,

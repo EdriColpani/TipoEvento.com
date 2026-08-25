@@ -162,7 +162,7 @@ serve(async (req) => {
     const { data: receivable, error: receivableError } = await supabaseService
       .from("receivables")
       .select(
-        "id, status, payment_status, mp_status_detail, mp_payment_id, mp_preference_id, client_user_id, manager_user_id, collector_type, settlement_channel",
+        "id, status, payment_status, mp_status_detail, mp_payment_id, mp_preference_id, client_user_id, manager_user_id, collector_type, settlement_channel, event_id, gross_amount, total_value",
       )
       .eq("id", transactionId)
       .maybeSingle();
@@ -291,8 +291,36 @@ serve(async (req) => {
     // suja o receivable e contamina os relatórios de comissão.
     if (isMpApproved(paymentStatus)) {
       updatePayload.mp_fee_amount = mpFinancials.mpFeeAmount;
-      updatePayload.platform_fee_amount = mpFinancials.platformFeeAmount;
       updatePayload.net_amount_after_mp = mpFinancials.collectorNetAmount;
+
+      const isManualD1 =
+        (receivable as { settlement_channel?: string | null }).settlement_channel === "manual_d1" ||
+        (receivable as { collector_type?: string | null }).collector_type === "platform";
+
+      if (isManualD1) {
+        // Comissão EventFest = % do evento; não usar residual/marketplace_fee do MP.
+        let appliedPct = 0;
+        const eventId = (receivable as { event_id?: string | null }).event_id;
+        if (eventId) {
+          const { data: eventRow } = await supabaseService
+            .from("events")
+            .select("applied_percentage")
+            .eq("id", eventId)
+            .maybeSingle();
+          appliedPct = Number(eventRow?.applied_percentage ?? 0);
+        }
+        const gross = Number(
+          mpFinancials.grossAmount ??
+            (receivable as { gross_amount?: number | null }).gross_amount ??
+            (receivable as { total_value?: number | null }).total_value ??
+            0,
+        );
+        if (Number.isFinite(appliedPct) && appliedPct > 0 && gross > 0) {
+          updatePayload.platform_fee_amount = Math.round(gross * (appliedPct / 100) * 100) / 100;
+        }
+      } else {
+        updatePayload.platform_fee_amount = mpFinancials.platformFeeAmount;
+      }
 
       if (receivable.status !== "paid") {
         updatePayload.status = "paid";
