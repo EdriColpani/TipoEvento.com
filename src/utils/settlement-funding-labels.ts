@@ -13,7 +13,7 @@ export const SETTLEMENT_POLICY_SHORT =
   'PIX/débito D+1 · cartão D+30 (ou data MP)';
 
 export const SETTLEMENT_POLICY_HELP =
-  'O cliente usa na hora. O repasse ao gestor segue o meio: PIX e débito em D+1; cartão de crédito na data de liberação do Mercado Pago (ou D+30 se a data não vier).';
+  'O cliente usa na hora. O repasse ao gestor segue o meio: PIX e débito em D+1; cartão de crédito na data de liberação do Mercado Pago quando for prazo real (senão D+30).';
 
 export function settlementFundingLabel(type: SettlementFundingType): string {
   switch (type) {
