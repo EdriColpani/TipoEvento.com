@@ -34,7 +34,7 @@ export type ContractOtpAcceptanceDialogProps = {
     acceptanceSource: string;
     scrolledToEnd: boolean;
     billingPlan?: string | null;
-    onAccepted: (result: ContractAcceptanceFinalizeResult) => void;
+    onAccepted: (result: ContractAcceptanceFinalizeResult) => void | Promise<void>;
 };
 
 type Step = 'otp' | 'sign' | 'done';
@@ -167,7 +167,6 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
                 throw new Error(res.message || 'Não foi possível registrar o aceite.');
             }
             setResult(res);
-            setStep('done');
             showSuccess('Contrato aceito e registrado.');
             if (companyId) {
                 void queryClient.invalidateQueries({
@@ -176,6 +175,15 @@ const ContractOtpAcceptanceDialog: React.FC<ContractOtpAcceptanceDialogProps> = 
                 void queryClient.invalidateQueries({
                     queryKey: ['managerRegistrationContractGate'],
                 });
+                void queryClient.invalidateQueries({
+                    queryKey: ['companyBilling', companyId],
+                });
+            }
+            // Evita 2º clique em "Continuar" — gestores ficavam presos após o OTP.
+            try {
+                await Promise.resolve(onAccepted(res));
+            } finally {
+                onOpenChange(false);
             }
         } catch (e: unknown) {
             showError(e instanceof Error ? e.message : 'Falha ao assinar o contrato.');

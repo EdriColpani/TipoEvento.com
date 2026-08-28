@@ -4,6 +4,32 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { withTimeout } from '@/utils/promise-timeout';
 
+/** Mensagem padrão quando e-mail/senha não conferem (Supabase Auth). */
+export const INVALID_LOGIN_MESSAGE = 'Usuário ou senha inválido.';
+
+export function isInvalidLoginAuthError(
+    message?: string | null,
+    code?: string | null,
+): boolean {
+    if (code === 'invalid_credentials') return true;
+    const lower = (message ?? '').toLowerCase();
+    return (
+        lower.includes('invalid login credentials') ||
+        lower.includes('invalid credentials') ||
+        (lower.includes('invalid') && lower.includes('credential'))
+    );
+}
+
+export function normalizeAuthLoginErrorMessage(
+    message?: string | null,
+    code?: string | null,
+): string {
+    if (isInvalidLoginAuthError(message, code)) {
+        return INVALID_LOGIN_MESSAGE;
+    }
+    return message?.trim() || INVALID_LOGIN_MESSAGE;
+}
+
 export type AuthUserRestResult =
     | { user: User; error: null }
     | { user: null; error: { message: string; status?: number } };
@@ -221,18 +247,23 @@ export async function signInWithPasswordViaRest(
         } | null;
 
         if (!response.ok || !data?.access_token || !data.refresh_token || !data.user) {
-            const message =
+            const rawMessage =
                 data?.error_description ??
                 data?.msg ??
                 data?.error ??
-                'Credenciais inválidas ou usuário não encontrado.';
+                '';
             const isInvalid =
                 response.status === 400 ||
-                message.toLowerCase().includes('invalid') ||
-                message.toLowerCase().includes('credentials');
+                isInvalidLoginAuthError(rawMessage);
             return {
                 data: null,
-                error: { message, code: isInvalid ? 'invalid_credentials' : 'auth_error' },
+                error: {
+                    message: normalizeAuthLoginErrorMessage(
+                        rawMessage,
+                        isInvalid ? 'invalid_credentials' : undefined,
+                    ),
+                    code: isInvalid ? 'invalid_credentials' : 'auth_error',
+                },
             };
         }
 
@@ -299,14 +330,19 @@ export async function signInWithPasswordResilient(
     );
 
     if (error || !data.user) {
+        const rawMessage = error?.message ?? restResult.error?.message;
+        const code =
+            error?.message === 'timeout'
+                ? 'timeout'
+                : restResult.error?.code ?? (isInvalidLoginAuthError(rawMessage) ? 'invalid_credentials' : undefined);
         return {
             data: null,
             error: {
                 message:
                     error?.message === 'timeout'
                         ? 'Tempo esgotado ao entrar. Limpe os cookies e tente novamente.'
-                        : restResult.error?.message ?? 'Credenciais inválidas ou usuário não encontrado.',
-                code: error?.message === 'timeout' ? 'timeout' : restResult.error?.code,
+                        : normalizeAuthLoginErrorMessage(rawMessage, code),
+                code,
             },
         };
     }

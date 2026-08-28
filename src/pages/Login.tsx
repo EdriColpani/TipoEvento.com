@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { supabase } from '@/integrations/supabase/client';
-import { signInWithPasswordResilient, fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
+import { signInWithPasswordResilient, fetchAuthUserViaRest, refreshSessionViaRest, INVALID_LOGIN_MESSAGE } from '@/utils/auth-rest';
 import { signOutSession, clearAuthSessionStorage, clearAuthSessionIfCurrentToken } from '@/utils/sign-out-session';
 import {
     readCachedAuthSession,
@@ -291,7 +291,7 @@ const Login: React.FC = () => {
             );
 
             if (authError || !authData?.user) {
-                showError(authError?.message ?? 'Credenciais inválidas ou usuário não encontrado.');
+                showError(authError?.message ?? INVALID_LOGIN_MESSAGE);
                 return;
             }
 
