@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,7 +16,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Image, CalendarDays, ListOrdered, Heading, Subtitles, ArrowLeft, Save, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { parseEventLocalDay } from '@/utils/format-event-date';
-import { DatePicker } from '@/components/DatePicker';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
@@ -26,9 +25,11 @@ import {
     EVENT_CAROUSEL_DUPLICATE_EVENT_MESSAGE,
     EventCarouselBannerSummary,
     fetchEventCarouselBannerByEvent,
+    formatEventCarouselBannerDateLabel,
     formatEventCarouselBannerError,
+    getEventCarouselBannerDatesFromEvent,
 } from '@/utils/event-carousel-banner-rules';
-import { MANAGER_EVENT_BANNERS_QUERY_KEY } from '@/hooks/use-manager-event-banners';
+import { MANAGER_EVENT_BANNERS_QUERY_KEY, useManagerEventBanners } from '@/hooks/use-manager-event-banners';
 
 // Zod schema for event banner validation
 const eventBannerSchema = z.object({
@@ -58,6 +59,18 @@ const ManagerCreateEventBanner: React.FC = () => {
     
     // Busca eventos do gestor (ou todos se for Admin Master)
     const { events, isLoading: isLoadingEvents } = useManagerEvents(userId, isAdminMaster);
+    const { banners: existingBanners, isLoading: isLoadingBanners } = useManagerEventBanners(
+        userId ?? undefined,
+        isAdminMaster,
+    );
+    const eventIdsWithBanner = useMemo(
+        () => new Set(existingBanners.map((b) => b.event_id)),
+        [existingBanners],
+    );
+    const eventsAvailableForBanner = useMemo(
+        () => events.filter((e) => !e.is_draft && !eventIdsWithBanner.has(e.id)),
+        [events, eventIdsWithBanner],
+    );
 
     const form = useForm<EventBannerFormData>({
         resolver: zodResolver(eventBannerSchema),
@@ -79,7 +92,7 @@ const ManagerCreateEventBanner: React.FC = () => {
             const selectedEvent = events.find(e => e.id === selectedEventId);
             if (selectedEvent) {
                 // Busca detalhes completos do evento (incluindo URLs de imagem)
-                supabase.from('events').select('title, description, date, image_url').eq('id', selectedEventId).single().then(({ data, error }) => {
+                supabase.from('events').select('title, description, date, event_date, image_url').eq('id', selectedEventId).single().then(({ data, error }) => {
                     if (error || !data) {
                         console.error("Failed to fetch event details for banner autofill:", error);
                         return;
@@ -97,13 +110,17 @@ const ManagerCreateEventBanner: React.FC = () => {
                         showError("A imagem do carrossel (770x450) não foi encontrada no evento. Por favor, faça o upload.");
                     }
                     
-                    // 3. Define a data de início como a data do evento por padrão
-                    if (data.date) {
-                        const eventDay = parseEventLocalDay(data.date);
-                        if (eventDay) {
-                            form.setValue('start_date', eventDay, { shouldValidate: true });
-                            form.setValue('end_date', eventDay, { shouldValidate: true });
-                        }
+                    // 3. Período de exibição = data do evento (somente leitura)
+                    const bannerDates = getEventCarouselBannerDatesFromEvent(
+                        data.event_date || data.date,
+                    );
+                    if (bannerDates) {
+                        form.setValue('start_date', bannerDates.startDate, { shouldValidate: true });
+                        form.setValue('end_date', bannerDates.endDate, { shouldValidate: true });
+                    } else {
+                        form.resetField('start_date');
+                        form.resetField('end_date');
+                        showError('Este evento não possui data definida. Defina a data do evento antes de criar o banner.');
                     }
                 });
             }
@@ -208,7 +225,7 @@ const ManagerCreateEventBanner: React.FC = () => {
         }
     };
     
-    if (authPending || (userId && (isLoadingProfile || isLoadingEvents))) {
+    if (authPending || (userId && (isLoadingProfile || isLoadingEvents || isLoadingBanners))) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-yellow-500 mx-auto mb-4" />
@@ -236,7 +253,7 @@ const ManagerCreateEventBanner: React.FC = () => {
                     <CardTitle className="text-white text-xl sm:text-2xl font-semibold">Associação e Conteúdo</CardTitle>
                     <CardDescription className="text-gray-400 text-sm">
                         Crie um banner de destaque para o carrossel da página inicial, vinculado a um evento específico.
-                        Cada evento permite apenas <strong>1 banner</strong> — escolha um evento que ainda não tenha banner cadastrado.
+                        Cada evento permite apenas <strong>1 banner</strong>. O período de exibição segue a data do evento e não pode ser alterado manualmente.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -260,10 +277,14 @@ const ManagerCreateEventBanner: React.FC = () => {
                                                 </SelectTrigger>
                                             </FormControl>
                                             <SelectContent className="bg-black border-yellow-500/30 text-white">
-                                                {events.length === 0 ? (
-                                                    <div className="py-2 px-3 text-sm text-gray-500">Nenhum evento publicado encontrado</div>
+                                                {eventsAvailableForBanner.length === 0 ? (
+                                                    <div className="py-2 px-3 text-sm text-gray-500">
+                                                        {events.filter((e) => !e.is_draft).length === 0
+                                                            ? 'Nenhum evento publicado encontrado'
+                                                            : 'Todos os eventos publicados já possuem banner'}
+                                                    </div>
                                                 ) : (
-                                                    events.filter(e => !e.is_draft).map((event: ManagerEvent) => (
+                                                    eventsAvailableForBanner.map((event: ManagerEvent) => (
                                                         <SelectItem key={event.id} value={event.id} className="hover:bg-yellow-500/10 cursor-pointer">
                                                             {event.title}
                                                         </SelectItem>
@@ -414,16 +435,17 @@ const ManagerCreateEventBanner: React.FC = () => {
                                         <FormItem>
                                             <FormLabel className="text-white flex items-center">
                                                 <CalendarDays className="h-4 w-4 mr-2 text-yellow-500" />
-                                                Início Exibição *
+                                                Início exibição *
                                             </FormLabel>
                                             <FormControl>
-                                                <DatePicker 
-                                                    date={field.value || undefined}
-                                                    setDate={field.onChange}
-                                                    placeholder="DD/MM/AAAA"
-                                                    disabled={isSaving}
+                                                <Input
+                                                    readOnly
+                                                    disabled
+                                                    value={formatEventCarouselBannerDateLabel(field.value)}
+                                                    className="bg-black/40 border-yellow-500/20 text-gray-300 cursor-not-allowed"
                                                 />
                                             </FormControl>
+                                            <p className="text-xs text-gray-500">Definido pela data do evento.</p>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -435,16 +457,17 @@ const ManagerCreateEventBanner: React.FC = () => {
                                         <FormItem>
                                             <FormLabel className="text-white flex items-center">
                                                 <CalendarDays className="h-4 w-4 mr-2 text-yellow-500" />
-                                                Fim Exibição *
+                                                Fim exibição *
                                             </FormLabel>
                                             <FormControl>
-                                                <DatePicker 
-                                                    date={field.value || undefined}
-                                                    setDate={field.onChange}
-                                                    placeholder="DD/MM/AAAA"
-                                                    disabled={isSaving}
+                                                <Input
+                                                    readOnly
+                                                    disabled
+                                                    value={formatEventCarouselBannerDateLabel(field.value)}
+                                                    className="bg-black/40 border-yellow-500/20 text-gray-300 cursor-not-allowed"
                                                 />
                                             </FormControl>
+                                            <p className="text-xs text-gray-500">Definido pela data do evento.</p>
                                             <FormMessage />
                                         </FormItem>
                                     )}
