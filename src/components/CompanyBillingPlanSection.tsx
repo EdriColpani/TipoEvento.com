@@ -713,8 +713,8 @@ const CompanyBillingPlanSection: React.FC<CompanyBillingPlanSectionProps> = ({
                     acceptanceSource={billingAcceptanceSource}
                     scrolledToEnd={hasScrolledToEnd}
                     billingPlan={pendingPlan}
-                    onAccepted={() => {
-                        void handleConfirm({ skipContractAcceptance: true });
+                    onAccepted={async () => {
+                        await handleConfirm({ skipContractAcceptance: true });
                     }}
                 />
             ) : null}
