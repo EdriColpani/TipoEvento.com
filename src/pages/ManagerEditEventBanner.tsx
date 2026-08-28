@@ -23,16 +23,16 @@ import {
     Calendar,
     StopCircle,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { DatePicker } from '@/components/DatePicker';
+import {
+    formatEventCarouselBannerDateLabel,
+    formatEventCarouselBannerError,
+    getEventCarouselBannerDatesFromEvent,
+    getYesterdayIsoDate,
+} from '@/utils/event-carousel-banner-rules';
 import ImageUploadPicker from '@/components/ImageUploadPicker';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
-import {
-    formatEventCarouselBannerError,
-    getYesterdayIsoDate,
-} from '@/utils/event-carousel-banner-rules';
 import { MANAGER_EVENT_BANNERS_QUERY_KEY } from '@/hooks/use-manager-event-banners';
 
 const eventBannerEditSchema = z.object({
@@ -88,7 +88,7 @@ const ManagerEditEventBanner: React.FC = () => {
                     display_order,
                     start_date,
                     end_date,
-                    events ( title, created_by )
+                    events ( title, created_by, date, event_date )
                 `,
                 )
                 .eq('id', id)
@@ -100,7 +100,12 @@ const ManagerEditEventBanner: React.FC = () => {
                 return;
             }
 
-            const eventRow = data.events as { title?: string; created_by?: string | null } | null;
+            const eventRow = data.events as {
+                title?: string;
+                created_by?: string | null;
+                date?: string | null;
+                event_date?: string | null;
+            } | null;
 
             if (!isAdminMaster && eventRow?.created_by !== userId) {
                 showError('Você não tem permissão para editar este banner.');
@@ -108,14 +113,18 @@ const ManagerEditEventBanner: React.FC = () => {
                 return;
             }
 
+            const bannerDates = getEventCarouselBannerDatesFromEvent(
+                eventRow?.event_date || eventRow?.date,
+            );
+
             setEventTitle(eventRow?.title || 'Evento');
             form.reset({
                 image_url: data.image_url || '',
                 headline: data.headline || '',
                 subheadline: data.subheadline || '',
                 display_order: data.display_order ?? 0,
-                start_date: data.start_date ? parseISO(String(data.start_date).slice(0, 10)) : undefined,
-                end_date: data.end_date ? parseISO(String(data.end_date).slice(0, 10)) : undefined,
+                start_date: bannerDates?.startDate,
+                end_date: bannerDates?.endDate,
             });
             setIsFetching(false);
         };
@@ -149,8 +158,6 @@ const ManagerEditEventBanner: React.FC = () => {
                     headline: values.headline,
                     subheadline: values.subheadline,
                     display_order: Number(values.display_order),
-                    start_date: format(values.start_date, 'yyyy-MM-dd'),
-                    end_date: format(values.end_date, 'yyyy-MM-dd'),
                 })
                 .eq('id', id);
 
@@ -220,7 +227,9 @@ const ManagerEditEventBanner: React.FC = () => {
                     <CardDescription className="text-gray-400 text-sm flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-yellow-500" />
                         {eventTitle}
-                        <span className="text-gray-600">— o evento não pode ser alterado após a criação.</span>
+                        <span className="text-gray-600">
+                            — 1 banner por evento; período de exibição segue a data do evento.
+                        </span>
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -326,10 +335,11 @@ const ManagerEditEventBanner: React.FC = () => {
                                                 Início *
                                             </FormLabel>
                                             <FormControl>
-                                                <DatePicker
-                                                    date={field.value}
-                                                    setDate={field.onChange}
-                                                    disabled={isSaving}
+                                                <Input
+                                                    readOnly
+                                                    disabled
+                                                    value={formatEventCarouselBannerDateLabel(field.value)}
+                                                    className="bg-black/40 border-yellow-500/20 text-gray-300 cursor-not-allowed"
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -346,12 +356,16 @@ const ManagerEditEventBanner: React.FC = () => {
                                                 Fim *
                                             </FormLabel>
                                             <FormControl>
-                                                <DatePicker
-                                                    date={field.value}
-                                                    setDate={field.onChange}
-                                                    disabled={isSaving}
+                                                <Input
+                                                    readOnly
+                                                    disabled
+                                                    value={formatEventCarouselBannerDateLabel(field.value)}
+                                                    className="bg-black/40 border-yellow-500/20 text-gray-300 cursor-not-allowed"
                                                 />
                                             </FormControl>
+                                            <p className="text-xs text-gray-500">
+                                                Use &quot;Encerrar exibição&quot; para antecipar o fim.
+                                            </p>
                                             <FormMessage />
                                         </FormItem>
                                     )}

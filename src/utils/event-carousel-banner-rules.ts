@@ -1,5 +1,20 @@
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { parseEventLocalDay } from '@/utils/format-event-date';
+
+/** Datas de exibição do banner = data do evento (início e fim iguais). */
+export function getEventCarouselBannerDatesFromEvent(
+    eventDate: string | null | undefined,
+): { startDate: Date; endDate: Date } | null {
+    const day = parseEventLocalDay(eventDate ?? '');
+    if (!day) return null;
+    return { startDate: day, endDate: day };
+}
+
+export function formatEventCarouselBannerDateLabel(date: Date | undefined): string {
+    if (!date) return '—';
+    return format(date, 'dd/MM/yyyy');
+}
 
 export interface EventCarouselBannerSummary {
     id: string;
