@@ -225,6 +225,41 @@ export async function listCompanyMembers(companyId: string) {
     };
 }
 
+/** Remove vínculo pdv_operator; não apaga a conta Auth (usuário pode continuar como cliente). */
+export async function removeCompanyMember(companyId: string, userId: string) {
+    return callRpcRest<{
+        ok: boolean;
+        removed_user_id?: string;
+        company_id?: string;
+        message?: string;
+    }>(
+        'remove_company_member',
+        {
+            p_company_id: companyId,
+            p_user_id: userId,
+        },
+        12_000,
+    );
+}
+
+/** Cancela convite pendente (ainda não aceito). */
+export async function cancelCompanyMemberInvite(companyId: string, inviteId: string) {
+    return callRpcRest<{
+        ok: boolean;
+        invite_id?: string;
+        company_id?: string;
+        email?: string;
+        message?: string;
+    }>(
+        'cancel_company_member_invite',
+        {
+            p_company_id: companyId,
+            p_invite_id: inviteId,
+        },
+        12_000,
+    );
+}
+
 export async function adminCreatePartnerCompany(input: {
     cnpj: string;
     corporateName: string;

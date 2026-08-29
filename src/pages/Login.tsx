@@ -11,7 +11,9 @@ import {
 } from '@/utils/auth-session-cache';
 import { showSuccess, showError } from '@/utils/toast';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+import { acceptCompanyMemberInvites } from '@/utils/company-members';
 import { resolvePostLoginRedirect } from '@/utils/post-login-redirect';
+import { withTimeout } from '@/utils/promise-timeout';
 import {
     isComplimentaryReturnPath,
     resolveComplimentaryReturnPath,
@@ -117,6 +119,11 @@ const Login: React.FC = () => {
         if (redirectingRef.current) return;
         redirectingRef.current = true;
         try {
+            try {
+                await withTimeout(acceptCompanyMemberInvites(), 5_000, 0);
+            } catch {
+                /* convite opcional */
+            }
             const { path, message } = await resolvePostLoginRedirect(userId, returnTo, authUser);
             if (!options?.silent) {
                 showSuccess(message);
