@@ -28,6 +28,7 @@ import {
     formatEventCarouselBannerDateLabel,
     formatEventCarouselBannerError,
     getEventCarouselBannerDatesFromEvent,
+    getNextEventCarouselBannerDisplayOrder,
 } from '@/utils/event-carousel-banner-rules';
 import { MANAGER_EVENT_BANNERS_QUERY_KEY, useManagerEventBanners } from '@/hooks/use-manager-event-banners';
 
@@ -71,6 +72,10 @@ const ManagerCreateEventBanner: React.FC = () => {
         () => events.filter((e) => !e.is_draft && !eventIdsWithBanner.has(e.id)),
         [events, eventIdsWithBanner],
     );
+    const nextDisplayOrder = useMemo(
+        () => getNextEventCarouselBannerDisplayOrder(existingBanners),
+        [existingBanners],
+    );
 
     const form = useForm<EventBannerFormData>({
         resolver: zodResolver(eventBannerSchema),
@@ -84,6 +89,10 @@ const ManagerCreateEventBanner: React.FC = () => {
             end_date: undefined,
         },
     });
+
+    useEffect(() => {
+        form.setValue('display_order', nextDisplayOrder, { shouldValidate: true });
+    }, [form, nextDisplayOrder]);
     
     // Preenche Título, Subtítulo e URL da Imagem automaticamente ao selecionar o evento
     useEffect(() => {
@@ -198,7 +207,7 @@ const ManagerCreateEventBanner: React.FC = () => {
                         image_url: values.image_url,
                         headline: values.headline,
                         subheadline: values.subheadline,
-                        display_order: Number(values.display_order),
+                        display_order: nextDisplayOrder,
                         start_date: isoStartDate,
                         end_date: isoEndDate,
                         created_by: userId,
@@ -414,16 +423,17 @@ const ManagerCreateEventBanner: React.FC = () => {
                                                 Ordem de Exibição *
                                             </FormLabel>
                                             <FormControl>
-                                                <Input 
+                                                <Input
                                                     type="number"
-                                                    placeholder="0"
-                                                    {...field} 
-                                                    onChange={e => field.onChange(e.target.value === '' ? '' : Number(e.target.value))}
-                                                    className={`bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 ${form.formState.errors.display_order ? 'border-red-500' : ''}`}
-                                                    min="0"
-                                                    disabled={isSaving}
+                                                    readOnly
+                                                    disabled
+                                                    value={field.value === '' || field.value == null ? nextDisplayOrder : field.value}
+                                                    className="bg-black/40 border-yellow-500/20 text-gray-300 cursor-not-allowed"
                                                 />
                                             </FormControl>
+                                            <p className="text-xs text-gray-500">
+                                                Sempre a última posição da fila (automático).
+                                            </p>
                                             <FormMessage />
                                         </FormItem>
                                     )}

@@ -165,8 +165,20 @@ flowchart TD
     subgraph equipe [Equipe]
         F --> K[Convidar pdv_operator]
         K --> I
+        K --> L[Remover acesso PDV]
+        L --> M[Conta segue como cliente]
     end
 ```
+
+### Gestão de operadores (owner)
+
+| Ação | Onde | Efeito |
+|------|------|--------|
+| Convidar | Configurações → **Operadores PDV** | Sistema **envia e-mail**: link de cadastro/senha (novo) ou login (já cadastrado); vincula `pdv_operator` |
+| Remover acesso | Mesma tela → **Remover acesso** | Remove vínculo; se não restar empresa, perfil vira **cliente** (`tipo_usuario_id = 3`) |
+| Cancelar convite | Mesma tela → **Cancelar convite** | Remove convite pendente |
+| Vários operadores | — | Permitido (sem limite de 1) |
+| Pós-login operador | — | Redireciona para `/manager/credit/pdv` (menu só PDV) |
 
 ---
 
@@ -178,6 +190,8 @@ flowchart TD
 | “Sem permissão” ao salvar estabelecimento | Usuário é `pdv_operator` | Apenas o **owner** cria estabelecimentos |
 | Convite não vincula | E-mail diferente do convite | Usar exatamente o e-mail convidado |
 | Parceiro vê menu de ingressos | Plano errado ou migration não aplicada | Aplicar migration e conferir `billing_plan_features` |
+| Ex-funcionário ainda acessa PDV | Vínculo não removido | Owner: Operadores PDV → **Remover acesso** |
+| Cliente sumiu após remover operador | — | Não deveria: remoção não apaga conta; revalidar login cliente |
 
 ---
 

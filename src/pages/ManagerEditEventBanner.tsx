@@ -157,7 +157,6 @@ const ManagerEditEventBanner: React.FC = () => {
                     image_url: values.image_url,
                     headline: values.headline,
                     subheadline: values.subheadline,
-                    display_order: Number(values.display_order),
                 })
                 .eq('id', id);
 
@@ -312,15 +311,15 @@ const ManagerEditEventBanner: React.FC = () => {
                                             <FormControl>
                                                 <Input
                                                     type="number"
-                                                    min={0}
-                                                    {...field}
-                                                    onChange={(e) =>
-                                                        field.onChange(e.target.value === '' ? '' : Number(e.target.value))
-                                                    }
-                                                    disabled={isSaving}
-                                                    className="bg-black/60 border-yellow-500/30 text-white"
+                                                    readOnly
+                                                    disabled
+                                                    value={field.value === '' || field.value == null ? 0 : field.value}
+                                                    className="bg-black/40 border-yellow-500/20 text-gray-300 cursor-not-allowed"
                                                 />
                                             </FormControl>
+                                            <p className="text-xs text-gray-500">
+                                                Definida na criação (última posição); não pode ser alterada.
+                                            </p>
                                             <FormMessage />
                                         </FormItem>
                                     )}

@@ -11,6 +11,19 @@ export function getEventCarouselBannerDatesFromEvent(
     return { startDate: day, endDate: day };
 }
 
+/** Próxima ordem = última + 1 (gestor não escolhe; sempre no fim da fila). */
+export function getNextEventCarouselBannerDisplayOrder(
+    banners: Array<{ display_order?: number | null }>,
+): number {
+    if (!banners.length) return 0;
+    let max = -1;
+    for (const b of banners) {
+        const n = Number(b.display_order);
+        if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max + 1;
+}
+
 export function formatEventCarouselBannerDateLabel(date: Date | undefined): string {
     if (!date) return '—';
     return format(date, 'dd/MM/yyyy');

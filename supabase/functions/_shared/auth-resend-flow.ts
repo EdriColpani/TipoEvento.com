@@ -2,12 +2,14 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.46.0
 import {
   buildAuthEmail,
   buildPartnerOwnerInviteEmail,
+  buildPdvOperatorInviteEmail,
   sanitizeAuthRedirectTo,
   sendViaResend,
 } from "./eventfest-mail.ts";
 
 const PASSWORD_SETUP_REQUIRED_KEY = "password_setup_required";
 const INVITED_PARTNER_OWNER_KEY = "invited_partner_owner";
+const INVITED_PDV_OPERATOR_KEY = "invited_pdv_operator";
 
 export function getAuthRedirect(redirectPath?: string): string {
   const productionOrigin = (
@@ -418,4 +420,129 @@ export async function invitePartnerOwnerViaResend(
     error: "invite_failed",
     message: translateGenerateLinkError(inviteResult.message),
   };
+}
+
+/** Convite a operador PDV: novo = link invite/senha; existente = magiclink de login. */
+export async function invitePdvOperatorViaResend(
+  admin: SupabaseClient,
+  input: {
+    email: string;
+    companyName: string;
+  },
+): Promise<
+  | { ok: true; mode: "invite" | "login" }
+  | { ok: false; message: string; error?: string }
+> {
+  const email = input.email.trim().toLowerCase();
+  const companyName = input.companyName.trim() || "empresa";
+  const existing = await findAuthUserByEmail(admin, email);
+
+  if (existing) {
+    const redirectTo = getAuthRedirect("/login");
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: {
+        redirectTo,
+        data: { [INVITED_PDV_OPERATOR_KEY]: true },
+      },
+    });
+
+    if (linkError || !linkData?.properties?.action_link) {
+      // Fallback: e-mail com URL de login (conta já existe)
+      const loginUrl = getAuthRedirect("/login");
+      const content = buildPdvOperatorInviteEmail({
+        companyName,
+        actionUrl: loginUrl,
+        isNewAccount: false,
+      });
+      const sendResult = await sendViaResend({
+        to: email,
+        subject: content.subject,
+        html: content.html,
+      });
+      if (!sendResult.ok) {
+        return {
+          ok: false,
+          error: "resend_rejected",
+          message: "Falha ao enviar e-mail. Verifique a configuração da Resend.",
+        };
+      }
+      return { ok: true, mode: "login" };
+    }
+
+    const actionUrl = fixActionLinkRedirect(linkData.properties.action_link, redirectTo);
+    const content = buildPdvOperatorInviteEmail({
+      companyName,
+      actionUrl,
+      isNewAccount: false,
+    });
+    const sendResult = await sendViaResend({
+      to: email,
+      subject: content.subject,
+      html: content.html,
+    });
+    if (!sendResult.ok) {
+      return {
+        ok: false,
+        error: "resend_rejected",
+        message: "Falha ao enviar e-mail. Verifique a configuração da Resend.",
+      };
+    }
+    return { ok: true, mode: "login" };
+  }
+
+  const redirectTo = getAuthRedirect("/reset-password");
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: {
+      redirectTo,
+      data: {
+        [INVITED_PDV_OPERATOR_KEY]: true,
+        [PASSWORD_SETUP_REQUIRED_KEY]: true,
+        account_intent: "manager",
+      },
+    },
+  });
+
+  if (linkError || !linkData?.properties?.action_link) {
+    return {
+      ok: false,
+      error: "invite_failed",
+      message: translateGenerateLinkError(linkError?.message ?? "no_action_link"),
+    };
+  }
+
+  if (linkData.user?.id) {
+    const { data: userData } = await admin.auth.admin.getUserById(linkData.user.id);
+    const meta = {
+      ...((userData?.user?.user_metadata ?? {}) as Record<string, unknown>),
+      [PASSWORD_SETUP_REQUIRED_KEY]: true,
+      [INVITED_PDV_OPERATOR_KEY]: true,
+      account_intent: "manager",
+    };
+    await admin.auth.admin.updateUserById(linkData.user.id, { user_metadata: meta });
+  }
+
+  const actionUrl = fixActionLinkRedirect(linkData.properties.action_link, redirectTo);
+  const content = buildPdvOperatorInviteEmail({
+    companyName,
+    actionUrl,
+    isNewAccount: true,
+  });
+  const sendResult = await sendViaResend({
+    to: email,
+    subject: content.subject,
+    html: content.html,
+  });
+  if (!sendResult.ok) {
+    return {
+      ok: false,
+      error: "resend_rejected",
+      message: "Falha ao enviar e-mail. Verifique a configuração da Resend.",
+    };
+  }
+
+  return { ok: true, mode: "invite" };
 }

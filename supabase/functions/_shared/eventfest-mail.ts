@@ -372,6 +372,36 @@ export function buildPartnerOwnerInviteEmail(input: {
   };
 }
 
+/** Convite a operador PDV (criar conta/senha ou entrar). */
+export function buildPdvOperatorInviteEmail(input: {
+  companyName: string;
+  actionUrl: string;
+  isNewAccount: boolean;
+}): { subject: string; html: string } {
+  const company = escapeHtml(input.companyName.trim() || "a empresa");
+  const title = input.isNewAccount
+    ? "Convite — Operador PDV EventFest"
+    : "Acesso de Operador PDV";
+
+  const intro = input.isNewAccount
+    ? `Você foi convidado para operar o PDV da empresa <strong style="color:#fff;">${company}</strong> na EventFest. Clique no botão abaixo para criar sua senha e acessar o painel do operador.`
+    : `Você foi adicionado como operador PDV da empresa <strong style="color:#fff;">${company}</strong>. Use o botão abaixo para entrar na EventFest. Seu acesso será apenas às telas de PDV.`;
+
+  const ctaLabel = input.isNewAccount ? "Criar senha e acessar" : "Entrar no PDV";
+
+  return {
+    subject: `EventFest — Operador PDV (${input.companyName.trim() || "empresa"})`,
+    html: wrapEventFestEmailLayout({
+      title,
+      intro,
+      ctaLabel,
+      ctaUrl: input.actionUrl,
+      footerNote:
+        "Você recebeu este e-mail porque o gestor da empresa convidou você como operador de balcão (PDV).",
+    }),
+  };
+}
+
 export function buildComplimentaryBundleEmailHtml(input: {
   recipientName: string;
   eventTitle: string;

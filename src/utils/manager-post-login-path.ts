@@ -80,6 +80,19 @@ export async function resolveManagerPostLoginPath(userId: string): Promise<strin
         return '/manager/dashboard';
     }
 
+    // Operador PDV: vai direto ao PDV (sem gate de plano/cadastro do owner).
+    try {
+        const roleRows = await restGet<{ role: string }[]>(
+            `user_companies?user_id=eq.${encodeURIComponent(userId)}&company_id=eq.${encodeURIComponent(companyId)}&select=role&limit=1`,
+            4_000,
+        );
+        if (roleRows?.[0]?.role === 'pdv_operator') {
+            return '/manager/credit/pdv';
+        }
+    } catch {
+        /* segue fluxo normal */
+    }
+
     const billing = await fetchCompanyBilling(companyId);
     if (!(await registrationGateSatisfied(companyId, billing))) {
         return MANAGER_COMPANY_REGISTRATION_PATH;

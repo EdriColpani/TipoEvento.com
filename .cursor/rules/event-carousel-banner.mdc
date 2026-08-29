@@ -12,12 +12,14 @@ alwaysApply: false
 2. **Datas de exibição = data do evento** — `start_date` e `end_date` vêm de `events.date` (ou `event_date`). O gestor **não edita** essas datas no formulário.
 3. **Exceção: encerrar exibição** — ação “Encerrar exibição agora” pode definir `end_date` para ontem (antecipar fim). Trigger no banco permite `end_date < data do evento` só nesse caso.
 4. **Evento imutável após criar o banner** — edição não troca `event_id`.
+5. **Ordem automática** — no create, `display_order` = máxima existente + 1 (última da fila). Campo **somente leitura** em criar e editar; gestor não altera.
 
 ## UI (criar / editar)
 
 - Ao selecionar o evento: preencher início e fim com a data do evento; campos **somente leitura** (Input disabled ou DatePicker `disabled`).
 - Texto de ajuda: “Período de exibição segue a data do evento e não pode ser alterado manualmente.”
 - Lista de eventos no create: preferir só eventos **sem** banner cadastrado.
+- Ordem: desabilitada; no create usar `getNextEventCarouselBannerDisplayOrder`.
 
 ## Backend
 

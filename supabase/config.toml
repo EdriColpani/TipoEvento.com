@@ -11,6 +11,9 @@ verify_jwt = false
 [functions.invite-partner-company-owner]
 verify_jwt = false
 
+[functions.invite-pdv-operator]
+verify_jwt = false
+
 [functions.resend-signup-confirmation]
 verify_jwt = false
 
