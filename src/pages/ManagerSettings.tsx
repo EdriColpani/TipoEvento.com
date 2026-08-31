@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Settings, User, Building, Bell, History, Loader2, Store, ShoppingBag, Banknote, Share2, Users, KeyRound } from 'lucide-react';
+import { Settings, User, Building, Bell, History, Loader2, Store, ShoppingBag, Share2, Users, KeyRound } from 'lucide-react';
 import { useProfile } from '@/hooks/use-profile';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useUserRole } from '@/hooks/use-user-role';
@@ -78,20 +78,12 @@ const ManagerSettings: React.FC = () => {
         );
 
         if (companyContext?.isCompanyOwner) {
-            settingsOptions.push(
-                {
-                    icon: <Users className="h-6 w-6 text-yellow-500" />,
-                    title: "Operadores PDV",
-                    description: "Convide funcionários do balcão (acesso restrito ao PDV e produtos).",
-                    path: "/manager/settings/pdv-operators",
-                },
-                {
-                    icon: <Banknote className="h-6 w-6 text-yellow-500" />,
-                    title: "Repasses — Crédito",
-                    description: "Liquidações liberadas e registro de payout ao gestor.",
-                    path: "/manager/credit/settlements",
-                },
-            );
+            settingsOptions.push({
+                icon: <Users className="h-6 w-6 text-yellow-500" />,
+                title: "Operadores PDV",
+                description: "Convide funcionários do balcão (acesso restrito ao PDV e produtos).",
+                path: "/manager/settings/pdv-operators",
+            });
         }
     }
 

@@ -85,21 +85,65 @@ serve(async (req) => {
     }
 
     let chargeId = chargeIdInput;
-    if (!chargeId) {
-      const { data: ensured, error: ensureErr } = await supabaseService.rpc(
-        'ensure_consumption_license_charge',
-        { p_company_id: companyId },
-      );
-      if (ensureErr) throw ensureErr;
-      const row = ensured as { charge_id?: string; already_paid?: boolean; status?: string };
-      if (row?.already_paid || row?.status === 'paid') {
+    let referenceMonth: string | null = null;
+
+    if (chargeId) {
+      const { data: existing, error: existingErr } = await supabaseService
+        .from('company_consumption_license_charges')
+        .select('id, company_id, amount, status, reference_month')
+        .eq('id', chargeId)
+        .eq('company_id', companyId)
+        .single();
+
+      if (existingErr || !existing) {
+        return new Response(JSON.stringify({ error: 'Cobrança não encontrada.' }), {
+          status: 404,
+          headers: corsHeaders,
+        });
+      }
+
+      if (existing.status === 'paid') {
         return new Response(
-          JSON.stringify({ error: 'A licença deste mês já está paga.', alreadyPaid: true }),
+          JSON.stringify({ error: 'Esta cobrança já foi paga.', alreadyPaid: true }),
           { status: 409, headers: corsHeaders },
         );
       }
-      chargeId = row?.charge_id;
+
+      if (existing.status === 'cancelled') {
+        return new Response(JSON.stringify({ error: 'Esta cobrança foi cancelada.' }), {
+          status: 409,
+          headers: corsHeaders,
+        });
+      }
+
+      referenceMonth = existing.reference_month as string;
     }
+
+    // Sempre re-sincroniza valor pendente com taxa atual da empresa / padrão do sistema
+    // (evita fatura antiga após alteração em Preços e comissões).
+    const { data: ensured, error: ensureErr } = await supabaseService.rpc(
+      'ensure_consumption_license_charge',
+      {
+        p_company_id: companyId,
+        ...(referenceMonth ? { p_reference_month: referenceMonth } : {}),
+      },
+    );
+    if (ensureErr) throw ensureErr;
+
+    const ensuredRow = ensured as {
+      charge_id?: string;
+      already_paid?: boolean;
+      status?: string;
+    };
+
+    if (ensuredRow?.already_paid || ensuredRow?.status === 'paid') {
+      return new Response(
+        JSON.stringify({ error: 'A licença deste mês já está paga.', alreadyPaid: true }),
+        { status: 409, headers: corsHeaders },
+      );
+    }
+
+    chargeId = chargeId || ensuredRow?.charge_id;
 
     if (!chargeId) {
       return new Response(JSON.stringify({ error: 'Não foi possível gerar a cobrança.' }), {

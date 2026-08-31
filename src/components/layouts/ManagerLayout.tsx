@@ -449,9 +449,11 @@ const ManagerLayout: React.FC = () => {
         );
     } else if (
         !isAdminMaster &&
+        !isConsumptionLicensePlan &&
+        !companyContext?.isPartnerCompany &&
         !filteredManagerNav.some((item) => item.path === '/manager/validation-keys')
     ) {
-        // Plano de consumo sem feature validation_keys ainda precisa cadastrar chave de balcão.
+        // Só híbrido (evento + consumo) força chave de balcão; parceiro/consumo-licença usa PDV.
         const validationNav = MANAGER_NAV_ITEMS.find((item) => item.path === '/manager/validation-keys');
         if (validationNav) {
             const creditIdx = filteredManagerNav.findIndex((item) =>
@@ -467,6 +469,13 @@ const ManagerLayout: React.FC = () => {
                 filteredManagerNav = [...filteredManagerNav, validationNav];
             }
         }
+    }
+
+    // Consumo/licença e parceiros: sem Chaves de Validação (PDV cobre o balcão).
+    if ((isConsumptionLicensePlan || companyContext?.isPartnerCompany) && !isAdminMaster) {
+        filteredManagerNav = filteredManagerNav.filter(
+            (item) => !item.path.startsWith('/manager/validation-keys'),
+        );
     }
 
     if (companyContext?.isPdvOperator && !isAdminMaster) {

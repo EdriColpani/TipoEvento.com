@@ -80,10 +80,11 @@ export const MANAGER_NAV_ITEMS: ManagerNavItemConfig[] = [
     { path: '/manager/settings', label: 'Configurações', featureKey: 'settings' },
 ];
 
-/** Rotas bloqueadas para empresa parceira (consumo — sem eventos nem ingressos). */
+/** Rotas bloqueadas para empresa parceira (consumo/PDV — sem eventos, ingressos nem chaves de portaria). */
 export const PARTNER_BLOCKED_NAV_PREFIXES = [
     '/manager/events',
     '/manager/wristbands',
+    '/manager/validation-keys',
 ] as const;
 
 export function isPartnerCompanyBlockedPath(pathname: string): boolean {

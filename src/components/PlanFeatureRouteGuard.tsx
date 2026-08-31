@@ -14,7 +14,7 @@ import {
 } from '@/constants/plan-features';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { MANAGER_BILLING_SETUP_PATH } from '@/constants/manager-billing-gate';
-import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
+import { companyAllowsCreditConsumption, isConsumptionOrLicensePlan } from '@/utils/company-billing-rules';
 
 const ADMIN_MASTER = 1;
 const MANAGER_PRO = 2;
@@ -82,13 +82,16 @@ const PlanFeatureRouteGuard: React.FC<PlanFeatureRouteGuardProps> = ({ children 
         return <GuardSpinner />;
     }
 
-    if (companyContext?.isPartnerCompany && isPartnerCompanyBlockedPath(location.pathname)) {
+    if (
+        (companyContext?.isPartnerCompany || isConsumptionOrLicensePlan(billing?.billing_plan ?? null)) &&
+        location.pathname.startsWith('/manager/validation-keys')
+    ) {
         return (
             <div className="max-w-lg mx-auto py-16 px-4 text-center">
                 <Lock className="h-12 w-12 text-amber-400 mx-auto mb-4" />
                 <h2 className="text-xl text-white font-semibold mb-2">Área não disponível</h2>
                 <p className="text-gray-400 text-sm mb-6">
-                    Empresas parceiras operam consumo e PDV — não têm acesso a Eventos nem Ingressos.
+                    No plano consumo/licença o balcão usa PDV Crédito — Chaves de Validação não se aplicam.
                 </p>
                 <Button
                     type="button"
@@ -101,7 +104,29 @@ const PlanFeatureRouteGuard: React.FC<PlanFeatureRouteGuardProps> = ({ children 
         );
     }
 
+    if (companyContext?.isPartnerCompany && isPartnerCompanyBlockedPath(location.pathname)) {
+        return (
+            <div className="max-w-lg mx-auto py-16 px-4 text-center">
+                <Lock className="h-12 w-12 text-amber-400 mx-auto mb-4" />
+                <h2 className="text-xl text-white font-semibold mb-2">Área não disponível</h2>
+                <p className="text-gray-400 text-sm mb-6">
+                    Empresas parceiras operam consumo e PDV — sem Eventos, Ingressos nem Chaves de Validação.
+                </p>
+                <Button
+                    type="button"
+                    className="bg-yellow-500 text-black hover:bg-yellow-600"
+                    onClick={() => navigate('/manager/dashboard')}
+                >
+                    Voltar ao painel
+                </Button>
+            </div>
+        );
+    }
+
+    // Híbrido: permite chaves de balcão mesmo se a feature não estiver na matriz do plano.
     const allowsConsumptionKeys =
+        !companyContext?.isPartnerCompany &&
+        !isConsumptionOrLicensePlan(billing?.billing_plan ?? null) &&
         companyAllowsCreditConsumption(billing?.billing_plan ?? null) &&
         location.pathname.startsWith('/manager/validation-keys');
 
