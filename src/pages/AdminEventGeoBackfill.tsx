@@ -131,7 +131,7 @@ const AdminEventGeoBackfill: React.FC = () => {
         <Button
           variant="outline"
           onClick={() => navigate('/admin/dashboard')}
-          className="border-yellow-500/30 text-yellow-500"
+          className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Voltar
@@ -154,7 +154,7 @@ const AdminEventGeoBackfill: React.FC = () => {
               type="button"
               disabled={running || loading || items.length === 0}
               onClick={() => void runBackfill()}
-              className="bg-yellow-500 text-black hover:bg-yellow-600"
+              className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
             >
               {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MapPin className="h-4 w-4 mr-2" />}
               Geocodificar pendentes ({items.length})
@@ -164,7 +164,7 @@ const AdminEventGeoBackfill: React.FC = () => {
               variant="outline"
               disabled={running || loading}
               onClick={() => void loadItems()}
-              className="border-yellow-500/30 text-yellow-500"
+              className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Atualizar lista

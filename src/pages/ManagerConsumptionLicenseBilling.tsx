@@ -113,7 +113,7 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
                 <Button
                     variant="outline"
                     onClick={() => navigate('/manager/reports')}
-                    className="mb-6 border-yellow-500/30 text-yellow-500"
+                    className="mb-6 bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar
@@ -147,7 +147,7 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
                 <Button
                     variant="outline"
                     onClick={() => navigate('/manager/reports')}
-                    className="border-yellow-500/30 text-yellow-500"
+                    className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Voltar
@@ -172,7 +172,7 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
                         <Button
                             type="button"
                             size="sm"
-                            className="bg-yellow-500 text-black hover:bg-yellow-400 shrink-0"
+                            className="bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50 shrink-0"
                             disabled={!!payingChargeId}
                             onClick={() => handlePay()}
                         >
@@ -266,7 +266,7 @@ const ManagerConsumptionLicenseBilling: React.FC = () => {
                                                         type="button"
                                                         size="sm"
                                                         variant="outline"
-                                                        className="border-yellow-500/40 text-yellow-500 h-8"
+                                                        className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 disabled:opacity-50 h-8"
                                                         disabled={!!payingChargeId}
                                                         onClick={() => handlePay(charge.id)}
                                                     >
