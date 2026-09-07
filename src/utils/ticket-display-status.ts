@@ -25,7 +25,12 @@ export function isTicketActiveForDisplay(ticket: TicketData): boolean {
     }
 
     if (ticket.status === 'active' || ticket.status === 'pending') return true;
-    if (ticket.status === 'used' && ticket.event_type === 'purchase') return true;
+    if (
+      ticket.status === 'used' &&
+      (ticket.event_type === 'purchase' || ticket.event_type === 'complimentary_redemption')
+    ) {
+      return true;
+    }
     return false;
 }
 

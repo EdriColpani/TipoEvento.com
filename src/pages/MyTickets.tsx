@@ -144,9 +144,24 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket }) => {
                 eventName={eventName}
                 eventDate={eventDetails?.date || ''}
                 wristbandCode={ticket.wristbands?.access_type || 'Ingresso'}
-                mode={ticket.event_type === 'purchase' ? 'dynamic' : 'static'}
-                analyticsId={ticket.event_type === 'purchase' ? ticket.id : undefined}
-                scanValue={ticket.event_type !== 'purchase' ? ticket.id : undefined}
+                mode={
+                  ticket.event_type === 'purchase' ||
+                  ticket.event_type === 'complimentary_redemption'
+                    ? 'dynamic'
+                    : 'static'
+                }
+                analyticsId={
+                  ticket.event_type === 'purchase' ||
+                  ticket.event_type === 'complimentary_redemption'
+                    ? ticket.id
+                    : undefined
+                }
+                scanValue={
+                  ticket.event_type === 'purchase' ||
+                  ticket.event_type === 'complimentary_redemption'
+                    ? undefined
+                    : ticket.id
+                }
                 singleUseNotice
                 autoCloseSeconds={120}
             />

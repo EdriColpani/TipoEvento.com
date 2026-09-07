@@ -30,9 +30,11 @@ export type ValidationKeyPurpose = 'entry_exit' | 'consumption_delivery';
 interface ValidationApiKey {
     id: string;
     name: string;
-    api_key?: string; // Só aparece quando criado
+    api_key?: string; // Texto da chave (persistido; revelar na UI se evento ativo)
     event_id: string | null;
     event_title?: string;
+    /** false = evento desativado — não revelar chave */
+    event_is_active?: boolean;
     is_active: boolean;
     expires_at: string | null;
     last_used_at: string | null;
@@ -54,13 +56,14 @@ interface ValidationLog {
 type ValidationKeyRow = {
     id: string;
     name: string;
+    api_key?: string | null;
     event_id: string | null;
     is_active: boolean;
     expires_at: string | null;
     last_used_at: string | null;
     created_at: string;
     key_purpose?: ValidationKeyPurpose | null;
-    events?: { title?: string } | null;
+    events?: { title?: string; is_active?: boolean | null } | null;
 };
 
 type ValidationLogRow = {
@@ -76,15 +79,16 @@ type ValidationLogRow = {
 };
 
 const fetchValidationKeys = async (_userId: string, _isAdminMaster: boolean): Promise<ValidationApiKey[]> => {
-    // RLS no banco filtra por empresa / admin
+    // RLS no banco filtra por empresa / admin. api_key em texto para reexibir (só se evento ativo).
     const data = await restGet<ValidationKeyRow[]>(
-        'validation_api_keys?select=id,name,event_id,is_active,expires_at,last_used_at,created_at,key_purpose,events!event_id(title)&order=created_at.desc&limit=500',
+        'validation_api_keys?select=id,name,api_key,event_id,is_active,expires_at,last_used_at,created_at,key_purpose,events!event_id(title,is_active)&order=created_at.desc&limit=500',
         15_000,
     );
 
     return (data ?? []).map((key) => ({
         id: key.id,
         name: key.name,
+        api_key: key.api_key || undefined,
         event_id: key.event_id,
         is_active: key.is_active,
         expires_at: key.expires_at,
@@ -92,6 +96,8 @@ const fetchValidationKeys = async (_userId: string, _isAdminMaster: boolean): Pr
         created_at: key.created_at,
         key_purpose: key.key_purpose === 'consumption_delivery' ? 'consumption_delivery' : 'entry_exit',
         event_title: key.events?.title || undefined,
+        // Sem evento vinculado: permite revelar. Com evento: só se is_active.
+        event_is_active: key.event_id == null ? true : key.events?.is_active !== false,
     }));
 };
 
@@ -605,8 +611,12 @@ const ManagerValidationKeys: React.FC = () => {
                                 {keys.map((key) => {
                                     const isRevealed = revealedKeys.has(key.id);
                                     const isExpired = key.expires_at && new Date(key.expires_at) < new Date();
-                                    // Buscar a chave no estado local (se foi criada nesta sessão)
-                                    const apiKeyToShow = storedApiKeys.get(key.id) || key.api_key;
+                                    const eventAllowsReveal = key.event_is_active !== false;
+                                    const apiKeyToShow =
+                                        eventAllowsReveal
+                                            ? storedApiKeys.get(key.id) || key.api_key
+                                            : undefined;
+                                    const canRevealKey = Boolean(apiKeyToShow) && eventAllowsReveal;
 
                                     return (
                                         <TableRow key={key.id} className="border-b border-yellow-500/10 hover:bg-black/40 text-sm">
@@ -626,8 +636,8 @@ const ManagerValidationKeys: React.FC = () => {
                                                     </span>
                                                 </div>
                                                 
-                                                {/* Chave de acesso (só aparece quando revelada) */}
-                                                {apiKeyToShow && isRevealed && (
+                                                {/* Chave de acesso (só se evento ativo + revelada) */}
+                                                {canRevealKey && isRevealed && (
                                                     <div className="mt-2 flex items-center space-x-2">
                                                         <code className="text-xs bg-black/60 px-2 py-1 rounded text-yellow-500 font-mono break-all">
                                                             {apiKeyToShow}
@@ -635,23 +645,37 @@ const ManagerValidationKeys: React.FC = () => {
                                                         <Button
                                                             size="sm"
                                                             variant="ghost"
-                                                            onClick={async () => await copyToClipboard(apiKeyToShow)}
+                                                            onClick={async () => await copyToClipboard(apiKeyToShow!)}
                                                             className="h-6 w-6 p-0 bg-transparent text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 flex-shrink-0"
                                                             title="Copiar chave"
                                                         >
                                                             <Copy className="h-3 w-3" />
                                                         </Button>
-                                                    </div>
-                                                )}
-                                                
-                                                {/* Botão para mostrar chave (só aparece se a chave existir mas não estiver revelada) */}
-                                                {!isRevealed && apiKeyToShow && (
-                                                    <div className="mt-2">
                                                         <Button
                                                             size="sm"
                                                             variant="ghost"
+                                                            onClick={() => {
+                                                                setRevealedKeys((prev) => {
+                                                                    const next = new Set(prev);
+                                                                    next.delete(key.id);
+                                                                    return next;
+                                                                });
+                                                            }}
+                                                            className="h-6 w-6 p-0 bg-transparent text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 flex-shrink-0"
+                                                            title="Ocultar chave"
+                                                        >
+                                                            <EyeOff className="h-3 w-3" />
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                                
+                                                {!isRevealed && canRevealKey && (
+                                                    <div className="mt-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
                                                             onClick={() => setRevealedKeys(new Set([...revealedKeys, key.id]))}
-                                                            className="h-6 text-xs bg-transparent text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                                            className="h-7 text-xs bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
                                                             title="Mostrar chave"
                                                         >
                                                             <Eye className="h-3 w-3 mr-1" />
@@ -659,7 +683,16 @@ const ManagerValidationKeys: React.FC = () => {
                                                         </Button>
                                                     </div>
                                                 )}
-                                                
+                                                {!eventAllowsReveal && (
+                                                    <p className="mt-2 text-xs text-gray-500">
+                                                        Evento inativo — chave oculta. Ative o evento para revelar.
+                                                    </p>
+                                                )}
+                                                {eventAllowsReveal && !key.api_key && !storedApiKeys.has(key.id) && (
+                                                    <p className="mt-2 text-xs text-amber-300/90">
+                                                        Chave não disponível neste registro (legado). Crie uma nova chave.
+                                                    </p>
+                                                )}
                                                 {/* URL do Validador - SEMPRE VISÍVEL */}
                                                 {key.is_active && (
                                                     <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
@@ -676,14 +709,14 @@ const ManagerValidationKeys: React.FC = () => {
                                                         </a>
                                                         
                                                         {/* Botões de Compartilhamento */}
-                                                        {apiKeyToShow && (
+                                                        {canRevealKey && isRevealed && (
                                                             <div className="space-y-2">
                                                                 <div className="text-xs text-gray-400 mb-1">Chave de acesso: <span className="font-mono text-yellow-500">{apiKeyToShow}</span></div>
                                                                 <div className="flex gap-2">
                                                                     <Button
                                                                         size="sm"
                                                                         variant="outline"
-                                                                        onClick={async () => await copyToClipboard(apiKeyToShow)}
+                                                                        onClick={async () => await copyToClipboard(apiKeyToShow!)}
                                                                         className="flex-1 text-xs bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
                                                                         title="Copiar chave"
                                                                     >
@@ -721,9 +754,20 @@ const ManagerValidationKeys: React.FC = () => {
                                                                 </div>
                                                             </div>
                                                         )}
-                                                        {!apiKeyToShow && (
+                                                        {!canRevealKey && (
                                                             <p className="text-xs text-gray-500 text-center">
-                                                                Revele a chave para compartilhar
+                                                                {!eventAllowsReveal
+                                                                    ? 'Evento inativo — chave oculta.'
+                                                                    : (
+                                                                        <>
+                                                                            Use <strong className="text-yellow-500">Mostrar chave</strong> acima para copiar e compartilhar.
+                                                                        </>
+                                                                    )}
+                                                            </p>
+                                                        )}
+                                                        {canRevealKey && !isRevealed && (
+                                                            <p className="text-xs text-gray-500 text-center">
+                                                                Use <strong className="text-yellow-500">Mostrar chave</strong> acima para copiar e compartilhar.
                                                             </p>
                                                         )}
                                                     </div>
@@ -765,7 +809,7 @@ const ManagerValidationKeys: React.FC = () => {
                                             </TableCell>
                                             <TableCell className="text-right py-4">
                                                 <div className="flex items-center justify-end space-x-2">
-                                                    {key.api_key && !isRevealed && (
+                                                    {canRevealKey && !isRevealed && (
                                                         <Button
                                                             size="sm"
                                                             variant="ghost"

@@ -65,8 +65,8 @@ serve(async (req) => {
       });
     }
 
-    if (wa.event_type !== 'purchase') {
-      return new Response(JSON.stringify({ error: 'QR dinâmico disponível apenas para ingressos de compra.' }), {
+    if (wa.event_type !== 'purchase' && wa.event_type !== 'complimentary_redemption') {
+      return new Response(JSON.stringify({ error: 'QR dinâmico disponível apenas para ingressos de compra ou cortesia.' }), {
         status: 400,
         headers: corsHeaders,
       });

@@ -96,6 +96,13 @@ const ManagerCreateWristband: React.FC = () => {
 
     const isLoading = authPending || isLoadingCompany || isLoadingEvents || isLoadingBilling;
 
+    const selectedEvent = events.find((event) => event.id === formData.eventId);
+    const targetCompanyId = isAdminMaster
+        ? (selectedEvent?.company_id || company?.id || null)
+        : (company?.id || null);
+    /** Emissão sem compra / contra estoque counter — só Admin Master. */
+    const isAdminTestIssuance = Boolean(isAdminMaster);
+
     useEffect(() => {
         if (!preselectedEventId || isLoadingEvents) return;
         const exists = events.some((e) => e.id === preselectedEventId);
@@ -136,15 +143,14 @@ const ManagerCreateWristband: React.FC = () => {
     }, [formData.eventId]);
 
     const isCounterInventoryEvent = selectedEventInventoryMode === 'counter';
+    const formLockedByCounter = isCounterInventoryEvent && !isAdminTestIssuance;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { id, value } = e.target;
         
         if (id === 'quantity') {
             const numValue = parseInt(value, 10);
-            const capped = isCounterInventoryEvent
-                ? numValue
-                : Math.min(isNaN(numValue) ? 1 : numValue, 500);
+            const capped = Math.min(isNaN(numValue) ? 1 : numValue, 500);
             setFormData(prev => ({ ...prev, [id]: isNaN(numValue) || numValue < 1 ? 1 : capped }));
         } else if (id === 'price') {
             const formattedPrice = formatPriceInput(value);
@@ -167,7 +173,7 @@ const ManagerCreateWristband: React.FC = () => {
     const validateForm = (priceNumeric: number) => {
         const errors: string[] = [];
 
-        if (isCounterInventoryEvent) {
+        if (formLockedByCounter) {
             errors.push(
                 'Este evento usa estoque por lote. Defina a quantidade nos lotes do evento — não emite ingressos um a um aqui.',
             );
@@ -175,14 +181,20 @@ const ManagerCreateWristband: React.FC = () => {
         
         if (!formData.eventId) errors.push("Selecione o evento.");
         if (!formData.baseCode.trim()) errors.push("O Código Base é obrigatório.");
-        if (!isCounterInventoryEvent && (formData.quantity < 1 || formData.quantity > 500)) {
-            errors.push("A quantidade deve ser entre 1 e 500 por emissão manual.");
+        if (formData.quantity < 1 || formData.quantity > 500) {
+            errors.push("A quantidade deve ser entre 1 e 500 por emissão.");
         }
         if (!formData.accessType) errors.push("O Tipo de Acesso é obrigatório.");
-        if (!company?.id) errors.push("O Perfil da Empresa não está cadastrado. Cadastre-o em Configurações.");
+        if (!targetCompanyId) {
+            errors.push(
+                isAdminMaster
+                    ? 'Selecione um evento com empresa vinculada.'
+                    : 'O Perfil da Empresa não está cadastrado. Cadastre-o em Configurações.',
+            );
+        }
         
         if (isNaN(priceNumeric) || priceNumeric < 0) errors.push("O Valor deve ser um número positivo.");
-        if (requiresPaidTickets && priceNumeric <= 0) {
+        if (requiresPaidTickets && !isAdminTestIssuance && priceNumeric <= 0) {
             errors.push('No seu plano, o valor do ingresso deve ser maior que zero.');
         }
 
@@ -197,25 +209,27 @@ const ManagerCreateWristband: React.FC = () => {
         e.preventDefault();
 
         const priceNumeric = parsePriceToNumeric(formData.price);
-        if (!validateForm(priceNumeric) || !company?.id || !userId) return;
+        if (!validateForm(priceNumeric) || !targetCompanyId || !userId) return;
 
         if (submitInFlightRef.current) {
             return;
         }
 
         try {
-            await assertCompanyPlanFeature(company.id, 'wristbands');
+            if (!isAdminTestIssuance) {
+                await assertCompanyPlanFeature(targetCompanyId, 'wristbands');
 
-            const minError = await validateEventTicketMinimumOnIssue({
-                eventId: formData.eventId,
-                billingPlan: billing?.billing_plan,
-                minEventTickets: companyMinEventTickets,
-                quantityToAdd: formData.quantity,
-                unitPrice: priceNumeric,
-            });
-            if (minError) {
-                showError(minError);
-                return;
+                const minError = await validateEventTicketMinimumOnIssue({
+                    eventId: formData.eventId,
+                    billingPlan: billing?.billing_plan,
+                    minEventTickets: companyMinEventTickets,
+                    quantityToAdd: formData.quantity,
+                    unitPrice: priceNumeric,
+                });
+                if (minError) {
+                    showError(minError);
+                    return;
+                }
             }
         } catch (preErr: unknown) {
             showError(preErr instanceof Error ? preErr.message : 'Erro ao validar ingressos.');
@@ -224,80 +238,159 @@ const ManagerCreateWristband: React.FC = () => {
 
         submitInFlightRef.current = true;
         setIsSaving(true);
-        const toastId = showLoading(`Cadastrando ingresso e ${formData.quantity} ingressos...`);
+        const toastId = showLoading(
+            isAdminTestIssuance
+                ? `Gerando ${formData.quantity} QR(s) de teste...`
+                : `Cadastrando ingresso e ${formData.quantity} ingressos...`,
+        );
 
         try {
-
             const baseCodeClean = formData.baseCode.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
-            
-            // 1. Inserir APENAS UM registro na tabela wristbands
-            const wristbandData = {
-                event_id: formData.eventId,
-                company_id: company.id,
-                manager_user_id: userId,
-                code: baseCodeClean, // Usando o Código Base como o código principal
-                access_type: formData.accessType,
-                status: 'active',
-                price: priceNumeric, // Salvando o preço
-            };
 
-            const { data: insertedWristband, error: insertError } = await supabase
-                .from('wristbands')
-                .insert([wristbandData])
-                .select('id, code')
-                .single();
+            // Admin Master: 1 pulseira por QR (cada entrada valida independente na portaria).
+            // Demais: 1 lote + N analytics (legado).
+            const ticketCount = formData.quantity;
+            let firstWristbandId: string | null = null;
 
-            if (insertError) {
-                if (insertError.code === '23505') { // Unique violation (código da pulseira já existe)
-                    throw new Error("O Código Base informado já está em uso. Tente um código diferente.");
+            if (isAdminTestIssuance) {
+                for (let i = 0; i < ticketCount; i++) {
+                    const uniqueCode = `${baseCodeClean}-${String(i + 1).padStart(3, '0')}`;
+                    const { data: insertedWristband, error: insertError } = await supabase
+                        .from('wristbands')
+                        .insert([
+                            {
+                                event_id: formData.eventId,
+                                company_id: targetCompanyId,
+                                manager_user_id: userId,
+                                code: uniqueCode,
+                                access_type: formData.accessType,
+                                status: 'active',
+                                price: priceNumeric,
+                            },
+                        ])
+                        .select('id, code')
+                        .single();
+
+                    if (insertError) {
+                        if (insertError.code === '23505') {
+                            throw new Error(
+                                `O código ${uniqueCode} já está em uso. Escolha outro Código Base.`,
+                            );
+                        }
+                        throw insertError;
+                    }
+
+                    if (!firstWristbandId) firstWristbandId = insertedWristband.id;
+
+                    const { error: analyticsError } = await supabase.from('wristband_analytics').insert([
+                        {
+                            wristband_id: insertedWristband.id,
+                            event_type: 'creation',
+                            client_user_id: null,
+                            code_wristbands: uniqueCode,
+                            status: 'active',
+                            sequential_number: 1,
+                            event_data: {
+                                code: uniqueCode,
+                                access_type: formData.accessType,
+                                price: priceNumeric,
+                                manager_id: userId,
+                                event_id: formData.eventId,
+                                initial_status: 'active',
+                                sequential_entry: 1,
+                                admin_test_issuance: true,
+                            },
+                        },
+                    ]);
+
+                    if (analyticsError) {
+                        if (String(analyticsError.code) === '23505') {
+                            throw new Error(
+                                'Código de ingresso duplicado. Escolha outro Código Base.',
+                            );
+                        }
+                        throw analyticsError;
+                    }
                 }
-                throw insertError;
-            }
-            
-            const wristbandId = insertedWristband.id;
-            
-            // 2. Inserir N registros de analytics (baseado na quantidade) — código único BASE-NNN
-            const analyticsToInsert = [];
-            for (let i = 0; i < formData.quantity; i++) {
-                const uniqueCode = `${insertedWristband.code}-${String(i + 1).padStart(3, '0')}`;
-                analyticsToInsert.push({
-                    wristband_id: wristbandId,
-                    event_type: 'creation',
-                    client_user_id: null,
-                    code_wristbands: uniqueCode,
-                    status: 'active',
-                    sequential_number: i + 1,
-                    event_data: {
-                        code: uniqueCode,
-                        access_type: formData.accessType,
-                        price: priceNumeric,
-                        manager_id: userId,
-                        event_id: formData.eventId,
-                        initial_status: 'active',
-                        sequential_entry: i + 1,
-                    },
-                });
-            }
 
-            const { error: analyticsError } = await supabase
-                .from('wristband_analytics')
-                .insert(analyticsToInsert);
+                // Garante impressão na portaria (QR estático).
+                await supabase
+                    .from('events')
+                    .update({ allow_printed_tickets: true })
+                    .eq('id', formData.eventId);
+            } else {
+                const { data: insertedWristband, error: insertError } = await supabase
+                    .from('wristbands')
+                    .insert([
+                        {
+                            event_id: formData.eventId,
+                            company_id: targetCompanyId,
+                            manager_user_id: userId,
+                            code: baseCodeClean,
+                            access_type: formData.accessType,
+                            status: 'active',
+                            price: priceNumeric,
+                        },
+                    ])
+                    .select('id, code')
+                    .single();
 
-            if (analyticsError) {
-                console.error('Falha ao inserir wristband_analytics:', analyticsError);
-                if (String(analyticsError.code) === '23505') {
-                    throw new Error(
-                        'Esses códigos de ingresso já existem para este ingresso (envio duplicado). Recarregue a lista ou exclua duplicatas antigas no banco.',
-                    );
+                if (insertError) {
+                    if (insertError.code === '23505') {
+                        throw new Error(
+                            'O Código Base informado já está em uso. Tente um código diferente.',
+                        );
+                    }
+                    throw insertError;
                 }
-                throw analyticsError;
+
+                firstWristbandId = insertedWristband.id;
+
+                const analyticsToInsert = [];
+                for (let i = 0; i < ticketCount; i++) {
+                    const uniqueCode = `${insertedWristband.code}-${String(i + 1).padStart(3, '0')}`;
+                    analyticsToInsert.push({
+                        wristband_id: insertedWristband.id,
+                        event_type: 'creation',
+                        client_user_id: null,
+                        code_wristbands: uniqueCode,
+                        status: 'active',
+                        sequential_number: i + 1,
+                        event_data: {
+                            code: uniqueCode,
+                            access_type: formData.accessType,
+                            price: priceNumeric,
+                            manager_id: userId,
+                            event_id: formData.eventId,
+                            initial_status: 'active',
+                            sequential_entry: i + 1,
+                        },
+                    });
+                }
+
+                const { error: analyticsError } = await supabase
+                    .from('wristband_analytics')
+                    .insert(analyticsToInsert);
+
+                if (analyticsError) {
+                    console.error('Falha ao inserir wristband_analytics:', analyticsError);
+                    if (String(analyticsError.code) === '23505') {
+                        throw new Error(
+                            'Esses códigos de ingresso já existem para este ingresso (envio duplicado). Recarregue a lista ou exclua duplicatas antigas no banco.',
+                        );
+                    }
+                    throw analyticsError;
+                }
             }
 
             dismissToast(toastId);
-            showSuccess(`Ingresso "${baseCodeClean}" cadastrado com ${formData.quantity} ingressos.`);
-            
-            // Limpar formulário após sucesso
-            setFormData(prev => ({ 
+            showSuccess(
+                isAdminTestIssuance
+                    ? `${ticketCount} QR(s) de teste prontos. Abra o ingresso e use Imprimir.`
+                    : `Ingresso "${baseCodeClean}" cadastrado com ${ticketCount} ingressos.`,
+            );
+
+            setFormData((prev) => ({
                 eventId: prev.eventId,
                 baseCode: '',
                 quantity: 1,
@@ -305,6 +398,9 @@ const ManagerCreateWristband: React.FC = () => {
                 price: '0,00',
             }));
 
+            if (isAdminTestIssuance && formData.eventId) {
+                navigate(`/manager/wristbands/print-batch?eventId=${encodeURIComponent(formData.eventId)}`);
+            }
         } catch (error: any) {
             dismissToast(toastId);
             console.error("Erro ao cadastrar pulseira:", error);
@@ -324,7 +420,7 @@ const ManagerCreateWristband: React.FC = () => {
         );
     }
 
-    if (!company) {
+    if (!company && !isAdminMaster) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0 text-center py-20">
                 <div className="bg-red-500/20 border border-red-500/50 text-red-400 p-6 rounded-xl mb-8">
@@ -342,7 +438,8 @@ const ManagerCreateWristband: React.FC = () => {
         );
     }
 
-    if (requiresPaidTickets) {
+    // Gestores de plano com venda: QR nasce na compra. Admin Master usa emissão de teste abaixo.
+    if (requiresPaidTickets && !isAdminMaster) {
         return (
             <div className="max-w-4xl mx-auto px-4 sm:px-0">
                 <EventActivationReminderBanner />
@@ -380,7 +477,7 @@ const ManagerCreateWristband: React.FC = () => {
                 <div className="space-y-2">
                     <h1 className="text-2xl sm:text-3xl font-serif text-yellow-500 flex items-center">
                         <QrCode className="h-7 w-7 mr-3" />
-                        Cadastro de Ingresso
+                        {isAdminTestIssuance ? 'Ingressos de teste (Admin)' : 'Cadastro de Ingresso'}
                     </h1>
                     <ManagerScreenHelpButton
                         guideId="wristband-create"
@@ -401,17 +498,31 @@ const ManagerCreateWristband: React.FC = () => {
 
             <EventActivationReminderBanner />
 
+            {isAdminTestIssuance && (
+                <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-950/50 p-4 text-sm text-amber-50">
+                    <p className="font-semibold text-white mb-1">Modo exclusivo Admin Master</p>
+                    <p className="text-amber-100/90 text-xs leading-relaxed">
+                        Gera QR estáticos prontos para portaria <strong className="text-white">sem compra</strong>.
+                        Cada unidade vira um ingresso independente (TESTE-001, TESTE-002…). Após salvar, use{' '}
+                        <strong className="text-white">Imprimir</strong> na gestão do ingresso. Gestores comuns
+                        continuam só com QR na venda.
+                    </p>
+                </div>
+            )}
+
             <Card className="bg-black border border-yellow-500/30 rounded-2xl shadow-2xl shadow-yellow-500/10">
                 <CardHeader>
-                    <CardTitle className="text-white text-xl sm:text-2xl font-semibold">Detalhes do Ingresso</CardTitle>
+                    <CardTitle className="text-white text-xl sm:text-2xl font-semibold">
+                        {isAdminTestIssuance ? 'Gerar QRs de teste' : 'Detalhes do Ingresso'}
+                    </CardTitle>
                     <CardDescription className="text-gray-400 text-sm">
-                        Cadastre um ingresso e defina quantos registros de uso inicial ele representa.
+                        {isAdminTestIssuance
+                            ? 'Selecione o evento, um código base e a quantidade de QRs para imprimir/validar.'
+                            : 'Cadastre um ingresso e defina quantos registros de uso inicial ele representa.'}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        
-                        {/* Evento */}
                         <div>
                             <label htmlFor="eventId" className="block text-sm font-medium text-white mb-2 flex items-center">
                                 <Calendar className="h-4 w-4 mr-2 text-yellow-500" />
@@ -427,7 +538,9 @@ const ManagerCreateWristband: React.FC = () => {
                                     ) : (
                                         events.map((event: ManagerEvent) => (
                                             <SelectItem key={event.id} value={event.id} className="hover:bg-yellow-500/10 cursor-pointer">
-                                                {event.title}
+                                                {isAdminMaster && event.company_name
+                                                    ? `${event.title} — ${event.company_name}`
+                                                    : event.title}
                                             </SelectItem>
                                         ))
                                     )}
@@ -442,7 +555,6 @@ const ManagerCreateWristband: React.FC = () => {
                             />
                         )}
 
-                        {/* Código Base, Quantidade e Tipo de Acesso */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
                                 <label htmlFor="baseCode" className="block text-sm font-medium text-white mb-2 flex items-center">
@@ -453,12 +565,16 @@ const ManagerCreateWristband: React.FC = () => {
                                     id="baseCode" 
                                     value={formData.baseCode} 
                                     onChange={handleChange} 
-                                    placeholder="Ex: CONCERTO-VIP-A1"
+                                    placeholder="Ex: TESTE"
                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 disabled:opacity-50"
-                                    disabled={isCounterInventoryEvent}
-                                    required={!isCounterInventoryEvent}
+                                    disabled={formLockedByCounter}
+                                    required={!formLockedByCounter}
                                 />
-                                <p className="text-xs text-gray-500 mt-1">Este será o código único do ingresso.</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {isAdminTestIssuance
+                                        ? 'Gera TESTE-001, TESTE-002… (um QR por código).'
+                                        : 'Este será o código único do ingresso.'}
+                                </p>
                             </div>
                             <div>
                                 <label htmlFor="quantity" className="block text-sm font-medium text-white mb-2 flex items-center">
@@ -473,14 +589,16 @@ const ManagerCreateWristband: React.FC = () => {
                                     placeholder="1"
                                     className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 disabled:opacity-50"
                                     min={1}
-                                    max={isCounterInventoryEvent ? undefined : 500}
-                                    disabled={isCounterInventoryEvent}
-                                    required={!isCounterInventoryEvent}
+                                    max={500}
+                                    disabled={formLockedByCounter}
+                                    required={!formLockedByCounter}
                                 />
                                 <p className="text-xs text-gray-400 mt-1">
-                                    {isCounterInventoryEvent
+                                    {formLockedByCounter
                                         ? 'Use os lotes do evento para definir 50.000+ ingressos.'
-                                        : 'Emissão manual: até 500 por vez (eventos gratuitos ou legado).'}
+                                        : isAdminTestIssuance
+                                          ? 'Até 500 QRs de teste por vez (sem compra).'
+                                          : 'Emissão manual: até 500 por vez (eventos gratuitos ou legado).'}
                                 </p>
                             </div>
                             <div>
@@ -491,7 +609,7 @@ const ManagerCreateWristband: React.FC = () => {
                                 <Select
                                     onValueChange={(value) => handleSelectChange('accessType', value)}
                                     value={formData.accessType}
-                                    disabled={isCounterInventoryEvent}
+                                    disabled={formLockedByCounter}
                                 >
                                     <SelectTrigger className="w-full bg-black/60 border-yellow-500/30 text-white focus:ring-yellow-500">
                                         <SelectValue placeholder="Selecione o Tipo" />
@@ -506,8 +624,7 @@ const ManagerCreateWristband: React.FC = () => {
                                 </Select>
                             </div>
                         </div>
-                        
-                        {/* Valor do Ingresso */}
+
                         <div>
                             <label htmlFor="price" className="block text-sm font-medium text-white mb-2 flex items-center">
                                 <DollarSign className="h-4 w-4 mr-2 text-yellow-500" />
@@ -520,17 +637,20 @@ const ManagerCreateWristband: React.FC = () => {
                                 onBlur={handlePriceBlur}
                                 placeholder="0,00"
                                 className="bg-black/60 border-yellow-500/30 text-white placeholder-gray-500 focus:border-yellow-500 disabled:opacity-50"
-                                disabled={isCounterInventoryEvent}
-                                required={!isCounterInventoryEvent}
+                                disabled={formLockedByCounter}
+                                required={!formLockedByCounter}
                             />
-                            <p className="text-xs text-gray-500 mt-1">O valor de venda ou custo deste ingresso.</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {isAdminTestIssuance
+                                    ? 'Pode ser 0,00 para teste de portaria.'
+                                    : 'O valor de venda ou custo deste ingresso.'}
+                            </p>
                         </div>
 
-                        {/* Botões de Ação */}
                         <div className="pt-4 flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
                             <Button
                                 type="submit"
-                                disabled={isSaving || isLoading || !company || isCounterInventoryEvent}
+                                disabled={isSaving || isLoading || formLockedByCounter || !targetCompanyId}
                                 className="flex-1 bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-lg font-semibold transition-all duration-300 cursor-pointer disabled:opacity-50"
                             >
                                 {isSaving ? (
@@ -538,6 +658,11 @@ const ManagerCreateWristband: React.FC = () => {
                                         <Loader2 className="w-5 h-5 animate-spin mr-2" />
                                         Gravando...
                                     </div>
+                                ) : isAdminTestIssuance ? (
+                                    <>
+                                        <i className="fas fa-qrcode mr-2"></i>
+                                        Gerar QRs de teste
+                                    </>
                                 ) : (
                                     <>
                                         <i className="fas fa-save mr-2"></i>

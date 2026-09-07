@@ -50,10 +50,11 @@ const ClientLayoutNav: React.FC<{ isInformacoesPage: boolean }> = ({ isInformaco
                 </a>
                 <Button
                     type="button"
+                    title="Cadastro para organizar eventos, PDV e consumo"
                     onClick={() => navigate(MANAGER_TERMS_REGISTER_PATH, { state: { from: '/informacoes' } })}
                     className="bg-yellow-500 text-black hover:bg-yellow-600 font-semibold ml-2"
                 >
-                    Cadastre-se
+                    Sou gestor
                 </Button>
             </>
         );

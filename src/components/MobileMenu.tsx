@@ -210,16 +210,33 @@ const MobileMenu: React.FC = () => {
                             >
                                 Login
                             </Button>
-                            <Button
-                                onClick={() =>
-                                    handleNavigation(
-                                        isInformacoesPage ? MANAGER_TERMS_REGISTER_PATH : '/register',
-                                    )
-                                }
-                                className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
-                            >
-                                {isInformacoesPage ? 'Cadastro gestor / empresa' : 'Cadastro'}
-                            </Button>
+                            {isInformacoesPage ? (
+                                <>
+                                    <Button
+                                        onClick={() =>
+                                            handleNavigation(MANAGER_TERMS_REGISTER_PATH)
+                                        }
+                                        title="Cadastro para organizar eventos, PDV e consumo"
+                                        className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-lg font-semibold"
+                                    >
+                                        Sou gestor
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleNavigation('/register')}
+                                        title="Cadastro para comprar ingressos"
+                                        className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 text-lg font-semibold"
+                                    >
+                                        Sou cliente
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button
+                                    onClick={() => handleNavigation('/register')}
+                                    className="w-full bg-transparent border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 py-3 text-lg font-semibold"
+                                >
+                                    Cadastro
+                                </Button>
+                            )}
                         </div>
                     )}
 

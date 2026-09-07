@@ -82,9 +82,28 @@ function isPurchaseLikeEventType(eventType: string): boolean {
   return eventType === 'purchase' || eventType === 'checkout_pending' || eventType === 'creation';
 }
 
+/** Pacote cortesia / staff resgatado pelo link. */
+function isComplimentaryEventType(eventType: string): boolean {
+  return eventType === 'complimentary_redemption';
+}
+
+/**
+ * Tipos com ciclo entrada↔saída (status active/used + last movement).
+ * Cortesia entra aqui, mas NÃO vira purchase (mantém rastreio do pacote).
+ */
+function isGateCycleEventType(eventType: string): boolean {
+  return isPurchaseLikeEventType(eventType) || isComplimentaryEventType(eventType);
+}
+
 /** Normaliza checkout_pending/creation vendido → purchase (corrige dados antigos). */
 async function ensurePurchaseEventType(wa: AnalyticsAccessRow): Promise<AnalyticsAccessRow> {
-  if (wa.event_type === 'purchase' || wa.event_type === 'free_registration') return wa;
+  if (
+    wa.event_type === 'purchase' ||
+    wa.event_type === 'free_registration' ||
+    isComplimentaryEventType(wa.event_type)
+  ) {
+    return wa;
+  }
   if (
     isPurchaseLikeEventType(wa.event_type) &&
     (wa.status === 'active' || wa.status === 'used' || wa.status === 'pending')
@@ -128,13 +147,13 @@ function evaluateAnalyticsAccess(
   lastMovement: 'entry' | 'exit' | null = null,
 ): { ok: boolean; message: string } {
   const isFree = wa.event_type === 'free_registration';
-  const isPaid = isPurchaseLikeEventType(wa.event_type);
+  const isCycle = isGateCycleEventType(wa.event_type);
 
-  if (!isFree && !isPaid) {
+  if (!isFree && !isCycle) {
     return { ok: false, message: 'Tipo de ingresso inválido.' };
   }
 
-  if (isPaid) {
+  if (isCycle) {
     const isInside =
       lastMovement === 'entry' ||
       (lastMovement === null && wa.status === 'used');
@@ -292,14 +311,28 @@ async function bumpEntryTokenVersion(analyticsId: string): Promise<void> {
 }
 
 async function markPurchaseAnalyticsUsedOnEntry(analyticsId: string): Promise<void> {
-  const { error } = await supabaseService
+  const { error: purchaseErr } = await supabaseService
     .from('wristband_analytics')
     .update({ status: 'used', event_type: 'purchase' })
     .eq('id', analyticsId)
     .in('event_type', ['purchase', 'checkout_pending', 'creation']);
-  if (error) {
-    console.error('[validate-ticket] falha ao marcar ingresso purchase como used:', error);
+  if (purchaseErr) {
+    console.error('[validate-ticket] falha ao marcar ingresso purchase como used:', purchaseErr);
   }
+
+  // Cortesia: só status; mantém event_type = complimentary_redemption
+  const { error: complimentaryErr } = await supabaseService
+    .from('wristband_analytics')
+    .update({ status: 'used' })
+    .eq('id', analyticsId)
+    .eq('event_type', 'complimentary_redemption');
+  if (complimentaryErr) {
+    console.error(
+      '[validate-ticket] falha ao marcar ingresso cortesia como used:',
+      complimentaryErr,
+    );
+  }
+
   await bumpEntryTokenVersion(analyticsId);
 }
 
@@ -309,9 +342,14 @@ async function markPurchaseAnalyticsActiveOnExit(analyticsId: string): Promise<v
     .from('wristband_analytics')
     .update({ status: 'active' })
     .eq('id', analyticsId)
-    .in('event_type', ['purchase', 'checkout_pending', 'creation']);
+    .in('event_type', [
+      'purchase',
+      'checkout_pending',
+      'creation',
+      'complimentary_redemption',
+    ]);
   if (error) {
-    console.error('[validate-ticket] falha ao reativar ingresso purchase na saída:', error);
+    console.error('[validate-ticket] falha ao reativar ingresso na saída:', error);
   }
   await bumpEntryTokenVersion(analyticsId);
 }
@@ -670,14 +708,16 @@ serve(async (req) => {
       const ok = access.ok;
       const validationStatus = ok
         ? 'success'
-        : (isPurchaseLikeEventType(waNormalized.event_type) &&
+        : (isGateCycleEventType(waNormalized.event_type) &&
             validation_type === 'entry' &&
             (waNormalized.status === 'used' || lastMovement === 'entry')
           ? 'invalid'
           : 'not_paid');
       const validationMessage = ok
         ? (validation_type === 'entry'
-          ? (isPurchaseLikeEventType(waNormalized.event_type)
+          ? (isComplimentaryEventType(waNormalized.event_type)
+            ? (scannedViaDynamicQr ? 'Entrada validada (cortesia / QR app).' : 'Entrada validada (cortesia).')
+            : isPurchaseLikeEventType(waNormalized.event_type)
             ? (scannedViaDynamicQr ? 'Entrada validada (QR app).' : 'Entrada validada (ingresso impresso).')
             : 'Entrada validada (inscrição gratuita).')
           : 'Saída registrada.')
@@ -687,7 +727,9 @@ serve(async (req) => {
         api_key_id: apiKeyData.id,
         event_id: wristbandData.event_id,
         wristband_id: wristbandData.id,
-        wristband_code: scannedViaDynamicQr ? 'EF1:dynamic' : wristbandData.code,
+        wristband_code: scannedViaDynamicQr
+          ? 'EF1:dynamic'
+          : (waNormalized.code_wristbands || wristbandData.code),
         validation_type,
         validation_status: validationStatus,
         validation_message: validationMessage,
@@ -700,8 +742,8 @@ serve(async (req) => {
         console.error('[validate-ticket] erro ao registrar validation_log (UUID):', validationLogError);
       }
 
-      // Registrar movimento analítico por pulseira somente quando a validação é bem-sucedida
-      if (ok && validationLog && validationLog.id) {
+      // Ciclo entrada/saída não pode depender do log (se o insert falhar, ainda registra movimento)
+      if (ok) {
         await insertMovementIfNotDuplicate({
           event_id: wristbandData.event_id,
           wristband_id: wristbandData.id,
@@ -713,7 +755,7 @@ serve(async (req) => {
       if (
         ok &&
         validation_type === 'entry' &&
-        isPurchaseLikeEventType(waNormalized.event_type)
+        isGateCycleEventType(waNormalized.event_type)
       ) {
         await markPurchaseAnalyticsUsedOnEntry(waNormalized.id);
       }
@@ -721,7 +763,7 @@ serve(async (req) => {
       if (
         ok &&
         validation_type === 'exit' &&
-        isPurchaseLikeEventType(waNormalized.event_type)
+        isGateCycleEventType(waNormalized.event_type)
       ) {
         await markPurchaseAnalyticsActiveOnExit(waNormalized.id);
       }
@@ -742,7 +784,7 @@ serve(async (req) => {
         ? await resolveHolderForValidation(
           wristbandData.event_id,
           waNormalized.client_user_id ?? null,
-          isPurchaseLikeEventType(waNormalized.event_type),
+          isGateCycleEventType(waNormalized.event_type),
         )
         : { holder_name: null, holder_email_hint: null, holder_cpf_hint: null };
 
@@ -760,7 +802,7 @@ serve(async (req) => {
         validated_at: new Date().toISOString(),
         validated_by: apiKeyData.name,
         inscription_confirmed: ok && validation_type === 'entry' && waNormalized.event_type === 'free_registration',
-        scanned_via: isPurchaseLikeEventType(waNormalized.event_type)
+        scanned_via: isGateCycleEventType(waNormalized.event_type)
           ? (scannedViaDynamicQr ? 'app' : 'printed')
           : null,
         holder_name: holder.holder_name,
@@ -835,14 +877,16 @@ serve(async (req) => {
           const ok = access.ok;
           const validationStatus = ok
             ? 'success'
-            : (isPurchaseLikeEventType(waNormalized.event_type) &&
+            : (isGateCycleEventType(waNormalized.event_type) &&
                 validation_type === 'entry' &&
                 (waNormalized.status === 'used' || lastMovement === 'entry')
               ? 'invalid'
               : 'not_paid');
           const validationMessage = ok
             ? (validation_type === 'entry'
-              ? (isPurchaseLikeEventType(waNormalized.event_type)
+              ? (isComplimentaryEventType(waNormalized.event_type)
+                ? 'Entrada validada (cortesia).'
+                : isPurchaseLikeEventType(waNormalized.event_type)
                 ? 'Entrada validada (ingresso impresso).'
                 : 'Entrada validada (inscrição gratuita).')
               : 'Saída registrada.')
@@ -865,7 +909,7 @@ serve(async (req) => {
             console.error('[validate-ticket] erro ao registrar validation_log (BASE-NNN):', validationLogError);
           }
 
-          if (ok && validationLog && validationLog.id) {
+          if (ok) {
             await insertMovementIfNotDuplicate({
               event_id: wristbandData.event_id,
               wristband_id: wristbandData.id,
@@ -877,7 +921,7 @@ serve(async (req) => {
           if (
             ok &&
             validation_type === 'entry' &&
-            isPurchaseLikeEventType(waNormalized.event_type)
+            isGateCycleEventType(waNormalized.event_type)
           ) {
             await markPurchaseAnalyticsUsedOnEntry(waNormalized.id);
           }
@@ -885,7 +929,7 @@ serve(async (req) => {
           if (
             ok &&
             validation_type === 'exit' &&
-            isPurchaseLikeEventType(waNormalized.event_type)
+            isGateCycleEventType(waNormalized.event_type)
           ) {
             await markPurchaseAnalyticsActiveOnExit(waNormalized.id);
           }
@@ -902,7 +946,7 @@ serve(async (req) => {
             ? await resolveHolderForValidation(
               wristbandData.event_id,
               waNormalized.client_user_id ?? null,
-              isPurchaseLikeEventType(waNormalized.event_type),
+              isGateCycleEventType(waNormalized.event_type),
             )
             : { holder_name: null, holder_email_hint: null, holder_cpf_hint: null };
 
@@ -918,7 +962,7 @@ serve(async (req) => {
             validated_at: new Date().toISOString(),
             validated_by: apiKeyData.name,
             inscription_confirmed: ok && validation_type === 'entry' && waNormalized.event_type === 'free_registration',
-            scanned_via: isPurchaseLikeEventType(waNormalized.event_type) ? 'printed' : null,
+            scanned_via: isGateCycleEventType(waNormalized.event_type) ? 'printed' : null,
             holder_name: holderBase.holder_name,
             holder_email_hint: holderBase.holder_email_hint,
             holder_cpf_hint: holderBase.holder_cpf_hint,
