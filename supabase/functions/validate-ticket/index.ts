@@ -26,21 +26,31 @@ async function hashApiKey(apiKey: string): Promise<string> {
         .join('');
 }
 
-// Insere movimentação da pulseira evitando duplicados em milissegundos muito próximos
+// Insere movimentação por ASSENTO (analytics_id). Sem analytics_id = legado (lote).
 async function insertMovementIfNotDuplicate(params: {
   event_id: string;
   wristband_id: string;
+  analytics_id?: string | null;
   api_key_id: string;
   movement_type: 'entry' | 'exit';
 }) {
   const now = new Date();
+  const analyticsId = params.analytics_id?.trim() || null;
 
-  const { data: lastRows, error: lastErr } = await supabaseService
+  let lastQuery = supabaseService
     .from('wristband_movements')
     .select('movement_type, validated_at')
-    .eq('wristband_id', params.wristband_id)
     .order('validated_at', { ascending: false })
     .limit(1);
+
+  if (analyticsId) {
+    lastQuery = lastQuery.eq('analytics_id', analyticsId);
+  } else {
+    // Legado: só movimentos sem assento do mesmo lote
+    lastQuery = lastQuery.eq('wristband_id', params.wristband_id).is('analytics_id', null);
+  }
+
+  const { data: lastRows, error: lastErr } = await lastQuery;
 
   if (!lastErr && lastRows && lastRows.length > 0) {
     const last = lastRows[0] as { movement_type: string; validated_at: string };
@@ -60,6 +70,7 @@ async function insertMovementIfNotDuplicate(params: {
     .insert({
       event_id: params.event_id,
       wristband_id: params.wristband_id,
+      analytics_id: analyticsId,
       api_key_id: params.api_key_id,
       movement_type: params.movement_type,
       validated_at: now.toISOString(),
@@ -121,15 +132,28 @@ async function ensurePurchaseEventType(wa: AnalyticsAccessRow): Promise<Analytic
   return wa;
 }
 
-async function getLastMovementType(
-  wristbandId: string,
-): Promise<'entry' | 'exit' | null> {
-  const { data, error } = await supabaseService
+/**
+ * Último movimento do ASSENTO (analytics_id).
+ * Sem analyticsId: legado por lote (apenas movements com analytics_id null).
+ */
+async function getLastMovementType(opts: {
+  analyticsId?: string | null;
+  wristbandId: string;
+}): Promise<'entry' | 'exit' | null> {
+  const analyticsId = opts.analyticsId?.trim() || null;
+  let query = supabaseService
     .from('wristband_movements')
     .select('movement_type')
-    .eq('wristband_id', wristbandId)
     .order('validated_at', { ascending: false })
     .limit(1);
+
+  if (analyticsId) {
+    query = query.eq('analytics_id', analyticsId);
+  } else {
+    query = query.eq('wristband_id', opts.wristbandId).is('analytics_id', null);
+  }
+
+  const { data, error } = await query;
   if (error || !data?.length) return null;
   const t = (data[0] as { movement_type?: string }).movement_type;
   if (t === 'exit') return 'exit';
@@ -546,7 +570,10 @@ serve(async (req) => {
         if (verified.tokenVersion !== currentVersion) {
           const waStatus = (versionRow as { status?: string } | null)?.status ?? '';
           const wristbandId = (versionRow as { wristband_id?: string } | null)?.wristband_id;
-          const lastMovement = wristbandId ? await getLastMovementType(wristbandId) : null;
+          const lastMovement = await getLastMovementType({
+            analyticsId: verified.analyticsId,
+            wristbandId: wristbandId || '',
+          });
           const isInside =
             lastMovement === 'entry' ||
             (lastMovement === null && waStatus === 'used');
@@ -697,7 +724,10 @@ serve(async (req) => {
         );
       }
 
-      const lastMovement = await getLastMovementType(wristbandData.id);
+      const lastMovement = await getLastMovementType({
+        analyticsId: waNormalized.id,
+        wristbandId: wristbandData.id,
+      });
       if (wantAuto) {
         const isInside =
           lastMovement === 'entry' ||
@@ -747,6 +777,7 @@ serve(async (req) => {
         await insertMovementIfNotDuplicate({
           event_id: wristbandData.event_id,
           wristband_id: wristbandData.id,
+          analytics_id: waNormalized.id,
           api_key_id: apiKeyData.id,
           movement_type: validation_type as 'entry' | 'exit',
         });
@@ -866,7 +897,10 @@ serve(async (req) => {
             );
           }
 
-          const lastMovement = await getLastMovementType(wristbandData.id);
+          const lastMovement = await getLastMovementType({
+            analyticsId: waNormalized.id,
+            wristbandId: wristbandData.id,
+          });
           if (wantAuto) {
             const isInside =
               lastMovement === 'entry' ||
@@ -913,6 +947,7 @@ serve(async (req) => {
             await insertMovementIfNotDuplicate({
               event_id: wristbandData.event_id,
               wristband_id: wristbandData.id,
+              analytics_id: waNormalized.id,
               api_key_id: apiKeyData.id,
               movement_type: validation_type as 'entry' | 'exit',
             });
@@ -1184,6 +1219,7 @@ serve(async (req) => {
       await insertMovementIfNotDuplicate({
         event_id: wristbandData.event_id,
         wristband_id: wristbandData.id,
+        analytics_id: analyticsData?.id ?? null,
         api_key_id: apiKeyData.id,
         movement_type: validation_type as 'entry' | 'exit',
       });
