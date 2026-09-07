@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, AlertTriangle, Tag, Settings, Info } from 'lucide-react';
+import { Plus, Search, Loader2, AlertTriangle, Tag, Settings, Info, Printer } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useManagerWristbands, WristbandData } from '@/hooks/use-manager-wristbands';
 import { useProfile } from '@/hooks/use-profile';
@@ -159,13 +159,23 @@ const ManagerWristbandsList: React.FC = () => {
                     >
                         Voltar para o Dashboard
                     </Button>
+                    {isAdminMaster && (
+                        <Button
+                            onClick={() => navigate('/manager/wristbands/print-batch')}
+                            variant="outline"
+                            className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 text-base font-semibold"
+                        >
+                            <Printer className="mr-2 h-5 w-5" />
+                            Imprimir lote A4
+                        </Button>
+                    )}
                     {!hideManualCreate && (
                     <Button
                         onClick={() => navigate('/manager/wristbands/create')}
                         className="bg-yellow-500 text-black hover:bg-yellow-600 py-3 text-base font-semibold transition-all duration-300 cursor-pointer"
                     >
                         <Plus className="mr-2 h-5 w-5" />
-                        Cadastrar Novo Ingresso
+                        {isAdminMaster ? 'Gerar QRs de teste' : 'Cadastrar Novo Ingresso'}
                     </Button>
                     )}
                 </div>
@@ -194,7 +204,17 @@ const ManagerWristbandsList: React.FC = () => {
                     className="w-full bg-yellow-500 text-black hover:bg-yellow-600 py-3 px-8 text-lg font-semibold transition-all duration-300 cursor-pointer shadow-lg shadow-yellow-500/30 hover:shadow-yellow-500/50 mb-6"
                 >
                     <Plus className="mr-2 h-6 w-6" />
-                    Cadastrar Novo Ingresso
+                    {isAdminMaster ? 'Gerar QRs de teste (sem compra)' : 'Cadastrar Novo Ingresso'}
+                </Button>
+                )}
+                {isAdminMaster && (
+                <Button
+                    onClick={() => navigate('/manager/wristbands/print-batch')}
+                    variant="outline"
+                    className="w-full bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 py-3 px-8 text-lg font-semibold mb-6"
+                >
+                    <Printer className="mr-2 h-6 w-6" />
+                    Imprimir lote A4 (vários QRs por folha)
                 </Button>
                 )}
 

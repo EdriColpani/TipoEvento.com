@@ -20,6 +20,7 @@ const AuthStatusMenu: React.FC = () => {
     const location = useLocation();
     const queryClient = useQueryClient();
     const isLandingPage = location.pathname === '/' || location.pathname === '/informacoes';
+    const isInformacoesPage = location.pathname === '/informacoes';
     const {
         userId,
         userEmail,
@@ -229,13 +230,18 @@ const AuthStatusMenu: React.FC = () => {
             </Button>
             <Button
                 onClick={() => navigate('/register')}
-                className={`border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
-                    isLandingPage
-                        ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
-                        : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
-                }`}
+                title={isInformacoesPage ? 'Cadastro para comprar ingressos' : 'Criar conta de cliente'}
+                className={
+                    isInformacoesPage
+                        ? 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 px-4'
+                        : `border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
+                              isLandingPage
+                                  ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
+                                  : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
+                          }`
+                }
             >
-                Cadastro
+                {isInformacoesPage ? 'Sou cliente' : 'Cadastro'}
             </Button>
         </div>
     );
