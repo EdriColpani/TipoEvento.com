@@ -27,34 +27,6 @@ export async function resolvePostLoginRedirect(
     returnTo: unknown,
     authUser?: User | null,
 ): Promise<PostLoginRedirect> {
-    const complimentaryPath = resolveComplimentaryReturnPath(returnTo);
-    if (complimentaryPath) {
-        consumeComplimentaryReturnPath();
-        return {
-            path: resolveClientPostLoginPath(complimentaryPath),
-            message: 'Login realizado. Continue com seu ingresso cortesia.',
-        };
-    }
-
-    const pendingManagerRegistration = resolvePendingManagerRegistrationPath(returnTo);
-    if (pendingManagerRegistration && !resolveComplimentaryReturnPath(undefined)) {
-        return {
-            path: pendingManagerRegistration,
-            message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
-        };
-    }
-
-    if (
-        sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY) &&
-        !resolveComplimentaryReturnPath(undefined) &&
-        !isCompanyRegistrationPostponed()
-    ) {
-        return {
-            path: MANAGER_COMPANY_REGISTER_PATH,
-            message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
-        };
-    }
-
     let user = authUser ?? null;
     if (!user) {
         const cached = readCachedAuthSession();
@@ -63,18 +35,48 @@ export async function resolvePostLoginRedirect(
             user = restUser;
         }
     }
-    if (
-        hasPendingPromoterRegistration(user) &&
-        !resolveComplimentaryReturnPath(undefined) &&
-        !isCompanyRegistrationPostponed()
-    ) {
+
+    const userType = await fetchProfileTipoUsuarioIdResilient(userId);
+
+    /**
+     * Cortesia é fluxo de cliente. Admin/gestor no mesmo browser podem ter
+     * `eventfest_complimentary_return_path` residual — não redirecionar o painel.
+     */
+    const complimentaryPath = resolveComplimentaryReturnPath(returnTo);
+    if (complimentaryPath) {
+        if (userType === 1 || userType === 2) {
+            consumeComplimentaryReturnPath();
+        } else {
+            consumeComplimentaryReturnPath();
+            return {
+                path: resolveClientPostLoginPath(complimentaryPath),
+                message: 'Login realizado. Continue com seu ingresso cortesia.',
+            };
+        }
+    }
+
+    const pendingManagerRegistration = resolvePendingManagerRegistrationPath(returnTo);
+    if (pendingManagerRegistration && !isCompanyRegistrationPostponed()) {
+        return {
+            path: pendingManagerRegistration,
+            message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
+        };
+    }
+
+    if (sessionStorage.getItem(MANAGER_COMPANY_REGISTER_DRAFT_KEY) && !isCompanyRegistrationPostponed()) {
+        return {
+            path: MANAGER_COMPANY_REGISTER_PATH,
+            message: 'E-mail confirmado! Conclua o cadastro da sua empresa.',
+        };
+    }
+
+    if (hasPendingPromoterRegistration(user) && !isCompanyRegistrationPostponed()) {
         return {
             path: resolveManagerOnboardingPath(user),
             message: 'E-mail confirmado! Conclua o cadastro de gestor.',
         };
     }
 
-    const userType = await fetchProfileTipoUsuarioIdResilient(userId);
     if (userType == null) {
         const intent = String(
             (user?.user_metadata as { account_intent?: unknown } | undefined)?.account_intent ?? '',
