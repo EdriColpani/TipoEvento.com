@@ -1,4 +1,4 @@
-import { format, parse, isValid } from 'date-fns';
+import { format, parse, isValid, isBefore, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 /** Primeiros 10 caracteres YYYY-MM-DD (Postgres `date` em JSON). */
@@ -16,6 +16,12 @@ export function parseEventLocalDay(dateStr: string | null | undefined): Date | n
     }
     const dt = new Date(dateStr);
     return isValid(dt) ? dt : null;
+}
+
+/** True se o dia do calendário for anterior a hoje (fuso local do browser). */
+export function isEventDateBeforeToday(date: Date | null | undefined): boolean {
+    if (!date || Number.isNaN(date.getTime())) return false;
+    return isBefore(startOfDay(date), startOfDay(new Date()));
 }
 
 /** Exibição pt-BR da data do evento (só dia ou timestamp ISO completo). */

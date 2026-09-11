@@ -1,5 +1,5 @@
 import * as React from "react";
-import { format, parse, isValid } from "date-fns";
+import { format, parse, isValid, startOfDay, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Calendar as CalendarIcon } from "lucide-react";
 
@@ -15,6 +15,8 @@ interface DatePickerProps {
   setDate: (date: Date | undefined) => void;
   placeholder?: string;
   disabled?: boolean;
+  /** Datas anteriores a este dia ficam bloqueadas no calendário e na digitação. */
+  minDate?: Date;
 }
 
 const formatInputDate = (value: string): string => {
@@ -35,11 +37,18 @@ export function DatePicker({
   setDate,
   placeholder = "Selecione a data",
   disabled = false,
+  minDate,
 }: DatePickerProps) {
   const [inputValue, setInputValue] = React.useState(
     date ? format(date, "dd/MM/yyyy") : "",
   );
   const [open, setOpen] = React.useState(false);
+  const minDay = minDate ? startOfDay(minDate) : undefined;
+
+  const isBeforeMin = React.useCallback(
+    (value: Date) => (minDay ? isBefore(startOfDay(value), minDay) : false),
+    [minDay],
+  );
 
   React.useEffect(() => {
     if (date && format(date, "dd/MM/yyyy") !== inputValue) {
@@ -57,6 +66,11 @@ export function DatePicker({
     if (formattedDate.length === 10) {
       const parsedDate = parse(formattedDate, "dd/MM/yyyy", new Date());
       if (isValid(parsedDate)) {
+        if (isBeforeMin(parsedDate)) {
+          setDate(undefined);
+          showError("A data não pode ser anterior a hoje.");
+          return;
+        }
         setDate(parsedDate);
       } else {
         setDate(undefined);
@@ -68,6 +82,10 @@ export function DatePicker({
   };
 
   const handleDateSelect = (selectedDate: Date | undefined) => {
+    if (selectedDate && isBeforeMin(selectedDate)) {
+      showError("A data não pode ser anterior a hoje.");
+      return;
+    }
     setDate(selectedDate);
     if (selectedDate) {
       setInputValue(format(selectedDate, "dd/MM/yyyy"));
@@ -126,6 +144,7 @@ export function DatePicker({
             initialFocus
             locale={ptBR}
             defaultMonth={date}
+            disabled={minDay ? { before: minDay } : undefined}
             className="bg-black text-white"
             classNames={{
               caption_label: "text-white",
