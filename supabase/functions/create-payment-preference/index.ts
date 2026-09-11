@@ -472,6 +472,7 @@ serve(async (req) => {
     }
 
     // Sem auto_return: em várias contas MP o PolicyAgent bloqueia preferência quando back_urls não batem com a app ou com auto_return.
+    // Ingresso: cartão somente à vista (1x). PIX e débito permanecem disponíveis no checkout MP.
     const preferenceData: Record<string, unknown> = {
         items: mpItems,
         external_reference: transactionId,
@@ -480,6 +481,10 @@ serve(async (req) => {
             success: successUrl,
             pending: pendingUrl,
             failure: failureUrl,
+        },
+        payment_methods: {
+            installments: 1,
+            default_installments: 1,
         },
     };
 
