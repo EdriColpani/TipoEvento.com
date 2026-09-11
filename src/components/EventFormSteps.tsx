@@ -15,7 +15,7 @@ import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast
 import { supabase, supabaseAnonKey, supabaseUrl } from '@/integrations/supabase/client';
 import { Loader2, ImageOff, CalendarDays, ArrowLeft, Save, ArrowRight, Image, CheckSquare, FileText, XCircle, Plus, Minus, Ticket } from 'lucide-react';
 import { format } from 'date-fns';
-import { parseEventLocalDay } from '@/utils/format-event-date';
+import { parseEventLocalDay, isEventDateBeforeToday } from '@/utils/format-event-date';
 import { DatePicker } from '@/components/DatePicker';
 import EventImagesUploadSection from '@/components/EventImagesUploadSection';
 import { useManagerCompany } from '@/hooks/use-manager-company';
@@ -1195,6 +1195,24 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         if (submitInFlightRef.current) {
             return;
         }
+
+        // Bloqueia data passada antes de qualquer INSERT/UPDATE (evita gravar e depois falhar).
+        if (values.date && isEventDateBeforeToday(values.date)) {
+            const originalDay = initialData?.date
+                ? parseEventLocalDay(String(initialData.date))
+                : null;
+            const sameAsOriginal =
+                Boolean(eventId) &&
+                originalDay != null &&
+                format(originalDay, 'yyyy-MM-dd') === format(values.date, 'yyyy-MM-dd');
+            if (!sameAsOriginal) {
+                showError('A data do evento não pode ser anterior a hoje.');
+                setCurrentStep(showContractStep ? 3 : 2);
+                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+                return;
+            }
+        }
+
         submitInFlightRef.current = true;
 
         const sessionDraftId = !eventId && userId ? readManagerCreateEventDraftId(userId) : undefined;
@@ -1922,7 +1940,8 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                                                 <DatePicker 
                                                     date={field.value} 
                                                     setDate={field.onChange} 
-                                                    placeholder="Selecione a data" 
+                                                    placeholder="Selecione a data"
+                                                    minDate={new Date()}
                                                 />
                                             </FormControl>
                                             <FormMessage />
