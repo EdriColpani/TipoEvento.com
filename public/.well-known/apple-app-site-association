@@ -3,7 +3,7 @@
     "apps": [],
     "details": [
       {
-        "appIDs": ["TEAMID.com.eventfest.rush"],
+        "appIDs": ["UH8Y9DV79M.com.eventfest.rush"],
         "components": [
           {
             "/": "/app-return",
@@ -11,12 +11,19 @@
           },
           {
             "/": "/app-return/*"
+          },
+          {
+            "/": "/reset-password",
+            "comment": "Recuperação de senha → EventFest Rush (fallback web se app ausente)"
+          },
+          {
+            "/": "/reset-password/*"
           }
         ]
       }
     ]
   },
   "webcredentials": {
-    "apps": ["TEAMID.com.eventfest.rush"]
+    "apps": ["UH8Y9DV79M.com.eventfest.rush"]
   }
 }
