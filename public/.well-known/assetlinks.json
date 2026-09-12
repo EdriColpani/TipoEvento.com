@@ -1,8 +1,12 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "com.eventfest.rush",
-    "sha256_cert_fingerprints": []
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.eventfest.rush",
+      "sha256_cert_fingerprints": [
+        "85:EA:76:59:10:CC:FC:60:9B:2F:F2:59:E4:2C:05:7F:F9:1D:10:D0:29:4D:5D:76:86:41:4B:B8:32:A5:9C:75"
+      ]
+    }
   }
-}]
+]
