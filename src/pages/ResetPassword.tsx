@@ -40,6 +40,24 @@ const ResetPassword = () => {
         let cancelled = false;
 
         const syncSession = async () => {
+            // Suporte aditivo a links novos (?token_hash=&type=recovery) sem remover o fluxo #hash legado.
+            const search = new URLSearchParams(window.location.search);
+            const tokenHash = search.get('token_hash')?.trim();
+            const otpType = search.get('type')?.trim();
+            if (tokenHash && otpType === 'recovery') {
+                const { error: otpError } = await withTimeout(
+                    supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }),
+                    12_000,
+                    { data: { session: null, user: null }, error: { message: 'Tempo esgotado ao validar o link.' } },
+                );
+                if (cancelled) return;
+                if (otpError?.message) {
+                    setValidSession(false);
+                    setReady(true);
+                    return;
+                }
+            }
+
             const cached = readCachedAuthSession();
             if (cached.userId) {
                 const partnerSetup =
