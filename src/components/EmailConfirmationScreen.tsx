@@ -9,6 +9,7 @@ import { resendSignupConfirmationEmail } from '@/utils/resend-signup-confirmatio
 import { readCachedAuthSession } from '@/utils/auth-session-cache';
 import { fetchAuthUserViaRest, refreshSessionViaRest } from '@/utils/auth-rest';
 import { isAuthEmailConfirmed } from '@/utils/auth-email-confirmed';
+import AppStoreDownloadCta from '@/components/AppStoreDownloadCta';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -279,6 +280,8 @@ const EmailConfirmationScreen: React.FC<EmailConfirmationScreenProps> = ({
                                 reenviar.
                             </span>
                         </div>
+
+                        <AppStoreDownloadCta variant={isPro ? 'pro' : 'client'} />
 
                         <div className="flex flex-col gap-3 pt-1">
                             <Button

@@ -27,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import AvatarUpload from '@/components/AvatarUpload';
 import ClientAccountPageShell from '@/components/client/ClientAccountPageShell';
 import { CLIENT_ACCOUNT_PAGE_CLASS } from '@/constants/client-account-ui';
+import AppStoreDownloadCta from '@/components/AppStoreDownloadCta';
 
 import { useProfileStatus } from '@/hooks/use-profile-status';
 
@@ -892,6 +893,12 @@ const Profile: React.FC = () => {
                     </div>
 
 
+
+                    <div className="mb-8">
+                        <AppStoreDownloadCta
+                            variant={profile?.tipo_usuario_id === 2 ? 'pro' : 'client'}
+                        />
+                    </div>
 
                     {/* Alerta de Perfil Incompleto */}
 
