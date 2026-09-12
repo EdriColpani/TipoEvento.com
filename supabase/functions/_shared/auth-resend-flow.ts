@@ -188,7 +188,11 @@ export async function sendAuthLinkViaResend(
   }
 
   const rawActionLink = linkData?.properties?.action_link;
-  if (!rawActionLink) {
+  const hashedToken =
+    typeof linkData?.properties?.hashed_token === "string"
+      ? linkData.properties.hashed_token
+      : null;
+  if (!rawActionLink && !(input.linkType === "recovery" && hashedToken)) {
     return {
       ok: false,
       error: "no_action_link",
@@ -196,7 +200,15 @@ export async function sendAuthLinkViaResend(
     };
   }
 
-  const confirmationUrl = fixActionLinkRedirect(rawActionLink, redirectTo);
+  /**
+   * Recovery: link HTTPS direto com token_hash na query.
+   * Permite Universal/App Links no app sem depender do #hash (fragmento não chega ao app nativo).
+   * Signup/magiclink mantém action_link (verify → redirect) intacto.
+   */
+  const confirmationUrl =
+    input.linkType === "recovery" && hashedToken
+      ? `${redirectTo}?token_hash=${encodeURIComponent(hashedToken)}&type=recovery`
+      : fixActionLinkRedirect(rawActionLink!, redirectTo);
   const userName =
     input.userName?.trim() ||
     (linkData.user?.user_metadata as { name?: string } | undefined)?.name?.trim() ||
