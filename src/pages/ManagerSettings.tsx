@@ -9,6 +9,7 @@ import { useManagerCompany } from '@/hooks/use-manager-company';
 import { useManagerCompanyContext } from '@/hooks/use-manager-company-context';
 import { useCompanyBilling } from '@/hooks/use-company-billing';
 import { companyAllowsCreditConsumption } from '@/utils/company-billing-rules';
+import AppStoreDownloadCta from '@/components/AppStoreDownloadCta';
 
 const MANAGER_PRO_USER_TYPE_ID = 2;
 
@@ -112,6 +113,10 @@ const ManagerSettings: React.FC = () => {
                     Configurações
                 </h1>
                 <p className="text-gray-400 text-sm sm:text-base">Gerencie suas preferências e configurações da conta</p>
+            </div>
+
+            <div className="mb-8 max-w-xl">
+                <AppStoreDownloadCta variant="pro" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
