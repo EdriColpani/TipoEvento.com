@@ -96,6 +96,7 @@ import ComplimentaryBundlePage from "./pages/ComplimentaryBundlePage";
 import ComplimentarySeatRedeemPage from "./pages/ComplimentarySeatRedeemPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
+import AccountDeletionPage from "./pages/AccountDeletionPage";
 import AppCheckoutReturnPage from "./pages/AppCheckoutReturnPage";
 import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
 import { usePasswordSetupGate } from "./hooks/use-password-setup-gate";
@@ -122,6 +123,7 @@ function AppRoutes() {
             <Route path="informacoes" element={<InformacoesPage />} />
             <Route path="terms" element={<TermsPage />} />
             <Route path="privacy" element={<PrivacyPage />} />
+            <Route path="exclusao-de-conta" element={<AccountDeletionPage />} />
             <Route index element={<ClientHomeRoute />} />
             <Route path="events/:id" element={<EventDetails />} />
             <Route path="events/:eventId/inscricao" element={<EventInscriptionPage />} />
