@@ -10,6 +10,7 @@ export const GUEST_ALLOWED_PATHS = new Set([
     '/forgot-password',
     '/terms',
     '/privacy',
+    '/exclusao-de-conta',
 ]);
 
 /** Rotas de cadastro (cliente e gestor). */
