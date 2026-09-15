@@ -6,7 +6,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import LandingFooter from '@/components/landing/LandingFooter';
 import { useDevice } from '@/hooks/use-device';
+import { supabase } from '@/integrations/supabase/client';
 import { callRpcPublicRest } from '@/utils/supabase-rest-rpc';
+import {
+    INVALID_LOGIN_MESSAGE,
+    signInWithPasswordResilient,
+} from '@/utils/auth-rest';
+import { readCachedAuthSession } from '@/utils/auth-session-cache';
 
 const PAGE_TITLE = 'Exclusão de Conta e Dados | EventFest';
 const CANONICAL = 'https://www.eventfest.com.br/exclusao-de-conta';
@@ -28,6 +34,12 @@ type FormState = {
 
 const AccountDeletionPage: React.FC = () => {
     const { isMobile } = useDevice();
+    const [authReady, setAuthReady] = useState(false);
+    const [authenticated, setAuthenticated] = useState(false);
+    const [loginEmail, setLoginEmail] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [loginError, setLoginError] = useState<string | null>(null);
+    const [loginLoading, setLoginLoading] = useState(false);
     const [form, setForm] = useState<FormState>({
         name: '',
         email: '',
@@ -37,6 +49,68 @@ const AccountDeletionPage: React.FC = () => {
     const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
     const [sending, setSending] = useState(false);
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const syncAuth = async () => {
+            const cached = readCachedAuthSession();
+            if (cached.userId) {
+                if (!cancelled) {
+                    setForm((s) => ({ ...s, email: cached.userEmail ?? s.email }));
+                    setAuthenticated(true);
+                    setAuthReady(true);
+                }
+                return;
+            }
+            const {
+                data: { session },
+            } = await supabase.auth.getSession();
+            if (cancelled) return;
+            if (session?.user) {
+                setForm((s) => ({
+                    ...s,
+                    email: session.user.email ?? s.email,
+                }));
+                setAuthenticated(true);
+            }
+            setAuthReady(true);
+        };
+        void syncAuth();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const handleLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (loginLoading) return;
+        setLoginError(null);
+        if (!loginEmail.trim() || !loginPassword) {
+            setLoginError('Informe e-mail e senha.');
+            return;
+        }
+        setLoginLoading(true);
+        try {
+            const result = await signInWithPasswordResilient(
+                loginEmail.trim().toLowerCase(),
+                loginPassword,
+            );
+            if (!result.data?.user) {
+                setLoginError(result.error?.message || INVALID_LOGIN_MESSAGE);
+                return;
+            }
+            setForm((s) => ({
+                ...s,
+                email: result.data.user.email ?? loginEmail.trim().toLowerCase(),
+            }));
+            setAuthenticated(true);
+            setLoginPassword('');
+        } catch {
+            setLoginError(INVALID_LOGIN_MESSAGE);
+        } finally {
+            setLoginLoading(false);
+        }
+    };
 
     useEffect(() => {
         document.title = PAGE_TITLE;
@@ -124,13 +198,79 @@ const AccountDeletionPage: React.FC = () => {
                     solicitar a exclusão da sua conta e dos dados pessoais associados ao seu cadastro.
                 </p>
 
+                {!authReady ? (
+                    <div className="flex justify-center py-16">
+                        <Loader2 className="h-8 w-8 animate-spin text-yellow-500" aria-label="Carregando" />
+                    </div>
+                ) : !authenticated ? (
+                    <Card className={`${cardClass} mb-10`}>
+                        <CardHeader>
+                            <CardTitle className="text-white text-lg">Entre para continuar</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-gray-300 text-sm mb-4">
+                                Informe o e-mail e a senha da sua conta EventFest para acessar a exclusão.
+                            </p>
+                            <form onSubmit={handleLogin} className="space-y-4" noValidate>
+                                <div>
+                                    <label htmlFor="deletion-login-email" className="block text-sm text-white mb-2">
+                                        E-mail
+                                    </label>
+                                    <Input
+                                        id="deletion-login-email"
+                                        type="email"
+                                        autoComplete="email"
+                                        value={loginEmail}
+                                        onChange={(e) => setLoginEmail(e.target.value)}
+                                        disabled={loginLoading}
+                                        required
+                                        className="bg-black/60 border-yellow-500/30 text-white focus-visible:ring-2 focus-visible:ring-yellow-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="deletion-login-password" className="block text-sm text-white mb-2">
+                                        Senha
+                                    </label>
+                                    <Input
+                                        id="deletion-login-password"
+                                        type="password"
+                                        autoComplete="current-password"
+                                        value={loginPassword}
+                                        onChange={(e) => setLoginPassword(e.target.value)}
+                                        disabled={loginLoading}
+                                        required
+                                        className="bg-black/60 border-yellow-500/30 text-white focus-visible:ring-2 focus-visible:ring-yellow-500"
+                                    />
+                                </div>
+                                {loginError ? (
+                                    <p className="text-red-400 text-sm">{loginError}</p>
+                                ) : null}
+                                <Button
+                                    type="submit"
+                                    disabled={loginLoading}
+                                    className="w-full bg-yellow-500 text-black hover:bg-yellow-600 disabled:opacity-50"
+                                >
+                                    {loginLoading ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Entrando…
+                                        </>
+                                    ) : (
+                                        'Entrar e continuar'
+                                    )}
+                                </Button>
+                            </form>
+                        </CardContent>
+                    </Card>
+                ) : (
+                <>
                 <Card className={`${cardClass} mb-6`}>
                     <CardHeader>
                         <CardTitle className="text-white text-lg">Como solicitar a exclusão</CardTitle>
                     </CardHeader>
                     <CardContent className="text-gray-300 text-sm sm:text-base leading-relaxed space-y-3">
                         <ol className="list-decimal pl-5 space-y-2">
-                            <li>Informe o e-mail utilizado no cadastro do EventFest.</li>
+                            <li>Confirme o e-mail da conta EventFest já autenticada.</li>
                             <li>Envie a solicitação de exclusão.</li>
                             <li>
                                 A equipe do EventFest verificará a solicitação e a identidade do titular
@@ -352,6 +492,8 @@ const AccountDeletionPage: React.FC = () => {
                         </a>
                     </CardContent>
                 </Card>
+                </>
+                )}
             </div>
             <footer className="border-t border-yellow-500/20 px-4 sm:px-6 py-10">
                 <div className="max-w-6xl mx-auto">
