@@ -11,6 +11,7 @@ export const GUEST_ALLOWED_PATHS = new Set([
     '/terms',
     '/privacy',
     '/exclusao-de-conta',
+    '/contato',
 ]);
 
 /** Rotas de cadastro (cliente e gestor). */

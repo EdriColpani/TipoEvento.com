@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Building2, Edit, Loader2, Search, Store } from 'lucide-react';
+import { ArrowLeft, Building2, Edit, Loader2, Plus, Search, Store } from 'lucide-react';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import { useAdminCompaniesBilling, AdminCompanyBillingRow } from '@/hooks/use-admin-companies-billing';
 import { getBillingPlanLabel, isCompanyBillingReady } from '@/constants/billing-plans';
@@ -123,6 +123,13 @@ const AdminCompaniesBilling: React.FC = () => {
                     </p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                        onClick={() => navigate('/admin/events/create-for-manager')}
+                        className={billingBtnSolid}
+                    >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Criar evento para gestor
+                    </Button>
                     <Button
                         onClick={() => navigate('/admin/settings/partner-companies/create')}
                         className={billingBtnSolid}

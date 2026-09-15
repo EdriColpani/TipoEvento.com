@@ -113,6 +113,45 @@ const ManagerCreateEvent: React.FC = () => {
         );
     }
 
+    if (isAdminMaster) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 sm:px-0 py-10 space-y-6">
+                <Card className="bg-black/80 border border-yellow-500/30">
+                    <CardContent className="pt-6 space-y-4">
+                        <h1 className="text-2xl font-serif text-yellow-500">
+                            Criar evento como Admin Master
+                        </h1>
+                        <p className="text-gray-300 text-sm leading-relaxed">
+                            Para o evento aparecer na conta do gestor, use o fluxo dedicado: selecione
+                            a <strong className="text-white">empresa</strong> e o{' '}
+                            <strong className="text-white">gestor</strong>, depois preencha o evento.
+                            O evento nasce ativo e com ownership do gestor.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <Button
+                                type="button"
+                                className="bg-yellow-500 text-black hover:bg-yellow-600"
+                                onClick={() => navigate('/admin/events/create-for-manager')}
+                            >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Criar evento para gestor
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                                onClick={() => navigate('/manager/events')}
+                            >
+                                <ArrowLeft className="mr-2 h-4 w-4" />
+                                Voltar
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-4xl mx-auto px-4 sm:px-0">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-3">

@@ -78,7 +78,7 @@ const ManagerLayout: React.FC = () => {
 
     const isAdminSettingsPath = useMemo(() => {
         return location.pathname.startsWith('/admin/settings') ||
-               location.pathname.startsWith('/admin/settings/companies-billing') ||
+               location.pathname.startsWith('/admin/events/') ||
                location.pathname.startsWith('/manager/settings/advanced') ||
                location.pathname.startsWith('/manager/settings/backup-database') ||
                location.pathname.startsWith('/manager/settings/history');
@@ -655,6 +655,13 @@ const ManagerLayout: React.FC = () => {
                                                             Planos das Empresas
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem 
+                                                            onClick={() => navigate('/admin/events/create-for-manager')}
+                                                            className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/events/create-for-manager' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
+                                                        >
+                                                            <Plus className="mr-2 h-4 w-4" />
+                                                            Criar evento para gestor
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem 
                                                             onClick={() => navigate('/admin/settings/plan-features')}
                                                             className={`cursor-pointer hover:bg-yellow-500/10 ${location.pathname === '/admin/settings/plan-features' ? 'bg-yellow-500/20 text-yellow-500' : ''}`}
                                                         >
@@ -847,6 +854,13 @@ const ManagerLayout: React.FC = () => {
                                                             >
                                                                 <Building2 className="mr-2 h-4 w-4" />
                                                                 Planos das Empresas
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => { navigate('/admin/events/create-for-manager'); setIsMobileMenuOpen(false); }}
+                                                                className="flex items-center p-2 rounded-xl text-gray-300 hover:bg-yellow-500/10 transition-colors duration-200 text-base w-full justify-start"
+                                                            >
+                                                                <Plus className="mr-2 h-4 w-4" />
+                                                                Criar evento para gestor
                                                             </button>
                                                             <button 
                                                                 onClick={() => { navigate('/admin/settings/plan-features'); setIsMobileMenuOpen(false); }}

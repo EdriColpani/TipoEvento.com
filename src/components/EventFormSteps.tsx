@@ -540,6 +540,12 @@ function firstFormErrorMessage(errors: Record<string, unknown>, depth = 0): stri
 
 type EventFormData = z.infer<typeof eventFormSchema>;
 
+/** Admin Master cria evento com ownership do gestor (created_by + company_id). */
+export type AdminOnBehalfOfTarget = {
+    companyId: string;
+    ownerUserId: string;
+};
+
 interface EventFormStepsProps {
     initialData?: EventFormData | null;
     eventId?: string;
@@ -550,6 +556,8 @@ interface EventFormStepsProps {
     draftPersistedEventId?: string | null;
     /** Enquanto o modal pós-criação está aberto, impede novo envio e cliques no form. */
     freezeFormAfterCreate?: boolean;
+    /** Só Admin Master: grava created_by/company_id do gestor alvo e publica ativo. */
+    adminOnBehalfOf?: AdminOnBehalfOfTarget | null;
 }
 
 const EventFormSteps: React.FC<EventFormStepsProps> = ({
@@ -559,6 +567,7 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     onCreateSuccess,
     draftPersistedEventId,
     freezeFormAfterCreate,
+    adminOnBehalfOf = null,
 }) => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -618,8 +627,14 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
     const [originalTurmas, setOriginalTurmas] = useState<Array<{ id: string; nome: string; capacity: number }>>([]);
 
     const { profile, isLoading: isLoadingProfile } = useProfile(userId);
-    const { company, isLoading: isLoadingCompany } = useManagerCompany(userId);
-    const { billing: companyBilling, isLoading: isLoadingCompanyBilling } = useCompanyBilling(company?.id);
+    const { company, isLoading: isLoadingCompany } = useManagerCompany(
+        adminOnBehalfOf ? undefined : userId,
+    );
+    const effectiveCompanyId =
+        adminOnBehalfOf?.companyId ??
+        (typeof company?.id === 'string' && company.id.trim() !== '' ? company.id.trim() : undefined);
+    const { billing: companyBilling, isLoading: isLoadingCompanyBilling } =
+        useCompanyBilling(effectiveCompanyId);
     const companyBillingReady = isCompanyBillingReady(companyBilling);
     // Plano vitrine: evento salvo com listing_only (sem venda de ingressos) — alinhado à matriz de permissões.
     const isListingPlan = isListingOnlyCompanyPlan(companyBilling?.billing_plan);
@@ -1230,11 +1245,34 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
         try {
             const TIPO_GESTOR_PRO = 2;
             const isGestorPro = Number(profile.tipo_usuario_id) === TIPO_GESTOR_PRO;
+            const creatingForManager = Boolean(adminOnBehalfOf?.companyId && adminOnBehalfOf?.ownerUserId);
 
-            let companyIdForEvent: string | null =
-                typeof company?.id === 'string' && company.id.trim() !== '' ? company.id.trim() : null;
+            let companyIdForEvent: string | null = creatingForManager
+                ? adminOnBehalfOf!.companyId
+                : typeof company?.id === 'string' && company.id.trim() !== ''
+                  ? company.id.trim()
+                  : null;
 
-            if (isGestorPro) {
+            if (creatingForManager) {
+                try {
+                    await callRpcRest(
+                        'admin_validate_event_create_for_manager',
+                        {
+                            p_company_id: adminOnBehalfOf!.companyId,
+                            p_owner_user_id: adminOnBehalfOf!.ownerUserId,
+                        },
+                        12_000,
+                    );
+                } catch (validateErr: unknown) {
+                    dismissToast(toastId);
+                    showError(
+                        validateErr instanceof Error
+                            ? validateErr.message
+                            : 'Não foi possível validar empresa/gestor para criação do evento.',
+                    );
+                    return;
+                }
+            } else if (isGestorPro) {
                 try {
                     console.debug('[EventFormSteps][save] empresa do hook:', companyIdForEvent);
                     const fromDb = await resolveManagerCompanyIdForSave(userId, companyIdForEvent);
@@ -1337,11 +1375,13 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
 
             // Com empresa já vinculada, publica automaticamente (evita ficar preso em "pending").
             const eventStatus = companyIdForEvent ? 'approved' : 'pending';
-            const createSuccessMessage = requiresPaidTickets
-                ? 'Evento criado. Os ingressos vêm dos lotes que você definiu. Ative o evento em Meus Eventos para publicar na vitrine.'
-                : companyIdForEvent
-                  ? 'Evento criado com sucesso e publicado!'
-                  : 'Evento criado com sucesso e enviado para aprovação!';
+            const createSuccessMessage = creatingForManager
+                ? 'Evento criado para o gestor e publicado (ativo).'
+                : requiresPaidTickets
+                  ? 'Evento criado. Os ingressos vêm dos lotes que você definiu. Ative o evento em Meus Eventos para publicar na vitrine.'
+                  : companyIdForEvent
+                    ? 'Evento criado com sucesso e publicado!'
+                    : 'Evento criado com sucesso e enviado para aprovação!';
 
             console.debug('[EventFormSteps][save] geocodificando endereço...');
             const resolvedGeo = await withTimeout(
@@ -1411,12 +1451,17 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                 listing_only: isListingPlan,
                 total_tickets: isListingPlan ? Number(values.capacity) : totalTickets,
                 ticket_price: effectiveIsPaid ? ticketPriceForEvent : null,
-                created_by: userId,
+                created_by: creatingForManager ? adminOnBehalfOf!.ownerUserId : userId,
                 company_id: companyIdForEvent,
                 status: eventStatus,
                 contract_id: effectiveContractId,
                 contract_version: resolvedContractVersion,
             };
+            if (creatingForManager) {
+                eventData.is_active = true;
+                eventData.is_draft = false;
+                eventData.status = 'approved';
+            }
             if (commissionMatch && !ticketsLocked) {
                 eventData.applied_percentage = commissionMatch.percentage;
                 eventData.commission_range_id = Number(commissionMatch.commission_range_id);
@@ -1522,6 +1567,21 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
                     createdEventIdRef.current = data.id;
                     justCreated = true;
                     if (userId) persistManagerCreateEventDraftId(userId, data.id);
+                    if (creatingForManager && newEventId) {
+                        try {
+                            await callRpcRest(
+                                'admin_log_event_created_for_manager',
+                                {
+                                    p_event_id: newEventId,
+                                    p_company_id: adminOnBehalfOf!.companyId,
+                                    p_owner_user_id: adminOnBehalfOf!.ownerUserId,
+                                },
+                                12_000,
+                            );
+                        } catch (logErr) {
+                            console.warn('[EventFormSteps] falha ao auditar create_event_for_manager:', logErr);
+                        }
+                    }
                 } else {
                     dismissToast(toastId);
                     throw new Error(
@@ -1716,6 +1776,11 @@ const EventFormSteps: React.FC<EventFormStepsProps> = ({
             }
 
             queryClient.invalidateQueries({ queryKey: ['managerEvents', userId] });
+            if (creatingForManager) {
+                queryClient.invalidateQueries({
+                    queryKey: ['managerEvents', adminOnBehalfOf!.ownerUserId],
+                });
+            }
             queryClient.invalidateQueries({ queryKey: ['publicEvents'] });
 
             if (willInsertNewRow && onCreateSuccess && newEventId) {

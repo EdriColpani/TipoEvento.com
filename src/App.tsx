@@ -97,6 +97,8 @@ import ComplimentarySeatRedeemPage from "./pages/ComplimentarySeatRedeemPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import AccountDeletionPage from "./pages/AccountDeletionPage";
+import ContactPage from "./pages/ContactPage";
+import AdminCreateEventForManager from "./pages/AdminCreateEventForManager";
 import AppCheckoutReturnPage from "./pages/AppCheckoutReturnPage";
 import { usePromoterRegistrationResume } from "./hooks/use-promoter-registration-resume";
 import { usePasswordSetupGate } from "./hooks/use-password-setup-gate";
@@ -124,6 +126,7 @@ function AppRoutes() {
             <Route path="terms" element={<TermsPage />} />
             <Route path="privacy" element={<PrivacyPage />} />
             <Route path="exclusao-de-conta" element={<AccountDeletionPage />} />
+            <Route path="contato" element={<ContactPage />} />
             <Route index element={<ClientHomeRoute />} />
             <Route path="events/:id" element={<EventDetails />} />
             <Route path="events/:eventId/inscricao" element={<EventInscriptionPage />} />
@@ -228,6 +231,7 @@ function AppRoutes() {
                 <Route path="/admin/settings/checkout-observability" element={<AdminCheckoutObservability />} />
                 <Route path="/admin/settings/public-social" element={<AdminPublicSocialSettings />} />
                 <Route path="/admin/settings/ticket-chargeback-pix" element={<AdminTicketChargebackPixSettings />} />
+                <Route path="/admin/events/create-for-manager" element={<AdminCreateEventForManager />} />
                 <Route path="/admin/banners" element={<AdminPromotionalBannersList />} /> 
                 <Route path="/admin/banners/create" element={<AdminCreatePromotionalBanner />} />
                 <Route path="/admin/banners/edit/:id" element={<AdminEditPromotionalBanner />} /> 
