@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Loader2, FileEdit, QrCode, Building2, Gift } from 'lucide-react';
+import { Plus, Search, Loader2, FileEdit, QrCode, Building2, Gift, Link2 } from 'lucide-react';
 import { useManagerEvents } from '@/hooks/use-manager-events';
 import { usePageAuth } from '@/hooks/use-page-auth';
 import DeleteEventDialog from '@/components/DeleteEventDialog';
@@ -23,7 +23,8 @@ import { getInactiveEventGuidance } from '@/utils/inactive-event-guidance';
 import { getManagerEventStatusPresentation } from '@/utils/manager-event-status';
 import EventActivationBlockers from '@/components/EventActivationBlockers';
 import { isEventLifecycleEnded } from '@/utils/event-lifecycle';
-import { showError } from '@/utils/toast';
+import { copyTextToClipboard } from '@/utils/copy-to-clipboard';
+import { showError, showSuccess } from '@/utils/toast';
 
 const ADMIN_MASTER_USER_TYPE_ID = 1;
 
@@ -94,6 +95,16 @@ const ManagerEventsList: React.FC = () => {
             return;
         }
         navigate(`/manager/events/edit/${event.id}`);
+    };
+
+    const handleCopyEventLink = async (eventId: string) => {
+        const link = `${window.location.origin}/events/${eventId}`;
+        const ok = await copyTextToClipboard(link);
+        if (ok) {
+            showSuccess('Link do evento copiado. Cole no WhatsApp ou onde quiser.');
+        } else {
+            showError('Não foi possível copiar o link. Tente novamente.');
+        }
     };
 
     return (
@@ -277,7 +288,7 @@ const ManagerEventsList: React.FC = () => {
                                                 </span>
                                             </TableCell>
                                             <TableCell
-                                                className="py-4 align-middle w-[1%] min-w-[280px]"
+                                                className="py-4 align-middle w-[1%] min-w-[320px]"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
                                                 <div className="ml-auto flex w-max max-w-none flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
@@ -295,11 +306,21 @@ const ManagerEventsList: React.FC = () => {
                                                               ? 'Continuar Edição'
                                                               : 'Gerenciar'}
                                                     </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="shrink-0 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 h-8 px-3"
+                                                        title="Copiar link público do evento"
+                                                        onClick={() => void handleCopyEventLink(event.id)}
+                                                    >
+                                                        <Link2 className="h-4 w-4 mr-2 shrink-0" />
+                                                        Link
+                                                    </Button>
                                                     {event.inventory_mode === 'counter' && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
-                                                            className="shrink-0 bg-black/60 border-cyan-500/30 text-cyan-300 hover:bg-cyan-950/60 hover:text-white h-8 px-3"
+                                                            className="shrink-0 bg-black/60 border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 h-8 px-3"
                                                             onClick={() => navigate(`/manager/events/${event.id}/cortesias`)}
                                                         >
                                                             <Gift className="h-4 w-4 mr-2 shrink-0" />
