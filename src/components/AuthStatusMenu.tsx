@@ -217,29 +217,22 @@ const AuthStatusMenu: React.FC = () => {
     return (
         <div className="flex items-center space-x-3">
             <Button
+                type="button"
+                variant="outline"
                 onClick={() =>
                     navigate('/login', {
                         state: buildLoginLocationState(location.pathname, location.search),
                     })
                 }
-                className={`bg-transparent transition-all duration-300 cursor-pointer px-4 ${
-                    isLandingPage ? 'text-cyan-300 hover:bg-cyan-400/10' : 'text-yellow-500 hover:bg-yellow-500/10'
-                }`}
+                className="bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 px-4"
             >
                 Login
             </Button>
             <Button
+                type="button"
                 onClick={() => navigate('/register')}
                 title={isInformacoesPage ? 'Cadastro para comprar ingressos' : 'Criar conta de cliente'}
-                className={
-                    isInformacoesPage
-                        ? 'bg-black/60 border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400 px-4'
-                        : `border bg-transparent transition-all duration-300 cursor-pointer px-4 ${
-                              isLandingPage
-                                  ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-400 hover:text-black'
-                                  : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'
-                          }`
-                }
+                className="bg-yellow-500 text-black hover:bg-yellow-600 font-semibold px-4"
             >
                 {isInformacoesPage ? 'Sou cliente' : 'Cadastro'}
             </Button>

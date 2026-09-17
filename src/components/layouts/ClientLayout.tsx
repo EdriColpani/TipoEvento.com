@@ -68,7 +68,7 @@ const ClientLayoutNav: React.FC<{ isInformacoesPage: boolean }> = ({ isInformaco
             <a
                 href="/#contato"
                 onClick={handleContatoClick}
-                className={`${linkClass} ${landingUi?.contactOpen ? 'text-cyan-400' : ''}`}
+                className={`${linkClass} ${landingUi?.contactOpen ? 'text-yellow-400' : ''}`}
                 aria-expanded={landingUi?.contactOpen}
             >
                 Contato
