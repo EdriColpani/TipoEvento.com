@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { Loader2, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
 import { useEntryQrToken } from '@/hooks/use-entry-qr-token';
 import { ENTRY_QR_DEFAULT_TTL_SECONDS } from '@/constants/entry-qr';
+import AppEntryRequirementNotice from '@/components/AppEntryRequirementNotice';
 
 interface QrCodeModalProps {
     isOpen: boolean;
@@ -168,6 +169,7 @@ const QrCodeModal: React.FC<QrCodeModalProps> = ({
                         <p className="text-sm text-gray-300">Data: {formattedDate}</p>
                         <p className="text-sm text-gray-300">Ingresso: {wristbandCode}</p>
                     </div>
+                    <AppEntryRequirementNotice variant="compact" className="mt-4 w-full" />
                     {singleUseNotice && (
                         <div className="mt-4 flex gap-2 items-start rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left text-xs text-amber-200/90">
                             <ShieldAlert className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />

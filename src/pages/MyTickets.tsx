@@ -13,6 +13,7 @@ import { formatEventDateForDisplay } from '@/utils/format-event-date';
 import { useQueryClient } from '@tanstack/react-query'; // Importando useQueryClient
 import QrCodeModal from '@/components/QrCodeModal';
 import PurchaseTicketsPanel from '@/components/PurchaseTicketsPanel';
+import AppEntryRequirementNotice from '@/components/AppEntryRequirementNotice';
 import {
     isPurchasePaidForEmission,
     isTicketActiveForDisplay,
@@ -417,6 +418,8 @@ const MyTickets: React.FC = () => {
     return (
         <ClientAccountPageShell title="Meus Ingressos" showBackToProfile>
                 <div className="space-y-8 sm:space-y-10">
+                    <AppEntryRequirementNotice />
+
                     {searchParams.get('from_app') === '1' && searchParams.get('transaction_id') ? (
                         <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4 space-y-3">
                             <p className="text-yellow-200 text-sm sm:text-base">

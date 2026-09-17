@@ -3,7 +3,7 @@ export type PublicLaunchMode = 'preview' | 'live';
 export const ADMIN_MASTER_USER_TYPE_ID = 1;
 export const MANAGER_PRO_USER_TYPE_ID = 2;
 
-/** Rotas liberadas para visitantes não logados. */
+/** Rotas liberadas para visitantes não logados (match exato). */
 export const GUEST_ALLOWED_PATHS = new Set([
     '/informacoes',
     '/login',
@@ -25,8 +25,23 @@ export const PUBLIC_LAUNCH_REGISTRATION_PATHS = [
 /** @deprecated Use GUEST_ALLOWED_PATHS */
 export const PUBLIC_LAUNCH_ALLOWED_PATHS = GUEST_ALLOWED_PATHS;
 
+/**
+ * Detalhe público do evento e inscrição gratuita.
+ * Ex.: /events/{uuid}, /events/{uuid}/inscricao, /events/{uuid}/inscricao/sucesso
+ * Compra de ingresso continua exigindo login na UI (EventDetails).
+ */
+const PUBLIC_EVENT_PATH_RE =
+    /^\/events\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/inscricao(?:\/sucesso)?)?$/i;
+
+export function isPublicEventGuestPath(pathname: string): boolean {
+    return PUBLIC_EVENT_PATH_RE.test(pathname);
+}
+
 export function isGuestAllowedPath(pathname: string): boolean {
     if (GUEST_ALLOWED_PATHS.has(pathname)) {
+        return true;
+    }
+    if (isPublicEventGuestPath(pathname)) {
         return true;
     }
     return isPublicLaunchRegistrationPath(pathname);

@@ -329,7 +329,8 @@ export const LANDING_HELP_CENTER_SECTIONS = [
     {
         title: 'Ingressos',
         items: [
-            'Ingressos comprados aparecem em Meus Ingressos com QR para entrada.',
+            'Ingressos comprados aparecem em Meus Ingressos.',
+            'A entrada no evento será pelo aplicativo EventFest (em breve), com o QR Code do ingresso na portaria. Você será avisado por e-mail para baixar o app.',
             'Eventos gratuitos podem exigir inscrição com dados pessoais.',
             'Em caso de erro no pagamento, aguarde alguns minutos e verifique o status.',
         ],
@@ -351,7 +352,8 @@ export const LANDING_FAQ_ITEMS: FaqItem[] = [
     },
     {
         question: 'Onde vejo meus ingressos após a compra?',
-        answer: 'Em Meus Ingressos, no menu da sua conta. Lá está o QR code para validação na entrada.',
+        answer:
+            'Em Meus Ingressos, no menu da sua conta. A entrada no evento será pelo aplicativo EventFest (em breve disponível): o QR Code do ingresso será apresentado no app na portaria. Quando o app estiver pronto para download, você receberá um e-mail avisando.',
     },
     {
         question: 'Posso cancelar ou pedir reembolso?',
