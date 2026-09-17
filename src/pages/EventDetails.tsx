@@ -380,31 +380,32 @@ const EventDetails: React.FC = () => {
                 </div>
             )}
             <section className="pb-0 flex justify-center">
-                <div className="relative w-full max-w-5xl h-[500px] overflow-hidden rounded-xl shadow-2xl shadow-yellow-500/20 mx-4 sm:mx-6">
+                {/* h-auto: a arte define a altura — object-cover/aspect fixo cortava textos do banner (ex.: "ADQUIRA SEU INGRESSO!"). */}
+                <div className="relative w-full max-w-5xl overflow-hidden rounded-xl shadow-2xl shadow-yellow-500/20 mx-4 sm:mx-6 bg-black">
                     <img
                         src={bannerImageUrl}
                         alt={event.title}
-                        className="w-full h-full object-cover object-top"
+                        className="w-full h-auto block"
                     />
                     <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/40"></div>
                     <div className="absolute inset-0 flex items-center">
-                        <div className="w-full px-4 sm:px-6">
+                        <div className="w-full px-4 sm:px-6 py-4 sm:py-6">
                             <div className="max-w-full lg:max-w-3xl">
-                                <div className="inline-block bg-yellow-500 text-black px-3 py-1 rounded-full text-xs sm:text-sm font-semibold mb-2 sm:mb-4">
+                                <div className="inline-block bg-yellow-500 text-black px-3 py-1 rounded-full text-xs sm:text-sm font-semibold mb-2 sm:mb-3">
                                     {event.category}
                                 </div>
-                                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif text-white mb-3 sm:mb-6 leading-tight line-clamp-3 break-words">
+                                <h1 className="text-2xl sm:text-4xl lg:text-5xl font-serif text-white mb-2 sm:mb-4 leading-tight line-clamp-2 break-words">
                                     {event.title}
                                 </h1>
-                                <p className="text-base sm:text-xl text-gray-200 mb-4 sm:mb-8 leading-relaxed line-clamp-3 break-words">
+                                <p className="text-sm sm:text-lg text-gray-200 mb-3 sm:mb-5 leading-relaxed line-clamp-2 sm:line-clamp-3 break-words">
                                     {event.description}
                                 </p>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5 mb-4 sm:mb-6">
                                     <div className="flex items-center min-w-0">
                                         <i className="fas fa-calendar-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4 shrink-0"></i>
                                         <div className="min-w-0">
                                             <div className="text-xs sm:text-sm text-gray-400">Data</div>
-                                            <div className="text-sm sm:text-lg font-semibold text-white truncate">
+                                            <div className="text-sm sm:text-lg font-semibold text-white">
                                                 {formatEventDateForDisplay(event.date) || '—'}
                                             </div>
                                         </div>
@@ -413,16 +414,16 @@ const EventDetails: React.FC = () => {
                                         <i className="fas fa-clock text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4 shrink-0"></i>
                                         <div className="min-w-0">
                                             <div className="text-xs sm:text-sm text-gray-400">Horário</div>
-                                            <div className="text-sm sm:text-lg font-semibold text-white truncate">
+                                            <div className="text-sm sm:text-lg font-semibold text-white">
                                                 {formatEventTimeForDisplay(event.time)}
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center min-w-0">
-                                        <i className="fas fa-map-marker-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4 shrink-0"></i>
+                                    <div className="flex items-start min-w-0">
+                                        <i className="fas fa-map-marker-alt text-yellow-500 text-xl sm:text-2xl mr-3 sm:mr-4 shrink-0 mt-0.5"></i>
                                         <div className="min-w-0">
                                             <div className="text-xs sm:text-sm text-gray-400">Local</div>
-                                            <div className="text-sm sm:text-lg font-semibold text-white truncate" title={event.location}>
+                                            <div className="text-sm sm:text-lg font-semibold text-white break-words line-clamp-2" title={event.location}>
                                                 {event.location}
                                             </div>
                                         </div>

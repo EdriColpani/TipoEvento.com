@@ -465,11 +465,11 @@ const Index: React.FC = () => {
                                                 className="bg-black/60 backdrop-blur-sm border border-yellow-500/30 rounded-2xl overflow-hidden hover:border-yellow-500/60 hover:shadow-2xl hover:shadow-yellow-500/20 transition-all duration-300 cursor-pointer hover:scale-[1.02] group flex flex-col h-full"
                                                 onClick={() => handleEventClick(event)}
                                             >
-                                                <div className="relative overflow-hidden shrink-0">
+                                                <div className="relative overflow-hidden shrink-0 aspect-video bg-black">
                                                     <img
                                                         src={event.image_url} // USANDO O NOVO CAMPO (exposure_card_image_url)
                                                         alt={event.title}
-                                                        className="w-full h-[200px] object-cover object-top group-hover:scale-110 transition-transform duration-500"
+                                                        className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-500"
                                                     />
                                                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
                                                     <div className="absolute top-4 left-4 flex flex-wrap gap-2">

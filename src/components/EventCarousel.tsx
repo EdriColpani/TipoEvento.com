@@ -123,11 +123,11 @@ const EventCarousel = ({ events }: EventCarouselProps) => {
                                 onClick={() => navigate(`/events/${event.id}`)}
                             >
                                 <CardContent className="flex flex-col p-0">
-                                    <div className="relative h-48 overflow-hidden">
+                                    <div className="relative aspect-video overflow-hidden bg-black">
                                         <img
                                             src={event.image_url}
                                             alt={event.title}
-                                            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                                            className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-500"
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent p-4 flex flex-col justify-end">
                                             <span className="bg-yellow-500 text-black px-3 py-1 rounded-full text-xs font-semibold mb-2 self-start">
