@@ -5,6 +5,7 @@ import type { TicketData } from '@/hooks/use-my-tickets';
 import type { PurchaseData } from '@/hooks/use-my-purchases';
 import EventInfoDialog from '@/components/EventInfoDialog';
 import QrCodeModal from '@/components/QrCodeModal';
+import AppEntryRequirementNotice from '@/components/AppEntryRequirementNotice';
 import { isEventDateStillValidForEntryQr } from '@/utils/ticket-display-status';
 
 interface PurchaseTicketsPanelProps {
@@ -102,6 +103,7 @@ const PurchaseTicketsPanel: React.FC<PurchaseTicketsPanelProps> = ({
                         Nenhum ingresso vinculado a esta compra. Confira a seção &quot;Ingressos Ativos&quot; abaixo.
                     </p>
                 ) : null}
+                <AppEntryRequirementNotice variant="compact" className="mt-3" />
             </div>
 
             <EventInfoDialog

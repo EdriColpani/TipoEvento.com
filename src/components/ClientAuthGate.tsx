@@ -80,6 +80,8 @@ const ClientAuthGate: React.FC = () => {
         location.pathname === '/wallet' ||
         location.pathname.startsWith('/wallet/');
 
+    // Visitante: só home, allowlist institucional, cadastro e /events/:id (ver isGuestAllowedPath).
+    // Compra de ingresso exige login dentro de EventDetails — não neste gate.
     if (!isAuthenticated) {
         if (isClientPrivatePath) {
             return <Navigate to="/login" replace state={{ from: fullFrom }} />;
